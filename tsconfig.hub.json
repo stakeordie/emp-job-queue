@@ -1,0 +1,14 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "outDir": "./dist/hub",
+    "rootDir": "./src"
+  },
+  "include": [
+    "src/hub/**/*",
+    "src/core/**/*"
+  ],
+  "exclude": [
+    "src/worker/**/*"
+  ]
+}

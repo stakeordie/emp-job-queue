@@ -1,0 +1,21 @@
+# Dockerfile for Worker service
+FROM node:18-alpine
+
+WORKDIR /app
+
+# Install pnpm
+RUN npm install -g pnpm
+
+# Install dependencies
+COPY package.json pnpm-lock.yaml ./
+RUN pnpm install --frozen-lockfile --prod
+
+# Copy built application
+COPY dist/ ./dist/
+COPY .env.example ./.env
+
+# Create logs directory
+RUN mkdir -p logs
+
+# Run worker service
+CMD ["node", "dist/worker/index.js"]

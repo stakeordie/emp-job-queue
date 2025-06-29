@@ -1,0 +1,133 @@
+# Docker Compose configuration for emp-redis JavaScript rebuild
+# Matches the Python version's environment setup
+
+version: '3.8'
+
+services:
+  # Redis database - comment out when using external Redis
+  redis:
+    image: redis:7-alpine
+    container_name: emp-redis-js-redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    networks:
+      - emp-redis-network
+    restart: unless-stopped
+    profiles:
+      - local
+
+  # Hub service
+  hub:
+    container_name: emp-redis-js-hub
+    build:
+      context: .
+      dockerfile: Dockerfile.hub
+    ports:
+      - "3001:3001"  # HTTP API
+      - "3002:3002"  # WebSocket
+    environment:
+      - NODE_ENV=production
+      # Use external Redis for production, local Redis for development
+      - REDIS_URL=${REDIS_URL:-redis://redis:6379/0}
+      - HUB_PORT=3001
+      - HUB_HOST=0.0.0.0
+      - WS_PORT=3002
+      - WS_HOST=0.0.0.0
+      - LOG_LEVEL=info
+    depends_on:
+      - redis
+    profiles:
+      - local
+    networks:
+      - emp-redis-network
+    restart: unless-stopped
+
+  # Worker 1 - Simulation only
+  worker1:
+    container_name: emp-redis-js-worker1
+    build:
+      context: .
+      dockerfile: Dockerfile.worker
+    environment:
+      - NODE_ENV=production
+      - WORKER_ID=worker1-js
+      - HUB_REDIS_URL=${REDIS_URL:-redis://redis:6379/0}
+      - HUB_WS_URL=ws://hub:3002
+      - WORKER_CONNECTORS=simulation
+      - WORKER_SIMULATION_PROCESSING_TIME=5
+      - WORKER_SIMULATION_STEPS=25
+      - WORKER_HEARTBEAT_INTERVAL=20
+      - LOG_LEVEL=info
+    depends_on:
+      - hub
+    networks:
+      - emp-redis-network
+    restart: unless-stopped
+
+  # Worker 2 - ComfyUI and A1111 (requires external services)
+  worker2:
+    container_name: emp-redis-js-worker2
+    build:
+      context: .
+      dockerfile: Dockerfile.worker
+    environment:
+      - NODE_ENV=production
+      - WORKER_ID=worker2-js
+      - HUB_REDIS_URL=${REDIS_URL:-redis://redis:6379/0}
+      - HUB_WS_URL=ws://hub:3002
+      - WORKER_CONNECTORS=simulation,comfyui,a1111
+      - WORKER_SIMULATION_PROCESSING_TIME=2
+      - WORKER_SIMULATION_STEPS=45
+      - WORKER_COMFYUI_HOST=${WORKER_COMFYUI_HOST:-localhost}
+      - WORKER_COMFYUI_PORT=${WORKER_COMFYUI_PORT:-8188}
+      - WORKER_COMFYUI_USERNAME=${WORKER_COMFYUI_USERNAME}
+      - WORKER_COMFYUI_PASSWORD=${WORKER_COMFYUI_PASSWORD}
+      - WORKER_A1111_HOST=${WORKER_A1111_HOST:-localhost}
+      - WORKER_A1111_PORT=${WORKER_A1111_PORT:-7860}
+      - WORKER_A1111_USERNAME=${WORKER_A1111_USERNAME}
+      - WORKER_A1111_PASSWORD=${WORKER_A1111_PASSWORD}
+      - WORKER_HEARTBEAT_INTERVAL=20
+      - LOG_LEVEL=info
+    depends_on:
+      - hub
+    networks:
+      - emp-redis-network
+    restart: unless-stopped
+    profiles:
+      - full
+
+  # Worker 3 - REST connectors
+  worker3:
+    container_name: emp-redis-js-worker3
+    build:
+      context: .
+      dockerfile: Dockerfile.worker
+    environment:
+      - NODE_ENV=production
+      - WORKER_ID=worker3-js
+      - HUB_REDIS_URL=${REDIS_URL:-redis://redis:6379/0}
+      - HUB_WS_URL=ws://hub:3002
+      - WORKER_CONNECTORS=simulation,rest_sync,rest_async
+      - WORKER_SIMULATION_PROCESSING_TIME=10
+      - WORKER_SIMULATION_STEPS=2
+      - WORKER_REST_SYNC_BASE_URL=${WORKER_REST_SYNC_BASE_URL:-http://localhost:8080}
+      - WORKER_REST_ASYNC_BASE_URL=${WORKER_REST_ASYNC_BASE_URL:-http://localhost:8080}
+      - WORKER_HEARTBEAT_INTERVAL=20
+      - LOG_LEVEL=info
+    depends_on:
+      - hub
+    networks:
+      - emp-redis-network
+    restart: unless-stopped
+    profiles:
+      - full
+
+networks:
+  emp-redis-network:
+    driver: bridge
+
+volumes:
+  redis_data:
+    driver: local

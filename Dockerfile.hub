@@ -1,0 +1,28 @@
+# Dockerfile for Hub service
+FROM node:18-alpine
+
+WORKDIR /app
+
+# Install pnpm
+RUN npm install -g pnpm
+
+# Install dependencies
+COPY package.json pnpm-lock.yaml ./
+RUN pnpm install --frozen-lockfile --prod
+
+# Copy built application
+COPY dist/ ./dist/
+COPY .env.example ./.env
+
+# Create logs directory
+RUN mkdir -p logs
+
+# Expose ports
+EXPOSE 3001 3002
+
+# Health check
+HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
+  CMD curl -f http://localhost:3001/health || exit 1
+
+# Run hub service
+CMD ["node", "dist/hub/index.js"]

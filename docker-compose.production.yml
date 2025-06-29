@@ -1,0 +1,52 @@
+# Production Docker Compose for emp-redis JavaScript rebuild
+# Uses external Redis database - no local Redis container
+
+version: '3.8'
+
+services:
+  # Hub service - connects to external Redis
+  hub:
+    container_name: emp-redis-js-hub-prod
+    build:
+      context: .
+      dockerfile: Dockerfile.hub
+    ports:
+      - "3001:3001"  # HTTP API
+      - "3002:3002"  # WebSocket
+    environment:
+      - NODE_ENV=production
+      - REDIS_URL=redis://default:hYMwSwJMmiJyZPOvEeUliKPdlPTOlgaZ@caboose.proxy.rlwy.net:58551
+      - HUB_PORT=3001
+      - HUB_HOST=0.0.0.0
+      - WS_PORT=3002
+      - WS_HOST=0.0.0.0
+      - LOG_LEVEL=info
+    networks:
+      - emp-redis-network
+    restart: unless-stopped
+
+  # Worker 1 - Simulation only
+  worker1:
+    container_name: emp-redis-js-worker1-prod
+    build:
+      context: .
+      dockerfile: Dockerfile.worker
+    environment:
+      - NODE_ENV=production
+      - WORKER_ID=worker1-js-prod
+      - HUB_REDIS_URL=redis://default:hYMwSwJMmiJyZPOvEeUliKPdlPTOlgaZ@caboose.proxy.rlwy.net:58551
+      - HUB_WS_URL=ws://hub:3002
+      - WORKER_CONNECTORS=simulation
+      - WORKER_SIMULATION_PROCESSING_TIME=5
+      - WORKER_SIMULATION_STEPS=25
+      - WORKER_HEARTBEAT_INTERVAL=20
+      - LOG_LEVEL=info
+    depends_on:
+      - hub
+    networks:
+      - emp-redis-network
+    restart: unless-stopped
+
+networks:
+  emp-redis-network:
+    driver: bridge
