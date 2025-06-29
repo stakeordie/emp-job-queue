@@ -4,8 +4,8 @@
 // Export messages first, then override with more specific types
 export * from './messages.js';
 
-// Job types (may override some message types)
-export * from './job.js';
+// Job types (commented out to avoid conflicts - types are in messages.js)
+// export * from './job.js';
 
 // Worker types (may override some message types)
 export { 

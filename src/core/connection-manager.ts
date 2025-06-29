@@ -359,7 +359,7 @@ export class ConnectionManager implements ConnectionManagerInterface {
   }
 
   // Chunked message handling
-  async handleChunkedMessage(connectionId: string, chunk: ChunkedMessageChunk): Promise<BaseMessage | null> {
+  async handleChunkedMessage(_connectionId: string, chunk: ChunkedMessageChunk): Promise<BaseMessage | null> {
     const { chunkId, chunkIndex, totalChunks, data, dataHash } = chunk;
     
     if (!this.chunkedMessages.has(chunkId)) {
