@@ -962,21 +962,8 @@
     </div>
   </div>
 
-  <!-- Combined Stats & Workers Carousel -->
-  <div class="combined-overview-card">
-    <div class="stats-section">
-      <div class="compact-stats">
-        <div class="stat-item">
-          <span class="stat-label">Queued:</span>
-          <span id="queued-jobs-count" class="stat-value">0</span>
-        </div>
-        <div class="stat-item">
-          <span class="stat-label">Active:</span>
-          <span id="active-jobs-count" class="stat-value">0</span>
-        </div>
-      </div>
-    </div>
-    
+  <!-- Workers Carousel -->
+  <div class="workers-overview-card">
     <div class="workers-carousel-section">
       <div class="carousel-header">
         <h3>Connected Workers (<span id="workers-count-header">0</span>)</h3>
@@ -1199,7 +1186,7 @@
       <div class="single-column-container">
         <!-- All Jobs Section -->
         <div class="card job-queue-section">
-          <h2>All Jobs (<span id="all-jobs-count">0</span>)</h2>
+          <h2>All Jobs (<span id="all-jobs-count">0</span>) - Queued: <span id="queued-jobs-count">0</span>, Active: <span id="active-jobs-count">0</span></h2>
         <!-- Enhanced to show all job states: pending, assigned, in_progress, completed -->
         <!-- [2025-05-20T13:55:06-04:00] Added proper overflow handling for the jobs table -->
         <div id="jobs-table-container" class="table-responsive">
@@ -1444,8 +1431,8 @@
       font-weight: 500;
     }
 
-    /* Combined Overview Card Styles */
-    .combined-overview-card {
+    /* Workers Overview Card Styles */
+    .workers-overview-card {
       background: linear-gradient(135deg, #fff 0%, #f8f9fa 100%);
       border: 1px solid #e9ecef;
       border-radius: 12px;
@@ -1591,7 +1578,7 @@
 
     /* Responsive adjustments */
     @media (max-width: 768px) {
-      .combined-overview-card {
+      .workers-overview-card {
         flex-direction: column;
         gap: 16px;
       }
