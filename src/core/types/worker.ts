@@ -2,18 +2,21 @@
 
 export interface WorkerCapabilities {
   worker_id: string;
-  services: string[];
-  hardware: HardwareSpecs;
-  models: Record<string, string[]>; // service -> model list
-  customer_access: CustomerAccessConfig;
-  performance: PerformanceConfig;
+  services: string[]; // ["comfyui", "a1111"]
+  components?: string[] | 'all'; // ["text-to-image-xl"] or "all" for no filtering
+  workflows?: string[] | 'all'; // ["workflow-v1.2", "workflow-v2.0"] or "all" for no filtering
+  models?: Record<string, string[]> | 'all'; // Future: service -> model list or "all"
+  hardware?: HardwareSpecs; // Future: actual hardware specs
+  instance?: string; // "comfyui_gpu0" - which service instance to connect to
+  customer_access?: CustomerAccessConfig;
+  performance?: PerformanceConfig;
   location?: LocationConfig;
   cost?: CostConfig;
   metadata?: Record<string, unknown>;
+  [key: string]: unknown; // Allow assignment to Record<string, unknown>
 }
 
 export interface HardwareSpecs {
-  gpu_count: number;
   gpu_memory_gb: number;
   gpu_model: string;
   cpu_cores: number;

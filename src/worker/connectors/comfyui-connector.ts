@@ -10,6 +10,7 @@ import {
   JobProgress,
   ProgressCallback,
   ComfyUIConnectorConfig,
+  ServiceInfo,
 } from '../../core/types/connector.js';
 import { logger } from '../../core/utils/logger.js';
 
@@ -128,10 +129,10 @@ export class ComfyUIConnector implements ConnectorInterface {
     }
   }
 
-  async getServiceInfo(): Promise<Record<string, unknown>> {
+  async getServiceInfo(): Promise<ServiceInfo> {
     try {
       const systemStats = await this.httpClient.get('/system_stats');
-      const objectInfo = await this.httpClient.get('/object_info');
+      const _objectInfo = await this.httpClient.get('/object_info');
 
       return {
         service_name: 'ComfyUI',
@@ -145,7 +146,6 @@ export class ComfyUIConnector implements ConnectorInterface {
           concurrent_jobs: this.config.max_concurrent_jobs,
         },
         resource_usage: systemStats.data,
-        available_nodes: Object.keys(objectInfo.data || {}).length,
       };
     } catch (error) {
       logger.error('Failed to get ComfyUI service info:', error);
@@ -172,7 +172,7 @@ export class ComfyUIConnector implements ConnectorInterface {
       this.activeJobs.set(jobData.id, { jobData, progressCallback });
 
       // Submit workflow to ComfyUI
-      const promptId = await this.submitWorkflow(workflow);
+      const promptId = await this.submitWorkflow(workflow as Record<string, unknown>);
       logger.info(`ComfyUI job ${jobData.id} submitted with prompt ID: ${promptId}`);
 
       // Wait for completion
@@ -188,7 +188,7 @@ export class ComfyUIConnector implements ConnectorInterface {
         processing_time_ms: processingTime,
         service_metadata: {
           service_version: this.version,
-          model_used: this.extractModelFromWorkflow(workflow),
+          model_used: this.extractModelFromWorkflow(workflow as Record<string, unknown>),
           processing_stats: {
             prompt_id: promptId,
             workflow_nodes: Object.keys(workflow).length,
@@ -448,7 +448,8 @@ export class ComfyUIConnector implements ConnectorInterface {
     for (const nodeId of Object.keys(workflow)) {
       const node = workflow[nodeId] as Record<string, unknown>;
       if (node?.class_type === 'CheckpointLoaderSimple') {
-        return node.inputs?.ckpt_name || 'unknown';
+        const inputs = node.inputs as Record<string, unknown> | undefined;
+        return typeof inputs?.ckpt_name === 'string' ? inputs.ckpt_name : 'unknown';
       }
     }
     return 'unknown';

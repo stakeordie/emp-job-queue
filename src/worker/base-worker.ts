@@ -64,7 +64,6 @@ export class BaseWorker {
 
     // Hardware specifications
     const hardware: HardwareSpecs = {
-      gpu_count: parseInt(process.env.GPU_COUNT || '0'),
       gpu_memory_gb: parseInt(process.env.GPU_MEMORY_GB || '0'),
       gpu_model: process.env.GPU_MODEL || 'unknown',
       cpu_cores: os.cpus().length,
@@ -449,7 +448,9 @@ export class BaseWorker {
         await this.handleJobAssigned(message as JobAssignedMessage);
         break;
       case MessageType.CANCEL_JOB:
-        await this.handleJobCancelled(message);
+        if ('job_id' in message && typeof message.job_id === 'string') {
+          await this.handleJobCancelled(message as BaseMessage & { job_id: string });
+        }
         break;
       default:
         logger.debug(`Received unhandled message type: ${message.type}`);
@@ -508,5 +509,9 @@ export class BaseWorker {
       }
     }
     return health;
+  }
+
+  getConnectorManager(): ConnectorManager {
+    return this.connectorManager;
   }
 }

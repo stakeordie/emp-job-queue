@@ -7,6 +7,7 @@ import {
   JobResult,
   ProgressCallback,
   ConnectorConfig,
+  ServiceInfo,
 } from '../../core/types/connector.js';
 import { logger } from '../../core/utils/logger.js';
 
@@ -68,7 +69,7 @@ export class SimulationConnector implements ConnectorInterface {
     return ['simulation-model-v1', 'simulation-model-v2', 'test-model'];
   }
 
-  async getServiceInfo(): Promise<Record<string, unknown>> {
+  async getServiceInfo(): Promise<ServiceInfo> {
     return {
       service_name: 'Simulation Service',
       service_version: this.version,

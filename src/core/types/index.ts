@@ -7,8 +7,13 @@ export { Timestamp } from './timestamp.js';
 // Export messages first, then override with more specific types
 export * from './messages.js';
 
-// Job types (commented out to avoid conflicts - types are in messages.js)
-// export * from './job.js';
+// Job types - export canonical types
+export {
+  Job,
+  JobRequirements,
+  JobProgress,
+  JobStatus
+} from './job.js';
 
 // Worker types (may override some message types)
 export {
@@ -34,7 +39,6 @@ export {
   ConnectorInterface,
   JobData as ConnectorJobData,
   JobResult as ConnectorJobResult,
-  JobRequirements as ConnectorJobRequirements,
   ProgressCallback,
   ConnectorConfig,
   RestConnectorConfig,

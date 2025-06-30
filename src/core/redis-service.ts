@@ -409,21 +409,55 @@ export class RedisService implements RedisServiceInterface {
       return false;
     }
 
+    // Check component filtering
+    if (job.requirements?.component && job.requirements.component !== 'all') {
+      const workerComponents = capabilities.components;
+      if (workerComponents !== 'all' && workerComponents) {
+        if (!workerComponents.includes(job.requirements.component)) {
+          return false;
+        }
+      }
+    }
+
+    // Check workflow filtering
+    if (job.requirements?.workflow && job.requirements.workflow !== 'all') {
+      const workerWorkflows = capabilities.workflows;
+      if (workerWorkflows !== 'all' && workerWorkflows) {
+        if (!workerWorkflows.includes(job.requirements.workflow)) {
+          return false;
+        }
+      }
+    }
+
     // Check hardware requirements
-    if (job.requirements?.hardware) {
+    if (job.requirements?.hardware && capabilities.hardware) {
       const hw = job.requirements.hardware;
-      if (hw.gpu_memory_gb && capabilities.hardware.gpu_memory_gb < hw.gpu_memory_gb) return false;
-      if (hw.cpu_cores && capabilities.hardware.cpu_cores < hw.cpu_cores) return false;
-      if (hw.ram_gb && capabilities.hardware.ram_gb < hw.ram_gb) return false;
+      if (
+        hw.gpu_memory_gb &&
+        hw.gpu_memory_gb !== 'all' &&
+        capabilities.hardware.gpu_memory_gb < hw.gpu_memory_gb
+      )
+        return false;
+      if (hw.cpu_cores && hw.cpu_cores !== 'all' && capabilities.hardware.cpu_cores < hw.cpu_cores)
+        return false;
+      if (hw.ram_gb && hw.ram_gb !== 'all' && capabilities.hardware.ram_gb < hw.ram_gb)
+        return false;
     }
 
     // Check model availability
-    if (job.requirements?.models && job.requirements.service_type) {
-      const availableModels = capabilities.models[job.requirements.service_type] || [];
-      const hasRequiredModels = job.requirements.models.every(model =>
-        availableModels.includes(model)
-      );
-      if (!hasRequiredModels) return false;
+    if (
+      job.requirements?.models &&
+      job.requirements.models !== 'all' &&
+      job.requirements.service_type
+    ) {
+      const workerModels = capabilities.models;
+      if (workerModels && workerModels !== 'all') {
+        const availableModels = workerModels[job.requirements.service_type] || [];
+        const hasRequiredModels = job.requirements.models.every(model =>
+          availableModels.includes(model)
+        );
+        if (!hasRequiredModels) return false;
+      }
     }
 
     // Check customer isolation

@@ -2,6 +2,36 @@
 
 This file provides guidance to Claude Code when working on the JavaScript/TypeScript rebuild of the emp-redis system.
 
+## RULES
+
+### Task Management Workflow
+When given a task, analyze and respond with:
+1. "Here's the prompt I would execute:"
+2. [Complete optimized prompt]
+3. "This will use: [MCP servers/tools needed]"
+4. "Should I proceed? (y/n)"
+
+**MCP Server Usage:**
+- Playwright MCP for UI changes and testing
+- Shopify MCP for Shopify-specific development
+- Always specify which servers will be used
+  
+**Auto-execution:** Add `-y` to prompt for immediate execution after confirmation
+
+### Context Files
+- Always read `CHANGELOG.md` for project context
+- Check `tasks/todo.md` for current priorities and next steps
+
+### commit process 
+- pnpm lint -> fix -> repeat
+- npx tsc -> fix -> repeat
+- tasks/todo.md
+- CHANGELOG.md
+- git add .
+- git commit -m "complete message"
+- "tell me to push"
+
+
 ## Project Overview
 
 This is a complete rebuild of the Python-based emp-redis system into JavaScript/TypeScript, maintaining the proven pull-based job broker architecture while improving developer experience and deployment.

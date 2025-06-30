@@ -610,15 +610,11 @@ export class WorkerDashboard {
   private async handleApiConnectors(req: Request, res: Response): Promise<void> {
     try {
       // Get connector statuses from worker's connector manager
-      const connectorManager = (
-        this.worker as {
-          connectorManager?: { getConnectorStatuses(): Promise<Record<string, unknown>> };
-        }
-      ).connectorManager;
+      const connectorManager = this.worker.getConnectorManager();
       const connectors: Record<string, unknown> = {};
 
-      if (connectorManager && connectorManager.getConnectorStatuses) {
-        const statuses = await connectorManager.getConnectorStatuses();
+      if (connectorManager && connectorManager.getConnectorStatistics) {
+        const statuses = await connectorManager.getConnectorStatistics();
         for (const [name, status] of Object.entries(statuses)) {
           connectors[name] = status;
         }

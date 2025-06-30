@@ -18,6 +18,7 @@ import {
   WorkerHeartbeatMessage,
   ServiceRequestMessage,
   CompleteJobMessage,
+  CancelJobMessage,
   FailJobMessage,
 } from './types/messages.js';
 import { JobStatus } from './types/job.js';
@@ -83,7 +84,7 @@ export class MessageHandler implements MessageHandlerInterface {
           await this.handleCompleteJob(message as CompleteJobMessage);
           break;
         case MessageType.CANCEL_JOB:
-          await this.handleCancelJob(message);
+          await this.handleCancelJob(message as CancelJobMessage);
           break;
         case MessageType.REGISTER_WORKER:
           await this.handleWorkerRegistration(message as WorkerRegistrationMessage);
@@ -153,7 +154,10 @@ export class MessageHandler implements MessageHandlerInterface {
         message: message.message,
         current_step: undefined,
         total_steps: undefined,
-        estimated_completion: message.estimated_completion,
+        estimated_completion:
+          typeof message.estimated_completion === 'string'
+            ? message.estimated_completion
+            : undefined,
         updated_at: TimestampUtil.toISO(message.timestamp),
       });
 
@@ -172,7 +176,10 @@ export class MessageHandler implements MessageHandlerInterface {
       await this.redisService.completeJob(message.job_id, {
         success: true,
         data: message.result,
-        processing_time: message.result?.processing_time,
+        processing_time:
+          typeof message.result?.processing_time === 'number'
+            ? message.result.processing_time
+            : undefined,
       });
 
       // Update worker status to idle
@@ -235,7 +242,7 @@ export class MessageHandler implements MessageHandlerInterface {
     });
   }
 
-  async handleCancelJob(message: { job_id: string; reason?: string }): Promise<void> {
+  async handleCancelJob(message: CancelJobMessage): Promise<void> {
     try {
       const jobId = message.job_id;
       const reason = message.reason || 'Cancelled by user';
@@ -274,7 +281,7 @@ export class MessageHandler implements MessageHandlerInterface {
       });
 
       logger.info(
-        `Worker ${message.worker_id} registered with services: ${message.capabilities.services.join(', ')}`
+        `Worker ${message.worker_id} registered with services: ${Array.isArray(message.capabilities.services) ? message.capabilities.services.join(', ') : 'unknown'}`
       );
     } catch (error) {
       logger.error(`Failed to register worker ${message.worker_id}:`, error);

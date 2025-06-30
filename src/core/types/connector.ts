@@ -1,5 +1,7 @@
 // Connector types - interface definitions for service connectors
 
+import { JobRequirements } from './job.js';
+
 export interface ConnectorInterface {
   connector_id: string;
   service_type: string;
@@ -86,17 +88,6 @@ export interface JobData {
   payload: Record<string, unknown>;
   requirements?: JobRequirements;
   metadata?: Record<string, unknown>;
-}
-
-export interface JobRequirements {
-  service_type: string;
-  models?: string[];
-  quality_level?: string;
-  timeout_minutes?: number;
-  hardware?: {
-    gpu_memory_gb?: number;
-    cpu_cores?: number;
-  };
 }
 
 export interface JobResult {

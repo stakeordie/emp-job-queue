@@ -8,6 +8,7 @@ import {
   JobResult,
   ProgressCallback,
   RestConnectorConfig,
+  ServiceInfo,
 } from '../../core/types/connector.js';
 import { logger } from '../../core/utils/logger.js';
 
@@ -83,7 +84,7 @@ export class RestAsyncConnector implements ConnectorInterface {
     return ['rest-async-generic'];
   }
 
-  async getServiceInfo(): Promise<Record<string, unknown>> {
+  async getServiceInfo(): Promise<ServiceInfo> {
     return {
       service_name: 'REST Async Service',
       service_version: this.version,
@@ -94,13 +95,6 @@ export class RestAsyncConnector implements ConnectorInterface {
         supported_models: await this.getAvailableModels(),
         features: ['asynchronous_requests', 'status_polling', 'long_running_jobs'],
         concurrent_jobs: this.config.max_concurrent_jobs,
-      },
-      configuration: {
-        method: this.config.settings.method,
-        response_format: this.config.settings.response_format,
-        polling_interval_ms: this.config.settings.polling_interval_ms,
-        completion_endpoint: this.config.settings.completion_endpoint,
-        timeout_seconds: this.config.timeout_seconds,
       },
     };
   }
@@ -119,10 +113,10 @@ export class RestAsyncConnector implements ConnectorInterface {
 
     try {
       // Extract configuration from job payload
-      const endpoint = jobData.payload.endpoint || '/';
-      const method = jobData.payload.method || this.config.settings.method;
+      const endpoint = String(jobData.payload.endpoint || '/');
+      const method = String(jobData.payload.method || this.config.settings.method);
       const requestData = jobData.payload.data || jobData.payload.body || {};
-      const headers = jobData.payload.headers || {};
+      const headers = (jobData.payload.headers as Record<string, string>) || {};
 
       // Report initial progress
       await progressCallback({
@@ -134,7 +128,7 @@ export class RestAsyncConnector implements ConnectorInterface {
 
       // Submit the async job
       const submissionResponse = await this.submitAsyncJob(endpoint, method, requestData, headers);
-      const jobToken = this.extractJobToken(submissionResponse);
+      const jobToken = this.extractJobToken(submissionResponse as Record<string, unknown>);
 
       await progressCallback({
         job_id: jobData.id,
@@ -280,7 +274,7 @@ export class RestAsyncConnector implements ConnectorInterface {
         // Check for completion
         if (this.isJobComplete(status)) {
           const result = this.extractResult(statusData);
-          return result;
+          return result as Record<string, unknown>;
         }
 
         // Check for failure

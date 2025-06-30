@@ -8,6 +8,7 @@
  */
 
 import { Timestamp } from './timestamp.js';
+import { JobRequirements } from './job.js';
 
 /**
  * All possible message types in the system - MUST MATCH PYTHON EXACTLY
@@ -113,6 +114,8 @@ export interface SubmitJobMessage extends BaseMessage {
   job_type: string;
   priority: number;
   payload: Record<string, unknown>;
+  customer_id?: string;
+  requirements?: JobRequirements;
   timestamp: Timestamp;
 }
 
@@ -166,6 +169,16 @@ export interface CompleteJobMessage extends BaseMessage {
   type: MessageType.COMPLETE_JOB;
   job_id: string;
   result?: Record<string, unknown>;
+  timestamp: Timestamp;
+}
+
+/**
+ * Message to cancel a job - MUST MATCH PYTHON CancelJobMessage
+ */
+export interface CancelJobMessage extends BaseMessage {
+  type: MessageType.CANCEL_JOB;
+  job_id: string;
+  reason?: string;
   timestamp: Timestamp;
 }
 
@@ -695,31 +708,6 @@ export function isMessageType<T extends Message>(
 // ============================================================================
 
 /**
- * Worker capabilities for job matching
- */
-export interface WorkerCapabilities {
-  worker_id: string;
-  services: string[];
-  hardware: {
-    gpu_count: number;
-    gpu_memory_gb: number;
-    gpu_model: string;
-    cpu_cores: number;
-    ram_gb: number;
-  };
-  models?: Record<string, string[]>;
-  customer_access?: {
-    isolation: 'strict' | 'loose' | 'none';
-    allowed_customers?: string[];
-    denied_customers?: string[];
-  };
-  performance?: {
-    concurrent_jobs: number;
-    quality_levels: string[];
-  };
-}
-
-/**
  * Worker status enumeration
  */
 export enum WorkerStatus {
@@ -739,22 +727,6 @@ export interface SystemInfo {
   gpu_memory_usage?: number;
   disk_usage: number;
   uptime: number;
-}
-
-/**
- * Job requirements for matching
- */
-export interface JobRequirements {
-  service_type: string;
-  hardware?: {
-    gpu_memory_gb?: number;
-    cpu_cores?: number;
-    ram_gb?: number;
-  };
-  models?: string[];
-  customer_isolation?: 'strict' | 'loose' | 'none';
-  geographic_region?: string;
-  compliance?: string[];
 }
 
 /**

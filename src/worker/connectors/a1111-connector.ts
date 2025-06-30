@@ -8,6 +8,7 @@ import {
   JobResult,
   ProgressCallback,
   A1111ConnectorConfig,
+  ServiceInfo,
 } from '../../core/types/connector.js';
 import { logger } from '../../core/utils/logger.js';
 
@@ -120,7 +121,7 @@ export class A1111Connector implements ConnectorInterface {
     }
   }
 
-  async getServiceInfo(): Promise<Record<string, unknown>> {
+  async getServiceInfo(): Promise<ServiceInfo> {
     try {
       const [optionsResponse, modelsResponse, progressResponse] = await Promise.allSettled([
         this.httpClient.get('/sdapi/v1/options'),
@@ -147,10 +148,10 @@ export class A1111Connector implements ConnectorInterface {
           features: ['txt2img', 'img2img', 'inpainting', 'extras'],
           concurrent_jobs: this.config.max_concurrent_jobs,
         },
-        current_model: options.sd_model_checkpoint,
         queue_info: {
           pending_jobs: 0, // A1111 doesn't expose queue info
           processing_jobs: progress.active ? 1 : 0,
+          average_processing_time: 0,
         },
       };
     } catch (error) {
@@ -243,7 +244,7 @@ export class A1111Connector implements ConnectorInterface {
   }
 
   private determineJobType(payload: Record<string, unknown>): string {
-    if (payload.init_images && payload.init_images.length > 0) {
+    if (Array.isArray(payload.init_images) && payload.init_images.length > 0) {
       return 'img2img';
     } else if (payload.prompt) {
       return 'txt2img';
@@ -286,7 +287,8 @@ export class A1111Connector implements ConnectorInterface {
     }
 
     // Poll for completion with progress updates
-    await this.pollForProgress(jobData.id, payload.steps || 20, progressCallback);
+    const steps = typeof payload.steps === 'number' ? payload.steps : 20;
+    await this.pollForProgress(jobData.id, steps, progressCallback);
 
     return response.data;
   }
@@ -325,7 +327,8 @@ export class A1111Connector implements ConnectorInterface {
     }
 
     // Poll for completion with progress updates
-    await this.pollForProgress(jobData.id, payload.steps || 20, progressCallback);
+    const steps = typeof payload.steps === 'number' ? payload.steps : 20;
+    await this.pollForProgress(jobData.id, steps, progressCallback);
 
     return response.data;
   }

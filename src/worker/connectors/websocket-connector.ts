@@ -8,6 +8,7 @@ import {
   JobResult,
   ProgressCallback,
   WebSocketConnectorConfig,
+  ServiceInfo,
 } from '../../core/types/connector.js';
 import { logger } from '../../core/utils/logger.js';
 
@@ -78,23 +79,17 @@ export class WebSocketConnector implements ConnectorInterface {
     return ['websocket-generic'];
   }
 
-  async getServiceInfo(): Promise<Record<string, unknown>> {
+  async getServiceInfo(): Promise<ServiceInfo> {
     return {
       service_name: 'WebSocket Service',
       service_version: this.version,
       base_url: this.config.settings.websocket_url,
-      status: this.isConnected ? 'connected' : 'disconnected',
+      status: this.isConnected ? 'online' : 'offline',
       capabilities: {
         supported_formats: ['json', 'text', 'binary'],
         supported_models: await this.getAvailableModels(),
         features: ['real_time_communication', 'bidirectional', 'auto_reconnect'],
         concurrent_jobs: this.config.max_concurrent_jobs,
-      },
-      connection_info: {
-        protocol: this.config.settings.protocol,
-        heartbeat_interval_ms: this.config.settings.heartbeat_interval_ms,
-        reconnect_attempts: this.reconnectAttempts,
-        max_reconnect_attempts: this.config.settings.max_reconnect_attempts,
       },
     };
   }

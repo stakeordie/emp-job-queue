@@ -8,6 +8,7 @@ import {
   JobResult,
   ProgressCallback,
   RestConnectorConfig,
+  ServiceInfo,
 } from '../../core/types/connector.js';
 import { logger } from '../../core/utils/logger.js';
 
@@ -79,7 +80,7 @@ export class RestSyncConnector implements ConnectorInterface {
     return ['rest-sync-generic'];
   }
 
-  async getServiceInfo(): Promise<Record<string, unknown>> {
+  async getServiceInfo(): Promise<ServiceInfo> {
     return {
       service_name: 'REST Sync Service',
       service_version: this.version,
@@ -90,12 +91,6 @@ export class RestSyncConnector implements ConnectorInterface {
         supported_models: await this.getAvailableModels(),
         features: ['synchronous_requests', 'configurable_endpoints', 'retry_logic'],
         concurrent_jobs: this.config.max_concurrent_jobs,
-      },
-      configuration: {
-        method: this.config.settings.method,
-        response_format: this.config.settings.response_format,
-        timeout_seconds: this.config.timeout_seconds,
-        retry_attempts: this.config.retry_attempts,
       },
     };
   }
@@ -114,10 +109,10 @@ export class RestSyncConnector implements ConnectorInterface {
 
     try {
       // Extract endpoint and request configuration from job payload
-      const endpoint = jobData.payload.endpoint || '/';
-      const method = jobData.payload.method || this.config.settings.method;
+      const endpoint = String(jobData.payload.endpoint || '/');
+      const method = String(jobData.payload.method || this.config.settings.method);
       const requestData = jobData.payload.data || jobData.payload.body || {};
-      const headers = jobData.payload.headers || {};
+      const headers = (jobData.payload.headers as Record<string, string>) || {};
 
       // Report initial progress
       await progressCallback({

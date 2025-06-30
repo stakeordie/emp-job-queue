@@ -35,13 +35,15 @@ export enum JobStatus {
 
 export interface JobRequirements {
   service_type: string;
+  component?: string | 'all'; // Optional component filtering, defaults to "all"
+  workflow?: string | 'all'; // Optional workflow filtering, defaults to "all"
+  models?: string[] | 'all'; // Future: model filtering, "all" = no filtering
   hardware?: {
-    gpu_memory_gb?: number;
-    cpu_cores?: number;
-    ram_gb?: number;
-    gpu_count?: number;
+    // Future: hardware requirements
+    gpu_memory_gb?: number | 'all';
+    cpu_cores?: number | 'all';
+    ram_gb?: number | 'all';
   };
-  models?: string[];
   customer_isolation?: 'strict' | 'loose' | 'none';
   geographic_region?: string;
   compliance?: string[];
