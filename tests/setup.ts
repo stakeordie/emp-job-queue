@@ -64,10 +64,15 @@ global.testUtils = {
       services: ['comfyui'],
       hardware: {
         gpu_memory_gb: 16,
-        gpu_model: 'RTX 4090'
+        gpu_model: 'RTX 4090',
+        cpu_cores: 8,
+        ram_gb: 32
+      },
+      customer_access: {
+        isolation: 'none' as const
       }
     },
-    status: 'idle',
+    status: 'idle' as any,
     connected_at: new Date().toISOString(),
     ...overrides
   }),

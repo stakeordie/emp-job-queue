@@ -7,6 +7,10 @@ export interface Job {
   payload: Record<string, unknown>;
   requirements?: JobRequirements;
   customer_id?: string;
+  workflow_id?: string;
+  workflow_priority?: number;
+  workflow_datetime?: number;
+  step_number?: number;
   created_at: string;
   assigned_at?: string;
   started_at?: string;
@@ -83,6 +87,10 @@ export interface JobSubmissionRequest {
   priority?: number;
   requirements?: JobRequirements;
   customer_id?: string;
+  workflow_id?: string;
+  workflow_priority?: number;
+  workflow_datetime?: number;
+  step_number?: number;
   max_retries?: number;
   timeout_minutes?: number;
 }
@@ -105,12 +113,24 @@ export interface JobQueueInfo {
   oldest_pending_job?: string;
 }
 
+// Workflow metadata for priority inheritance
+export interface WorkflowMetadata {
+  workflow_id: string;
+  priority: number;
+  submitted_at: number;
+  customer_id?: string;
+  status: 'active' | 'completed' | 'failed';
+  total_steps?: number;
+  completed_steps?: number;
+}
+
 // Job filtering and searching
 export interface JobFilter {
   status?: JobStatus[];
   type?: string[];
   customer_id?: string;
   worker_id?: string;
+  workflow_id?: string;
   created_after?: string;
   created_before?: string;
   priority_min?: number;

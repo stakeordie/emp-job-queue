@@ -2,6 +2,46 @@
 
 ## 2024-06-30
 
+### ✅ Completed - Session 4 (Monitor Fixes & Responsiveness)
+- **Fixed Worker Status Display**: Workers now correctly show as "Active" when processing jobs
+  - Workers are marked as 'busy' when they receive job assignments
+  - Stats broadcast no longer clears busy status for workers with active jobs
+  - Enhanced status preservation logic in handleStatsBroadcast() and handleJobProgress()
+  - Added debug logging to track worker status transitions
+- **Improved Monitor Responsiveness**: Reduced stats broadcast interval from 5s to 2s
+  - Updated STATS_BROADCAST_INTERVAL_MS=2000 in all environment files
+  - Modified .env.example, .env.production, and .env.hub.example
+  - Monitor now updates worker and job status 2.5x faster
+- **Enhanced Worker State Management**: Better job assignment and completion tracking
+  - Workers automatically marked as busy during job progress updates
+  - Proper status cleanup when jobs complete
+  - Fixed race conditions between stats broadcasts and worker status updates
+
+### 🔧 Monitor Improvements
+- **Real-time Status**: Workers show accurate busy/idle status during job processing
+- **Faster Updates**: 2-second update interval for better user experience
+- **Debug Logging**: Enhanced console logging for troubleshooting worker status issues
+- **State Consistency**: Improved state preservation across stats broadcast cycles
+- **Fixed Timestamp Display**: Updated formatDateTime() to handle new millisecond timestamp format
+  - Removed incorrect seconds-to-milliseconds conversion that caused "Invalid Date"
+  - Jobs now show correct creation times in monitor interface
+
+### ✅ Completed - Session 5 (Job Broker Core Implementation)
+- **Job Broker Core Logic**: Implemented complete workflow priority inheritance system
+  - Enhanced Job and JobSubmissionRequest interfaces with workflow fields (workflow_id, workflow_priority, workflow_datetime, step_number)
+  - Created JobBroker class with pull-based job selection algorithm
+  - Implemented workflow-based scoring: priority * 1000000 + workflowDatetime for proper job ordering
+  - Added workflow metadata storage and retrieval with Redis TTL management
+  - Enhanced job claiming with race condition protection and capability matching
+  - Built comprehensive queue management (position, depth, statistics)
+  - Added WorkflowMetadata interface for tracking workflow state and progress
+
+### 🔧 Workflow Priority Inheritance
+- **Problem Solved**: Workflow steps now stay grouped together in queue instead of being interleaved
+- **Algorithm**: Jobs inherit workflowDateTime from original workflow submission timestamp
+- **Score Calculation**: Ensures A-step2 processes before B-step1 when A was submitted first
+- **Backwards Compatible**: Existing single jobs continue to work without workflow_id
+
 ### ✅ Completed - Session 4 (Testing Implementation)
 - **Complete Testing Infrastructure**: Implemented comprehensive Jest testing framework
   - Jest configuration with TypeScript support and proper ESM handling

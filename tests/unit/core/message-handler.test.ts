@@ -1,6 +1,6 @@
 // Comprehensive tests for Message Processing System
 import { describe, it, expect, beforeEach, jest } from '@jest/globals';
-import { createRedisMock } from '../../utils/redis-mock.js';
+import { createRedisMock } from '../../utils/redis-mock';
 
 describe('MessageHandler Core Logic', () => {
   let redisMock: any;

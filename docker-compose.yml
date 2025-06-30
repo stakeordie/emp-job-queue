@@ -1,8 +1,5 @@
 # Docker Compose configuration for emp-redis JavaScript rebuild
 # Matches the Python version's environment setup
-
-version: '3.8'
-
 services:
   # Redis database - comment out when using external Redis
   redis:

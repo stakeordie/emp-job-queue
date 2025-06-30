@@ -1232,10 +1232,14 @@ function handleStatsBroadcast(parsedMessage, rawMessage, source = 'unknown') {
         const existingWorker = existingWorkers[workerId] || {};
         
         // Update or add worker to state, preserving existing properties
+        // Preserve busy status if worker has an active job
+        const shouldPreserveBusyStatus = existingWorker.current_job_id && existingWorker.status === 'busy';
+        const newStatus = shouldPreserveBusyStatus ? 'busy' : (workerData.status || existingWorker.status || 'idle');
+        
         state.workers[workerId] = {
             ...existingWorker,  // Keep existing properties
             id: workerId,
-            status: workerData.status || existingWorker.status || 'unknown',
+            status: newStatus,  // Preserve busy status if worker has active job
             connectedAt: existingWorker.connectedAt || Date.now(),
             jobsProcessed: workerData.jobs_processed || existingWorker.jobsProcessed || 0,
             is_accepting_jobs: system.workers && system.workers.active_workers ? 
@@ -1247,6 +1251,8 @@ function handleStatsBroadcast(parsedMessage, rawMessage, source = 'unknown') {
             // Preserve current job information
             current_job_id: existingWorker.current_job_id || null
         };
+        
+        console.log(`[DEBUG] Worker ${workerId} status: ${newStatus} (had job: ${existingWorker.current_job_id ? 'yes' : 'no'})`);
         
         console.log(`[2025-05-23T09:45:00-04:00] Added connected worker: ${workerId}`);
     });
@@ -1893,11 +1899,12 @@ function handleJobProgress(message, source = 'unknown') {
             }
         }
         
-        // Update worker's current_job_id if needed
+        // Update worker's current_job_id if needed and mark as busy
         if (workerId && state.workers[workerId]) {
             if (state.workers[workerId].current_job_id !== jobId) {
-                console.log(`[DEBUG] Updating worker ${workerId} current_job_id to ${jobId}`);
+                console.log(`[DEBUG] Updating worker ${workerId} current_job_id to ${jobId} and status to busy`);
                 state.workers[workerId].current_job_id = jobId;
+                state.workers[workerId].status = 'busy';  // Mark worker as busy when processing job
             }
         }
         
@@ -1943,6 +1950,11 @@ function handleWorkerStatus(message, source = 'unknown') {
             // Update current job if provided
             if (currentJobId) {
                 state.workers[workerId].current_job_id = currentJobId;
+                // Mark worker as busy when assigned a job
+                if (state.workers[workerId].status !== 'busy') {
+                    console.log(`[DEBUG] Marking worker ${workerId} as busy due to job assignment`);
+                    state.workers[workerId].status = 'busy';
+                }
                 
                 // Make sure the job exists in our state and is properly linked to this worker
                 if (state.jobs[currentJobId]) {
@@ -1971,6 +1983,11 @@ function handleWorkerStatus(message, source = 'unknown') {
                     };
                     console.log(`[DEBUG] Created placeholder job for ${currentJobId}`);
                 }
+            } else if (state.workers[workerId].current_job_id) {
+                // Worker status update with no current job - mark as idle
+                console.log(`[DEBUG] Worker ${workerId} has no current job, marking as idle`);
+                state.workers[workerId].current_job_id = null;
+                state.workers[workerId].status = 'idle';
             }
         } else {
             // Create worker if it doesn't exist
@@ -3115,7 +3132,8 @@ function updateUI() {
             
             // [2025-04-06 20:07] Format created time as absolute datetime instead of relative time
             // This prevents the display from constantly changing and provides consistent time representation
-            const createdAtStr = formatDateTime(job.created_at ? new Date(job.created_at * 1000) : null);
+            // Updated: Timestamps are now stored as milliseconds, no need to multiply by 1000
+            const createdAtStr = formatDateTime(job.created_at || job.createdAt);
             
             // Get worker assignment and progress
             const workerDisplay = job.worker_id || (job.workerId ? job.workerId : '-');
@@ -3980,13 +3998,9 @@ function formatDateTime(date) {
         
         // Handle different date formats
         if (typeof date === 'number') {
-            // Handle Unix timestamp (seconds since epoch)
-            // If the number is small, it's likely seconds not milliseconds
-            if (date < 10000000000) {
-                dateObj = new Date(date * 1000);
-            } else {
-                dateObj = new Date(date);
-            }
+            // Updated: New timestamp type is always milliseconds since Unix epoch
+            // No need to check size - all timestamps are now in milliseconds
+            dateObj = new Date(date);
         } else if (typeof date === 'string') {
             dateObj = new Date(date);
         } else if (date instanceof Date) {
