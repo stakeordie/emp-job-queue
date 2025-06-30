@@ -1,7 +1,16 @@
 # Dockerfile for Hub service
-FROM node:18-alpine
+FROM node:18-bullseye
 
 WORKDIR /app
+
+# Install system dependencies and useful tools
+RUN apt-get update && apt-get install -y \
+    curl \
+    vim \
+    htop \
+    net-tools \
+    procps \
+    && rm -rf /var/lib/apt/lists/*
 
 # Install pnpm
 RUN npm install -g pnpm
@@ -14,8 +23,11 @@ RUN pnpm install --frozen-lockfile --prod
 COPY dist/ ./dist/
 COPY .env.example ./.env
 
-# Create logs directory
-RUN mkdir -p logs
+# Create logs directory with proper permissions
+RUN mkdir -p logs && chown -R node:node logs
+
+# Switch to non-root user
+USER node
 
 # Expose ports
 EXPOSE 3001 3002

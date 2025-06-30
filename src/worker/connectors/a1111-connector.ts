@@ -2,7 +2,13 @@
 // Direct port from Python worker/connectors/a1111_connector.py
 
 import axios, { AxiosInstance } from 'axios';
-import { ConnectorInterface, JobData, JobResult, JobProgress, ProgressCallback, A1111ConnectorConfig } from '../../core/types/connector.js';
+import {
+  ConnectorInterface,
+  JobData,
+  JobResult,
+  ProgressCallback,
+  A1111ConnectorConfig,
+} from '../../core/types/connector.js';
 import { logger } from '../../core/utils/logger.js';
 
 export class A1111Connector implements ConnectorInterface {
@@ -14,22 +20,25 @@ export class A1111Connector implements ConnectorInterface {
 
   constructor(connectorId: string) {
     this.connector_id = connectorId;
-    
+
     // Build configuration from environment (matching Python patterns)
     const host = process.env.WORKER_A1111_HOST || 'localhost';
     const port = parseInt(process.env.WORKER_A1111_PORT || '7860');
     const username = process.env.WORKER_A1111_USERNAME;
     const password = process.env.WORKER_A1111_PASSWORD;
-    
+
     this.config = {
       connector_id: this.connector_id,
-      service_type: this.service_type,
+      service_type: this.service_type as 'a1111',
       base_url: `http://${host}:${port}`,
-      auth: username && password ? {
-        type: 'basic',
-        username,
-        password
-      } : { type: 'none' },
+      auth:
+        username && password
+          ? {
+              type: 'basic',
+              username,
+              password,
+            }
+          : { type: 'none' },
       timeout_seconds: parseInt(process.env.WORKER_A1111_TIMEOUT_SECONDS || '300'),
       retry_attempts: 3,
       retry_delay_seconds: 2,
@@ -39,27 +48,33 @@ export class A1111Connector implements ConnectorInterface {
         enable_api: process.env.WORKER_A1111_ENABLE_API !== 'false',
         save_images: process.env.WORKER_A1111_SAVE_IMAGES !== 'false',
         save_grid: process.env.WORKER_A1111_SAVE_GRID !== 'false',
-        image_format: (process.env.WORKER_A1111_IMAGE_FORMAT as any) || 'png',
+        image_format: (process.env.WORKER_A1111_IMAGE_FORMAT as 'png' | 'jpg' | 'webp') || 'png',
         jpeg_quality: parseInt(process.env.WORKER_A1111_JPEG_QUALITY || '95'),
-        png_compression: parseInt(process.env.WORKER_A1111_PNG_COMPRESSION || '6')
-      }
+        png_compression: parseInt(process.env.WORKER_A1111_PNG_COMPRESSION || '6'),
+      },
     };
 
     // Initialize HTTP client with authentication
     this.httpClient = axios.create({
       baseURL: this.config.base_url,
       timeout: this.config.timeout_seconds * 1000,
-      headers: this.getAuthHeaders()
+      headers: this.getAuthHeaders(),
     });
   }
 
   private getAuthHeaders(): Record<string, string> {
     const headers: Record<string, string> = {
-      'Content-Type': 'application/json'
+      'Content-Type': 'application/json',
     };
 
-    if (this.config.auth?.type === 'basic' && this.config.auth.username && this.config.auth.password) {
-      const credentials = Buffer.from(`${this.config.auth.username}:${this.config.auth.password}`).toString('base64');
+    if (
+      this.config.auth?.type === 'basic' &&
+      this.config.auth.username &&
+      this.config.auth.password
+    ) {
+      const credentials = Buffer.from(
+        `${this.config.auth.username}:${this.config.auth.password}`
+      ).toString('base64');
       headers['Authorization'] = `Basic ${credentials}`;
     }
 
@@ -68,10 +83,10 @@ export class A1111Connector implements ConnectorInterface {
 
   async initialize(): Promise<void> {
     logger.info(`Initializing A1111 connector ${this.connector_id} at ${this.config.base_url}`);
-    
+
     // Test connection
     await this.checkHealth();
-    
+
     logger.info(`A1111 connector ${this.connector_id} initialized successfully`);
   }
 
@@ -94,10 +109,10 @@ export class A1111Connector implements ConnectorInterface {
     try {
       const response = await this.httpClient.get('/sdapi/v1/sd-models');
       const models = response.data || [];
-      
-      const modelNames = models.map((model: any) => model.title || model.model_name || 'unknown');
+
+      const modelNames = models.map(model => model.title || model.model_name || 'unknown');
       logger.info(`Found ${modelNames.length} models in A1111`);
-      
+
       return modelNames;
     } catch (error) {
       logger.error('Failed to get A1111 models:', error);
@@ -105,12 +120,12 @@ export class A1111Connector implements ConnectorInterface {
     }
   }
 
-  async getServiceInfo(): Promise<any> {
+  async getServiceInfo(): Promise<Record<string, unknown>> {
     try {
       const [optionsResponse, modelsResponse, progressResponse] = await Promise.allSettled([
         this.httpClient.get('/sdapi/v1/options'),
         this.httpClient.get('/sdapi/v1/sd-models'),
-        this.httpClient.get('/sdapi/v1/progress')
+        this.httpClient.get('/sdapi/v1/progress'),
       ]);
 
       const options = optionsResponse.status === 'fulfilled' ? optionsResponse.value.data : {};
@@ -126,17 +141,17 @@ export class A1111Connector implements ConnectorInterface {
           supported_formats: ['png', 'jpg', 'webp'],
           max_resolution: {
             width: options.img2img_max_width || 2048,
-            height: options.img2img_max_height || 2048
+            height: options.img2img_max_height || 2048,
           },
-          supported_models: models.map((m: any) => m.title || m.model_name),
+          supported_models: models.map(m => m.title || m.model_name),
           features: ['txt2img', 'img2img', 'inpainting', 'extras'],
-          concurrent_jobs: this.config.max_concurrent_jobs
+          concurrent_jobs: this.config.max_concurrent_jobs,
         },
         current_model: options.sd_model_checkpoint,
         queue_info: {
           pending_jobs: 0, // A1111 doesn't expose queue info
-          processing_jobs: progress.active ? 1 : 0
-        }
+          processing_jobs: progress.active ? 1 : 0,
+        },
       };
     } catch (error) {
       logger.error('Failed to get A1111 service info:', error);
@@ -145,8 +160,10 @@ export class A1111Connector implements ConnectorInterface {
   }
 
   async canProcessJob(jobData: JobData): Promise<boolean> {
-    return jobData.type === 'a1111' && 
-           (jobData.payload?.prompt !== undefined || jobData.payload?.init_images !== undefined);
+    return (
+      jobData.type === 'a1111' &&
+      (jobData.payload?.prompt !== undefined || jobData.payload?.init_images !== undefined)
+    );
   }
 
   async processJob(jobData: JobData, progressCallback: ProgressCallback): Promise<JobResult> {
@@ -156,9 +173,9 @@ export class A1111Connector implements ConnectorInterface {
     try {
       // Determine job type (txt2img, img2img, etc.)
       const jobType = this.determineJobType(jobData.payload);
-      
+
       // Process based on job type
-      let result: any;
+      let result;
       switch (jobType) {
         case 'txt2img':
           result = await this.processTxt2Img(jobData, progressCallback);
@@ -171,20 +188,21 @@ export class A1111Connector implements ConnectorInterface {
       }
 
       const processingTime = Date.now() - startTime;
-      
+
       logger.info(`A1111 job ${jobData.id} completed in ${processingTime}ms`);
-      
+
       return {
         success: true,
         data: result,
         processing_time_ms: processingTime,
-        output_files: result.images?.map((img: string, index: number) => ({
-          filename: `image_${index}.png`,
-          path: `output/${jobData.id}/image_${index}.png`,
-          type: 'image' as const,
-          size_bytes: Math.round(img.length * 0.75), // Estimate from base64
-          mime_type: 'image/png'
-        })) || [],
+        output_files:
+          result.images?.map((img: string, index: number) => ({
+            filename: `image_${index}.png`,
+            path: `output/${jobData.id}/image_${index}.png`,
+            type: 'image' as const,
+            size_bytes: Math.round(img.length * 0.75), // Estimate from base64
+            mime_type: 'image/png',
+          })) || [],
         service_metadata: {
           service_version: this.version,
           model_used: result.info?.sd_model_checkpoint || 'unknown',
@@ -193,29 +211,28 @@ export class A1111Connector implements ConnectorInterface {
             seed: result.info?.seed,
             steps: result.info?.steps,
             cfg_scale: result.info?.cfg_scale,
-            sampler: result.info?.sampler_name
-          }
-        }
+            sampler: result.info?.sampler_name,
+          },
+        },
       };
-
     } catch (error) {
       const processingTime = Date.now() - startTime;
       logger.error(`A1111 job ${jobData.id} failed:`, error);
-      
+
       return {
         success: false,
         error: error instanceof Error ? error.message : 'A1111 processing failed',
         processing_time_ms: processingTime,
         service_metadata: {
-          service_version: this.version
-        }
+          service_version: this.version,
+        },
       };
     }
   }
 
   async cancelJob(jobId: string): Promise<void> {
     logger.info(`Cancelling A1111 job ${jobId}`);
-    
+
     try {
       // A1111 has an interrupt endpoint
       await this.httpClient.post('/sdapi/v1/interrupt');
@@ -225,7 +242,7 @@ export class A1111Connector implements ConnectorInterface {
     }
   }
 
-  private determineJobType(payload: any): string {
+  private determineJobType(payload: Record<string, unknown>): string {
     if (payload.init_images && payload.init_images.length > 0) {
       return 'img2img';
     } else if (payload.prompt) {
@@ -235,7 +252,10 @@ export class A1111Connector implements ConnectorInterface {
     }
   }
 
-  private async processTxt2Img(jobData: JobData, progressCallback: ProgressCallback): Promise<any> {
+  private async processTxt2Img(
+    jobData: JobData,
+    progressCallback: ProgressCallback
+  ): Promise<Record<string, unknown>> {
     const payload = {
       prompt: jobData.payload.prompt || '',
       negative_prompt: jobData.payload.negative_prompt || '',
@@ -247,7 +267,7 @@ export class A1111Connector implements ConnectorInterface {
       seed: jobData.payload.seed || -1,
       batch_size: jobData.payload.batch_size || 1,
       n_iter: jobData.payload.n_iter || 1,
-      ...jobData.payload // Allow override of any parameter
+      ...jobData.payload, // Allow override of any parameter
     };
 
     // Start progress tracking
@@ -255,12 +275,12 @@ export class A1111Connector implements ConnectorInterface {
       job_id: jobData.id,
       progress: 10,
       message: 'Starting txt2img generation',
-      current_step: 'Initializing'
+      current_step: 'Initializing',
     });
 
     // Submit generation request
     const response = await this.httpClient.post('/sdapi/v1/txt2img', payload);
-    
+
     if (response.status !== 200) {
       throw new Error(`A1111 txt2img request failed with status ${response.status}`);
     }
@@ -271,7 +291,10 @@ export class A1111Connector implements ConnectorInterface {
     return response.data;
   }
 
-  private async processImg2Img(jobData: JobData, progressCallback: ProgressCallback): Promise<any> {
+  private async processImg2Img(
+    jobData: JobData,
+    progressCallback: ProgressCallback
+  ): Promise<Record<string, unknown>> {
     const payload = {
       init_images: jobData.payload.init_images || [],
       prompt: jobData.payload.prompt || '',
@@ -283,7 +306,7 @@ export class A1111Connector implements ConnectorInterface {
       seed: jobData.payload.seed || -1,
       batch_size: jobData.payload.batch_size || 1,
       n_iter: jobData.payload.n_iter || 1,
-      ...jobData.payload // Allow override of any parameter
+      ...jobData.payload, // Allow override of any parameter
     };
 
     // Start progress tracking
@@ -291,12 +314,12 @@ export class A1111Connector implements ConnectorInterface {
       job_id: jobData.id,
       progress: 10,
       message: 'Starting img2img generation',
-      current_step: 'Initializing'
+      current_step: 'Initializing',
     });
 
     // Submit generation request
     const response = await this.httpClient.post('/sdapi/v1/img2img', payload);
-    
+
     if (response.status !== 200) {
       throw new Error(`A1111 img2img request failed with status ${response.status}`);
     }
@@ -307,7 +330,11 @@ export class A1111Connector implements ConnectorInterface {
     return response.data;
   }
 
-  private async pollForProgress(jobId: string, totalSteps: number, progressCallback: ProgressCallback): Promise<void> {
+  private async pollForProgress(
+    jobId: string,
+    totalSteps: number,
+    progressCallback: ProgressCallback
+  ): Promise<void> {
     const pollInterval = 1000; // Poll every second
     const maxPolls = 300; // Max 5 minutes
     let polls = 0;
@@ -320,14 +347,16 @@ export class A1111Connector implements ConnectorInterface {
         if (progressData.active) {
           const progress = Math.round((progressData.progress || 0) * 100);
           const currentStep = Math.round((progressData.progress || 0) * totalSteps);
-          
+
           await progressCallback({
             job_id: jobId,
             progress,
             message: `Generating... Step ${currentStep}/${totalSteps}`,
             current_step: `Step ${currentStep}`,
             total_steps: totalSteps,
-            estimated_completion_ms: progressData.eta_relative ? progressData.eta_relative * 1000 : undefined
+            estimated_completion_ms: progressData.eta_relative
+              ? progressData.eta_relative * 1000
+              : undefined,
           });
 
           if (progress >= 100) {
@@ -339,7 +368,7 @@ export class A1111Connector implements ConnectorInterface {
             job_id: jobId,
             progress: 100,
             message: 'Generation completed',
-            current_step: 'Finished'
+            current_step: 'Finished',
           });
           break;
         }
@@ -353,7 +382,9 @@ export class A1111Connector implements ConnectorInterface {
     }
 
     if (polls >= maxPolls) {
-      throw new Error(`A1111 job ${jobId} timed out after ${maxPolls * pollInterval / 1000} seconds`);
+      throw new Error(
+        `A1111 job ${jobId} timed out after ${(maxPolls * pollInterval) / 1000} seconds`
+      );
     }
   }
 
@@ -363,16 +394,16 @@ export class A1111Connector implements ConnectorInterface {
 
   async updateConfiguration(config: A1111ConnectorConfig): Promise<void> {
     this.config = { ...this.config, ...config };
-    
+
     // Recreate HTTP client if base URL or auth changed
     if (config.base_url || config.auth) {
       this.httpClient = axios.create({
         baseURL: this.config.base_url,
         timeout: this.config.timeout_seconds * 1000,
-        headers: this.getAuthHeaders()
+        headers: this.getAuthHeaders(),
       });
     }
-    
+
     logger.info(`Updated configuration for A1111 connector ${this.connector_id}`);
   }
 

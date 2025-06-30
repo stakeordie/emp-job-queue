@@ -7,12 +7,16 @@ import helmet from 'helmet';
 import compression from 'compression';
 import { Server } from 'http';
 import { RedisServiceInterface } from '../core/interfaces/redis-service.js';
-import { JobSubmissionRequest, JobStatusResponse, JobStatus, JobFilter } from '../core/types/job.js';
-import { WorkerFilter } from '../core/types/worker.js';
+import {
+  JobSubmissionRequest,
+  JobStatusResponse,
+  JobStatus,
+  JobFilter,
+} from '../core/types/job.js';
+import { WorkerStatus } from '../core/types/worker.js';
 import { logger } from '../core/utils/logger.js';
 import { MonitoringDashboard } from './monitoring-dashboard.js';
 import { ConnectionManagerInterface } from '../core/interfaces/connection-manager.js';
-import { v4 as uuidv4 } from 'uuid';
 
 interface HubServerConfig {
   port: number;
@@ -35,7 +39,7 @@ export class HubServer {
   private monitoringDashboard?: MonitoringDashboard;
 
   constructor(
-    redisService: RedisServiceInterface, 
+    redisService: RedisServiceInterface,
     config: HubServerConfig,
     connectionManager?: ConnectionManagerInterface
   ) {
@@ -48,19 +52,16 @@ export class HubServer {
       enableCompression: true,
       requestTimeout: 30000,
       maxJsonSize: '10mb',
-      ...config
+      ...config,
     };
-    
+
     this.app = express();
-    
+
     // Set up monitoring dashboard if connection manager is provided
     if (this.connectionManager) {
-      this.monitoringDashboard = new MonitoringDashboard(
-        this.redisService, 
-        this.connectionManager
-      );
+      this.monitoringDashboard = new MonitoringDashboard(this.redisService, this.connectionManager);
     }
-    
+
     this.setupMiddleware();
     this.setupRoutes();
     this.setupErrorHandling();
@@ -74,10 +75,12 @@ export class HubServer {
 
     // CORS
     if (this.config.enableCors) {
-      this.app.use(cors({
-        origin: this.config.corsOrigins,
-        credentials: true
-      }));
+      this.app.use(
+        cors({
+          origin: this.config.corsOrigins,
+          credentials: true,
+        })
+      );
     }
 
     // Compression
@@ -92,18 +95,18 @@ export class HubServer {
     // Request logging
     this.app.use((req: Request, res: Response, next: NextFunction) => {
       const startTime = Date.now();
-      
+
       res.on('finish', () => {
         const duration = Date.now() - startTime;
         logger.info(`${req.method} ${req.path} ${res.statusCode} ${duration}ms`);
       });
-      
+
       next();
     });
 
     // Request timeout
     this.app.use((req: Request, res: Response, next: NextFunction) => {
-      req.setTimeout(this.config.requestTimeout!, () => {
+      req.setTimeout(this.config.requestTimeout || 30000, () => {
         res.status(408).json({ error: 'Request timeout' });
       });
       next();
@@ -115,7 +118,7 @@ export class HubServer {
     if (this.monitoringDashboard) {
       this.app.use('/dashboard', this.monitoringDashboard.getApp());
     }
-    
+
     // Health check
     this.app.get('/health', this.handleHealthCheck.bind(this));
 
@@ -150,17 +153,17 @@ export class HubServer {
       res.status(404).json({
         error: 'Not found',
         path: req.originalUrl,
-        method: req.method
+        method: req.method,
       });
     });
 
     // Global error handler
-    this.app.use((error: Error, req: Request, res: Response, next: NextFunction) => {
+    this.app.use((error: Error, req: Request, res: Response, _next: NextFunction) => {
       logger.error(`API Error on ${req.method} ${req.path}:`, error);
-      
+
       res.status(500).json({
         error: 'Internal server error',
-        message: process.env.NODE_ENV === 'development' ? error.message : 'Something went wrong'
+        message: process.env.NODE_ENV === 'development' ? error.message : 'Something went wrong',
       });
     });
   }
@@ -175,16 +178,16 @@ export class HubServer {
         version: process.env.npm_package_version || '1.0.0',
         services: {
           redis: redisHealthy ? 'connected' : 'disconnected',
-          api: 'running'
-        }
+          api: 'running',
+        },
       };
-      
+
       res.status(redisHealthy ? 200 : 503).json(health);
     } catch (error) {
       logger.error('Health check failed:', error);
       res.status(503).json({
         status: 'unhealthy',
-        error: 'Health check failed'
+        error: 'Health check failed',
       });
     }
   }
@@ -192,12 +195,12 @@ export class HubServer {
   private async handleJobSubmission(req: Request, res: Response): Promise<void> {
     try {
       const jobRequest: JobSubmissionRequest = req.body;
-      
+
       // Validate required fields
       if (!jobRequest.type || !jobRequest.payload) {
         res.status(400).json({
           error: 'Missing required fields',
-          required: ['type', 'payload']
+          required: ['type', 'payload'],
         });
         return;
       }
@@ -208,7 +211,7 @@ export class HubServer {
         payload: jobRequest.payload,
         customer_id: jobRequest.customer_id,
         requirements: jobRequest.requirements,
-        max_retries: jobRequest.max_retries || 3
+        max_retries: jobRequest.max_retries || 3,
       });
 
       const job = await this.redisService.getJob(jobId);
@@ -218,14 +221,13 @@ export class HubServer {
         job_id: jobId,
         status: 'submitted',
         queue_position: queuePosition,
-        job: job
+        job: job,
       });
-
     } catch (error) {
       logger.error('Job submission failed:', error);
       res.status(500).json({
         error: 'Failed to submit job',
-        message: error instanceof Error ? error.message : 'Unknown error'
+        message: error instanceof Error ? error.message : 'Unknown error',
       });
     }
   }
@@ -234,7 +236,7 @@ export class HubServer {
     try {
       const jobId = req.params.id;
       const job = await this.redisService.getJob(jobId);
-      
+
       if (!job) {
         res.status(404).json({ error: 'Job not found' });
         return;
@@ -251,18 +253,18 @@ export class HubServer {
     try {
       const jobId = req.params.id;
       const job = await this.redisService.getJob(jobId);
-      
+
       if (!job) {
         res.status(404).json({ error: 'Job not found' });
         return;
       }
 
-      const queuePosition = job.status === JobStatus.PENDING ? 
-        await this.redisService.getJobQueuePosition(jobId) : -1;
+      const queuePosition =
+        job.status === JobStatus.PENDING ? await this.redisService.getJobQueuePosition(jobId) : -1;
 
       const response: JobStatusResponse = {
         job,
-        queue_position: queuePosition >= 0 ? queuePosition : undefined
+        queue_position: queuePosition >= 0 ? queuePosition : undefined,
       };
 
       res.json(response);
@@ -276,11 +278,11 @@ export class HubServer {
     try {
       const jobId = req.params.id;
       // TODO: Implement progress retrieval from Redis
-      res.json({ 
+      res.json({
         job_id: jobId,
         progress: 0,
         status: 'pending',
-        message: 'Progress tracking not yet implemented'
+        message: 'Progress tracking not yet implemented',
       });
     } catch (error) {
       logger.error(`Failed to get job progress ${req.params.id}:`, error);
@@ -292,13 +294,13 @@ export class HubServer {
     try {
       const jobId = req.params.id;
       const { reason } = req.body;
-      
+
       await this.redisService.cancelJob(jobId, reason || 'Cancelled by user');
-      
+
       res.json({
         job_id: jobId,
         status: 'cancelled',
-        cancelled_at: new Date().toISOString()
+        cancelled_at: new Date().toISOString(),
       });
     } catch (error) {
       logger.error(`Failed to cancel job ${req.params.id}:`, error);
@@ -312,7 +314,7 @@ export class HubServer {
         status: req.query.status as JobStatus[],
         type: req.query.type as string[],
         customer_id: req.query.customer_id as string,
-        worker_id: req.query.worker_id as string
+        worker_id: req.query.worker_id as string,
       };
 
       const page = parseInt(req.query.page as string) || 1;
@@ -328,14 +330,30 @@ export class HubServer {
 
   private async handleListWorkers(req: Request, res: Response): Promise<void> {
     try {
-      const filter: WorkerFilter = {
-        status: req.query.status as any[],
+      if (!this.connectionManager) {
+        res.status(503).json({ error: 'Connection manager not available' });
+        return;
+      }
+
+      // Get workers from connection manager (in-memory, like Python version)
+      const workers = await this.connectionManager.getConnectedWorkers();
+
+      // Apply basic filtering if needed
+      const filter = {
+        status: req.query.status as WorkerStatus[],
         services: req.query.services as string[],
-        available_only: req.query.available_only === 'true'
+        available_only: req.query.available_only === 'true',
       };
 
-      const workers = await this.redisService.searchWorkers(filter);
-      res.json({ workers });
+      // Simple filtering (more complex filtering can be added later)
+      let filteredWorkers = workers;
+      if (filter.services && filter.services.length > 0) {
+        filteredWorkers = workers.filter(worker =>
+          filter.services.some(service => worker.capabilities?.services?.includes(service))
+        );
+      }
+
+      res.json({ workers: filteredWorkers });
     } catch (error) {
       logger.error('Failed to list workers:', error);
       res.status(500).json({ error: 'Failed to retrieve workers' });
@@ -346,7 +364,7 @@ export class HubServer {
     try {
       const workerId = req.params.id;
       const worker = await this.redisService.getWorker(workerId);
-      
+
       if (!worker) {
         res.status(404).json({ error: 'Worker not found' });
         return;
@@ -363,7 +381,7 @@ export class HubServer {
     try {
       const workerId = req.params.id;
       const limit = parseInt(req.query.limit as string) || 50;
-      
+
       const jobs = await this.redisService.getJobsByWorker(workerId, limit);
       res.json({ worker_id: workerId, jobs });
     } catch (error) {
@@ -377,14 +395,14 @@ export class HubServer {
       const [jobStats, workerStats, systemMetrics] = await Promise.all([
         this.redisService.getJobStatistics(),
         this.redisService.getWorkerStatistics(),
-        this.redisService.getSystemMetrics()
+        this.redisService.getSystemMetrics(),
       ]);
 
       res.json({
         timestamp: new Date().toISOString(),
         jobs: jobStats,
         workers: workerStats,
-        system: systemMetrics
+        system: systemMetrics,
       });
     } catch (error) {
       logger.error('Failed to get metrics:', error);
@@ -407,7 +425,7 @@ export class HubServer {
       const [jobStats, workerStats, redisInfo] = await Promise.all([
         this.redisService.getJobStatistics(),
         this.redisService.getWorkerStatistics(),
-        this.redisService.getRedisInfo()
+        this.redisService.getRedisInfo(),
       ]);
 
       res.json({
@@ -419,8 +437,8 @@ export class HubServer {
         workers: workerStats,
         redis: {
           connected: this.redisService.isConnected(),
-          info: redisInfo
-        }
+          info: redisInfo,
+        },
       });
     } catch (error) {
       logger.error('Failed to get system status:', error);
@@ -481,7 +499,7 @@ export class HubServer {
         resolve();
       });
 
-      this.server.on('error', (error) => {
+      this.server.on('error', error => {
         logger.error('Hub HTTP server error:', error);
         reject(error);
       });
@@ -491,12 +509,16 @@ export class HubServer {
   async stop(): Promise<void> {
     if (!this.server) return;
 
-    return new Promise((resolve) => {
-      this.server!.close(() => {
-        this.isRunningFlag = false;
-        logger.info('Hub HTTP server stopped');
+    return new Promise(resolve => {
+      if (this.server) {
+        this.server.close(() => {
+          this.isRunningFlag = false;
+          logger.info('Hub HTTP server stopped');
+          resolve();
+        });
+      } else {
         resolve();
-      });
+      }
     });
   }
 

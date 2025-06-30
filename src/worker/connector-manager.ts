@@ -1,7 +1,11 @@
 // Connector Manager - dynamic loading and management of service connectors
 // Direct port from Python worker/connector_loader.py functionality
 
-import { ConnectorInterface, ConnectorRegistry, ConnectorFactory } from '../core/types/connector.js';
+import {
+  ConnectorInterface,
+  ConnectorRegistry,
+  ConnectorFactory,
+} from '../core/types/connector.js';
 import { logger } from '../core/utils/logger.js';
 
 export class ConnectorManager implements ConnectorRegistry, ConnectorFactory {
@@ -13,7 +17,10 @@ export class ConnectorManager implements ConnectorRegistry, ConnectorFactory {
   async loadConnectors(): Promise<void> {
     // Get connector list from environment (matches Python pattern)
     const connectorsEnv = process.env.WORKER_CONNECTORS || process.env.CONNECTORS || '';
-    const connectorIds = connectorsEnv.split(',').map(s => s.trim()).filter(s => s);
+    const connectorIds = connectorsEnv
+      .split(',')
+      .map(s => s.trim())
+      .filter(s => s);
 
     if (connectorIds.length === 0) {
       logger.warn('No connectors specified in WORKER_CONNECTORS environment variable');
@@ -36,8 +43,8 @@ export class ConnectorManager implements ConnectorRegistry, ConnectorFactory {
 
   private async loadConnector(connectorId: string): Promise<void> {
     // Dynamic import based on connector ID
-    let ConnectorClass: any;
-    
+    let ConnectorClass;
+
     try {
       switch (connectorId.toLowerCase()) {
         case 'simulation':
@@ -70,15 +77,14 @@ export class ConnectorManager implements ConnectorRegistry, ConnectorFactory {
 
       // Create connector instance
       const connector = new ConnectorClass(connectorId);
-      
+
       // Initialize the connector
       await connector.initialize();
-      
+
       // Register the connector
       this.registerConnector(connector);
-      
+
       logger.info(`Loaded connector: ${connectorId} (${connector.service_type})`);
-      
     } catch (error) {
       logger.error(`Failed to load connector ${connectorId}:`, error);
       throw error;
@@ -88,14 +94,19 @@ export class ConnectorManager implements ConnectorRegistry, ConnectorFactory {
   // ConnectorRegistry implementation
   registerConnector(connector: ConnectorInterface): void {
     this.connectors.set(connector.connector_id, connector);
-    
+
     // Also index by service type
     if (!this.connectorsByServiceType.has(connector.service_type)) {
       this.connectorsByServiceType.set(connector.service_type, []);
     }
-    this.connectorsByServiceType.get(connector.service_type)!.push(connector);
-    
-    logger.debug(`Registered connector ${connector.connector_id} for service ${connector.service_type}`);
+    const serviceConnectors = this.connectorsByServiceType.get(connector.service_type);
+    if (serviceConnectors) {
+      serviceConnectors.push(connector);
+    }
+
+    logger.debug(
+      `Registered connector ${connector.connector_id} for service ${connector.service_type}`
+    );
   }
 
   unregisterConnector(connectorId: string): void {
@@ -104,7 +115,7 @@ export class ConnectorManager implements ConnectorRegistry, ConnectorFactory {
 
     // Remove from main registry
     this.connectors.delete(connectorId);
-    
+
     // Remove from service type index
     const serviceConnectors = this.connectorsByServiceType.get(connector.service_type);
     if (serviceConnectors) {
@@ -112,13 +123,13 @@ export class ConnectorManager implements ConnectorRegistry, ConnectorFactory {
       if (index >= 0) {
         serviceConnectors.splice(index, 1);
       }
-      
+
       // Clean up empty service type entries
       if (serviceConnectors.length === 0) {
         this.connectorsByServiceType.delete(connector.service_type);
       }
     }
-    
+
     logger.debug(`Unregistered connector ${connectorId}`);
   }
 
@@ -141,22 +152,22 @@ export class ConnectorManager implements ConnectorRegistry, ConnectorFactory {
 
   getConnectorHealth(): Record<string, boolean> {
     const health: Record<string, boolean> = {};
-    
-    for (const [connectorId, connector] of this.connectors) {
+
+    for (const [connectorId, _connector] of this.connectors) {
       try {
         // Note: checkHealth is async but we're doing sync here for simplicity
         // In a real implementation, this should be cached or handled differently
         health[connectorId] = true; // Assume healthy for now
-      } catch (error) {
+      } catch (_error) {
         health[connectorId] = false;
       }
     }
-    
+
     return health;
   }
 
   // ConnectorFactory implementation
-  async createConnector(config: any): Promise<ConnectorInterface> {
+  async createConnector(_config): Promise<ConnectorInterface> {
     // This is a simplified implementation
     // In a real scenario, this would create connectors from configuration
     throw new Error('createConnector not implemented - use loadConnectors instead');
@@ -166,7 +177,7 @@ export class ConnectorManager implements ConnectorRegistry, ConnectorFactory {
     return ['simulation', 'comfyui', 'a1111', 'rest_sync', 'rest_async', 'websocket'];
   }
 
-  async validateConfig(config: any): Promise<boolean> {
+  async validateConfig(config): Promise<boolean> {
     // Basic validation - could be enhanced
     return !!(config && config.connector_id && config.service_type);
   }
@@ -174,8 +185,8 @@ export class ConnectorManager implements ConnectorRegistry, ConnectorFactory {
   // Connector lifecycle management
   async cleanup(): Promise<void> {
     logger.info('Cleaning up connectors...');
-    
-    const cleanupPromises = Array.from(this.connectors.values()).map(async (connector) => {
+
+    const cleanupPromises = Array.from(this.connectors.values()).map(async connector => {
       try {
         await connector.cleanup();
         logger.debug(`Cleaned up connector ${connector.connector_id}`);
@@ -183,47 +194,46 @@ export class ConnectorManager implements ConnectorRegistry, ConnectorFactory {
         logger.error(`Failed to cleanup connector ${connector.connector_id}:`, error);
       }
     });
-    
+
     await Promise.all(cleanupPromises);
-    
+
     this.connectors.clear();
     this.connectorsByServiceType.clear();
-    
+
     logger.info('All connectors cleaned up');
   }
 
   async healthCheck(): Promise<Record<string, boolean>> {
     const health: Record<string, boolean> = {};
-    
-    const healthPromises = Array.from(this.connectors.entries()).map(async ([connectorId, connector]) => {
-      try {
-        const isHealthy = await connector.checkHealth();
-        health[connectorId] = isHealthy;
-      } catch (error) {
-        logger.error(`Health check failed for connector ${connectorId}:`, error);
-        health[connectorId] = false;
+
+    const healthPromises = Array.from(this.connectors.entries()).map(
+      async ([connectorId, connector]) => {
+        try {
+          const isHealthy = await connector.checkHealth();
+          health[connectorId] = isHealthy;
+        } catch (error) {
+          logger.error(`Health check failed for connector ${connectorId}:`, error);
+          health[connectorId] = false;
+        }
       }
-    });
-    
+    );
+
     await Promise.all(healthPromises);
     return health;
   }
 
   // Statistics
-  getConnectorStatistics(): any {
+  getConnectorStatistics() {
     const connectors = Array.from(this.connectors.values());
     const serviceTypes = Array.from(this.connectorsByServiceType.keys());
-    
+
     return {
       total_connectors: connectors.length,
       service_types: serviceTypes,
       connectors_by_service: Object.fromEntries(
-        serviceTypes.map(type => [
-          type, 
-          this.connectorsByServiceType.get(type)!.length
-        ])
+        serviceTypes.map(type => [type, this.connectorsByServiceType.get(type)?.length || 0])
       ),
-      connector_ids: connectors.map(c => c.connector_id)
+      connector_ids: connectors.map(c => c.connector_id),
     };
   }
 }

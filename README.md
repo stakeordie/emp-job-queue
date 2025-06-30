@@ -153,7 +153,63 @@ RAM_GB=32
 # Performance settings
 CONCURRENT_JOBS=1
 QUALITY_LEVELS=fast,balanced,quality
+
+# Worker dashboard settings
+WORKER_DASHBOARD_ENABLED=true
+WORKER_DASHBOARD_PORT=1511
 ```
+
+## Worker Dashboard
+
+Each worker includes a built-in web dashboard for real-time monitoring and debugging:
+
+### 🎛️ Dashboard Features
+- **Real-time Status**: Worker status, uptime, heartbeat monitoring
+- **Job Management**: Current jobs, job history, and cancellation controls
+- **Performance Metrics**: Job success rates, processing times, system resources
+- **Connector Status**: Real-time status of ComfyUI, A1111, and other connectors
+
+### 📍 Accessing Dashboards
+
+**Docker Deployment (Multiple Workers):**
+```bash
+# Worker 1 dashboard
+http://localhost:1511
+
+# Worker 2 dashboard  
+http://localhost:1512
+
+# Worker 3 dashboard
+http://localhost:1513
+```
+
+**Standalone Workers:**
+- Workers automatically find available ports
+- Check worker logs for assigned dashboard URL:
+```
+🎛️ Worker gpu-worker-01 dashboard available at http://localhost:9247
+📊 Dashboard accessible on host machine at http://localhost:9247
+```
+
+### ⚙️ Dashboard Configuration
+
+```env
+# Enable/disable dashboard (default: enabled)
+WORKER_DASHBOARD_ENABLED=true
+
+# Fixed port for container deployments (default: auto-assign)
+WORKER_DASHBOARD_PORT=1511
+
+# For multiple workers, use different ports:
+# worker1: WORKER_DASHBOARD_PORT=1511
+# worker2: WORKER_DASHBOARD_PORT=1512  
+# worker3: WORKER_DASHBOARD_PORT=1513
+```
+
+### 🔧 Dashboard Controls
+- **Pause/Resume Worker**: Control job processing (future implementation)
+- **Cancel Jobs**: Cancel individual running jobs
+- **Real-time Updates**: Auto-refresh every 2 seconds
 
 ## API Usage
 

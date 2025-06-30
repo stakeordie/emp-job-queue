@@ -12,43 +12,38 @@ export const logger = winston.createLogger({
   format: winston.format.combine(
     winston.format.timestamp(),
     winston.format.errors({ stack: true }),
-    logFormat === 'json' 
+    logFormat === 'json'
       ? winston.format.json()
-      : winston.format.combine(
-          winston.format.colorize(),
-          winston.format.simple()
-        )
+      : winston.format.combine(winston.format.colorize(), winston.format.simple())
   ),
-  defaultMeta: { 
+  defaultMeta: {
     service: 'emp-redis-js',
-    version: process.env.npm_package_version || '1.0.0'
+    version: process.env.npm_package_version || '1.0.0',
   },
   transports: [
     new winston.transports.Console({
       handleExceptions: true,
-      handleRejections: true
-    })
-  ]
+      handleRejections: true,
+    }),
+  ],
 });
 
 // Add file logging in production
 if (process.env.NODE_ENV === 'production') {
-  logger.add(new winston.transports.File({
-    filename: 'logs/error.log',
-    level: 'error',
-    format: winston.format.combine(
-      winston.format.timestamp(),
-      winston.format.json()
-    )
-  }));
+  logger.add(
+    new winston.transports.File({
+      filename: 'logs/error.log',
+      level: 'error',
+      format: winston.format.combine(winston.format.timestamp(), winston.format.json()),
+    })
+  );
 
-  logger.add(new winston.transports.File({
-    filename: 'logs/combined.log',
-    format: winston.format.combine(
-      winston.format.timestamp(),
-      winston.format.json()
-    )
-  }));
+  logger.add(
+    new winston.transports.File({
+      filename: 'logs/combined.log',
+      format: winston.format.combine(winston.format.timestamp(), winston.format.json()),
+    })
+  );
 }
 
 // Export logger functions for compatibility with Python logger usage

@@ -2,7 +2,6 @@
 // Direct port from Python apps/simple-redis-monitor functionality
 
 import express, { Request, Response } from 'express';
-import path from 'path';
 import { RedisServiceInterface } from '../core/interfaces/redis-service.js';
 import { ConnectionManagerInterface } from '../core/interfaces/connection-manager.js';
 import { logger } from '../core/utils/logger.js';
@@ -12,10 +11,7 @@ export class MonitoringDashboard {
   private redisService: RedisServiceInterface;
   private connectionManager: ConnectionManagerInterface;
 
-  constructor(
-    redisService: RedisServiceInterface, 
-    connectionManager: ConnectionManagerInterface
-  ) {
+  constructor(redisService: RedisServiceInterface, connectionManager: ConnectionManagerInterface) {
     this.redisService = redisService;
     this.connectionManager = connectionManager;
     this.app = express();
@@ -25,7 +21,7 @@ export class MonitoringDashboard {
   private setupRoutes(): void {
     // Serve static dashboard
     this.app.get('/', this.handleDashboard.bind(this));
-    
+
     // API endpoints for dashboard data
     this.app.get('/api/status', this.handleApiStatus.bind(this));
     this.app.get('/api/jobs', this.handleApiJobs.bind(this));
@@ -93,6 +89,17 @@ export class MonitoringDashboard {
         }
         .section { 
             margin-bottom: 30px; 
+        }
+        .side-by-side {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 20px;
+            margin-bottom: 30px;
+        }
+        @media (max-width: 1200px) {
+            .side-by-side {
+                grid-template-columns: 1fr;
+            }
         }
         .section-title { 
             font-size: 18px; 
@@ -178,36 +185,57 @@ export class MonitoringDashboard {
             </table>
         </div>
 
-        <div class="section">
-            <h2 class="section-title">Connected Workers</h2>
-            <table class="table" id="workersTable">
-                <thead>
-                    <tr>
-                        <th>Worker ID</th>
-                        <th>Status</th>
-                        <th>Services</th>
-                        <th>Hardware</th>
-                        <th>Current Jobs</th>
-                        <th>Last Heartbeat</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    <tr><td colspan="6">Loading...</td></tr>
-                </tbody>
-            </table>
+        <div class="side-by-side">
+            <div class="section">
+                <h2 class="section-title">Connected Workers</h2>
+                <table class="table" id="workersTable">
+                    <thead>
+                        <tr>
+                            <th>Worker ID</th>
+                            <th>Status</th>
+                            <th>Services</th>
+                            <th>Hardware</th>
+                            <th>Current Jobs</th>
+                            <th>Last Heartbeat</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr><td colspan="6">Loading...</td></tr>
+                    </tbody>
+                </table>
+            </div>
+
+            <div class="section">
+                <h2 class="section-title">Job Queue</h2>
+                <table class="table" id="queueTable">
+                    <thead>
+                        <tr>
+                            <th>Job ID</th>
+                            <th>Type</th>
+                            <th>Priority</th>
+                            <th>Queue Position</th>
+                            <th>Created</th>
+                            <th>Requirements</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr><td colspan="6">Loading...</td></tr>
+                    </tbody>
+                </table>
+            </div>
         </div>
 
         <div class="section">
-            <h2 class="section-title">Job Queue</h2>
-            <table class="table" id="queueTable">
+            <h2 class="section-title">Recently Completed Jobs</h2>
+            <table class="table" id="completedTable">
                 <thead>
                     <tr>
                         <th>Job ID</th>
                         <th>Type</th>
-                        <th>Priority</th>
-                        <th>Queue Position</th>
-                        <th>Created</th>
-                        <th>Requirements</th>
+                        <th>Status</th>
+                        <th>Worker</th>
+                        <th>Duration</th>
+                        <th>Completed</th>
                     </tr>
                 </thead>
                 <tbody>
@@ -338,6 +366,28 @@ export class MonitoringDashboard {
             \`).join('');
         }
 
+        async function updateCompleted() {
+            const completed = await fetchData('/api/jobs?status=completed&limit=20');
+            if (!completed?.jobs) return;
+
+            const tbody = document.querySelector('#completedTable tbody');
+            if (completed.jobs.length === 0) {
+                tbody.innerHTML = '<tr><td colspan="6">No recently completed jobs</td></tr>';
+                return;
+            }
+
+            tbody.innerHTML = completed.jobs.slice(0, 20).map(job => \`
+                <tr>
+                    <td>\${job.id.substring(0, 8)}...</td>
+                    <td>\${job.type}</td>
+                    <td><span class="badge completed">Completed</span></td>
+                    <td>\${job.worker_id ? job.worker_id.substring(0, 8) + '...' : '-'}</td>
+                    <td>\${formatDuration(job.started_at, job.completed_at)}</td>
+                    <td>\${formatTime(job.completed_at)}</td>
+                </tr>
+            \`).join('');
+        }
+
         async function refreshData() {
             document.getElementById('lastUpdated').textContent = 'Refreshing...';
             
@@ -345,7 +395,8 @@ export class MonitoringDashboard {
                 updateStatus(),
                 updateJobs(),
                 updateWorkers(),
-                updateQueue()
+                updateQueue(),
+                updateCompleted()
             ]);
             
             document.getElementById('lastUpdated').textContent = 
@@ -368,7 +419,7 @@ export class MonitoringDashboard {
     try {
       const [jobStats, workerStats] = await Promise.all([
         this.redisService.getJobStatistics(),
-        this.redisService.getWorkerStatistics()
+        this.redisService.getWorkerStatistics(),
       ]);
 
       res.json({
@@ -378,8 +429,8 @@ export class MonitoringDashboard {
         system: {
           uptime: process.uptime(),
           memory: process.memoryUsage(),
-          connections: await this.connectionManager.getConnectionStatistics()
-        }
+          connections: await this.connectionManager.getConnectionStatistics(),
+        },
       });
     } catch (error) {
       logger.error('Failed to get API status:', error);
@@ -392,20 +443,28 @@ export class MonitoringDashboard {
       const status = req.query.status as string;
       const limit = parseInt(req.query.limit as string) || 50;
 
+      logger.info(`Dashboard API: /api/jobs called with status=${status}, limit=${limit}`);
+
       let jobs = [];
       if (status?.includes('active') || status?.includes('in_progress')) {
         jobs = await this.redisService.getActiveJobs();
+        logger.info(`Found ${jobs.length} active jobs`);
       } else if (status?.includes('pending')) {
         jobs = await this.redisService.getPendingJobs(limit);
+        logger.info(`Found ${jobs.length} pending jobs`);
       } else if (status?.includes('completed')) {
         jobs = await this.redisService.getCompletedJobs(limit);
+        logger.info(`Found ${jobs.length} completed jobs`);
       } else if (status?.includes('failed')) {
         jobs = await this.redisService.getFailedJobs(limit);
+        logger.info(`Found ${jobs.length} failed jobs`);
       } else {
         // Get all pending jobs by default
         jobs = await this.redisService.getPendingJobs(limit);
+        logger.info(`Found ${jobs.length} pending jobs (default)`);
       }
 
+      logger.info(`Returning ${jobs.length} jobs for status=${status}`);
       res.json({ jobs });
     } catch (error) {
       logger.error('Failed to get API jobs:', error);
@@ -428,14 +487,14 @@ export class MonitoringDashboard {
       const [jobStats, workerStats, systemMetrics] = await Promise.all([
         this.redisService.getJobStatistics(),
         this.redisService.getWorkerStatistics(),
-        this.redisService.getSystemMetrics()
+        this.redisService.getSystemMetrics(),
       ]);
 
       res.json({
         timestamp: new Date().toISOString(),
         jobs: jobStats,
         workers: workerStats,
-        system: systemMetrics
+        system: systemMetrics,
       });
     } catch (error) {
       logger.error('Failed to get API metrics:', error);

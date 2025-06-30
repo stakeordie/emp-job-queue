@@ -3,16 +3,19 @@
 
 import { WebSocket } from 'ws';
 import { RedisService } from '../core/redis-service.js';
-import { 
-  BaseMessage, 
-  MessageType, 
+import { TimestampUtil } from '../core/utils/timestamp.js';
+import {
+  BaseMessage,
+  MessageType,
   WorkerRegistrationMessage,
   WorkerHeartbeatMessage,
   JobProgressMessage,
   CompleteJobMessage,
-  FailJobMessage
+  FailJobMessage,
+  WorkerStatus,
+  SystemInfo,
 } from '../core/types/messages.js';
-import { WorkerCapabilities, WorkerStatus, SystemInfo } from '../core/types/worker.js';
+import { WorkerCapabilities } from '../core/types/worker.js';
 import { Job, JobProgress } from '../core/types/job.js';
 import { logger } from '../core/utils/logger.js';
 import { v4 as uuidv4 } from 'uuid';
@@ -23,7 +26,7 @@ export class WorkerClient {
   private workerId: string;
   private hubRedisUrl: string;
   private hubWsUrl: string;
-  private isConnected = false;
+  private isConnectedFlag = false;
   private reconnectAttempts = 0;
   private maxReconnectAttempts = 10;
   private reconnectDelayMs = 5000;
@@ -46,12 +49,11 @@ export class WorkerClient {
 
       // Connect to WebSocket for real-time communication
       await this.connectWebSocket();
-      
-      this.isConnected = true;
+
+      this.isConnectedFlag = true;
       this.reconnectAttempts = 0;
-      
+
       logger.info(`Worker client ${this.workerId} connected to hub`);
-      
     } catch (error) {
       logger.error('Failed to connect to hub:', error);
       throw error;
@@ -59,13 +61,13 @@ export class WorkerClient {
   }
 
   async disconnect(): Promise<void> {
-    this.isConnected = false;
-    
+    this.isConnectedFlag = false;
+
     if (this.websocket) {
       this.websocket.close(1000, 'Worker disconnecting');
       this.websocket = null;
     }
-    
+
     await this.redisService.disconnect();
     logger.info(`Worker client ${this.workerId} disconnected from hub`);
   }
@@ -77,14 +79,14 @@ export class WorkerClient {
         const wsUrl = new URL(this.hubWsUrl);
         wsUrl.searchParams.set('type', 'worker');
         wsUrl.searchParams.set('id', this.workerId);
-        
+
         const authToken = process.env.WORKER_WEBSOCKET_AUTH_TOKEN;
         if (authToken) {
           wsUrl.searchParams.set('auth', authToken);
         }
 
         this.websocket = new WebSocket(wsUrl.toString(), {
-          perMessageDeflate: true
+          perMessageDeflate: true,
         });
 
         this.websocket.on('open', () => {
@@ -104,13 +106,13 @@ export class WorkerClient {
         this.websocket.on('close', (code, reason) => {
           logger.warn(`WebSocket disconnected: ${code} ${reason}`);
           this.websocket = null;
-          
-          if (this.isConnected) {
+
+          if (this.isConnectedFlag) {
             this.handleDisconnection();
           }
         });
 
-        this.websocket.on('error', (error) => {
+        this.websocket.on('error', error => {
           logger.error('WebSocket error:', error);
           reject(error);
         });
@@ -121,7 +123,6 @@ export class WorkerClient {
             reject(new Error('WebSocket connection timeout'));
           }
         }, 10000);
-
       } catch (error) {
         reject(error);
       }
@@ -130,7 +131,7 @@ export class WorkerClient {
 
   private handleMessage(message: BaseMessage): void {
     logger.debug(`Received message: ${message.type}`);
-    
+
     // Notify all listeners
     this.messageCallbacks.forEach(callback => {
       try {
@@ -162,13 +163,15 @@ export class WorkerClient {
     }
 
     this.reconnectAttempts++;
-    logger.info(`Attempting reconnection ${this.reconnectAttempts}/${this.maxReconnectAttempts}...`);
-    
+    logger.info(
+      `Attempting reconnection ${this.reconnectAttempts}/${this.maxReconnectAttempts}...`
+    );
+
     await new Promise(resolve => setTimeout(resolve, this.reconnectDelayMs));
 
     try {
       await this.connectWebSocket();
-      
+
       // Notify listeners of successful reconnection
       this.reconnectedCallbacks.forEach(callback => {
         try {
@@ -177,12 +180,11 @@ export class WorkerClient {
           logger.error('Error in reconnection callback:', error);
         }
       });
-      
+
       logger.info('Successfully reconnected to hub');
-      
     } catch (error) {
       logger.error(`Reconnection attempt ${this.reconnectAttempts} failed:`, error);
-      
+
       // Try again with exponential backoff
       this.reconnectDelayMs = Math.min(this.reconnectDelayMs * 2, 60000);
       await this.attemptReconnection();
@@ -193,15 +195,15 @@ export class WorkerClient {
   async registerWorker(capabilities: WorkerCapabilities): Promise<void> {
     const message: WorkerRegistrationMessage = {
       id: uuidv4(),
-      type: MessageType.WORKER_REGISTRATION,
-      timestamp: new Date().toISOString(),
+      type: MessageType.REGISTER_WORKER,
+      timestamp: TimestampUtil.now(),
       worker_id: this.workerId,
       capabilities,
-      connectors: capabilities.services
+      connectors: capabilities.services,
     };
 
     await this.sendMessage(message);
-    
+
     // Also register via Redis for persistence
     await this.redisService.registerWorker(capabilities);
   }
@@ -215,29 +217,29 @@ export class WorkerClient {
   async reportProgress(jobId: string, progress: JobProgress): Promise<void> {
     const message: JobProgressMessage = {
       id: uuidv4(),
-      type: MessageType.JOB_PROGRESS,
-      timestamp: new Date().toISOString(),
+      type: MessageType.UPDATE_JOB_PROGRESS,
+      timestamp: TimestampUtil.now(),
       job_id: jobId,
       worker_id: this.workerId,
       progress: progress.progress,
       status: progress.status,
       message: progress.message,
-      estimated_completion: progress.estimated_completion
+      estimated_completion: progress.estimated_completion,
     };
 
     await this.sendMessage(message);
-    
+
     // Also update Redis
     await this.redisService.updateJobProgress(jobId, progress);
   }
 
-  async completeJob(jobId: string, result: any): Promise<void> {
+  async completeJob(jobId: string, result): Promise<void> {
     const message: CompleteJobMessage = {
       id: uuidv4(),
       type: MessageType.COMPLETE_JOB,
-      timestamp: new Date().toISOString(),
+      timestamp: TimestampUtil.now(),
       job_id: jobId,
-      result
+      result,
     };
 
     await this.sendMessage(message);
@@ -247,10 +249,11 @@ export class WorkerClient {
     const message: FailJobMessage = {
       id: uuidv4(),
       type: MessageType.FAIL_JOB,
-      timestamp: new Date().toISOString(),
+      timestamp: TimestampUtil.now(),
       job_id: jobId,
+      worker_id: this.workerId,
       error,
-      retry
+      retry,
     };
 
     await this.sendMessage(message);
@@ -261,14 +264,14 @@ export class WorkerClient {
     const message: WorkerHeartbeatMessage = {
       id: uuidv4(),
       type: MessageType.WORKER_HEARTBEAT,
-      timestamp: new Date().toISOString(),
+      timestamp: TimestampUtil.now(),
       worker_id: this.workerId,
       status,
-      system_info: systemInfo
+      system_info: systemInfo,
     };
 
     await this.sendMessage(message);
-    
+
     // Also update Redis heartbeat
     await this.redisService.updateWorkerHeartbeat(this.workerId, systemInfo);
   }
@@ -316,19 +319,21 @@ export class WorkerClient {
 
   // Status
   isConnected(): boolean {
-    return this.isConnected && 
-           this.redisService.isConnected() &&
-           (this.websocket?.readyState === WebSocket.OPEN || false);
+    return (
+      this.isConnectedFlag &&
+      this.redisService.isConnected() &&
+      (this.websocket?.readyState === WebSocket.OPEN || false)
+    );
   }
 
-  getConnectionInfo(): any {
+  getConnectionInfo() {
     return {
       worker_id: this.workerId,
       redis_connected: this.redisService.isConnected(),
       websocket_connected: this.websocket?.readyState === WebSocket.OPEN,
       reconnect_attempts: this.reconnectAttempts,
       hub_redis_url: this.hubRedisUrl,
-      hub_ws_url: this.hubWsUrl
+      hub_ws_url: this.hubWsUrl,
     };
   }
 }

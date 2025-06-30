@@ -1,7 +1,7 @@
 // Connection Manager Interface - direct port from Python core/interfaces/connection_manager_interface.py
 // Defines contract for WebSocket connection management
 
-import { BaseMessage } from '../types/messages.js';
+import { BaseMessage, ChunkedMessageChunk } from '../types/messages.js';
 import { WorkerCapabilities } from '../types/worker.js';
 
 export interface ConnectionManagerInterface {
@@ -13,8 +13,17 @@ export interface ConnectionManagerInterface {
   // Worker connection management
   addWorkerConnection(workerId: string, connection: WebSocketConnection): Promise<void>;
   removeWorkerConnection(workerId: string): Promise<void>;
+  registerWorkerCapabilities(workerId: string, capabilities: WorkerCapabilities): Promise<void>;
   getWorkerConnection(workerId: string): WebSocketConnection | undefined;
   getAllWorkerConnections(): Map<string, WebSocketConnection>;
+  getConnectedWorkers(): Promise<
+    Array<{
+      workerId: string;
+      capabilities?: WorkerCapabilities;
+      connectedAt: string;
+      lastActivity: string;
+    }>
+  >;
   isWorkerConnected(workerId: string): boolean;
   getConnectedWorkerIds(): string[];
 
@@ -32,18 +41,23 @@ export interface ConnectionManagerInterface {
   sendToAllWorkers(message: BaseMessage, filter?: (workerId: string) => boolean): Promise<number>;
   sendToAllClients(message: BaseMessage, filter?: (clientId: string) => boolean): Promise<number>;
   broadcastToMonitors(message: BaseMessage): Promise<number>;
+  sendToSpecificClient(clientId: string, message: BaseMessage): Promise<boolean>;
+
+  // Stats broadcasting
+  startStatsBroadcast(intervalMs?: number): void;
+  stopStatsBroadcast(): void;
 
   // Job-specific messaging
-  notifyIdleWorkersOfJob(jobId: string, jobType: string, requirements?: any): Promise<number>;
-  sendJobAssignment(workerId: string, jobId: string, jobData: any): Promise<boolean>;
+  notifyIdleWorkersOfJob(jobId: string, jobType: string, requirements?): Promise<number>;
+  sendJobAssignment(workerId: string, jobId: string, jobData): Promise<boolean>;
   sendJobCancellation(workerId: string, jobId: string, reason: string): Promise<boolean>;
-  forwardJobCompletion(jobId: string, result: any): Promise<void>;
+  forwardJobCompletion(jobId: string, result): Promise<void>;
 
   // Connection health and monitoring
   pingWorker(workerId: string): Promise<boolean>;
   pingClient(clientId: string): Promise<boolean>;
-  pingAllConnections(): Promise<{ workers: number; clients: number; }>;
-  cleanupStaleConnections(): Promise<{ workers: string[]; clients: string[]; }>;
+  pingAllConnections(): Promise<{ workers: number; clients: number }>;
+  cleanupStaleConnections(): Promise<{ workers: string[]; clients: string[] }>;
 
   // Message handling hooks
   onWorkerMessage(callback: (workerId: string, message: BaseMessage) => void): void;
@@ -54,7 +68,10 @@ export interface ConnectionManagerInterface {
   onClientDisconnect(callback: (clientId: string) => void): void;
 
   // Chunked message handling
-  handleChunkedMessage(connectionId: string, chunk: ChunkedMessageChunk): Promise<BaseMessage | null>;
+  handleChunkedMessage(
+    connectionId: string,
+    chunk: ChunkedMessageChunk
+  ): Promise<BaseMessage | null>;
   sendLargeMessage(connectionId: string, message: BaseMessage): Promise<boolean>;
   cleanupStaleChunks(): Promise<number>;
 
@@ -83,7 +100,7 @@ export interface WebSocketConnection {
   type: 'worker' | 'client' | 'monitor';
   workerId?: string;
   clientId?: string;
-  socket: any; // WebSocket instance
+  socket; // WebSocket instance
   connected: boolean;
   connectedAt: string;
   lastActivity: string;
@@ -91,20 +108,14 @@ export interface WebSocketConnection {
   messagesReceived: number;
   bytesSent: number;
   bytesReceived: number;
-  
+
   send(message: BaseMessage): Promise<boolean>;
   ping(): Promise<boolean>;
   close(code?: number, reason?: string): Promise<void>;
   isAlive(): boolean;
 }
 
-export interface ChunkedMessageChunk {
-  chunkId: string;
-  chunkIndex: number;
-  totalChunks: number;
-  data: string;
-  dataHash: string;
-}
+// ChunkedMessageChunk is exported from types/messages.ts to avoid duplicate export
 
 export interface ConnectionManagerConfig {
   maxMessageSizeBytes: number;

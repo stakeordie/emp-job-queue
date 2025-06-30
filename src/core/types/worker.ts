@@ -9,7 +9,7 @@ export interface WorkerCapabilities {
   performance: PerformanceConfig;
   location?: LocationConfig;
   cost?: CostConfig;
-  metadata?: Record<string, any>;
+  metadata?: Record<string, unknown>;
 }
 
 export interface HardwareSpecs {
@@ -59,7 +59,7 @@ export enum WorkerStatus {
   STOPPING = 'stopping',
   OFFLINE = 'offline',
   ERROR = 'error',
-  MAINTENANCE = 'maintenance'
+  MAINTENANCE = 'maintenance',
 }
 
 export interface WorkerInfo {

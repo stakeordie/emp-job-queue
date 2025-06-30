@@ -62,111 +62,100 @@ const DEFAULT_PAYLOADS = {
         "simulation_time": 5
     }, null, 2),
     
-    // ComfyUI job type
+    // A1111 txt2img job type
+    "a1111": JSON.stringify({
+        "prompt": "a beautiful landscape, highly detailed, 8k, masterpiece",
+        "negative_prompt": "blurry, bad quality, distorted",
+        "steps": 20,
+        "sampler_name": "Euler a",
+        "cfg_scale": 7,
+        "width": 512,
+        "height": 512,
+        "seed": -1,
+        "batch_size": 1,
+        "n_iter": 1
+    }, null, 2),
+    
+    // ComfyUI job type - Simple working workflow
     "comfyui": JSON.stringify({
-        "3": {
-          "inputs": {
-            "seed": 1057618124930620,
-            "steps": 20,
-            "cfg": 8,
-            "sampler_name": "euler",
-            "scheduler": "normal",
-            "denoise": 1,
-            "model": [
-              "4",
-              0
-            ],
-            "positive": [
-              "6",
-              0
-            ],
-            "negative": [
-              "7",
-              0
-            ],
-            "latent_image": [
-              "5",
-              0
-            ]
+        "workflow": {
+          "3": {
+            "inputs": {
+              "seed": 156680208700286,
+              "steps": 8,
+              "cfg": 7.5,
+              "sampler_name": "euler",
+              "scheduler": "normal",
+              "denoise": 1,
+              "model": ["4", 0],
+              "positive": ["6", 0],
+              "negative": ["7", 0],
+              "latent_image": ["5", 0]
+            },
+            "class_type": "KSampler",
+            "_meta": {
+              "title": "KSampler"
+            }
           },
-          "class_type": "KSampler",
-          "_meta": {
-            "title": "KSampler"
-          }
-        },
-        "4": {
-          "inputs": {
-            "ckpt_name": "sd_xl_base_1.0_0.9vae.safetensors"
+          "4": {
+            "inputs": {
+              "ckpt_name": "sd_xl_base_1.0_0.9vae.safetensors"
+            },
+            "class_type": "CheckpointLoaderSimple",
+            "_meta": {
+              "title": "Load Checkpoint"
+            }
           },
-          "class_type": "CheckpointLoaderSimple",
-          "_meta": {
-            "title": "Load Checkpoint"
-          }
-        },
-        "5": {
-          "inputs": {
-            "width": 1024,
-            "height": 1024,
-            "batch_size": 1
+          "5": {
+            "inputs": {
+              "width": 512,
+              "height": 512,
+              "batch_size": 1
+            },
+            "class_type": "EmptyLatentImage",
+            "_meta": {
+              "title": "Empty Latent Image"
+            }
           },
-          "class_type": "EmptyLatentImage",
-          "_meta": {
-            "title": "Empty Latent Image"
-          }
-        },
-        "6": {
-          "inputs": {
-            "text": "dog and sdeal",
-            "clip": [
-              "4",
-              1
-            ]
+          "6": {
+            "inputs": {
+              "text": "a beautiful landscape",
+              "clip": ["4", 1]
+            },
+            "class_type": "CLIPTextEncode",
+            "_meta": {
+              "title": "CLIP Text Encode (Prompt)"
+            }
           },
-          "class_type": "CLIPTextEncode",
-          "_meta": {
-            "title": "CLIP Text Encode (Prompt)"
-          }
-        },
-        "7": {
-          "inputs": {
-            "text": "text, watermark",
-            "clip": [
-              "4",
-              1
-            ]
+          "7": {
+            "inputs": {
+              "text": "",
+              "clip": ["4", 1]
+            },
+            "class_type": "CLIPTextEncode",
+            "_meta": {
+              "title": "CLIP Text Encode (Negative Prompt)"
+            }
           },
-          "class_type": "CLIPTextEncode",
-          "_meta": {
-            "title": "CLIP Text Encode (Prompt)"
-          }
-        },
-        "8": {
-          "inputs": {
-            "samples": [
-              "3",
-              0
-            ],
-            "vae": [
-              "4",
-              2
-            ]
+          "8": {
+            "inputs": {
+              "samples": ["3", 0],
+              "vae": ["4", 2]
+            },
+            "class_type": "VAEDecode",
+            "_meta": {
+              "title": "VAE Decode"
+            }
           },
-          "class_type": "VAEDecode",
-          "_meta": {
-            "title": "VAE Decode"
-          }
-        },
-        "9": {
-          "inputs": {
-            "filename_prefix": "ComfyUI",
-            "images": [
-              "8",
-              0
-            ]
-          },
-          "class_type": "SaveImage",
-          "_meta": {
-            "title": "Save Image"
+          "9": {
+            "inputs": {
+              "filename_prefix": "ComfyUI",
+              "images": ["8", 0]
+            },
+            "class_type": "SaveImage",
+            "_meta": {
+              "title": "Save Image"
+            }
           }
         }
       }, null, 2),
@@ -276,8 +265,9 @@ const elements = {
     jobHistoryLink: document.getElementById('job-history-link'),
     
     // Tables and Containers
-    // [2025-04-06 19:05] Updated worker references for card-based layout
-    workersContainer: document.getElementById('workers-container'),
+    // Updated worker references for table-based layout
+    workersTableBody: document.getElementById('workers-table-body'),
+    workersTableContainer: document.getElementById('workers-table-container'),
     jobsTableBody: document.getElementById('jobs-table-body'),
     noWorkersMessage: document.getElementById('no-workers-message'),
     noJobsMessage: document.getElementById('no-jobs-message'),
@@ -1364,6 +1354,88 @@ function handleStatsBroadcast(parsedMessage, rawMessage, source = 'unknown') {
             });
         } else {
             console.log('[DEBUG] No active_jobs array found in stats broadcast data');
+        }
+
+        // Process pending jobs for queue display
+        if (system.jobs && system.jobs.pending_jobs && Array.isArray(system.jobs.pending_jobs)) {
+            console.log(`[DEBUG] Processing ${system.jobs.pending_jobs.length} pending jobs from stats broadcast`);
+            
+            // Process each pending job
+            system.jobs.pending_jobs.forEach(jobData => {
+                const jobId = jobData.id;
+                if (!jobId) {
+                    console.warn('[WARNING] Pending job data missing ID:', jobData);
+                    return;
+                }
+
+                // Add pending job to state
+                state.jobs[jobId] = {
+                    ...state.jobs[jobId],
+                    ...jobData,
+                    id: jobId,
+                    job_type: jobData.job_type || jobData.type || '',
+                    priority: parseInt(jobData.priority || 0),
+                    status: 'pending',
+                    createdAt: jobData.created_at ? new Date(jobData.created_at * 1000) : new Date(),
+                    updatedAt: jobData.updated_at ? new Date(jobData.updated_at * 1000) : new Date()
+                };
+            });
+            
+            console.log(`[DEBUG] Processed ${system.jobs.pending_jobs.length} pending jobs for queue display`);
+        } else {
+            console.log('[DEBUG] No pending_jobs array found in stats broadcast data');
+        }
+
+        // Process completed jobs for display
+        if (system.jobs && system.jobs.completed_jobs && Array.isArray(system.jobs.completed_jobs)) {
+            console.log(`[DEBUG] Processing ${system.jobs.completed_jobs.length} completed jobs from stats broadcast`);
+            
+            system.jobs.completed_jobs.forEach(jobData => {
+                const jobId = jobData.id;
+                if (!jobId) {
+                    console.warn('[WARNING] Completed job data missing ID:', jobData);
+                    return;
+                }
+
+                // Add completed job to state
+                state.jobs[jobId] = {
+                    ...state.jobs[jobId],
+                    ...jobData,
+                    id: jobId,
+                    job_type: jobData.job_type || jobData.type || '',
+                    priority: parseInt(jobData.priority || 0),
+                    status: 'completed',
+                    progress: 100,
+                    createdAt: jobData.created_at ? new Date(jobData.created_at * 1000) : new Date(),
+                    updatedAt: jobData.updated_at ? new Date(jobData.updated_at * 1000) : new Date()
+                };
+            });
+        }
+
+        // Process failed jobs for display
+        if (system.jobs && system.jobs.failed_jobs && Array.isArray(system.jobs.failed_jobs)) {
+            console.log(`[DEBUG] Processing ${system.jobs.failed_jobs.length} failed jobs from stats broadcast`);
+            
+            system.jobs.failed_jobs.forEach(jobData => {
+                const jobId = jobData.id;
+                if (!jobId) {
+                    console.warn('[WARNING] Failed job data missing ID:', jobData);
+                    return;
+                }
+
+                // Add failed job to state
+                state.jobs[jobId] = {
+                    ...state.jobs[jobId],
+                    ...jobData,
+                    id: jobId,
+                    job_type: jobData.job_type || jobData.type || '',
+                    priority: parseInt(jobData.priority || 0),
+                    status: 'failed',
+                    progress: 0,
+                    createdAt: jobData.created_at ? new Date(jobData.created_at * 1000) : new Date(),
+                    updatedAt: jobData.updated_at ? new Date(jobData.updated_at * 1000) : new Date()
+                };
+            });
         }
     }
     
@@ -2751,7 +2823,9 @@ function collectSupportedJobTypes() {
     // Collect job types from all workers
     Object.values(state.workers).forEach(worker => {
         // Check different possible locations for supported job types
-        if (worker.capabilities && Array.isArray(worker.capabilities.supported_job_types)) {
+        if (worker.capabilities && Array.isArray(worker.capabilities.services)) {
+            worker.capabilities.services.forEach(type => jobTypes.add(type));
+        } else if (worker.capabilities && Array.isArray(worker.capabilities.supported_job_types)) {
             worker.capabilities.supported_job_types.forEach(type => jobTypes.add(type));
         } else if (Array.isArray(worker.supported_job_types)) {
             worker.supported_job_types.forEach(type => jobTypes.add(type));
@@ -2863,64 +2937,23 @@ function updateUI() {
     elements.queuedJobsCount.textContent = queuedJobs.length;
     elements.activeJobsCount.textContent = activeJobs.length;
     
-    // [2025-04-06 19:00] Update workers display - using cards instead of table
+    // Update workers display - using simple table instead of complex cards
     const workers = Object.values(state.workers);
-    elements.workersContainer.innerHTML = '';
+    elements.workersTableBody.innerHTML = '';
     
     if (workers.length > 0) {
-        // Show workers container, hide no workers message
-        elements.workersContainer.classList.remove('hidden');
+        // Show workers table, hide no workers message
+        elements.workersTableContainer.classList.remove('hidden');
         elements.noWorkersMessage.classList.add('hidden');
         
-        // Process each worker
+        // Process each worker - create simple table rows
         workers.forEach(worker => {
-            // Create worker card
-            const workerCard = document.createElement('div');
-            workerCard.className = 'worker-card';
-            workerCard.id = `worker-card-${worker.id}`;
-            
-            // Format status class
-            let statusClass = 'status-idle';
-            if (worker.status === 'active' || worker.status === 'busy') statusClass = 'status-active';
-            if (worker.status === 'error' || worker.status === 'out_of_service') statusClass = 'status-error';
-            
-            // Format accepting jobs indicator
-            const acceptingJobsClass = worker.is_accepting_jobs ? 'status-active' : 'status-error';
-            const acceptingJobsText = worker.is_accepting_jobs ? 'Yes' : 'No';
-            
-            // Format capabilities
-            const capabilitiesText = worker.capabilities && worker.capabilities.supported_job_types ? 
-                JSON.stringify(worker.capabilities.supported_job_types) : 'None';
-            
-            // [2025-04-06 19:08] Enhanced job display for workers
-            // [2025-04-06 19:24] Enhanced job-worker association to handle property name differences
-            console.log(`[DEBUG] Worker ${worker.id} current_job_id:`, worker.current_job_id);
-            
-            // Normalize job properties to handle both camelCase and snake_case
-            Object.values(state.jobs).forEach(job => {
-                // Ensure worker_id is set if workerId exists
-                if (!job.worker_id && job.workerId) {
-                    job.worker_id = job.workerId;
-                }
-                
-                // Ensure consistent status property
-                if (!job.status && job.jobStatus) {
-                    job.status = job.jobStatus;
-                }
-                
-                // Ensure job has an id property
-                if (!job.id && job.jobId) {
-                    job.id = job.jobId;
-                }
-            });
-            
-            // [2025-04-06 19:26] Improved current job handling to prevent UI jumping
+            // Find current job for this worker
             let currentJob = null;
             
             // First check if worker has a current_job_id
             if (worker.current_job_id && state.jobs[worker.current_job_id]) {
                 currentJob = state.jobs[worker.current_job_id];
-                console.log(`[DEBUG] Found current job by worker.current_job_id:`, currentJob);
             } 
             // If no current job found by ID, look for any job assigned to this worker with active status
             else {
@@ -2928,7 +2961,7 @@ function updateUI() {
                     const jobWorkerId = job.worker_id || job.workerId;
                     const jobStatus = job.status || job.jobStatus;
                     return jobWorkerId === worker.id && 
-                           (jobStatus === 'active' || jobStatus === 'processing');
+                           (jobStatus === 'assigned' || jobStatus === 'active' || jobStatus === 'processing');
                 });
                 
                 if (activeJobsForWorker.length > 0) {
@@ -2938,277 +2971,54 @@ function updateUI() {
                         const bTime = b.updated_at || b.updatedAt || 0;
                         return bTime - aTime;
                     })[0];
-                    
-                    console.log(`[DEBUG] Found current job by active status:`, currentJob);
-                    
-                    // Update worker's current_job_id to match this job
-                    if (currentJob) {
-                        worker.current_job_id = currentJob.id || currentJob.jobId;
-                        console.log(`[DEBUG] Updated worker.current_job_id to ${worker.current_job_id}`);
-                    }
                 }
             }
             
-            if (currentJob) {
-                // Ensure the job is linked to this worker
-                currentJob.worker_id = worker.id;
-                
-                // 2025-04-17-20:13 - Don't override completed or failed job statuses
-                // Only set status to processing if it's not already in a terminal state
-                if (currentJob.status !== 'processing' && 
-                    currentJob.status !== 'active' && 
-                    currentJob.status !== 'completed' && 
-                    currentJob.status !== 'failed') {
-                    currentJob.status = 'processing';
-                }
-                
-                // If job is completed or failed, clear it from the worker's current_job_id
-                if (currentJob.status === 'completed' || currentJob.status === 'failed') {
-                    console.log(`[DEBUG] Clearing worker ${worker.id} current_job_id as job ${currentJob.id} is in terminal state: ${currentJob.status}`);
-                    worker.current_job_id = null;
-                }
-                console.log(`[DEBUG] Current job for worker ${worker.id}:`, {
-                    id: currentJob.id || currentJob.jobId,
-                    status: currentJob.status,
-                    progress: currentJob.progress || 0
-                });
-            } else {
-                console.log(`[DEBUG] No current job found for worker ${worker.id}`);
+            // Create table row
+            const row = document.createElement('tr');
+            row.id = `worker-row-${worker.id}`;
+            
+            // Format status display
+            let statusDisplay = worker.status || 'Connected';
+            let statusClass = 'status-idle';
+            if (worker.status === 'active' || worker.status === 'busy') {
+                statusDisplay = 'Active';
+                statusClass = 'status-active';
+            }
+            if (worker.status === 'error' || worker.status === 'out_of_service') {
+                statusDisplay = 'Error';
+                statusClass = 'status-error';
             }
             
-            // [2025-04-06 20:00] Calculate estimated completion time for current job
-            let estimatedCompletion = '';
-            if (currentJob && (currentJob.status === 'processing' || currentJob.status === 'active') && currentJob.progress > 0) {
-                estimatedCompletion = estimateCompletionTime(currentJob);
-            }
+            // Format job types
+            const jobTypes = worker.supported_job_types ? worker.supported_job_types.join(', ') : 
+                (worker.capabilities && worker.capabilities.services ? 
+                worker.capabilities.services.join(', ') : 'Unknown');
             
-            // Log all jobs to see what's available
-            console.log(`[DEBUG] All jobs in state:`, Object.keys(state.jobs).length);
+            // Format current job
+            const currentJobDisplay = currentJob ? 
+                `${currentJob.id.substring(0, 8)}... (${currentJob.job_type || currentJob.type || 'Unknown'})` : 
+                'None';
             
-            // Find active jobs for this worker (those with status 'active' or 'processing')
-            const activeJobs = Object.values(state.jobs)
-                .filter(job => {
-                    // Check both worker_id and workerId properties
-                    const jobWorkerId = job.worker_id || job.workerId;
-                    const jobStatus = job.status || job.jobStatus;
-                    
-                    const isMatch = jobWorkerId === worker.id && 
-                                    (jobStatus === 'active' || jobStatus === 'processing');
-                    
-                    // Log each active job match attempt
-                    if (jobWorkerId === worker.id) {
-                        console.log(`[DEBUG] Job ${job.id || job.jobId} for worker ${worker.id}: status=${jobStatus}, match=${isMatch}`);
-                    }
-                    return isMatch;
-                });
+            // Format connection time
+            const connectedTime = worker.connectedAt ? 
+                formatDateTime(worker.connectedAt) : 'Unknown';
             
-            console.log(`[DEBUG] Found ${activeJobs.length} active jobs for worker ${worker.id}`);
-                
-            // [2025-04-06 19:44] Removed recent jobs collection as we now have a dedicated Finished Jobs table
-            // Only use active jobs for the worker card
-            const workerJobs = activeJobs;
-            
-            // [2025-04-06 19:51] Create the worker card HTML with compact design and placeholders
-            workerCard.innerHTML = `
-                <div class="worker-header">
-                    <div class="worker-title">${worker.id}</div>
-                    <div><span class="status ${statusClass}">${worker.status || 'Connected'}</span></div>
-                </div>
-                
-                <!-- [2025-04-06 19:59] Simplified worker info to show only essential information -->
-                <div class="worker-info">
-                    <div class="worker-info-item">
-                        <div class="worker-info-label">Jobs Processed</div>
-                        <div class="worker-info-value">${worker.jobsProcessed || 0}</div>
-                    </div>
-                    <div class="worker-info-item">
-                        <div class="worker-info-label">Job Types</div>
-                        <div class="worker-info-value">${worker.supported_job_types ? worker.supported_job_types.join(', ') : 
-                            (worker.capabilities && worker.capabilities.supported_job_types ? 
-                            worker.capabilities.supported_job_types.join(', ') : 'Unknown')}</div>
-                    </div>
-                </div>
-                
-                <div class="current-job-wrapper">
-                    ${currentJob ? `
-                    <div class="current-job-section">
-                        <div class="current-job-header">
-                            <div>
-                                <strong>Current Job</strong>
-                                <span class="job-type-badge">${currentJob.job_type || currentJob.type || 'Unknown'}</span>
-                            </div>
-                            <div class="job-times">
-                                <div class="job-time">Created: ${formatDateTime(currentJob.createdAt || currentJob.created_at)}</div>
-                                <div class="job-time">Started: ${formatDateTime(currentJob.processingStartedAt) || 'Pending'}</div>
-                            </div>
-                        </div>
-                        
-                        <div class="current-job-progress">
-                            <div class="progress-label">Progress: ${currentJob.progress || 0}%</div>
-                            <div class="progress-container">
-                                <div class="progress-bar" style="width: ${currentJob.progress || 0}%;"></div>
-                            </div>
-                            <div class="current-job-meta">
-                                <div>ID: ${currentJob.id.substring(0, 8)}...</div>
-                                <div class="estimated-completion">
-                                    ${estimatedCompletion ? `Est. completion: ${estimatedCompletion}` : ''}
-                                </div>
-                            </div>
-                        </div>
-                        
-                        <div class="job-payload-section">
-                            <details>
-                                <summary>Payload Preview</summary>
-                                <pre class="job-payload-preview">${formatPayload(currentJob.payload)}</pre>
-                            </details>
-                        </div>
-                    </div>
-                    ` : `
-                    <div class="no-job-placeholder">
-                        <div class="no-job-message">Waiting for job...</div>
-                    </div>
-                    `}
-                </div>
-                
-                <style>
-                    /* [2025-04-06 19:51] Compact styling for worker cards with fixed dimensions */
-                    .worker-header {
-                        display: flex;
-                        justify-content: space-between;
-                        align-items: center;
-                        margin-bottom: 8px;
-                        padding-bottom: 4px;
-                        border-bottom: 1px solid #eee;
-                    }
-                    .worker-title {
-                        font-weight: bold;
-                        font-size: 0.9rem;
-                    }
-                    .worker-info {
-                        display: grid;
-                        grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
-                        gap: 8px;
-                        margin-bottom: 8px;
-                    }
-                    .worker-info-item {
-                        display: flex;
-                        flex-direction: column;
-                    }
-                    .worker-info-label {
-                        font-size: 0.65rem;
-                        color: #666;
-                        text-transform: uppercase;
-                    }
-                    .worker-info-value {
-                        font-size: 0.8rem;
-                    }
-                    .current-job-wrapper {
-                        min-height: 100px; /* Fixed height to prevent UI jumping */
-                    }
-                    .current-job-section {
-                        background-color: #f0f8ff;
-                        border-radius: 4px;
-                        padding: 8px;
-                        border-left: 3px solid #4285f4;
-                    }
-                    .current-job-header {
-                        display: flex;
-                        justify-content: space-between;
-                        align-items: center;
-                        margin-bottom: 6px;
-                        font-size: 0.8rem;
-                    }
-                    .job-type-badge {
-                        background-color: #e9ecef;
-                        border-radius: 3px;
-                        padding: 1px 4px;
-                        font-size: 0.65rem;
-                        margin-left: 4px;
-                    }
-                    .job-times {
-                        display: flex;
-                        flex-direction: column;
-                        align-items: flex-end;
-                    }
-                    .job-time {
-                        font-size: 0.7rem;
-                        color: #666;
-                        margin-bottom: 2px;
-                    }
-                    .current-job-progress {
-                        margin-bottom: 6px;
-                    }
-                    .progress-label {
-                        font-size: 0.75rem;
-                        margin-bottom: 2px;
-                    }
-                    .progress-container {
-                        height: 8px;
-                        background-color: #e9ecef;
-                        border-radius: 4px;
-                        overflow: hidden;
-                    }
-                    .progress-bar {
-                        height: 100%;
-                        background-color: #4285f4;
-                        border-radius: 4px;
-                    }
-                    .estimated-completion {
-                        font-size: 0.65rem;
-                        color: #666;
-                        margin-top: 2px;
-                        text-align: right;
-                    }
-                    .current-job-meta {
-                        display: flex;
-                        justify-content: space-between;
-                        font-size: 0.7rem;
-                        margin-top: 4px;
-                    }
-                    .job-payload-section {
-                        margin-top: 6px;
-                        border-top: 1px solid #eee;
-                        padding-top: 6px;
-                    }
-                    .job-payload-section summary {
-                        cursor: pointer;
-                        font-size: 0.75rem;
-                        color: #555;
-                    }
-                    .job-payload-preview {
-                        background-color: #f5f5f5;
-                        padding: 6px;
-                        border-radius: 3px;
-                        font-size: 0.65rem;
-                        max-height: 80px;
-                        overflow-y: auto;
-                        margin: 4px 0 0 0;
-                        white-space: pre-wrap;
-                    }
-                    .no-job-placeholder {
-                        min-height: 100px;
-                        display: flex;
-                        align-items: center;
-                        justify-content: center;
-                        background-color: #f9f9f9;
-                        border-radius: 4px;
-                        border: 1px dashed #ddd;
-                    }
-                    .no-job-message {
-                        font-size: 0.8rem;
-                        color: #888;
-                        font-style: italic;
-                    }
-                </style>
+            row.innerHTML = `
+                <td title="${worker.id}">${worker.id}</td>
+                <td><span class="status ${statusClass}">${statusDisplay}</span></td>
+                <td title="${jobTypes}">${jobTypes}</td>
+                <td>${worker.jobsProcessed || 0}</td>
+                <td title="${currentJobDisplay}">${currentJobDisplay}</td>
+                <td title="${connectedTime}">${connectedTime}</td>
             `;
             
-            // [2025-04-06 19:49] Removed job rows code as we no longer display active jobs in worker cards
-            // Add the worker card to the container
-            elements.workersContainer.appendChild(workerCard);
+            // Add the row to the table body
+            elements.workersTableBody.appendChild(row);
         });
     } else {
         // No workers connected
-        elements.workersContainer.classList.add('hidden');
+        elements.workersTableContainer.classList.add('hidden');
         elements.noWorkersMessage.classList.remove('hidden');
     }
     
@@ -3216,13 +3026,35 @@ function updateUI() {
     // Only display queued (pending) jobs in the job queue
     elements.jobsTableBody.innerHTML = '';
     
-    if (queuedJobs.length > 0) {
+    // Enhanced: Show ALL jobs (pending, assigned, active, completed, failed) in unified view
+    const allJobsForQueue = [...queuedJobs, ...activeJobs, ...completedJobs, ...failedJobs];
+    
+    if (allJobsForQueue.length > 0) {
         elements.jobsTableContainer.classList.remove('hidden');
         elements.noJobsMessage.classList.add('hidden');
         
-        // Sort jobs by priority (highest first) and then by created_at (oldest first)
-        queuedJobs.sort((a, b) => {
-            // First sort by priority (higher priority first)
+        // Sort jobs by status priority first, then by priority/time
+        allJobsForQueue.sort((a, b) => {
+            // Define status priority order
+            const statusPriority = {
+                'pending': 1,
+                'assigned': 2, 
+                'active': 3,
+                'processing': 3,
+                'in_progress': 3,
+                'completed': 4,
+                'failed': 5,
+                'cancelled': 6
+            };
+            
+            const aStatusPriority = statusPriority[a.status] || 7;
+            const bStatusPriority = statusPriority[b.status] || 7;
+            
+            if (aStatusPriority !== bStatusPriority) {
+                return aStatusPriority - bStatusPriority;
+            }
+            
+            // Within same status, sort by priority (highest first)
             const aPriority = parseInt(a.priority || 0);
             const bPriority = parseInt(b.priority || 0);
             
@@ -3237,14 +3069,46 @@ function updateUI() {
         });
         
         // Log once before processing jobs
-        console.log(`[2025-04-06 19:00] Displaying ${queuedJobs.length} queued jobs`);
+        console.log(`[Enhanced Job Queue] Displaying ${allJobsForQueue.length} jobs: ${queuedJobs.length} pending, ${activeJobs.length} active, ${completedJobs.length} completed, ${failedJobs.length} failed`);
         
-        queuedJobs.forEach(job => {
+        allJobsForQueue.forEach(job => {
             const row = document.createElement('tr');
             
-            // Format status class
-            const statusClass = 'status-queued';
-            const displayStatus = 'queued';
+            // Format status class and display based on actual job status
+            let statusClass, displayStatus;
+            const jobStatus = job.status || 'unknown';
+            
+            switch (jobStatus) {
+                case 'pending':
+                    statusClass = 'status-pending';
+                    displayStatus = 'Pending';
+                    break;
+                case 'assigned':
+                    statusClass = 'status-assigned';
+                    displayStatus = 'Assigned';
+                    break;
+                case 'active':
+                case 'processing':
+                case 'in_progress':
+                    statusClass = 'status-active';
+                    displayStatus = 'Processing';
+                    break;
+                case 'completed':
+                    statusClass = 'status-completed';
+                    displayStatus = 'Completed';
+                    break;
+                case 'failed':
+                    statusClass = 'status-failed';
+                    displayStatus = 'Failed';
+                    break;
+                case 'cancelled':
+                    statusClass = 'status-cancelled';
+                    displayStatus = 'Cancelled';
+                    break;
+                default:
+                    statusClass = 'status-unknown';
+                    displayStatus = jobStatus;
+            }
             
             // Force priority to be a number
             const displayPriority = parseInt(job.priority || 0);
@@ -3252,6 +3116,13 @@ function updateUI() {
             // [2025-04-06 20:07] Format created time as absolute datetime instead of relative time
             // This prevents the display from constantly changing and provides consistent time representation
             const createdAtStr = formatDateTime(job.created_at ? new Date(job.created_at * 1000) : null);
+            
+            // Get worker assignment and progress
+            const workerDisplay = job.worker_id || (job.workerId ? job.workerId : '-');
+            const progress = job.progress || 0;
+            const progressDisplay = (jobStatus === 'active' || jobStatus === 'processing' || jobStatus === 'in_progress') && progress > 0
+                ? `<div class="progress-bar-container"><div class="progress-bar" style="width: ${progress}%"></div><span class="progress-text">${progress}%</span></div>`
+                : (jobStatus === 'completed' ? '100%' : '-');
             
             // Get failure count for this job
             // [2025-05-19T17:58:00-04:00] Added failure count tracking
@@ -3273,24 +3144,20 @@ function updateUI() {
             // [2025-05-19T18:03:00-04:00] Added force retry button
             row.innerHTML = `
                 <td class="job-id-cell" title="${job.id}">${job.id}</td>
-                <td>${job.client_id || 'N/A'}</td>
                 <td>${job.job_type || job.type || ''}</td>
                 <td><span class="status ${statusClass}">${displayStatus}</span></td>
-                <td>${displayPriority}</td>
-                <td>
-                    ${job.position !== undefined ? 
-                        (job.position === 0 ? 
-                            '<span class="position-next">Next up</span>' : 
-                            `<span class="position-waiting">${job.position} job${job.position !== 1 ? 's' : ''} ahead</span>`
-                        ) : 'N/A'}
-                </td>
-                <td>${createdAtStr}</td>
-                <td>${failureCount > 0 ? `<span class="failure-count">${failureCount}</span>` : '0'}</td>
+                <td class="worker-cell">${workerDisplay}</td>
+                <td class="progress-cell">${progressDisplay}</td>
+                <td class="priority-cell">${displayPriority}</td>
+                <td class="created-cell">${createdAtStr}</td>
+                <td class="failures-cell">${failureCount > 0 ? `<span class="failure-count">${failureCount}</span>` : '0'}</td>
                 <td class="job-actions">
-                    <!-- [2025-05-24T12:42:00-04:00] Improved button layout with horizontal flex container -->
+                    <!-- Enhanced actions for all job states -->
                     <div class="action-buttons-container">
-                        <button class="btn-cancel" onclick="cancelJob('${job.id}')">Cancel</button>
-                        ${failureCount > 0 ? `<button class="btn-force-retry" onclick="forceRetryJob('${job.id}')">Force Retry</button>` : ''}
+                        ${jobStatus === 'pending' || jobStatus === 'assigned' || jobStatus === 'active' || jobStatus === 'processing' ? 
+                            `<button class="btn-cancel" onclick="cancelJob('${job.id}')">Cancel</button>` : ''}
+                        ${failureCount > 0 && (jobStatus === 'failed') ? 
+                            `<button class="btn-force-retry" onclick="forceRetryJob('${job.id}')">Retry</button>` : ''}
                         <!-- [2025-05-25T09:35:00-04:00] Changed to use data attributes for event delegation -->
                         <button class="action-btn" data-action="view-details" data-job-id="${job.id}" title="View details">⋯</button>
                     </div>

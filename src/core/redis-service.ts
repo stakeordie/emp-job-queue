@@ -12,17 +12,15 @@ export class RedisService implements RedisServiceInterface {
   private redis: Redis;
   private subscriber: Redis;
   private isConnectedFlag = false;
-  private subscriptions = new Map<string, (message: any) => void>();
+  private subscriptions = new Map<string, (message) => void>();
 
   constructor(redisUrl: string) {
     this.redis = new Redis(redisUrl, {
-      retryDelayOnFailover: 100,
       enableReadyCheck: true,
       maxRetriesPerRequest: 3,
     });
 
     this.subscriber = new Redis(redisUrl, {
-      retryDelayOnFailover: 100,
       enableReadyCheck: true,
       maxRetriesPerRequest: 3,
     });
@@ -41,7 +39,7 @@ export class RedisService implements RedisServiceInterface {
       this.isConnectedFlag = false;
     });
 
-    this.redis.on('error', (error) => {
+    this.redis.on('error', error => {
       logger.error('Redis error:', error);
     });
 
@@ -59,19 +57,13 @@ export class RedisService implements RedisServiceInterface {
   }
 
   async connect(): Promise<void> {
-    await Promise.all([
-      this.redis.ping(),
-      this.subscriber.ping()
-    ]);
+    await Promise.all([this.redis.ping(), this.subscriber.ping()]);
     this.isConnectedFlag = true;
     logger.info('Redis service connected');
   }
 
   async disconnect(): Promise<void> {
-    await Promise.all([
-      this.redis.quit(),
-      this.subscriber.quit()
-    ]);
+    await Promise.all([this.redis.quit(), this.subscriber.quit()]);
     this.isConnectedFlag = false;
     this.subscriptions.clear();
     logger.info('Redis service disconnected');
@@ -91,17 +83,19 @@ export class RedisService implements RedisServiceInterface {
   }
 
   // Job Management - matches Python implementation exactly
-  async submitJob(jobData: Omit<Job, 'id' | 'created_at' | 'status' | 'retry_count'>): Promise<string> {
+  async submitJob(
+    jobData: Omit<Job, 'id' | 'created_at' | 'status' | 'retry_count'>
+  ): Promise<string> {
     const jobId = uuidv4();
     const now = new Date().toISOString();
-    
+
     const job: Job = {
       ...jobData,
       id: jobId,
       created_at: now,
       status: JobStatus.PENDING,
       retry_count: 0,
-      max_retries: jobData.max_retries || 3
+      max_retries: jobData.max_retries || 3,
     };
 
     // Store job details
@@ -115,7 +109,7 @@ export class RedisService implements RedisServiceInterface {
       created_at: job.created_at,
       status: job.status,
       retry_count: job.retry_count.toString(),
-      max_retries: job.max_retries.toString()
+      max_retries: job.max_retries.toString(),
     });
 
     // Add to priority queue - matches Python's score calculation
@@ -148,13 +142,13 @@ export class RedisService implements RedisServiceInterface {
       max_retries: parseInt(jobData.max_retries || '3'),
       last_failed_worker: jobData.last_failed_worker || undefined,
       processing_time: jobData.processing_time ? parseInt(jobData.processing_time) : undefined,
-      estimated_completion: jobData.estimated_completion || undefined
+      estimated_completion: jobData.estimated_completion || undefined,
     };
   }
 
   async updateJobStatus(jobId: string, status: JobStatus): Promise<void> {
     const updateData: Record<string, string> = { status };
-    
+
     if (status === JobStatus.COMPLETED) {
       updateData.completed_at = new Date().toISOString();
     } else if (status === JobStatus.FAILED) {
@@ -164,12 +158,12 @@ export class RedisService implements RedisServiceInterface {
     }
 
     await this.redis.hmset(`job:${jobId}`, updateData);
-    
+
     // Publish update
     await this.publishMessage('job_updates', {
       job_id: jobId,
       status,
-      timestamp: new Date().toISOString()
+      timestamp: new Date().toISOString(),
     });
   }
 
@@ -184,7 +178,7 @@ export class RedisService implements RedisServiceInterface {
       current_step: progress.current_step || '',
       total_steps: progress.total_steps?.toString() || '',
       estimated_completion: progress.estimated_completion || '',
-      updated_at: progress.updated_at
+      updated_at: progress.updated_at,
     });
 
     // Update job status if changed
@@ -198,12 +192,12 @@ export class RedisService implements RedisServiceInterface {
 
   async completeJob(jobId: string, result: JobResult): Promise<void> {
     const now = new Date().toISOString();
-    
+
     // Update job status
     await this.redis.hmset(`job:${jobId}`, {
       status: JobStatus.COMPLETED,
       completed_at: now,
-      processing_time: result.processing_time?.toString() || ''
+      processing_time: result.processing_time?.toString() || '',
     });
 
     // Store result with TTL (24 hours like Python version)
@@ -220,7 +214,7 @@ export class RedisService implements RedisServiceInterface {
     await this.publishMessage('job_completed', {
       job_id: jobId,
       result,
-      completed_at: now
+      completed_at: now,
     });
 
     logger.info(`Job ${jobId} completed successfully`);
@@ -230,6 +224,12 @@ export class RedisService implements RedisServiceInterface {
     const job = await this.getJob(jobId);
     if (!job) return;
 
+    // Don't retry cancelled jobs - they should stay cancelled
+    if (job.status === JobStatus.CANCELLED) {
+      logger.info(`Job ${jobId} is already cancelled, ignoring failure`);
+      return;
+    }
+
     const now = new Date().toISOString();
     const newRetryCount = job.retry_count + 1;
     const shouldRetry = canRetry && newRetryCount < job.max_retries;
@@ -237,31 +237,51 @@ export class RedisService implements RedisServiceInterface {
     // Update job
     const updateData: Record<string, string> = {
       retry_count: newRetryCount.toString(),
-      failed_at: now
+      failed_at: now,
     };
 
     if (shouldRetry) {
       updateData.status = JobStatus.PENDING;
       updateData.last_failed_worker = job.worker_id || '';
+      updateData.worker_id = ''; // Clear worker assignment
+      updateData.assigned_at = ''; // Clear assignment time
       // Re-add to queue with same priority
       const score = job.priority * 1000 + Date.now();
       await this.redis.zadd('jobs:pending', score, jobId);
     } else {
       updateData.status = JobStatus.FAILED;
+      updateData.worker_id = ''; // Clear worker assignment
       // Store in failed jobs with TTL (7 days like Python version)
-      await this.redis.hset('jobs:failed', jobId, JSON.stringify({
-        error,
-        failed_at: now,
-        retry_count: newRetryCount
-      }));
+      await this.redis.hset(
+        'jobs:failed',
+        jobId,
+        JSON.stringify({
+          error,
+          failed_at: now,
+          retry_count: newRetryCount,
+        })
+      );
       await this.redis.expire('jobs:failed', 7 * 24 * 60 * 60);
     }
 
     await this.redis.hmset(`job:${jobId}`, updateData);
 
-    // Remove from active jobs
+    // Remove from active jobs - be more thorough
     if (job.worker_id) {
-      await this.redis.hdel(`jobs:active:${job.worker_id}`, jobId);
+      const removed = await this.redis.hdel(`jobs:active:${job.worker_id}`, jobId);
+      logger.debug(
+        `Removed job ${jobId} from active jobs for worker ${job.worker_id}: ${removed > 0 ? 'success' : 'not found'}`
+      );
+    }
+
+    // Also check if job is in any other worker's active jobs (cleanup orphaned entries)
+    const allActiveKeys = await this.redis.keys('jobs:active:*');
+    for (const key of allActiveKeys) {
+      const removed = await this.redis.hdel(key, jobId);
+      if (removed > 0) {
+        const workerId = key.replace('jobs:active:', '');
+        logger.warn(`Cleaned up orphaned job ${jobId} from worker ${workerId}'s active jobs`);
+      }
     }
 
     // Publish failure
@@ -270,7 +290,7 @@ export class RedisService implements RedisServiceInterface {
       error,
       retry_count: newRetryCount,
       will_retry: shouldRetry,
-      failed_at: now
+      failed_at: now,
     });
 
     logger.info(`Job ${jobId} failed: ${error} (retry ${newRetryCount}/${job.max_retries})`);
@@ -283,7 +303,7 @@ export class RedisService implements RedisServiceInterface {
     // Update job status
     await this.redis.hmset(`job:${jobId}`, {
       status: JobStatus.CANCELLED,
-      cancelled_at: new Date().toISOString()
+      cancelled_at: new Date().toISOString(),
     });
 
     // Remove from queues
@@ -296,7 +316,7 @@ export class RedisService implements RedisServiceInterface {
     await this.publishMessage('job_cancelled', {
       job_id: jobId,
       reason,
-      cancelled_at: new Date().toISOString()
+      cancelled_at: new Date().toISOString(),
     });
 
     logger.info(`Job ${jobId} cancelled: ${reason}`);
@@ -308,12 +328,12 @@ export class RedisService implements RedisServiceInterface {
     if (removed === 0) return false;
 
     const now = new Date().toISOString();
-    
+
     // Update job with worker assignment
     await this.redis.hmset(`job:${jobId}`, {
       worker_id: workerId,
       status: JobStatus.ASSIGNED,
-      assigned_at: now
+      assigned_at: now,
     });
 
     // Add to worker's active jobs
@@ -343,7 +363,7 @@ export class RedisService implements RedisServiceInterface {
     await this.redis.hmset(`job:${jobId}`, {
       worker_id: '',
       status: JobStatus.PENDING,
-      assigned_at: ''
+      assigned_at: '',
     });
 
     logger.info(`Job ${jobId} released back to queue`);
@@ -352,7 +372,7 @@ export class RedisService implements RedisServiceInterface {
   async getNextJob(workerCapabilities: WorkerCapabilities): Promise<Job | null> {
     // Get jobs from pending queue (highest priority first)
     const jobIds = await this.redis.zrevrange('jobs:pending', 0, 9); // Check top 10 jobs
-    
+
     for (const jobId of jobIds) {
       const job = await this.getJob(jobId);
       if (!job) continue;
@@ -376,8 +396,16 @@ export class RedisService implements RedisServiceInterface {
       return false;
     }
 
-    // Check service type compatibility
-    if (job.requirements?.service_type && !capabilities.services.includes(job.requirements.service_type)) {
+    // Check service type compatibility - job.type is the primary service type
+    if (job.type && !capabilities.services.includes(job.type)) {
+      return false;
+    }
+
+    // Also check requirements.service_type if specified (for additional constraints)
+    if (
+      job.requirements?.service_type &&
+      !capabilities.services.includes(job.requirements.service_type)
+    ) {
       return false;
     }
 
@@ -392,7 +420,7 @@ export class RedisService implements RedisServiceInterface {
     // Check model availability
     if (job.requirements?.models && job.requirements.service_type) {
       const availableModels = capabilities.models[job.requirements.service_type] || [];
-      const hasRequiredModels = job.requirements.models.every(model => 
+      const hasRequiredModels = job.requirements.models.every(model =>
         availableModels.includes(model)
       );
       if (!hasRequiredModels) return false;
@@ -400,12 +428,16 @@ export class RedisService implements RedisServiceInterface {
 
     // Check customer isolation
     if (job.customer_id && capabilities.customer_access.isolation === 'strict') {
-      if (capabilities.customer_access.allowed_customers && 
-          !capabilities.customer_access.allowed_customers.includes(job.customer_id)) {
+      if (
+        capabilities.customer_access.allowed_customers &&
+        !capabilities.customer_access.allowed_customers.includes(job.customer_id)
+      ) {
         return false;
       }
-      if (capabilities.customer_access.denied_customers && 
-          capabilities.customer_access.denied_customers.includes(job.customer_id)) {
+      if (
+        capabilities.customer_access.denied_customers &&
+        capabilities.customer_access.denied_customers.includes(job.customer_id)
+      ) {
         return false;
       }
     }
@@ -415,7 +447,7 @@ export class RedisService implements RedisServiceInterface {
 
   // Implement remaining methods following same pattern...
   async getJobQueuePosition(jobId: string): Promise<number> {
-    return await this.redis.zrevrank('jobs:pending', jobId) || -1;
+    return (await this.redis.zrevrank('jobs:pending', jobId)) || -1;
   }
 
   async getPendingJobs(limit = 50): Promise<Job[]> {
@@ -433,19 +465,19 @@ export class RedisService implements RedisServiceInterface {
     // Get all active jobs across all workers
     const workerKeys = await this.redis.keys('jobs:active:*');
     const allJobs: Job[] = [];
-    
+
     for (const key of workerKeys) {
       const jobData = await this.redis.hgetall(key);
       allJobs.push(...Object.values(jobData).map(data => JSON.parse(data)));
     }
-    
+
     return allJobs;
   }
 
   // Worker Management
   async registerWorker(capabilities: WorkerCapabilities): Promise<void> {
     const now = new Date().toISOString();
-    
+
     // Store worker capabilities
     await this.redis.hmset(`worker:${capabilities.worker_id}`, {
       worker_id: capabilities.worker_id,
@@ -454,7 +486,7 @@ export class RedisService implements RedisServiceInterface {
       connected_at: now,
       last_heartbeat: now,
       total_jobs_completed: '0',
-      total_jobs_failed: '0'
+      total_jobs_failed: '0',
     });
 
     // Add to active workers set
@@ -466,16 +498,16 @@ export class RedisService implements RedisServiceInterface {
     logger.info(`Worker ${capabilities.worker_id} registered`);
   }
 
-  async updateWorkerHeartbeat(workerId: string, systemInfo?: any): Promise<void> {
+  async updateWorkerHeartbeat(workerId: string, systemInfo?): Promise<void> {
     const now = new Date().toISOString();
-    
+
     await this.redis.hmset(`worker:${workerId}`, {
-      last_heartbeat: now
+      last_heartbeat: now,
     });
-    
+
     if (systemInfo) {
       await this.redis.hmset(`worker:${workerId}`, {
-        system_info: JSON.stringify(systemInfo)
+        system_info: JSON.stringify(systemInfo),
       });
     }
 
@@ -484,11 +516,11 @@ export class RedisService implements RedisServiceInterface {
   }
 
   // Pub/Sub operations
-  async publishMessage(channel: string, message: any): Promise<void> {
+  async publishMessage(channel: string, message): Promise<void> {
     await this.redis.publish(channel, JSON.stringify(message));
   }
 
-  async subscribeToChannel(channel: string, callback: (message: any) => void): Promise<void> {
+  async subscribeToChannel(channel: string, callback: (message) => void): Promise<void> {
     this.subscriptions.set(channel, callback);
     await this.subscriber.subscribe(channel);
   }
@@ -499,34 +531,139 @@ export class RedisService implements RedisServiceInterface {
   }
 
   // Placeholder implementations for remaining interface methods
-  async getCompletedJobs(limit = 50): Promise<Job[]> { return []; }
-  async getFailedJobs(limit = 50): Promise<Job[]> { return []; }
+  async getCompletedJobs(_limit = 50): Promise<Job[]> {
+    return [];
+  }
+  async getFailedJobs(_limit = 50): Promise<Job[]> {
+    return [];
+  }
   async searchJobs(filter: JobFilter, page = 1, pageSize = 20): Promise<JobSearchResult> {
     return { jobs: [], total_count: 0, page, page_size: pageSize, has_more: false };
   }
-  async getJobsByStatus(status: JobStatus[], limit = 50): Promise<Job[]> { return []; }
-  async getJobsByWorker(workerId: string, limit = 50): Promise<Job[]> { return []; }
-  async getJobsByCustomer(customerId: string, limit = 50): Promise<Job[]> { return []; }
-  async updateWorkerCapabilities(workerId: string, capabilities: WorkerCapabilities): Promise<void> {}
-  async updateWorkerStatus(workerId: string, status: string, currentJobs?: string[]): Promise<void> {}
-  async removeWorker(workerId: string): Promise<void> {}
-  async getWorker(workerId: string): Promise<WorkerInfo | null> { return null; }
-  async getAllWorkers(): Promise<WorkerInfo[]> { return []; }
-  async getActiveWorkers(): Promise<WorkerInfo[]> { return []; }
-  async getIdleWorkers(): Promise<WorkerInfo[]> { return []; }
-  async findCapableWorkers(jobRequirements: any): Promise<WorkerInfo[]> { return []; }
-  async searchWorkers(filter: WorkerFilter): Promise<WorkerInfo[]> { return []; }
-  async getWorkerLastHeartbeat(workerId: string): Promise<string | null> { return null; }
-  async cleanupStaleWorkers(timeoutSeconds: number): Promise<string[]> { return []; }
-  async getJobStatistics(): Promise<any> { return {}; }
-  async getWorkerStatistics(): Promise<any> { return {}; }
-  async getSystemMetrics(): Promise<any> { return {}; }
-  async cleanupCompletedJobs(olderThanHours: number): Promise<number> { return 0; }
-  async cleanupFailedJobs(olderThanDays: number): Promise<number> { return 0; }
+  async getJobsByStatus(status: JobStatus[], _limit = 50): Promise<Job[]> {
+    return [];
+  }
+  async getJobsByWorker(_workerId: string, _limit = 50): Promise<Job[]> {
+    return [];
+  }
+  async getJobsByCustomer(_customerId: string, _limit = 50): Promise<Job[]> {
+    return [];
+  }
+  async updateWorkerCapabilities(
+    _workerId: string,
+    _capabilities: WorkerCapabilities
+  ): Promise<void> {}
+  async updateWorkerStatus(
+    _workerId: string,
+    _status: string,
+    _currentJobs?: string[]
+  ): Promise<void> {}
+  async removeWorker(_workerId: string): Promise<void> {}
+  async getWorker(_workerId: string): Promise<WorkerInfo | null> {
+    return null;
+  }
+  async getAllWorkers(): Promise<WorkerInfo[]> {
+    return [];
+  }
+  async getActiveWorkers(): Promise<WorkerInfo[]> {
+    return [];
+  }
+  async getIdleWorkers(): Promise<WorkerInfo[]> {
+    return [];
+  }
+  async findCapableWorkers(_jobRequirements): Promise<WorkerInfo[]> {
+    return [];
+  }
+  async searchWorkers(_filter: WorkerFilter): Promise<WorkerInfo[]> {
+    return [];
+  }
+  async getWorkerLastHeartbeat(_workerId: string): Promise<string | null> {
+    return null;
+  }
+  async cleanupStaleWorkers(_timeoutSeconds: number): Promise<string[]> {
+    return [];
+  }
+  async getJobStatistics(): Promise<{
+    pending: number;
+    active: number;
+    completed: number;
+    failed: number;
+    cancelled: number;
+  }> {
+    return {
+      pending: 0,
+      active: 0,
+      completed: 0,
+      failed: 0,
+      cancelled: 0,
+    };
+  }
+  async getWorkerStatistics(): Promise<{
+    total: number;
+    active: number;
+    idle: number;
+    busy: number;
+    offline: number;
+  }> {
+    return {
+      total: 0,
+      active: 0,
+      idle: 0,
+      busy: 0,
+      offline: 0,
+    };
+  }
+  async getSystemMetrics(): Promise<{
+    jobs_per_minute: number;
+    average_processing_time: number;
+    queue_depth: number;
+    worker_utilization: number;
+  }> {
+    return {
+      jobs_per_minute: 0,
+      average_processing_time: 0,
+      queue_depth: 0,
+      worker_utilization: 0,
+    };
+  }
+  async cleanupCompletedJobs(_olderThanHours: number): Promise<number> {
+    return 0;
+  }
+  async cleanupFailedJobs(_olderThanDays: number): Promise<number> {
+    return 0;
+  }
   async optimizeJobQueue(): Promise<void> {}
-  async exportJobData(startDate?: string, endDate?: string): Promise<any[]> { return []; }
-  async importJobData(jobs: any[]): Promise<number> { return 0; }
-  async getRedisInfo(): Promise<Record<string, any>> { return {}; }
-  async getMemoryUsage(): Promise<any> { return {}; }
-  async checkDataIntegrity(): Promise<any> { return {}; }
+  async exportJobData(_startDate?: string, _endDate?: string): Promise<Record<string, unknown>[]> {
+    return [];
+  }
+  async importJobData(_jobs: unknown[]): Promise<number> {
+    return 0;
+  }
+  async getRedisInfo(): Promise<Record<string, unknown>> {
+    return {};
+  }
+  async getMemoryUsage(): Promise<{
+    used_memory: number;
+    used_memory_human: string;
+    used_memory_peak: number;
+    used_memory_peak_human: string;
+  }> {
+    return {
+      used_memory: 0,
+      used_memory_human: '0B',
+      used_memory_peak: 0,
+      used_memory_peak_human: '0B',
+    };
+  }
+  async checkDataIntegrity(): Promise<{
+    orphaned_jobs: string[];
+    missing_worker_refs: string[];
+    inconsistent_states: string[];
+  }> {
+    return {
+      orphaned_jobs: [],
+      missing_worker_refs: [],
+      inconsistent_states: [],
+    };
+  }
 }

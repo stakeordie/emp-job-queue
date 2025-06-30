@@ -14,7 +14,11 @@ export interface MessageRouterInterface {
   routeToWorkers(message: BaseMessage, workerIds?: string[]): Promise<number>;
   routeToClients(message: BaseMessage, clientIds?: string[]): Promise<number>;
   routeToMonitors(message: BaseMessage): Promise<number>;
-  routeToSpecificTarget(targetId: string, targetType: 'worker' | 'client' | 'monitor', message: BaseMessage): Promise<boolean>;
+  routeToSpecificTarget(
+    targetId: string,
+    targetType: 'worker' | 'client' | 'monitor',
+    message: BaseMessage
+  ): Promise<boolean>;
 
   // Pub/Sub operations
   publishMessage(channel: string, message: BaseMessage): Promise<void>;
@@ -56,13 +60,18 @@ export interface MessageRouterInterface {
     channels_subscribed: number;
     routing_latency_ms: number;
   }>;
-  
-  getChannelStatistics(): Promise<Record<string, {
-    subscribers: number;
-    messages_published: number;
-    messages_received: number;
-    last_activity: string;
-  }>>;
+
+  getChannelStatistics(): Promise<
+    Record<
+      string,
+      {
+        subscribers: number;
+        messages_published: number;
+        messages_received: number;
+        last_activity: string;
+      }
+    >
+  >;
 
   // Event hooks
   onMessageRouted(callback: (message: BaseMessage, route: string) => void): void;
@@ -108,15 +117,22 @@ export interface RoutingRule {
 
 export interface RoutingCondition {
   field: string;
-  operator: 'equals' | 'not_equals' | 'contains' | 'not_contains' | 'regex' | 'exists' | 'not_exists';
-  value: any;
+  operator:
+    | 'equals'
+    | 'not_equals'
+    | 'contains'
+    | 'not_contains'
+    | 'regex'
+    | 'exists'
+    | 'not_exists';
+  value;
   caseSensitive?: boolean;
 }
 
 export interface RoutingAction {
   type: 'route' | 'filter' | 'transform' | 'log' | 'alert';
   target?: string;
-  parameters?: Record<string, any>;
+  parameters?: Record<string, unknown>;
 }
 
 export interface MessageRouterConfig {

@@ -1,6 +1,9 @@
 // Core type definitions for emp-redis JavaScript rebuild
 // Direct port from Python core/core_types and interfaces
 
+// Export the timestamp type
+export { Timestamp } from './timestamp.js';
+
 // Export messages first, then override with more specific types
 export * from './messages.js';
 
@@ -8,7 +11,7 @@ export * from './messages.js';
 // export * from './job.js';
 
 // Worker types (may override some message types)
-export { 
+export {
   WorkerCapabilities as WorkerCapabilitiesDetailed,
   WorkerStatus as WorkerStatusDetailed,
   SystemInfo as SystemInfoDetailed,
@@ -23,8 +26,19 @@ export {
   PerformanceConfig,
   LocationConfig,
   CostConfig,
-  ConnectorStatus
+  ConnectorStatus,
 } from './worker.js';
 
-// Connector types
-export * from './connector.js';
+// Connector types - import specific types to avoid conflicts
+export {
+  ConnectorInterface,
+  JobData as ConnectorJobData,
+  JobResult as ConnectorJobResult,
+  JobRequirements as ConnectorJobRequirements,
+  ProgressCallback,
+  ConnectorConfig,
+  RestConnectorConfig,
+  A1111ConnectorConfig,
+  ComfyUIConnectorConfig,
+  WebSocketConnectorConfig,
+} from './connector.js';

@@ -1,7 +1,13 @@
 // Simulation Connector - for testing and development
 // Direct port from Python worker/connectors/simulation_connector.py
 
-import { ConnectorInterface, JobData, JobResult, JobProgress, ProgressCallback, ConnectorConfig } from '../../core/types/connector.js';
+import {
+  ConnectorInterface,
+  JobData,
+  JobResult,
+  ProgressCallback,
+  ConnectorConfig,
+} from '../../core/types/connector.js';
 import { logger } from '../../core/utils/logger.js';
 
 export class SimulationConnector implements ConnectorInterface {
@@ -16,13 +22,13 @@ export class SimulationConnector implements ConnectorInterface {
 
   constructor(connectorId: string) {
     this.connector_id = connectorId;
-    
+
     // Configuration from environment (matching Python patterns)
     this.processingTimeMs = parseInt(process.env.WORKER_SIMULATION_PROCESSING_TIME || '5') * 1000;
     this.steps = parseInt(process.env.WORKER_SIMULATION_STEPS || '10');
     this.failureRate = parseFloat(process.env.WORKER_SIMULATION_FAILURE_RATE || '0.1');
     this.progressIntervalMs = parseInt(process.env.WORKER_SIMULATION_PROGRESS_INTERVAL_MS || '200');
-    
+
     this.config = {
       connector_id: this.connector_id,
       service_type: this.service_type,
@@ -36,14 +42,16 @@ export class SimulationConnector implements ConnectorInterface {
         min_processing_time_ms: this.processingTimeMs,
         max_processing_time_ms: this.processingTimeMs,
         failure_rate: this.failureRate,
-        progress_update_interval_ms: this.progressIntervalMs
-      }
+        progress_update_interval_ms: this.progressIntervalMs,
+      },
     };
   }
 
   async initialize(): Promise<void> {
     logger.info(`Initializing Simulation connector ${this.connector_id}`);
-    logger.info(`Simulation settings: ${this.processingTimeMs}ms processing, ${this.steps} steps, ${this.failureRate} failure rate`);
+    logger.info(
+      `Simulation settings: ${this.processingTimeMs}ms processing, ${this.steps} steps, ${this.failureRate} failure rate`
+    );
   }
 
   async cleanup(): Promise<void> {
@@ -60,7 +68,7 @@ export class SimulationConnector implements ConnectorInterface {
     return ['simulation-model-v1', 'simulation-model-v2', 'test-model'];
   }
 
-  async getServiceInfo(): Promise<any> {
+  async getServiceInfo(): Promise<Record<string, unknown>> {
     return {
       service_name: 'Simulation Service',
       service_version: this.version,
@@ -70,8 +78,8 @@ export class SimulationConnector implements ConnectorInterface {
         supported_formats: ['json'],
         supported_models: await this.getAvailableModels(),
         features: ['progress_tracking', 'cancellation', 'failure_simulation'],
-        concurrent_jobs: this.config.max_concurrent_jobs
-      }
+        concurrent_jobs: this.config.max_concurrent_jobs,
+      },
     };
   }
 
@@ -92,17 +100,17 @@ export class SimulationConnector implements ConnectorInterface {
 
       // Simulate processing with progress updates
       const stepDuration = this.processingTimeMs / this.steps;
-      
+
       for (let step = 0; step <= this.steps; step++) {
         const progress = Math.round((step / this.steps) * 100);
-        
+
         await progressCallback({
           job_id: jobData.id,
           progress,
           message: `Processing step ${step}/${this.steps}`,
           current_step: `Step ${step}`,
           total_steps: this.steps,
-          estimated_completion_ms: step < this.steps ? (this.steps - step) * stepDuration : 0
+          estimated_completion_ms: step < this.steps ? (this.steps - step) * stepDuration : 0,
         });
 
         if (step < this.steps) {
@@ -111,7 +119,7 @@ export class SimulationConnector implements ConnectorInterface {
       }
 
       const processingTime = Date.now() - startTime;
-      
+
       // Generate simulation result
       const result: JobResult = {
         success: true,
@@ -124,8 +132,8 @@ export class SimulationConnector implements ConnectorInterface {
           results: {
             iterations: this.steps,
             final_value: Math.random() * 100,
-            convergence: true
-          }
+            convergence: true,
+          },
         },
         processing_time_ms: processingTime,
         service_metadata: {
@@ -134,18 +142,17 @@ export class SimulationConnector implements ConnectorInterface {
           processing_stats: {
             total_steps: this.steps,
             step_duration_ms: stepDuration,
-            success_rate: 1 - this.failureRate
-          }
-        }
+            success_rate: 1 - this.failureRate,
+          },
+        },
       };
 
       logger.info(`Simulation job ${jobData.id} completed in ${processingTime}ms`);
       return result;
-
     } catch (error) {
       const processingTime = Date.now() - startTime;
       logger.error(`Simulation job ${jobData.id} failed:`, error);
-      
+
       return {
         success: false,
         error: error instanceof Error ? error.message : 'Unknown simulation error',
@@ -154,9 +161,9 @@ export class SimulationConnector implements ConnectorInterface {
           service_version: this.version,
           processing_stats: {
             failed_at_step: Math.floor(Math.random() * this.steps),
-            total_steps: this.steps
-          }
-        }
+            total_steps: this.steps,
+          },
+        },
       };
     }
   }

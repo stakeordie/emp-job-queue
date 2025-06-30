@@ -1,0 +1,38 @@
+# Build output
+dist/
+build/
+*.tsbuildinfo
+
+# Dependencies
+node_modules/
+pnpm-lock.yaml
+
+# Environment files
+.env*
+
+# Logs
+logs/
+*.log
+
+# Coverage
+coverage/
+.nyc_output
+
+# Testing
+.jest/
+
+# IDE
+.vscode/
+.idea/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Specific files
+*.js
+*.d.ts
+*.map
+
+# Exclude certain TypeScript files temporarily
+src/core/types/index.ts

@@ -4,7 +4,7 @@ export interface Job {
   id: string;
   type: string;
   priority: number;
-  payload: Record<string, any>;
+  payload: Record<string, unknown>;
   requirements?: JobRequirements;
   customer_id?: string;
   created_at: string;
@@ -30,7 +30,7 @@ export enum JobStatus {
   COMPLETED = 'completed',
   FAILED = 'failed',
   CANCELLED = 'cancelled',
-  TIMEOUT = 'timeout'
+  TIMEOUT = 'timeout',
 }
 
 export interface JobRequirements {
@@ -63,21 +63,21 @@ export interface JobProgress {
 
 export interface JobResult {
   success: boolean;
-  data?: any;
+  data?: unknown;
   error?: string;
-  metadata?: Record<string, any>;
+  metadata?: Record<string, unknown>;
   processing_time?: number;
   output_files?: string[];
   connector_info?: {
     connector_type: string;
     service_version?: string;
-    processing_stats?: Record<string, any>;
+    processing_stats?: Record<string, unknown>;
   };
 }
 
 export interface JobSubmissionRequest {
   type: string;
-  payload: Record<string, any>;
+  payload: Record<string, unknown>;
   priority?: number;
   requirements?: JobRequirements;
   customer_id?: string;

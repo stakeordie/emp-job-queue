@@ -4,21 +4,21 @@ export interface ConnectorInterface {
   connector_id: string;
   service_type: string;
   version: string;
-  
+
   // Lifecycle methods
   initialize(): Promise<void>;
   cleanup(): Promise<void>;
-  
+
   // Health and capability methods
   checkHealth(): Promise<boolean>;
   getAvailableModels(): Promise<string[]>;
   getServiceInfo(): Promise<ServiceInfo>;
-  
+
   // Job processing
   canProcessJob(jobData: JobData): Promise<boolean>;
   processJob(jobData: JobData, progressCallback: ProgressCallback): Promise<JobResult>;
   cancelJob(jobId: string): Promise<void>;
-  
+
   // Configuration
   updateConfiguration(config: ConnectorConfig): Promise<void>;
   getConfiguration(): ConnectorConfig;
@@ -77,15 +77,15 @@ export interface ConnectorConfig {
   health_check_interval_seconds: number;
   max_concurrent_jobs: number;
   custom_headers?: Record<string, string>;
-  settings?: Record<string, any>;
+  settings?: Record<string, unknown>;
 }
 
 export interface JobData {
   id: string;
   type: string;
-  payload: Record<string, any>;
+  payload: Record<string, unknown>;
   requirements?: JobRequirements;
-  metadata?: Record<string, any>;
+  metadata?: Record<string, unknown>;
 }
 
 export interface JobRequirements {
@@ -101,15 +101,15 @@ export interface JobRequirements {
 
 export interface JobResult {
   success: boolean;
-  data?: any;
+  data?;
   error?: string;
-  metadata?: Record<string, any>;
+  metadata?: Record<string, unknown>;
   processing_time_ms: number;
   output_files?: OutputFile[];
   service_metadata?: {
     service_version: string;
     model_used?: string;
-    processing_stats?: Record<string, any>;
+    processing_stats?: Record<string, unknown>;
   };
 }
 
@@ -119,7 +119,7 @@ export interface OutputFile {
   type: 'image' | 'video' | 'audio' | 'text' | 'binary';
   size_bytes: number;
   mime_type?: string;
-  metadata?: Record<string, any>;
+  metadata?: Record<string, unknown>;
 }
 
 export type ProgressCallback = (progress: JobProgress) => Promise<void>;
@@ -131,7 +131,7 @@ export interface JobProgress {
   current_step?: string;
   total_steps?: number;
   estimated_completion_ms?: number;
-  metadata?: Record<string, any>;
+  metadata?: Record<string, unknown>;
 }
 
 // Specific connector types

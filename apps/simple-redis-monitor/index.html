@@ -821,6 +821,67 @@
       text-align: center;
     }
 
+    /* Enhanced job status styles */
+    .status-pending {
+      background-color: #607d8b;
+      color: white;
+    }
+    
+    .status-assigned {
+      background-color: #ff9800;
+      color: white;
+    }
+    
+    .status-active {
+      background-color: #2196f3;
+      color: white;
+    }
+    
+    .status-completed {
+      background-color: #4caf50;
+      color: white;
+    }
+    
+    .status-failed {
+      background-color: #f44336;
+      color: white;
+    }
+    
+    .status-cancelled {
+      background-color: #9e9e9e;
+      color: white;
+    }
+
+    /* Progress bar styles */
+    .progress-bar-container {
+      position: relative;
+      width: 80px;
+      height: 16px;
+      background-color: #e0e0e0;
+      border-radius: 8px;
+      overflow: hidden;
+    }
+    
+    .progress-bar {
+      height: 100%;
+      background-color: #4caf50;
+      transition: width 0.3s ease;
+    }
+    
+    .progress-text {
+      position: absolute;
+      top: 0;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 0.7rem;
+      color: #333;
+      font-weight: bold;
+    }
+
     /* [2025-05-19T18:04:00-04:00] Styling for Force Retry button */
     .btn-force-retry {
       background-color: #ff9800;
@@ -943,6 +1004,8 @@
             <label for="job-type">Job Type</label>
             <select id="job-type">
               <option value="simulation">simulation</option>
+              <option value="a1111">a1111</option>
+              <option value="comfyui">comfyui</option>
               <!-- Additional options will be populated dynamically based on connected workers -->
             </select>
           </div>
@@ -1118,34 +1181,49 @@
 
     <!-- Right Column -->
     <div class="right-column-container">
-      <!-- [2025-05-24T13:05:00-04:00] Created vertical layout for right column content -->
-      <!-- Connected Workers Section (Above Job Queue) -->
-      <div class="card workers-section">
-        <h2>Connected Workers</h2>
-        <!-- [2025-04-06 18:59] Updated to use cards instead of table for workers -->
-        <div id="workers-container" class="scrollable-container">
-          <!-- Worker cards will be added here dynamically -->
+      <!-- [2025-05-24T13:05:00-04:00] Created side-by-side layout for workers and job queue -->
+      <div class="side-by-side-container">
+        <!-- Connected Workers Section (Left side) -->
+        <div class="card workers-section">
+          <h2>Connected Workers</h2>
+          <!-- Simplified worker table showing worker info only -->
+          <div id="workers-table-container" class="table-responsive">
+            <table id="workers-table" class="compact-table">
+              <thead>
+                <tr>
+                  <th>Worker ID</th>
+                  <th>Status</th>
+                  <th>Job Types</th>
+                  <th>Jobs Processed</th>
+                  <th>Current Job</th>
+                  <th>Connected</th>
+                </tr>
+              </thead>
+              <tbody id="workers-table-body">
+                <!-- Worker rows will be added here dynamically -->
+              </tbody>
+            </table>
+          </div>
+          <div id="no-workers-message" class="hidden">
+            No workers connected
+          </div>
         </div>
-        <div id="no-workers-message" class="hidden">
-          No workers connected
-        </div>
-      </div>
 
-      <!-- Job Queue Section (Below Connected Workers) -->
-      <div class="card job-queue-section">
-        <h2>Job Queue</h2>
-        <!-- [2025-04-06 18:59] Updated to only show queued jobs -->
+        <!-- All Jobs Section (Right side) -->
+        <div class="card job-queue-section">
+          <h2>All Jobs</h2>
+        <!-- Enhanced to show all job states: pending, assigned, in_progress, completed -->
         <!-- [2025-05-20T13:55:06-04:00] Added proper overflow handling for the jobs table -->
         <div id="jobs-table-container" class="table-responsive">
           <table id="jobs-table" class="compact-table">
             <thead>
               <tr>
                 <th class="job-id-column">Job ID</th>
-                <th>Client ID</th>
                 <th>Job Type</th>
                 <th>Status</th>
+                <th>Worker</th>
+                <th>Progress</th>
                 <th>Priority</th>
-                <th>Position</th>
                 <th>Created</th>
                 <!-- [2025-05-19T17:57:00-04:00] Added failures column to track job failure count -->
                 <th>Failures</th>
@@ -1158,9 +1236,11 @@
           </table>
         </div>
         <div id="no-jobs-message" class="hidden">
-          No queued jobs
+          No jobs found
         </div>
-      </div>
+        </div>
+      </div> <!-- Close side-by-side-container -->
+      
       <!-- [2025-04-06 19:40] Finished Jobs Section -->
       <div class="card finished-jobs-section">
         <h2>Finished Jobs</h2>
@@ -1220,7 +1300,7 @@
       /* Ensures the submission column doesn't get too narrow */
     }
 
-    /* [2025-05-24T13:18:00-04:00] Updated right column layout with fixed heights and scrolling */
+    /* [2025-05-24T13:18:00-04:00] Updated right column layout with side-by-side workers and job queue */
     .right-column-container {
       flex: 5;
       display: flex;
@@ -1228,6 +1308,13 @@
       gap: 20px;
       height: calc(100vh - 100px);
       /* Set a height relative to viewport */
+    }
+
+    /* Side-by-side container for workers and job queue */
+    .side-by-side-container {
+      display: flex;
+      gap: 20px;
+      height: 60%; /* 60% of right column height */
     }
 
     /* Fixed heights with scrolling for all sections */
@@ -1242,21 +1329,19 @@
       padding: 15px;
     }
 
-    /* Specific heights for each section */
+    /* Side-by-side sections take equal space */
     .workers-section {
-      height: 25%;
-      /* 25% of container height */
-      min-height: 250px;
+      flex: 1; /* Equal flex for side-by-side */
+      min-height: 300px;
     }
 
     .job-queue-section {
-      height: 40%;
-      /* 40% of container height */
-      min-height: 200px;
+      flex: 1; /* Equal flex for side-by-side */
+      min-height: 300px;
     }
 
     .finished-jobs-section {
-      height: 25%;
+      height: 35%;
       /* 35% of container height */
       min-height: 150px;
     }

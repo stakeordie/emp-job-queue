@@ -4,8 +4,9 @@
 import { MessageHandlerInterface } from './interfaces/message-handler.js';
 import { RedisServiceInterface } from './interfaces/redis-service.js';
 import { ConnectionManagerInterface } from './interfaces/connection-manager.js';
-import { 
-  BaseMessage, 
+import { TimestampUtil } from './utils/timestamp.js';
+import {
+  BaseMessage,
   MessageType,
   JobSubmissionMessage,
   JobProgressMessage,
@@ -17,10 +18,10 @@ import {
   WorkerHeartbeatMessage,
   ServiceRequestMessage,
   CompleteJobMessage,
-  FailJobMessage
+  FailJobMessage,
 } from './types/messages.js';
 import { JobStatus } from './types/job.js';
-import { WorkerStatus } from './types/worker.js';
+import { WorkerStatus, WorkerCapabilities } from './types/worker.js';
 import { logger } from './utils/logger.js';
 import { v4 as uuidv4 } from 'uuid';
 
@@ -30,14 +31,11 @@ export class MessageHandler implements MessageHandlerInterface {
   private messageStats = {
     processed: 0,
     failed: 0,
-    startTime: Date.now()
+    startTime: Date.now(),
   };
   private messageTypeStats = new Map<MessageType, number>();
 
-  constructor(
-    redisService: RedisServiceInterface,
-    connectionManager: ConnectionManagerInterface
-  ) {
+  constructor(redisService: RedisServiceInterface, connectionManager: ConnectionManagerInterface) {
     this.redisService = redisService;
     this.connectionManager = connectionManager;
     this.setupMessageRouting();
@@ -57,7 +55,7 @@ export class MessageHandler implements MessageHandlerInterface {
       });
     });
 
-    this.connectionManager.onWorkerDisconnect((workerId) => {
+    this.connectionManager.onWorkerDisconnect(workerId => {
       this.handleWorkerDisconnect(workerId).catch(error => {
         logger.error(`Error handling worker disconnect for ${workerId}:`, error);
       });
@@ -66,28 +64,28 @@ export class MessageHandler implements MessageHandlerInterface {
 
   async handleMessage(message: BaseMessage): Promise<void> {
     try {
-      this.updateStats(message.type);
-      
+      this.updateStats(message.type as MessageType);
+
       switch (message.type) {
-        case MessageType.JOB_SUBMISSION:
+        case MessageType.SUBMIT_JOB:
           await this.handleJobSubmission(message as JobSubmissionMessage);
           break;
-        case MessageType.JOB_PROGRESS:
+        case MessageType.UPDATE_JOB_PROGRESS:
           await this.handleJobProgress(message as JobProgressMessage);
           break;
         case MessageType.JOB_COMPLETED:
           await this.handleJobComplete(message as JobCompletedMessage);
           break;
-        case MessageType.JOB_FAILED:
+        case MessageType.FAIL_JOB:
           await this.handleJobFailed(message as JobFailedMessage);
           break;
         case MessageType.COMPLETE_JOB:
           await this.handleCompleteJob(message as CompleteJobMessage);
           break;
-        case MessageType.FAIL_JOB:
-          await this.handleFailJob(message as FailJobMessage);
+        case MessageType.CANCEL_JOB:
+          await this.handleCancelJob(message);
           break;
-        case MessageType.WORKER_REGISTRATION:
+        case MessageType.REGISTER_WORKER:
           await this.handleWorkerRegistration(message as WorkerRegistrationMessage);
           break;
         case MessageType.WORKER_STATUS:
@@ -102,7 +100,7 @@ export class MessageHandler implements MessageHandlerInterface {
         default:
           logger.warn(`Unhandled message type: ${message.type}`);
       }
-      
+
       this.messageStats.processed++;
     } catch (error) {
       this.messageStats.failed++;
@@ -132,12 +130,12 @@ export class MessageHandler implements MessageHandlerInterface {
         payload: message.payload,
         customer_id: message.customer_id,
         requirements: message.requirements,
-        max_retries: 3
+        max_retries: 3,
       });
 
       // Notify available workers about the new job
       await this.notifyWorkersOfNewJob(jobId, message.job_type, message.requirements);
-      
+
       logger.info(`Job ${jobId} submitted and workers notified`);
     } catch (error) {
       logger.error(`Failed to handle job submission:`, error);
@@ -156,12 +154,12 @@ export class MessageHandler implements MessageHandlerInterface {
         current_step: undefined,
         total_steps: undefined,
         estimated_completion: message.estimated_completion,
-        updated_at: message.timestamp
+        updated_at: TimestampUtil.toISO(message.timestamp),
       });
 
       // Broadcast progress to monitors
       await this.connectionManager.broadcastToMonitors(message);
-      
+
       logger.debug(`Job ${message.job_id} progress: ${message.progress}%`);
     } catch (error) {
       logger.error(`Failed to handle job progress for ${message.job_id}:`, error);
@@ -171,21 +169,21 @@ export class MessageHandler implements MessageHandlerInterface {
 
   async handleJobComplete(message: JobCompletedMessage): Promise<void> {
     try {
-      await this.redisService.completeJob(message.job_id, message.result);
-      
+      await this.redisService.completeJob(message.job_id, {
+        success: true,
+        data: message.result,
+        processing_time: message.result?.processing_time,
+      });
+
       // Update worker status to idle
-      await this.redisService.updateWorkerStatus(
-        message.worker_id, 
-        WorkerStatus.IDLE, 
-        []
-      );
+      await this.redisService.updateWorkerStatus(message.worker_id, WorkerStatus.IDLE, []);
 
       // Broadcast completion to monitors
       await this.connectionManager.broadcastToMonitors(message);
-      
+
       // Forward to clients subscribed to this job
       await this.connectionManager.forwardJobCompletion(message.job_id, message.result);
-      
+
       logger.info(`Job ${message.job_id} completed by worker ${message.worker_id}`);
     } catch (error) {
       logger.error(`Failed to handle job completion for ${message.job_id}:`, error);
@@ -195,22 +193,14 @@ export class MessageHandler implements MessageHandlerInterface {
 
   async handleJobFailed(message: JobFailedMessage): Promise<void> {
     try {
-      await this.redisService.failJob(
-        message.job_id, 
-        message.error, 
-        message.can_retry !== false
-      );
-      
+      await this.redisService.failJob(message.job_id, message.error, message.can_retry !== false);
+
       // Update worker status to idle
-      await this.redisService.updateWorkerStatus(
-        message.worker_id, 
-        WorkerStatus.IDLE, 
-        []
-      );
+      await this.redisService.updateWorkerStatus(message.worker_id, WorkerStatus.IDLE, []);
 
       // Broadcast failure to monitors
       await this.connectionManager.broadcastToMonitors(message);
-      
+
       logger.info(`Job ${message.job_id} failed on worker ${message.worker_id}: ${message.error}`);
     } catch (error) {
       logger.error(`Failed to handle job failure for ${message.job_id}:`, error);
@@ -223,11 +213,12 @@ export class MessageHandler implements MessageHandlerInterface {
     await this.handleJobComplete({
       id: uuidv4(),
       type: MessageType.JOB_COMPLETED,
-      timestamp: new Date().toISOString(),
+      timestamp: TimestampUtil.now(),
       job_id: message.job_id,
       worker_id: message.source || '',
+      status: 'completed',
       result: message.result,
-      processing_time: message.result.processing_time
+      processing_time: message.result?.processing_time,
     });
   }
 
@@ -235,30 +226,56 @@ export class MessageHandler implements MessageHandlerInterface {
     // This is sent by workers to fail a job
     await this.handleJobFailed({
       id: uuidv4(),
-      type: MessageType.JOB_FAILED,
-      timestamp: new Date().toISOString(),
+      type: MessageType.FAIL_JOB,
+      timestamp: TimestampUtil.now(),
       job_id: message.job_id,
       worker_id: message.source || '',
       error: message.error,
-      can_retry: message.retry
+      can_retry: message.retry,
     });
+  }
+
+  async handleCancelJob(message: { job_id: string; reason?: string }): Promise<void> {
+    try {
+      const jobId = message.job_id;
+      const reason = message.reason || 'Cancelled by user';
+
+      logger.info(`Cancelling job ${jobId}: ${reason}`);
+
+      // Cancel the job using Redis service
+      await this.redisService.cancelJob(jobId, reason);
+
+      logger.info(`Job ${jobId} cancelled successfully`);
+    } catch (error) {
+      logger.error(`Failed to cancel job ${message.job_id}:`, error);
+      throw error;
+    }
   }
 
   // Worker message handlers
   async handleWorkerRegistration(message: WorkerRegistrationMessage): Promise<void> {
     try {
-      await this.redisService.registerWorker(message.capabilities);
-      
+      // For now, cast capabilities - in production, add proper validation
+      const capabilities = message.capabilities as WorkerCapabilities;
+
+      // Store capabilities in connection manager (in-memory, like Python version)
+      await this.connectionManager.registerWorkerCapabilities(message.worker_id, capabilities);
+
+      // Also register in Redis for job matching (optional)
+      await this.redisService.registerWorker(capabilities);
+
       // Send confirmation back to worker
       await this.connectionManager.sendToWorker(message.worker_id, {
         id: uuidv4(),
         type: MessageType.WORKER_STATUS,
-        timestamp: new Date().toISOString(),
+        timestamp: TimestampUtil.now(),
         worker_id: message.worker_id,
-        status: WorkerStatus.IDLE
+        status: WorkerStatus.IDLE,
       });
 
-      logger.info(`Worker ${message.worker_id} registered with services: ${message.capabilities.services.join(', ')}`);
+      logger.info(
+        `Worker ${message.worker_id} registered with services: ${message.capabilities.services.join(', ')}`
+      );
     } catch (error) {
       logger.error(`Failed to register worker ${message.worker_id}:`, error);
       throw error;
@@ -275,7 +292,7 @@ export class MessageHandler implements MessageHandlerInterface {
 
       // Broadcast status to monitors
       await this.connectionManager.broadcastToMonitors(message);
-      
+
       logger.debug(`Worker ${message.worker_id} status: ${message.status}`);
     } catch (error) {
       logger.error(`Failed to handle worker status for ${message.worker_id}:`, error);
@@ -285,11 +302,8 @@ export class MessageHandler implements MessageHandlerInterface {
 
   async handleWorkerHeartbeat(message: WorkerHeartbeatMessage): Promise<void> {
     try {
-      await this.redisService.updateWorkerHeartbeat(
-        message.worker_id, 
-        message.system_info
-      );
-      
+      await this.redisService.updateWorkerHeartbeat(message.worker_id, message.system_info);
+
       logger.debug(`Heartbeat received from worker ${message.worker_id}`);
     } catch (error) {
       logger.error(`Failed to handle heartbeat from worker ${message.worker_id}:`, error);
@@ -308,7 +322,7 @@ export class MessageHandler implements MessageHandlerInterface {
 
       // Remove worker from active list
       await this.redisService.removeWorker(workerId);
-      
+
       logger.info(`Worker ${workerId} disconnected and cleaned up`);
     } catch (error) {
       logger.error(`Failed to handle disconnect for worker ${workerId}:`, error);
@@ -320,42 +334,47 @@ export class MessageHandler implements MessageHandlerInterface {
     try {
       // Broadcast service request to monitors for debugging/visibility
       await this.connectionManager.broadcastToMonitors(message);
-      
-      logger.debug(`Service request from worker ${message.worker_id}: ${message.method} ${message.endpoint}`);
+
+      logger.debug(
+        `Service request from worker ${message.worker_id}: ${message.method} ${message.endpoint}`
+      );
     } catch (error) {
       logger.error(`Failed to handle service request:`, error);
       throw error;
     }
   }
 
-  async handleSystemStatus(message: any): Promise<void> {
+  async handleSystemStatus(_message: unknown): Promise<void> {
     // Placeholder for system status handling
     logger.debug('System status message received');
   }
 
-  async handleError(message: any): Promise<void> {
+  async handleError(message: unknown): Promise<void> {
     logger.error('Error message received:', message);
   }
 
-  async handleJobCancelled(message: any): Promise<void> {
+  async handleJobCancelled(message: { job_id: string }): Promise<void> {
     // Placeholder for job cancellation handling
     logger.info(`Job ${message.job_id} cancelled`);
   }
 
   // Message validation and parsing
-  async validateMessage(message: any): Promise<boolean> {
-    return !!(message && message.id && message.type && message.timestamp);
+  async validateMessage(message: unknown): Promise<boolean> {
+    const msg = message as Record<string, unknown>;
+    return !!(msg && msg.id && msg.type && msg.timestamp);
   }
 
   async parseMessage(rawMessage: string | Buffer): Promise<BaseMessage | null> {
     try {
-      const messageStr = rawMessage instanceof Buffer ? rawMessage.toString() : rawMessage;
+      const messageStr = (
+        rawMessage instanceof Buffer ? rawMessage.toString() : rawMessage
+      ) as string;
       const parsed = JSON.parse(messageStr);
-      
+
       if (await this.validateMessage(parsed)) {
         return parsed as BaseMessage;
       }
-      
+
       return null;
     } catch (error) {
       logger.error('Failed to parse message:', error);
@@ -372,11 +391,17 @@ export class MessageHandler implements MessageHandlerInterface {
     await this.handleMessage(message);
   }
 
-  async broadcastToWorkers(message: BaseMessage, workerFilter?: (workerId: string) => boolean): Promise<void> {
+  async broadcastToWorkers(
+    message: BaseMessage,
+    workerFilter?: (workerId: string) => boolean
+  ): Promise<void> {
     await this.connectionManager.sendToAllWorkers(message, workerFilter);
   }
 
-  async broadcastToClients(message: BaseMessage, clientFilter?: (clientId: string) => boolean): Promise<void> {
+  async broadcastToClients(
+    message: BaseMessage,
+    clientFilter?: (clientId: string) => boolean
+  ): Promise<void> {
     await this.connectionManager.sendToAllClients(message, clientFilter);
   }
 
@@ -393,19 +418,23 @@ export class MessageHandler implements MessageHandlerInterface {
   }
 
   // Helper methods
-  private async notifyWorkersOfNewJob(jobId: string, jobType: string, requirements?: any): Promise<void> {
+  private async notifyWorkersOfNewJob(
+    jobId: string,
+    jobType: string,
+    requirements?
+  ): Promise<void> {
     const job = await this.redisService.getJob(jobId);
     if (!job) return;
 
-    const jobAvailableMessage: JobAvailableMessage = {
+    const _jobAvailableMessage: JobAvailableMessage = {
       id: uuidv4(),
       type: MessageType.JOB_AVAILABLE,
-      timestamp: new Date().toISOString(),
+      timestamp: TimestampUtil.now(),
       job_id: jobId,
       job_type: jobType,
       priority: job.priority,
       requirements,
-      last_failed_worker: job.last_failed_worker
+      last_failed_worker: job.last_failed_worker,
     };
 
     await this.connectionManager.notifyIdleWorkersOfJob(jobId, jobType, requirements);
@@ -417,15 +446,15 @@ export class MessageHandler implements MessageHandlerInterface {
   }
 
   // Event handlers (placeholder implementations)
-  onMessageReceived(callback: (message: BaseMessage) => void): void {
+  onMessageReceived(_callback: (message: BaseMessage) => void): void {
     // Store callback for message received events
   }
 
-  onMessageSent(callback: (message: BaseMessage) => void): void {
+  onMessageSent(_callback: (message: BaseMessage) => void): void {
     // Store callback for message sent events
   }
 
-  onMessageError(callback: (error: Error, message?: BaseMessage) => void): void {
+  onMessageError(_callback: (error: Error, message?: BaseMessage) => void): void {
     // Store callback for message error events
   }
 
@@ -448,7 +477,7 @@ export class MessageHandler implements MessageHandlerInterface {
       messages_processed: this.messageStats.processed,
       messages_failed: this.messageStats.failed,
       messages_per_second: messagesPerSecond,
-      message_types: messageTypes
+      message_types: messageTypes,
     };
   }
 
@@ -456,7 +485,7 @@ export class MessageHandler implements MessageHandlerInterface {
     this.messageStats = {
       processed: 0,
       failed: 0,
-      startTime: Date.now()
+      startTime: Date.now(),
     };
     this.messageTypeStats.clear();
   }

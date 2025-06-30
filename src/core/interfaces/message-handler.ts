@@ -8,32 +8,38 @@ export interface MessageHandlerInterface {
   handleMessage(message: BaseMessage): Promise<void>;
   handleWorkerMessage(workerId: string, message: BaseMessage): Promise<void>;
   handleClientMessage(clientId: string, message: BaseMessage): Promise<void>;
-  
+
   // Specific message handlers
-  handleJobSubmission(message: any): Promise<void>;
-  handleJobProgress(message: any): Promise<void>;
-  handleJobComplete(message: any): Promise<void>;
-  handleJobFailed(message: any): Promise<void>;
-  handleJobCancelled(message: any): Promise<void>;
-  
-  handleWorkerRegistration(message: any): Promise<void>;
-  handleWorkerStatus(message: any): Promise<void>;
-  handleWorkerHeartbeat(message: any): Promise<void>;
+  handleJobSubmission(message): Promise<void>;
+  handleJobProgress(message): Promise<void>;
+  handleJobComplete(message): Promise<void>;
+  handleJobFailed(message): Promise<void>;
+  handleJobCancelled(message): Promise<void>;
+
+  handleWorkerRegistration(message): Promise<void>;
+  handleWorkerStatus(message): Promise<void>;
+  handleWorkerHeartbeat(message): Promise<void>;
   handleWorkerDisconnect(workerId: string): Promise<void>;
-  
-  handleServiceRequest(message: any): Promise<void>;
-  handleSystemStatus(message: any): Promise<void>;
-  handleError(message: any): Promise<void>;
+
+  handleServiceRequest(message): Promise<void>;
+  handleSystemStatus(message): Promise<void>;
+  handleError(message): Promise<void>;
 
   // Message validation
-  validateMessage(message: any): Promise<boolean>;
+  validateMessage(message): Promise<boolean>;
   parseMessage(rawMessage: string | Buffer): Promise<BaseMessage | null>;
   serializeMessage(message: BaseMessage): Promise<string>;
 
   // Message routing
   routeMessage(message: BaseMessage): Promise<void>;
-  broadcastToWorkers(message: BaseMessage, workerFilter?: (workerId: string) => boolean): Promise<void>;
-  broadcastToClients(message: BaseMessage, clientFilter?: (clientId: string) => boolean): Promise<void>;
+  broadcastToWorkers(
+    message: BaseMessage,
+    workerFilter?: (workerId: string) => boolean
+  ): Promise<void>;
+  broadcastToClients(
+    message: BaseMessage,
+    clientFilter?: (clientId: string) => boolean
+  ): Promise<void>;
   broadcastToMonitors(message: BaseMessage): Promise<void>;
   sendToWorker(workerId: string, message: BaseMessage): Promise<boolean>;
   sendToClient(clientId: string, message: BaseMessage): Promise<boolean>;
@@ -50,6 +56,6 @@ export interface MessageHandlerInterface {
     messages_per_second: number;
     message_types: Record<MessageType, number>;
   }>;
-  
+
   resetStatistics(): Promise<void>;
 }

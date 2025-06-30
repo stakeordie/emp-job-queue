@@ -22,48 +22,60 @@ class Hub {
 
   constructor() {
     const redisUrl = process.env.REDIS_URL || 'redis://localhost:6379';
-    
+
     // Initialize core services
     this.redisService = new RedisService(redisUrl);
-    this.connectionManager = new ConnectionManager({
-      maxMessageSizeBytes: parseInt(process.env.MAX_WS_MESSAGE_SIZE_MB || '100') * 1024 * 1024,
-      heartbeatIntervalMs: parseInt(process.env.HEARTBEAT_INTERVAL_MS || '30000'),
-      connectionTimeoutMs: parseInt(process.env.CONNECTION_TIMEOUT_MS || '60000')
-    });
-    
+    this.connectionManager = new ConnectionManager(
+      {
+        maxMessageSizeBytes: parseInt(process.env.MAX_WS_MESSAGE_SIZE_MB || '100') * 1024 * 1024,
+        heartbeatIntervalMs: parseInt(process.env.HEARTBEAT_INTERVAL_MS || '30000'),
+        connectionTimeoutMs: parseInt(process.env.CONNECTION_TIMEOUT_MS || '60000'),
+      },
+      this.redisService
+    );
+
     this.messageHandler = new MessageHandler(this.redisService, this.connectionManager);
-    
+
     // Initialize HTTP and WebSocket servers
-    this.hubServer = new HubServer(this.redisService, {
-      port: parseInt(process.env.HUB_PORT || '3001'),
-      host: process.env.HUB_HOST || '0.0.0.0'
-    }, this.connectionManager);
-    
+    this.hubServer = new HubServer(
+      this.redisService,
+      {
+        port: parseInt(process.env.HUB_PORT || '3001'),
+        host: process.env.HUB_HOST || '0.0.0.0',
+      },
+      this.connectionManager
+    );
+
     this.websocketManager = new WebSocketManager(this.connectionManager, {
       port: parseInt(process.env.WS_PORT || '3002'),
-      host: process.env.WS_HOST || '0.0.0.0'
+      host: process.env.WS_HOST || '0.0.0.0',
     });
   }
 
   async start(): Promise<void> {
     try {
       logger.info('Starting Hub service...');
-      
+
       // Start core services
       await this.redisService.connect();
       await this.connectionManager.start();
-      
+
+      // Start stats broadcasting for monitor
+      const statsInterval = parseInt(process.env.STATS_BROADCAST_INTERVAL_MS || '5000');
+      this.connectionManager.startStatsBroadcast(statsInterval);
+
       // Start servers
       await this.hubServer.start();
       await this.websocketManager.start();
-      
+
       this.isRunning = true;
-      
+
       logger.info(`Hub service started successfully`);
       logger.info(`HTTP API server listening on port ${process.env.HUB_PORT || 3001}`);
       logger.info(`WebSocket server listening on port ${process.env.WS_PORT || 3002}`);
-      logger.info(`Monitoring dashboard available at http://localhost:${process.env.HUB_PORT || 3001}/dashboard`);
-      
+      logger.info(
+        `Monitoring dashboard available at http://localhost:${process.env.HUB_PORT || 3001}/dashboard`
+      );
     } catch (error) {
       logger.error('Failed to start Hub service:', error);
       await this.stop();
@@ -73,21 +85,20 @@ class Hub {
 
   async stop(): Promise<void> {
     if (!this.isRunning) return;
-    
+
     logger.info('Stopping Hub service...');
-    
+
     try {
       // Stop servers
       await this.websocketManager.stop();
       await this.hubServer.stop();
-      
+
       // Stop core services
       await this.connectionManager.stop();
       await this.redisService.disconnect();
-      
+
       this.isRunning = false;
       logger.info('Hub service stopped successfully');
-      
     } catch (error) {
       logger.error('Error stopping Hub service:', error);
       throw error;
@@ -95,11 +106,13 @@ class Hub {
   }
 
   isHealthy(): boolean {
-    return this.isRunning && 
-           this.redisService.isConnected() && 
-           this.connectionManager.isRunning() &&
-           this.hubServer.isRunning() &&
-           this.websocketManager.isRunning();
+    return (
+      this.isRunning &&
+      this.redisService.isConnected() &&
+      this.connectionManager.isRunning() &&
+      this.hubServer.isRunning() &&
+      this.websocketManager.isRunning()
+    );
   }
 }
 
@@ -122,7 +135,7 @@ process.on('SIGINT', () => shutdown('SIGINT'));
 process.on('SIGTERM', () => shutdown('SIGTERM'));
 
 // Handle uncaught exceptions
-process.on('uncaughtException', (error) => {
+process.on('uncaughtException', error => {
   logger.error('Uncaught exception:', error);
   shutdown('uncaughtException');
 });

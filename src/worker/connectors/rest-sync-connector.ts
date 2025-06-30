@@ -2,23 +2,29 @@
 // Direct port from Python worker/connectors/rest_sync_connector.py
 
 import axios, { AxiosInstance } from 'axios';
-import { ConnectorInterface, JobData, JobResult, JobProgress, ProgressCallback, RestConnectorConfig } from '../../core/types/connector.js';
+import {
+  ConnectorInterface,
+  JobData,
+  JobResult,
+  ProgressCallback,
+  RestConnectorConfig,
+} from '../../core/types/connector.js';
 import { logger } from '../../core/utils/logger.js';
 
 export class RestSyncConnector implements ConnectorInterface {
   connector_id: string;
-  service_type = 'rest_sync';
+  service_type = 'rest_sync' as const;
   version = '1.0.0';
   private config: RestConnectorConfig;
   private httpClient: AxiosInstance;
 
   constructor(connectorId: string) {
     this.connector_id = connectorId;
-    
+
     // Basic configuration - can be enhanced with environment variables
     this.config = {
       connector_id: this.connector_id,
-      service_type: this.service_type,
+      service_type: this.service_type as 'rest_sync',
       base_url: process.env.WORKER_REST_SYNC_BASE_URL || 'http://localhost:8080',
       timeout_seconds: parseInt(process.env.WORKER_REST_SYNC_TIMEOUT_SECONDS || '60'),
       retry_attempts: parseInt(process.env.WORKER_REST_SYNC_RETRY_ATTEMPTS || '3'),
@@ -26,9 +32,12 @@ export class RestSyncConnector implements ConnectorInterface {
       health_check_interval_seconds: 30,
       max_concurrent_jobs: parseInt(process.env.WORKER_REST_SYNC_MAX_CONCURRENT_JOBS || '5'),
       settings: {
-        method: (process.env.WORKER_REST_SYNC_METHOD as any) || 'POST',
-        response_format: (process.env.WORKER_REST_SYNC_RESPONSE_FORMAT as any) || 'json'
-      }
+        method:
+          (process.env.WORKER_REST_SYNC_METHOD as 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE') ||
+          'POST',
+        response_format:
+          (process.env.WORKER_REST_SYNC_RESPONSE_FORMAT as 'json' | 'text' | 'binary') || 'json',
+      },
     };
 
     // Initialize HTTP client
@@ -37,14 +46,16 @@ export class RestSyncConnector implements ConnectorInterface {
       timeout: this.config.timeout_seconds * 1000,
       headers: {
         'Content-Type': 'application/json',
-        'User-Agent': `emp-redis-worker/${this.version}`
-      }
+        'User-Agent': `emp-redis-worker/${this.version}`,
+      },
     });
   }
 
   async initialize(): Promise<void> {
     logger.info(`Initializing REST Sync connector ${this.connector_id} at ${this.config.base_url}`);
-    logger.info(`REST Sync settings: ${this.config.settings.method} requests, ${this.config.settings.response_format} responses`);
+    logger.info(
+      `REST Sync settings: ${this.config.settings.method} requests, ${this.config.settings.response_format} responses`
+    );
   }
 
   async cleanup(): Promise<void> {
@@ -68,31 +79,33 @@ export class RestSyncConnector implements ConnectorInterface {
     return ['rest-sync-generic'];
   }
 
-  async getServiceInfo(): Promise<any> {
+  async getServiceInfo(): Promise<Record<string, unknown>> {
     return {
       service_name: 'REST Sync Service',
       service_version: this.version,
       base_url: this.config.base_url,
-      status: await this.checkHealth() ? 'online' : 'offline',
+      status: (await this.checkHealth()) ? 'online' : 'offline',
       capabilities: {
         supported_formats: ['json', 'text', 'binary'],
         supported_models: await this.getAvailableModels(),
         features: ['synchronous_requests', 'configurable_endpoints', 'retry_logic'],
-        concurrent_jobs: this.config.max_concurrent_jobs
+        concurrent_jobs: this.config.max_concurrent_jobs,
       },
       configuration: {
         method: this.config.settings.method,
         response_format: this.config.settings.response_format,
         timeout_seconds: this.config.timeout_seconds,
-        retry_attempts: this.config.retry_attempts
-      }
+        retry_attempts: this.config.retry_attempts,
+      },
     };
   }
 
   async canProcessJob(jobData: JobData): Promise<boolean> {
-    return jobData.type === 'rest_sync' || 
-           jobData.type === this.service_type ||
-           (jobData.payload?.endpoint !== undefined);
+    return (
+      jobData.type === 'rest_sync' ||
+      jobData.type === this.service_type ||
+      jobData.payload?.endpoint !== undefined
+    );
   }
 
   async processJob(jobData: JobData, progressCallback: ProgressCallback): Promise<JobResult> {
@@ -111,16 +124,16 @@ export class RestSyncConnector implements ConnectorInterface {
         job_id: jobData.id,
         progress: 10,
         message: `Preparing ${method} request to ${endpoint}`,
-        current_step: 'Initializing request'
+        current_step: 'Initializing request',
       });
 
       // Make the REST request with retry logic
       const result = await this.makeRequestWithRetries(
-        endpoint, 
-        method, 
-        requestData, 
-        headers, 
-        jobData.id, 
+        endpoint,
+        method,
+        requestData,
+        headers,
+        jobData.id,
         progressCallback
       );
 
@@ -131,7 +144,7 @@ export class RestSyncConnector implements ConnectorInterface {
         job_id: jobData.id,
         progress: 100,
         message: 'Request completed successfully',
-        current_step: 'Finished'
+        current_step: 'Finished',
       });
 
       logger.info(`REST Sync job ${jobData.id} completed in ${processingTime}ms`);
@@ -144,7 +157,7 @@ export class RestSyncConnector implements ConnectorInterface {
           headers: result.headers,
           endpoint,
           method,
-          response_size: JSON.stringify(result.data).length
+          response_size: JSON.stringify(result.data).length,
         },
         processing_time_ms: processingTime,
         service_metadata: {
@@ -154,11 +167,10 @@ export class RestSyncConnector implements ConnectorInterface {
             method,
             status_code: result.status,
             response_size_bytes: JSON.stringify(result.data).length,
-            retry_attempts_used: 0 // Would be tracked in actual retry implementation
-          }
-        }
+            retry_attempts_used: 0, // Would be tracked in actual retry implementation
+          },
+        },
       };
-
     } catch (error) {
       const processingTime = Date.now() - startTime;
       logger.error(`REST Sync job ${jobData.id} failed:`, error);
@@ -168,12 +180,12 @@ export class RestSyncConnector implements ConnectorInterface {
         error: error instanceof Error ? error.message : 'REST Sync request failed',
         metadata: {
           endpoint: jobData.payload.endpoint,
-          method: jobData.payload.method || this.config.settings.method
+          method: jobData.payload.method || this.config.settings.method,
         },
         processing_time_ms: processingTime,
         service_metadata: {
-          service_version: this.version
-        }
+          service_version: this.version,
+        },
       };
     }
   }
@@ -186,11 +198,11 @@ export class RestSyncConnector implements ConnectorInterface {
   private async makeRequestWithRetries(
     endpoint: string,
     method: string,
-    data: any,
+    data,
     headers: Record<string, string>,
     jobId: string,
     progressCallback: ProgressCallback
-  ): Promise<any> {
+  ): Promise<Record<string, unknown>> {
     const maxRetries = this.config.retry_attempts;
     let lastError: Error | null = null;
 
@@ -202,25 +214,24 @@ export class RestSyncConnector implements ConnectorInterface {
           job_id: jobId,
           progress: Math.round(progress),
           message: attempt > 0 ? `Retry attempt ${attempt}/${maxRetries}` : 'Making request',
-          current_step: `Attempt ${attempt + 1}`
+          current_step: `Attempt ${attempt + 1}`,
         });
 
         // Make the actual request
         const response = await this.httpClient.request({
           url: endpoint,
-          method: method as any,
+          method: method,
           data: method !== 'GET' ? data : undefined,
           params: method === 'GET' ? data : undefined,
-          headers
+          headers,
         });
 
         // Success - return response
         return {
           status: response.status,
           headers: response.headers,
-          data: response.data
+          data: response.data,
         };
-
       } catch (error) {
         lastError = error instanceof Error ? error : new Error('Unknown error');
         logger.warn(`REST Sync job ${jobId} attempt ${attempt + 1} failed:`, lastError.message);
@@ -243,7 +254,7 @@ export class RestSyncConnector implements ConnectorInterface {
 
   async updateConfiguration(config: RestConnectorConfig): Promise<void> {
     this.config = { ...this.config, ...config };
-    
+
     // Recreate HTTP client if base URL changed
     if (config.base_url) {
       this.httpClient = axios.create({
@@ -252,11 +263,11 @@ export class RestSyncConnector implements ConnectorInterface {
         headers: {
           'Content-Type': 'application/json',
           'User-Agent': `emp-redis-worker/${this.version}`,
-          ...(this.config.custom_headers || {})
-        }
+          ...(this.config.custom_headers || {}),
+        },
       });
     }
-    
+
     logger.info(`Updated configuration for REST Sync connector ${this.connector_id}`);
   }
 

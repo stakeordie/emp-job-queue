@@ -1,7 +1,14 @@
 // Redis Service Interface - direct port from Python core/interfaces/redis_service_interface.py
 // Defines contract for Redis operations
 
-import { Job, JobStatus, JobProgress, JobResult, JobFilter, JobSearchResult } from '../types/job.js';
+import {
+  Job,
+  JobStatus,
+  JobProgress,
+  JobResult,
+  JobFilter,
+  JobSearchResult,
+} from '../types/job.js';
 import { WorkerCapabilities, WorkerInfo, WorkerFilter } from '../types/worker.js';
 
 export interface RedisServiceInterface {
@@ -45,13 +52,13 @@ export interface RedisServiceInterface {
   getAllWorkers(): Promise<WorkerInfo[]>;
   getActiveWorkers(): Promise<WorkerInfo[]>;
   getIdleWorkers(): Promise<WorkerInfo[]>;
-  
+
   // Worker filtering and search
-  findCapableWorkers(jobRequirements: any): Promise<WorkerInfo[]>;
+  findCapableWorkers(jobRequirements): Promise<WorkerInfo[]>;
   searchWorkers(filter: WorkerFilter): Promise<WorkerInfo[]>;
 
   // Worker heartbeat and health
-  updateWorkerHeartbeat(workerId: string, systemInfo?: any): Promise<void>;
+  updateWorkerHeartbeat(workerId: string, systemInfo?): Promise<void>;
   getWorkerLastHeartbeat(workerId: string): Promise<string | null>;
   cleanupStaleWorkers(timeoutSeconds: number): Promise<string[]>;
 
@@ -78,21 +85,21 @@ export interface RedisServiceInterface {
   }>;
 
   // Pub/Sub operations
-  publishMessage(channel: string, message: any): Promise<void>;
-  subscribeToChannel(channel: string, callback: (message: any) => void): Promise<void>;
+  publishMessage(channel: string, message: unknown): Promise<void>;
+  subscribeToChannel(channel: string, callback: (message: unknown) => void): Promise<void>;
   unsubscribeFromChannel(channel: string): Promise<void>;
 
   // Data cleanup and maintenance
   cleanupCompletedJobs(olderThanHours: number): Promise<number>;
   cleanupFailedJobs(olderThanDays: number): Promise<number>;
   optimizeJobQueue(): Promise<void>;
-  
+
   // Backup and recovery
-  exportJobData(startDate?: string, endDate?: string): Promise<any[]>;
-  importJobData(jobs: any[]): Promise<number>;
-  
+  exportJobData(startDate?: string, endDate?: string): Promise<unknown[]>;
+  importJobData(jobs: unknown[]): Promise<number>;
+
   // Health and diagnostics
-  getRedisInfo(): Promise<Record<string, any>>;
+  getRedisInfo(): Promise<Record<string, unknown>>;
   getMemoryUsage(): Promise<{
     used_memory: number;
     used_memory_human: string;
