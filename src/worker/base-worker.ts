@@ -30,11 +30,14 @@ export class BaseWorker {
   private status: WorkerStatus = WorkerStatus.INITIALIZING;
   private currentJobs = new Map<string, Job>();
   private jobStartTimes = new Map<string, number>();
+  private jobTimeouts = new Map<string, NodeJS.Timeout>();
   private running = false;
   private jobProcessingInterval?: NodeJS.Timeout;
   private heartbeatInterval?: NodeJS.Timeout;
+  private jobTimeoutCheckInterval?: NodeJS.Timeout;
   private pollIntervalMs: number;
   private maxConcurrentJobs: number;
+  private jobTimeoutMinutes: number;
   private dashboard?: WorkerDashboard;
 
   constructor(workerId: string, connectorManager: ConnectorManager, workerClient: WorkerClient) {
@@ -45,6 +48,7 @@ export class BaseWorker {
     // Configuration from environment - match Python patterns
     this.pollIntervalMs = parseInt(process.env.WORKER_POLL_INTERVAL_MS || '5000');
     this.maxConcurrentJobs = parseInt(process.env.WORKER_MAX_CONCURRENT_JOBS || '1');
+    this.jobTimeoutMinutes = parseInt(process.env.WORKER_JOB_TIMEOUT_MINUTES || '60');
 
     // Initialize capabilities from environment and system info
     this.capabilities = this.buildWorkerCapabilities();
@@ -155,6 +159,9 @@ export class BaseWorker {
       // Start heartbeat
       this.startHeartbeat();
 
+      // Start job timeout monitoring
+      this.startJobTimeoutMonitoring();
+
       // Start dashboard if enabled
       if (process.env.WORKER_DASHBOARD_ENABLED !== 'false') {
         const dashboardPort = parseInt(process.env.WORKER_DASHBOARD_PORT || '0'); // 0 = auto-assign
@@ -193,6 +200,15 @@ export class BaseWorker {
     if (this.heartbeatInterval) {
       clearInterval(this.heartbeatInterval);
     }
+    if (this.jobTimeoutCheckInterval) {
+      clearInterval(this.jobTimeoutCheckInterval);
+    }
+
+    // Clear job timeouts
+    for (const timeout of this.jobTimeouts.values()) {
+      clearTimeout(timeout);
+    }
+    this.jobTimeouts.clear();
 
     // Cancel current jobs
     for (const [jobId, _job] of this.currentJobs) {
@@ -284,6 +300,9 @@ export class BaseWorker {
       this.currentJobs.set(job.id, job);
       this.jobStartTimes.set(job.id, startTime);
 
+      // Set up job timeout
+      this.setupJobTimeout(job.id);
+
       // Record job start in dashboard
       if (this.dashboard) {
         this.dashboard.recordJobStarted(job);
@@ -332,9 +351,7 @@ export class BaseWorker {
       await this.failJob(job.id, error instanceof Error ? error.message : 'Unknown error');
     } finally {
       // Clean up
-      this.currentJobs.delete(job.id);
-      this.jobStartTimes.delete(job.id);
-      this.status = this.currentJobs.size > 0 ? WorkerStatus.BUSY : WorkerStatus.IDLE;
+      this.cleanupJob(job.id);
     }
   }
 
@@ -426,6 +443,87 @@ export class BaseWorker {
         logger.error('Failed to send heartbeat:', error);
       }
     }, heartbeatIntervalMs);
+  }
+
+  private startJobTimeoutMonitoring(): void {
+    // Check for timed-out jobs every 30 seconds
+    this.jobTimeoutCheckInterval = setInterval(async () => {
+      try {
+        await this.checkJobTimeouts();
+      } catch (error) {
+        logger.error('Error checking job timeouts:', error);
+      }
+    }, 30000);
+  }
+
+  private setupJobTimeout(jobId: string): void {
+    const timeoutMs = this.jobTimeoutMinutes * 60 * 1000;
+
+    const timeout = setTimeout(async () => {
+      logger.warn(`Job ${jobId} timed out after ${this.jobTimeoutMinutes} minutes`);
+      await this.handleJobTimeout(jobId);
+    }, timeoutMs);
+
+    this.jobTimeouts.set(jobId, timeout);
+  }
+
+  private async checkJobTimeouts(): Promise<void> {
+    const now = Date.now();
+    const timeoutMs = this.jobTimeoutMinutes * 60 * 1000;
+
+    for (const [jobId, startTime] of this.jobStartTimes) {
+      if (now - startTime > timeoutMs) {
+        logger.warn(`Job ${jobId} exceeded timeout of ${this.jobTimeoutMinutes} minutes`);
+        await this.handleJobTimeout(jobId);
+      }
+    }
+  }
+
+  private async handleJobTimeout(jobId: string): Promise<void> {
+    const job = this.currentJobs.get(jobId);
+    if (!job) return;
+
+    try {
+      // Cancel the job in the connector
+      const connector = this.connectorManager.getConnectorByServiceType(job.service_required);
+      if (connector) {
+        await connector.cancelJob(jobId);
+      }
+
+      // Release the job back to queue for retry
+      await this.workerClient.releaseJob(jobId, 'Job timeout');
+
+      // Record timeout in dashboard
+      if (this.dashboard) {
+        const startTime = this.jobStartTimes.get(jobId);
+        if (startTime) {
+          const duration = Date.now() - startTime;
+          this.dashboard.recordJobFailed(job, 'Job timeout', duration);
+        }
+      }
+
+      logger.warn(`Job ${jobId} timed out and released back to queue`);
+    } catch (error) {
+      logger.error(`Failed to handle timeout for job ${jobId}:`, error);
+    } finally {
+      this.cleanupJob(jobId);
+    }
+  }
+
+  private cleanupJob(jobId: string): void {
+    // Remove from tracking maps
+    this.currentJobs.delete(jobId);
+    this.jobStartTimes.delete(jobId);
+
+    // Clear timeout
+    const timeout = this.jobTimeouts.get(jobId);
+    if (timeout) {
+      clearTimeout(timeout);
+      this.jobTimeouts.delete(jobId);
+    }
+
+    // Update worker status
+    this.status = this.currentJobs.size > 0 ? WorkerStatus.BUSY : WorkerStatus.IDLE;
   }
 
   private getSystemInfo(): SystemInfo {

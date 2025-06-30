@@ -3,6 +3,7 @@
 
 import { WebSocket } from 'ws';
 import { RedisService } from '../core/redis-service.js';
+import { JobBroker } from '../core/job-broker.js';
 import { TimestampUtil } from '../core/utils/timestamp.js';
 import {
   BaseMessage,
@@ -22,6 +23,7 @@ import { v4 as uuidv4 } from 'uuid';
 
 export class WorkerClient {
   private redisService: RedisService;
+  private jobBroker: JobBroker;
   private websocket: WebSocket | null = null;
   private workerId: string;
   private hubRedisUrl: string;
@@ -39,6 +41,7 @@ export class WorkerClient {
     this.hubWsUrl = hubWsUrl;
     this.workerId = workerId;
     this.redisService = new RedisService(hubRedisUrl);
+    this.jobBroker = new JobBroker(this.redisService);
   }
 
   async connect(): Promise<void> {
@@ -210,8 +213,44 @@ export class WorkerClient {
 
   // Job operations
   async requestJob(capabilities: WorkerCapabilities): Promise<Job | null> {
-    // Use Redis pull-based job selection (hybrid approach)
-    return await this.redisService.getNextJob(capabilities);
+    // Enhanced pull-based job selection with retry logic
+    const maxRetries = 3;
+    const retryDelayMs = 100;
+
+    for (let attempt = 1; attempt <= maxRetries; attempt++) {
+      try {
+        // Use JobBroker for sophisticated job selection with workflow awareness
+        const job = await this.jobBroker.getNextJobForWorker(capabilities);
+
+        if (job) {
+          logger.info(
+            `Worker ${capabilities.worker_id} claimed job ${job.id} on attempt ${attempt}`
+          );
+          return job;
+        }
+
+        // No jobs available
+        return null;
+      } catch (error) {
+        logger.warn(
+          `Job request attempt ${attempt}/${maxRetries} failed for worker ${capabilities.worker_id}:`,
+          error
+        );
+
+        if (attempt < maxRetries) {
+          // Exponential backoff for retries
+          const delay = retryDelayMs * Math.pow(2, attempt - 1);
+          await new Promise(resolve => setTimeout(resolve, delay));
+        } else {
+          logger.error(
+            `All ${maxRetries} job request attempts failed for worker ${capabilities.worker_id}`
+          );
+          return null;
+        }
+      }
+    }
+
+    return null;
   }
 
   async reportProgress(jobId: string, progress: JobProgress): Promise<void> {
@@ -258,6 +297,87 @@ export class WorkerClient {
     };
 
     await this.sendMessage(message);
+  }
+
+  /**
+   * Release a job back to the queue (for timeouts or worker failures)
+   */
+  async releaseJob(jobId: string, reason = 'Worker released job'): Promise<void> {
+    try {
+      await this.jobBroker.releaseJob(jobId);
+      logger.info(`Released job ${jobId}: ${reason}`);
+    } catch (error) {
+      logger.error(`Failed to release job ${jobId}:`, error);
+      throw error;
+    }
+  }
+
+  /**
+   * Enhanced capability self-assessment before claiming jobs
+   */
+  async canHandleJob(job: Job, capabilities: WorkerCapabilities): Promise<boolean> {
+    try {
+      // Check basic service type match
+      if (!capabilities.services.includes(job.service_required)) {
+        return false;
+      }
+
+      // Check hardware requirements if specified
+      if (job.requirements?.hardware) {
+        const hardware = capabilities.hardware;
+        const required = job.requirements.hardware;
+
+        if (
+          required.gpu_memory_gb &&
+          required.gpu_memory_gb !== 'all' &&
+          typeof required.gpu_memory_gb === 'number' &&
+          hardware.gpu_memory_gb < required.gpu_memory_gb
+        ) {
+          return false;
+        }
+
+        if (
+          required.cpu_cores &&
+          required.cpu_cores !== 'all' &&
+          typeof required.cpu_cores === 'number' &&
+          hardware.cpu_cores < required.cpu_cores
+        ) {
+          return false;
+        }
+
+        if (
+          required.ram_gb &&
+          required.ram_gb !== 'all' &&
+          typeof required.ram_gb === 'number' &&
+          hardware.ram_gb < required.ram_gb
+        ) {
+          return false;
+        }
+      }
+
+      // Check customer access permissions
+      if (job.customer_id && capabilities.customer_access) {
+        const access = capabilities.customer_access;
+
+        if (access.denied_customers?.includes(job.customer_id)) {
+          return false;
+        }
+
+        if (access.allowed_customers && !access.allowed_customers.includes(job.customer_id)) {
+          return false;
+        }
+
+        if (access.isolation === 'strict') {
+          // In strict mode, check if worker is already processing for different customer
+          // This would need additional state tracking in production
+        }
+      }
+
+      return true;
+    } catch (error) {
+      logger.error(`Error in capability assessment for job ${job.id}:`, error);
+      return false;
+    }
   }
 
   // Worker status
