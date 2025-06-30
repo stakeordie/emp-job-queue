@@ -151,6 +151,7 @@ export interface UpdateJobProgressMessage extends BaseMessage {
   status: string;
   message?: string;
   timestamp: Timestamp;
+  client_id?: string; // Present in Python messages
   connector_details?: {
     connected: boolean;
     service: string;
@@ -168,6 +169,7 @@ export interface UpdateJobProgressMessage extends BaseMessage {
 export interface CompleteJobMessage extends BaseMessage {
   type: MessageType.COMPLETE_JOB;
   job_id: string;
+  worker_id: string; // CRITICAL: This field was missing but required in Python
   result?: Record<string, unknown>;
   timestamp: Timestamp;
 }
@@ -189,7 +191,7 @@ export interface FailJobMessage extends BaseMessage {
   type: MessageType.FAIL_JOB;
   job_id: string;
   worker_id: string;
-  error: string;
+  error?: string; // Optional in Python, should be optional here too
   retry?: boolean;
   timestamp: Timestamp;
 }
@@ -259,6 +261,7 @@ export interface ResponseJobStatusMessage extends BaseMessage {
   completed_at?: number;
   result?: Record<string, unknown>;
   message?: string;
+  client_id?: string; // Present in Python messages
   timestamp: Timestamp;
 }
 
@@ -506,11 +509,9 @@ export interface ServiceRequestMessage extends BaseMessage {
   type: MessageType.SERVICE_REQUEST;
   job_id: string;
   worker_id: string;
-  service_type: string;
-  endpoint: string;
-  method: string;
-  url: string;
-  payload?: Record<string, unknown>;
+  service: string; // Python uses "service", not "service_type"
+  request_type: string; // Python field
+  content: Record<string, unknown>; // Python uses "content", not "payload"
   timestamp: Timestamp;
 }
 

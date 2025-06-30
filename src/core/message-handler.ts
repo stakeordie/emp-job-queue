@@ -241,7 +241,7 @@ export class MessageHandler implements MessageHandlerInterface {
       type: MessageType.JOB_COMPLETED,
       timestamp: TimestampUtil.now(),
       job_id: message.job_id,
-      worker_id: message.source || '',
+      worker_id: message.worker_id, // Use the required worker_id field
       status: 'completed',
       result: message.result,
       processing_time: message.result?.processing_time,

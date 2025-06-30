@@ -239,6 +239,7 @@ export class WorkerClient {
       type: MessageType.COMPLETE_JOB,
       timestamp: TimestampUtil.now(),
       job_id: jobId,
+      worker_id: this.workerId, // Required field for Python compatibility
       result,
     };
 

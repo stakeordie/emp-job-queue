@@ -593,13 +593,13 @@ function connectMonitorSocket(baseUrl, monitorId, authToken) {
             addLogEntry(`Monitor socket error: ${event}`, 'error');
             // Try to get more details about the error
             addLogEntry(`Connection to ${monitorUrl} failed. Please check if the server is running and accessible.`, 'error');
-            handleDisconnect();
+            handleMonitorDisconnect();
         });
         
         // Listen for connection close
         state.monitorSocket.addEventListener('close', (event) => {
-            addLogEntry(`Monitor socket closed: ${event.reason}`, 'warning');
-            handleDisconnect();
+            addLogEntry(`Monitor socket closed: ${event.reason || 'Unknown reason'}`, 'warning');
+            handleMonitorDisconnect();
         });
         
     } catch (error) {
@@ -656,13 +656,13 @@ function connectClientSocket(baseUrl, clientId, authToken) {
             addLogEntry(`Client socket error: ${event}`, 'error');
             // Try to get more details about the error
             addLogEntry(`Connection to ${clientUrl} failed. Please check if the server is running and accessible.`, 'error');
-            handleDisconnect();
+            handleClientDisconnect();
         });
         
         // Listen for connection close
         state.clientSocket.addEventListener('close', (event) => {
-            addLogEntry(`Client socket closed: ${event.reason}`, 'warning');
-            handleDisconnect();
+            addLogEntry(`Client socket closed: ${event.reason || 'Unknown reason'}`, 'warning');
+            handleClientDisconnect();
         });
         
     } catch (error) {
@@ -832,6 +832,75 @@ function handleDisconnect() {
     updateUI();
     
     addLogEntry('All connections closed and data cleared', 'info');
+}
+
+/**
+ * Handle monitor socket disconnection only
+ */
+function handleMonitorDisconnect() {
+    // Reset only monitor connection state
+    state.monitorConnected = false;
+    state.monitorSocket = null;
+    
+    // Reset monitor ID display
+    if (elements.monitorIdDisplay) {
+        elements.monitorIdDisplay.textContent = 'Not connected';
+    }
+    
+    // Update UI
+    updateConnectionUI();
+    
+    addLogEntry('Monitor connection lost', 'warning');
+    
+    // Only clear data if both connections are down
+    if (!state.clientConnected) {
+        clearData();
+    }
+}
+
+/**
+ * Handle client socket disconnection only
+ */
+function handleClientDisconnect() {
+    // Reset only client connection state
+    state.clientConnected = false;
+    state.clientSocket = null;
+    
+    // Reset client ID display
+    if (elements.clientIdDisplay) {
+        elements.clientIdDisplay.textContent = 'Not connected';
+    }
+    
+    // Update UI
+    updateConnectionUI();
+    
+    addLogEntry('Client connection lost', 'warning');
+    
+    // Only clear data if both connections are down
+    if (!state.monitorConnected) {
+        clearData();
+    }
+}
+
+/**
+ * Clear application data
+ */
+function clearData() {
+    // Clear data
+    state.workers = {};
+    state.clients = {};
+    state.jobs = {};
+    state.stats = {
+        totalWorkers: 0,
+        totalClients: 0,
+        activeJobs: 0,
+        failedJobs: 0
+    };
+    
+    // Update UI
+    updateUI();
+    
+    addLogEntry('Application data cleared', 'info');
 }
 
 /**

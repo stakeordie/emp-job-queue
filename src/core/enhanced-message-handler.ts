@@ -297,7 +297,7 @@ export class EnhancedMessageHandler implements MessageHandlerInterface {
       type: MessageType.JOB_COMPLETED,
       timestamp: TimestampUtil.now(),
       job_id: message.job_id,
-      worker_id: message.source || '',
+      worker_id: message.worker_id, // Use the required worker_id field
       status: 'completed',
       result: message.result,
       processing_time: message.result?.processing_time,
@@ -306,7 +306,8 @@ export class EnhancedMessageHandler implements MessageHandlerInterface {
 
   async handleFailJob(message: FailJobMessage): Promise<void> {
     try {
-      await this.redisService.failJob(message.job_id, message.error, message.retry !== false);
+      const errorMessage = message.error || 'Unknown error';
+      await this.redisService.failJob(message.job_id, errorMessage, message.retry !== false);
 
       // Update worker status to idle
       if (message.worker_id) {
@@ -316,7 +317,7 @@ export class EnhancedMessageHandler implements MessageHandlerInterface {
       // Broadcast failure to monitors
       await this.connectionManager.broadcastToMonitors(message);
 
-      logger.info(`Job ${message.job_id} failed on worker ${message.worker_id}: ${message.error}`);
+      logger.info(`Job ${message.job_id} failed on worker ${message.worker_id}: ${errorMessage}`);
     } catch (error) {
       logger.error(`Failed to handle job failure for ${message.job_id}:`, error);
       throw error;
