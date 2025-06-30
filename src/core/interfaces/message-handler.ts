@@ -3,9 +3,27 @@
 
 import { BaseMessage, MessageType } from '../types/messages.js';
 
+// Type for message handler functions
+export type MessageHandlerFunction = (message: BaseMessage) => Promise<void>;
+
+// Handler context for advanced routing
+export interface MessageContext {
+  source?: string;
+  workerId?: string;
+  clientId?: string;
+  connectionId?: string;
+  timestamp: number;
+}
+
 export interface MessageHandlerInterface {
+  // Dynamic handler registration
+  registerHandler(messageType: string, handler: MessageHandlerFunction): void;
+  unregisterHandler(messageType: string): void;
+  hasHandler(messageType: string): boolean;
+  getRegisteredHandlers(): string[];
+
   // Message processing
-  handleMessage(message: BaseMessage): Promise<void>;
+  handleMessage(message: BaseMessage, context?: MessageContext): Promise<void>;
   handleWorkerMessage(workerId: string, message: BaseMessage): Promise<void>;
   handleClientMessage(clientId: string, message: BaseMessage): Promise<void>;
 

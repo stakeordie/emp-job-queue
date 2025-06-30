@@ -259,10 +259,13 @@ const elements = {
     // Stats
     requestStatsBtn: document.getElementById('request-stats-btn'),
     workersCount: document.getElementById('workers-count'),
+    workersCountHeader: document.getElementById('workers-count-header'),
     clientsCount: document.getElementById('clients-count'),
+    clientsCountDisplay: document.getElementById('clients-count-display'),
     queuedJobsCount: document.getElementById('queued-jobs-count'),
     activeJobsCount: document.getElementById('active-jobs-count'),
-    jobHistoryLink: document.getElementById('job-history-link'),
+    allJobsCount: document.getElementById('all-jobs-count'),
+    finishedJobsCount: document.getElementById('finished-jobs-count'),
     
     // Tables and Containers
     // Updated worker references for table-based layout
@@ -2957,10 +2960,31 @@ function updateUI() {
     console.log(`[2025-04-17-20:10] Job counts by status: queued=${queuedJobs.length}, active=${activeJobs.length}, completed=${completedJobs.length}, failed=${failedJobs.length}`);
     
     // Update UI with accurate counts
-    elements.workersCount.textContent = state.stats.totalWorkers;
-    elements.clientsCount.textContent = state.stats.totalClients;
-    elements.queuedJobsCount.textContent = queuedJobs.length;
-    elements.activeJobsCount.textContent = activeJobs.length;
+    const totalWorkers = state.stats.totalWorkers;
+    const totalClients = state.stats.totalClients;
+    const queuedCount = queuedJobs.length;
+    const activeCount = activeJobs.length;
+    const allJobsTotal = queuedJobs.length + activeJobs.length + completedJobs.length + failedJobs.length;
+    const finishedJobsTotal = completedJobs.length + failedJobs.length;
+    
+    // Update main stats (if elements exist)
+    if (elements.workersCount) elements.workersCount.textContent = totalWorkers;
+    if (elements.workersCountHeader) elements.workersCountHeader.textContent = totalWorkers;
+    if (elements.clientsCount) elements.clientsCount.textContent = totalClients;
+    elements.queuedJobsCount.textContent = queuedCount;
+    elements.activeJobsCount.textContent = activeCount;
+    
+    // Update job section totals
+    if (elements.allJobsCount) elements.allJobsCount.textContent = allJobsTotal;
+    if (elements.finishedJobsCount) elements.finishedJobsCount.textContent = finishedJobsTotal;
+    
+    // Update clients info in connection status
+    if (elements.clientsCountDisplay) {
+        const clientText = totalClients === 0 ? "(no other clients connected)" :
+                          totalClients === 1 ? "(1 other client connected)" :
+                          `(${totalClients} other clients connected)`;
+        elements.clientsCountDisplay.textContent = clientText;
+    }
     
     // Update workers display - using cards grid instead of table
     const workers = Object.values(state.workers);
@@ -3139,7 +3163,13 @@ function updateUI() {
         if (elements.workersCardsContainer) {
             elements.noWorkersCardsMessage.classList.remove('hidden');
         }
+        if (elements.workersCarousel) {
+            elements.noWorkersCarouselMessage.classList.remove('hidden');
+        }
     }
+    
+    // Update carousel position after workers are updated
+    updateCarouselAfterWorkersUpdate();
     
     // [2025-04-06 19:00] Update jobs table - only show queued jobs
     // Only display queued (pending) jobs in the job queue
@@ -4316,9 +4346,77 @@ function setupJobActionEventDelegation() {
     }
 }
 
+// Workers Carousel Functionality
+let carouselCurrentIndex = 0;
+const carouselCardWidth = 252; // 240px + 12px gap
+
+function updateCarouselPosition() {
+    if (elements.workersCarousel) {
+        const totalCards = elements.workersCarousel.children.length;
+        const containerWidth = elements.workersCarousel.parentElement.offsetWidth;
+        const visibleCards = Math.floor(containerWidth / carouselCardWidth);
+        const maxIndex = Math.max(0, totalCards - visibleCards);
+        
+        // Clamp index to valid range
+        carouselCurrentIndex = Math.max(0, Math.min(carouselCurrentIndex, maxIndex));
+        
+        // Update transform
+        const translateX = -carouselCurrentIndex * carouselCardWidth;
+        elements.workersCarousel.style.transform = `translateX(${translateX}px)`;
+        
+        // Update button states
+        if (elements.carouselPrevBtn) {
+            elements.carouselPrevBtn.disabled = carouselCurrentIndex === 0;
+        }
+        if (elements.carouselNextBtn) {
+            elements.carouselNextBtn.disabled = carouselCurrentIndex >= maxIndex;
+        }
+    }
+}
+
+function initCarousel() {
+    if (elements.carouselPrevBtn) {
+        elements.carouselPrevBtn.addEventListener('click', () => {
+            if (carouselCurrentIndex > 0) {
+                carouselCurrentIndex--;
+                updateCarouselPosition();
+            }
+        });
+    }
+    
+    if (elements.carouselNextBtn) {
+        elements.carouselNextBtn.addEventListener('click', () => {
+            const totalCards = elements.workersCarousel ? elements.workersCarousel.children.length : 0;
+            const containerWidth = elements.workersCarousel ? elements.workersCarousel.parentElement.offsetWidth : 0;
+            const visibleCards = Math.floor(containerWidth / carouselCardWidth);
+            const maxIndex = Math.max(0, totalCards - visibleCards);
+            
+            if (carouselCurrentIndex < maxIndex) {
+                carouselCurrentIndex++;
+                updateCarouselPosition();
+            }
+        });
+    }
+    
+    // Reset carousel position when workers change
+    window.addEventListener('resize', () => {
+        updateCarouselPosition();
+    });
+}
+
+// Update carousel position after workers are updated
+function updateCarouselAfterWorkersUpdate() {
+    // Reset to beginning when workers update
+    carouselCurrentIndex = 0;
+    setTimeout(() => {
+        updateCarouselPosition();
+    }, 100); // Small delay to ensure DOM is updated
+}
+
 // Initialize the application when the DOM is loaded
 document.addEventListener('DOMContentLoaded', () => {
     init();
     setupJobActionEventDelegation();
+    initCarousel();
     // Removed setupPeriodicRefresh() as we're using server push instead
 });

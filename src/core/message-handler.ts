@@ -36,6 +36,25 @@ export class MessageHandler implements MessageHandlerInterface {
   };
   private messageTypeStats = new Map<MessageType, number>();
 
+  // Stub implementations for new interface requirements
+  registerHandler(_messageType: string, _handler: unknown): void {
+    // Legacy handler - no dynamic registration support
+  }
+
+  unregisterHandler(_messageType: string): void {
+    // Legacy handler - no dynamic registration support
+  }
+
+  hasHandler(messageType: string): boolean {
+    // Legacy handler - static handler checking
+    return Object.values(MessageType).includes(messageType as MessageType);
+  }
+
+  getRegisteredHandlers(): string[] {
+    // Legacy handler - return all message types
+    return Object.values(MessageType);
+  }
+
   constructor(redisService: RedisServiceInterface, connectionManager: ConnectionManagerInterface) {
     this.redisService = redisService;
     this.connectionManager = connectionManager;

@@ -203,6 +203,13 @@
       margin-left: 10px;
       /* Reduced margin */
       font-size: 0.9rem;
+    }
+
+    .clients-info {
+      font-size: 0.8rem;
+      color: #6c757d;
+      font-style: italic;
+      margin-left: 8px;
       /* Smaller font */
     }
 
@@ -949,6 +956,7 @@
         <div class="connection-status">
           <div id="status-indicator" class="status-indicator status-disconnected"></div>
           <span id="connection-status-text">Disconnected</span>
+          <span id="clients-count-display" class="clients-info">(0 other clients connected)</span>
         </div>
       </div>
     </div>
@@ -959,14 +967,6 @@
     <div class="stats-section">
       <div class="compact-stats">
         <div class="stat-item">
-          <span class="stat-label">Workers:</span>
-          <span id="workers-count" class="stat-value">0</span>
-        </div>
-        <div class="stat-item">
-          <span class="stat-label">Clients:</span>
-          <span id="clients-count" class="stat-value">0</span>
-        </div>
-        <div class="stat-item">
           <span class="stat-label">Queued:</span>
           <span id="queued-jobs-count" class="stat-value">0</span>
         </div>
@@ -974,17 +974,12 @@
           <span class="stat-label">Active:</span>
           <span id="active-jobs-count" class="stat-value">0</span>
         </div>
-        <div class="stat-item">
-          <span class="stat-label">History:</span>
-          <a href="#" id="job-history-link" onclick="alert('Job History page will be implemented in a future update.')"
-            class="stat-link">View</a>
-        </div>
       </div>
     </div>
     
     <div class="workers-carousel-section">
       <div class="carousel-header">
-        <h3>Connected Workers</h3>
+        <h3>Connected Workers (<span id="workers-count-header">0</span>)</h3>
         <div class="carousel-controls">
           <button id="carousel-prev" class="carousel-btn">‹</button>
           <button id="carousel-next" class="carousel-btn">›</button>
@@ -1204,7 +1199,7 @@
       <div class="single-column-container">
         <!-- All Jobs Section -->
         <div class="card job-queue-section">
-          <h2>All Jobs</h2>
+          <h2>All Jobs (<span id="all-jobs-count">0</span>)</h2>
         <!-- Enhanced to show all job states: pending, assigned, in_progress, completed -->
         <!-- [2025-05-20T13:55:06-04:00] Added proper overflow handling for the jobs table -->
         <div id="jobs-table-container" class="table-responsive">
@@ -1236,7 +1231,7 @@
       
       <!-- [2025-04-06 19:40] Finished Jobs Section -->
       <div class="card finished-jobs-section">
-        <h2>Finished Jobs</h2>
+        <h2>Finished Jobs (<span id="finished-jobs-count">0</span>)</h2>
         <div id="finished-jobs-container" class="table-responsive">
           <table id="finished-jobs-table" class="compact-table">
             <thead>
