@@ -1,6 +1,6 @@
 {
   "name": "emp-redis-simple-monitor",
-  "version": "1.0.0",
+  "version": "1.0.  0",
   "description": "Simple Redis Monitor for emp-redis JavaScript - Standalone monitoring dashboard",
   "type": "module",
   "main": "dist/server.js",

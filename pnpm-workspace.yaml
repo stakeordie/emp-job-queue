@@ -1,4 +1,5 @@
-# pnpm workspace configuration
 packages:
-  - 'src/*'
-  - 'apps/*'
+  - src/*
+  - apps/*
+ignoredBuiltDependencies:
+  - esbuild

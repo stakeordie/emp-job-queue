@@ -18,18 +18,32 @@ When given a task, analyze and respond with:
   
 **Auto-execution:** Add `-y` to prompt for immediate execution after confirmation
 
-### Context Files
-- Always read `CHANGELOG.md` for project context
-- Check `tasks/todo.md` for current priorities and next steps
+### Context Files - READ THESE FIRST
+- **RESTART.md** - Quick status and next steps (read this first!)
+- `/apps/docs/src/changelog.md` - Official development history
+- Use `TodoRead` tool for current task priorities
 
-### commit process 
-- pnpm lint -> fix -> repeat
-- npx tsc -> fix -> repeat
-- tasks/todo.md
-- CHANGELOG.md
-- git add .
-- git commit -m "complete message"
-- "tell me to push"
+### Commit Process - MANDATORY STEPS
+1. **Update Changelog FIRST**:
+   - Edit `/apps/docs/src/changelog.md`
+   - Add entry under current date (create new date section if needed)
+   - Use appropriate emoji: ✅ Completed, 🚧 In Progress, 🐛 Bug Fix, 📚 Docs, ♻️ Refactor
+   - Be specific about what changed and why
+   
+2. **Quality Checks**:
+   - `pnpm lint` -> fix -> repeat until clean
+   - `pnpm typecheck` (or `npx tsc`) -> fix -> repeat until clean
+   - `pnpm build` -> fix -> repeat until successful
+   
+3. **Update Task Tracking**:
+   - Review and update `tasks/todo.md` if needed
+   - Move completed items to appropriate folders
+   
+4. **Git Operations**:
+   - `git add .`
+   - `git commit -m "type(scope): description"`
+   - Commit message should match changelog entry
+   - Tell user "Ready to push when you are"
 
 
 ## Project Overview
