@@ -268,7 +268,7 @@ export class BaseWorker {
       const job = await this.workerClient.requestJob(this.capabilities);
 
       if (job) {
-        logger.info(`Received job ${job.id} of type ${job.type}`);
+        logger.info(`Received job ${job.id} of type ${job.service_required}`);
         await this.processJob(job);
       }
     } catch (error) {
@@ -292,15 +292,15 @@ export class BaseWorker {
         this.currentJobs.size >= this.maxConcurrentJobs ? WorkerStatus.BUSY : WorkerStatus.IDLE;
 
       // Find appropriate connector
-      const connector = this.connectorManager.getConnectorByServiceType(job.type);
+      const connector = this.connectorManager.getConnectorByServiceType(job.service_required);
       if (!connector) {
-        throw new Error(`No connector available for job type: ${job.type}`);
+        throw new Error(`No connector available for job type: ${job.service_required}`);
       }
 
       // Check if connector can process this job
       const canProcess = await connector.canProcessJob({
         id: job.id,
-        type: job.type,
+        type: job.service_required,
         payload: job.payload,
         requirements: job.requirements,
       });
@@ -315,7 +315,7 @@ export class BaseWorker {
       const result = await connector.processJob(
         {
           id: job.id,
-          type: job.type,
+          type: job.service_required,
           payload: job.payload,
           requirements: job.requirements,
         },
@@ -391,7 +391,7 @@ export class BaseWorker {
     if (!job) return;
 
     try {
-      const connector = this.connectorManager.getConnectorByServiceType(job.type);
+      const connector = this.connectorManager.getConnectorByServiceType(job.service_required);
       if (connector) {
         await connector.cancelJob(jobId);
       }
@@ -458,7 +458,7 @@ export class BaseWorker {
   }
 
   private async handleJobAssigned(message: JobAssignedMessage): Promise<void> {
-    const job = message.job_data as Job;
+    const job = message.job_data as unknown as Job;
     logger.info(`Assigned job ${job.id} via WebSocket`);
     await this.processJob(job);
   }

@@ -101,7 +101,7 @@ export class RedisService implements RedisServiceInterface {
     // Store job details
     await this.redis.hmset(`job:${jobId}`, {
       id: job.id,
-      type: job.type,
+      service_required: job.service_required,
       priority: job.priority.toString(),
       payload: JSON.stringify(job.payload),
       requirements: job.requirements ? JSON.stringify(job.requirements) : '',
@@ -126,7 +126,7 @@ export class RedisService implements RedisServiceInterface {
 
     return {
       id: jobData.id,
-      type: jobData.type,
+      service_required: jobData.service_required,
       priority: parseInt(jobData.priority),
       payload: JSON.parse(jobData.payload || '{}'),
       requirements: jobData.requirements ? JSON.parse(jobData.requirements) : undefined,
@@ -396,8 +396,8 @@ export class RedisService implements RedisServiceInterface {
       return false;
     }
 
-    // Check service type compatibility - job.type is the primary service type
-    if (job.type && !capabilities.services.includes(job.type)) {
+    // Check service compatibility - job.service_required must match worker's services
+    if (job.service_required && !capabilities.services.includes(job.service_required)) {
       return false;
     }
 

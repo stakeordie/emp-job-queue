@@ -126,7 +126,7 @@ export class MessageHandler implements MessageHandlerInterface {
   async handleJobSubmission(message: JobSubmissionMessage): Promise<void> {
     try {
       const jobId = await this.redisService.submitJob({
-        type: message.job_type,
+        service_required: message.job_type,
         priority: message.priority,
         payload: message.payload,
         customer_id: message.customer_id,

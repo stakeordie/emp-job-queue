@@ -954,29 +954,49 @@
     </div>
   </div>
 
-  <!-- Stats Overview -->
-  <div class="stats-grid">
-    <div class="stat-card">
-      <div class="stat-label">Workers</div>
-      <div id="workers-count" class="stat-value">0</div>
+  <!-- Combined Stats & Workers Carousel -->
+  <div class="combined-overview-card">
+    <div class="stats-section">
+      <div class="compact-stats">
+        <div class="stat-item">
+          <span class="stat-label">Workers:</span>
+          <span id="workers-count" class="stat-value">0</span>
+        </div>
+        <div class="stat-item">
+          <span class="stat-label">Clients:</span>
+          <span id="clients-count" class="stat-value">0</span>
+        </div>
+        <div class="stat-item">
+          <span class="stat-label">Queued:</span>
+          <span id="queued-jobs-count" class="stat-value">0</span>
+        </div>
+        <div class="stat-item">
+          <span class="stat-label">Active:</span>
+          <span id="active-jobs-count" class="stat-value">0</span>
+        </div>
+        <div class="stat-item">
+          <span class="stat-label">History:</span>
+          <a href="#" id="job-history-link" onclick="alert('Job History page will be implemented in a future update.')"
+            class="stat-link">View</a>
+        </div>
+      </div>
     </div>
-    <div class="stat-card">
-      <div class="stat-label">Clients</div>
-      <div id="clients-count" class="stat-value">0</div>
-    </div>
-    <div class="stat-card">
-      <div class="stat-label">Queued Jobs</div>
-      <div id="queued-jobs-count" class="stat-value">0</div>
-    </div>
-    <div class="stat-card">
-      <div class="stat-label">Active Jobs</div>
-      <div id="active-jobs-count" class="stat-value">0</div>
-    </div>
-    <div class="stat-card">
-      <div class="stat-label">Job History</div>
-      <div class="stat-value">
-        <a href="#" id="job-history-link" onclick="alert('Job History page will be implemented in a future update.')"
-          style="text-decoration: none; color: #2196F3;">View</a>
+    
+    <div class="workers-carousel-section">
+      <div class="carousel-header">
+        <h3>Connected Workers</h3>
+        <div class="carousel-controls">
+          <button id="carousel-prev" class="carousel-btn">‹</button>
+          <button id="carousel-next" class="carousel-btn">›</button>
+        </div>
+      </div>
+      <div class="workers-carousel-container">
+        <div id="workers-carousel" class="workers-carousel">
+          <!-- Worker cards will be added here dynamically -->
+        </div>
+        <div id="no-workers-carousel-message" class="hidden carousel-message">
+          No workers connected
+        </div>
       </div>
     </div>
   </div>
@@ -984,7 +1004,6 @@
   <!-- [2025-04-06 19:05] Job Queue and Submission Section - Two Column Layout -->
   <div class="job-management-row">
     <!-- Left Column -->
-
     <div class="card job-submission-column">
       <h2>Submit Job</h2>
       <div class="job-submission-container"
@@ -1181,35 +1200,9 @@
 
     <!-- Right Column -->
     <div class="right-column-container">
-      <!-- [2025-05-24T13:05:00-04:00] Created side-by-side layout for workers and job queue -->
-      <div class="side-by-side-container">
-        <!-- Connected Workers Section (Left side) -->
-        <div class="card workers-section">
-          <h2>Connected Workers</h2>
-          <!-- Simplified worker table showing worker info only -->
-          <div id="workers-table-container" class="table-responsive">
-            <table id="workers-table" class="compact-table">
-              <thead>
-                <tr>
-                  <th>Worker ID</th>
-                  <th>Status</th>
-                  <th>Job Types</th>
-                  <th>Jobs Processed</th>
-                  <th>Current Job</th>
-                  <th>Connected</th>
-                </tr>
-              </thead>
-              <tbody id="workers-table-body">
-                <!-- Worker rows will be added here dynamically -->
-              </tbody>
-            </table>
-          </div>
-          <div id="no-workers-message" class="hidden">
-            No workers connected
-          </div>
-        </div>
-
-        <!-- All Jobs Section (Right side) -->
+      <!-- [2025-05-24T13:05:00-04:00] Jobs section - workers moved to left column -->
+      <div class="single-column-container">
+        <!-- All Jobs Section -->
         <div class="card job-queue-section">
           <h2>All Jobs</h2>
         <!-- Enhanced to show all job states: pending, assigned, in_progress, completed -->
@@ -1239,7 +1232,7 @@
           No jobs found
         </div>
         </div>
-      </div> <!-- Close side-by-side-container -->
+      </div> <!-- Close single-column-container -->
       
       <!-- [2025-04-06 19:40] Finished Jobs Section -->
       <div class="card finished-jobs-section">
@@ -1354,6 +1347,273 @@
       padding: 10px;
       background-color: #f8f9fa;
       border-bottom: 1px solid #eee;
+    }
+
+    /* Workers Cards Grid Styles */
+    .workers-cards-section {
+      margin-bottom: 15px;
+    }
+
+    .workers-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+      gap: 12px;
+      margin: 10px 0;
+    }
+
+    .worker-card {
+      background: linear-gradient(135deg, #fff 0%, #f8f9fa 100%);
+      border: 1px solid #e9ecef;
+      border-radius: 8px;
+      padding: 12px;
+      box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+      transition: all 0.2s ease;
+      position: relative;
+    }
+
+    .worker-card:hover {
+      box-shadow: 0 4px 8px rgba(0, 0, 0, 0.15);
+      transform: translateY(-1px);
+    }
+
+    .worker-card-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 8px;
+    }
+
+    .worker-id {
+      font-weight: 600;
+      font-size: 0.85rem;
+      color: #2c3e50;
+      max-width: 180px;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .worker-status-badge {
+      padding: 3px 8px;
+      border-radius: 12px;
+      font-size: 0.7rem;
+      font-weight: 500;
+      text-transform: uppercase;
+    }
+
+    .worker-status-badge.status-active {
+      background-color: #d4edda;
+      color: #155724;
+      border: 1px solid #c3e6cb;
+    }
+
+    .worker-status-badge.status-idle {
+      background-color: #f8f9fa;
+      color: #6c757d;
+      border: 1px solid #dee2e6;
+    }
+
+    .worker-status-badge.status-error {
+      background-color: #f8d7da;
+      color: #721c24;
+      border: 1px solid #f5c6cb;
+    }
+
+    .worker-card-details {
+      font-size: 0.75rem;
+      color: #6c757d;
+      line-height: 1.4;
+    }
+
+    .worker-detail-row {
+      display: flex;
+      justify-content: space-between;
+      margin-bottom: 4px;
+    }
+
+    .worker-detail-label {
+      font-weight: 500;
+    }
+
+    .worker-current-job {
+      background-color: #e7f3ff;
+      padding: 4px 6px;
+      border-radius: 4px;
+      margin-top: 6px;
+      font-size: 0.7rem;
+      border-left: 3px solid #007bff;
+    }
+
+    .worker-job-types {
+      color: #495057;
+      font-weight: 500;
+    }
+
+    /* Combined Overview Card Styles */
+    .combined-overview-card {
+      background: linear-gradient(135deg, #fff 0%, #f8f9fa 100%);
+      border: 1px solid #e9ecef;
+      border-radius: 12px;
+      padding: 16px;
+      margin-bottom: 20px;
+      box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+      display: flex;
+      gap: 20px;
+      align-items: stretch;
+    }
+
+    .stats-section {
+      flex: 0 0 auto;
+      min-width: 200px;
+    }
+
+    .compact-stats {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+
+    .stat-item {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 4px 0;
+    }
+
+    .stat-item .stat-label {
+      font-size: 0.8rem;
+      color: #6c757d;
+      font-weight: 500;
+      min-width: 60px;
+    }
+
+    .stat-item .stat-value {
+      font-size: 1rem;
+      font-weight: 600;
+      color: #2c3e50;
+      background: #e3f2fd;
+      padding: 2px 8px;
+      border-radius: 12px;
+      min-width: 30px;
+      text-align: center;
+    }
+
+    .stat-link {
+      color: #007bff;
+      text-decoration: none;
+      font-size: 0.85rem;
+      font-weight: 500;
+    }
+
+    .stat-link:hover {
+      text-decoration: underline;
+    }
+
+    .workers-carousel-section {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+    }
+
+    .carousel-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 12px;
+      padding-bottom: 8px;
+      border-bottom: 1px solid #e9ecef;
+    }
+
+    .carousel-header h3 {
+      margin: 0;
+      font-size: 1rem;
+      color: #2c3e50;
+      font-weight: 600;
+    }
+
+    .carousel-controls {
+      display: flex;
+      gap: 4px;
+    }
+
+    .carousel-btn {
+      background: #f8f9fa;
+      border: 1px solid #dee2e6;
+      border-radius: 50%;
+      width: 32px;
+      height: 32px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      cursor: pointer;
+      font-size: 18px;
+      font-weight: bold;
+      color: #6c757d;
+      transition: all 0.2s ease;
+    }
+
+    .carousel-btn:hover {
+      background: #e9ecef;
+      color: #495057;
+      transform: scale(1.05);
+    }
+
+    .carousel-btn:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+      transform: none;
+    }
+
+    .workers-carousel-container {
+      flex: 1;
+      position: relative;
+      overflow: hidden;
+    }
+
+    .workers-carousel {
+      display: flex;
+      gap: 12px;
+      transition: transform 0.3s ease;
+      align-items: flex-start;
+    }
+
+    .workers-carousel .worker-card {
+      flex: 0 0 240px;
+      margin: 0;
+    }
+
+    .carousel-message {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      height: 80px;
+      color: #6c757d;
+      font-style: italic;
+      background: #f8f9fa;
+      border-radius: 8px;
+      border: 1px dashed #dee2e6;
+    }
+
+    /* Responsive adjustments */
+    @media (max-width: 768px) {
+      .combined-overview-card {
+        flex-direction: column;
+        gap: 16px;
+      }
+      
+      .stats-section {
+        min-width: auto;
+      }
+      
+      .compact-stats {
+        flex-direction: row;
+        flex-wrap: wrap;
+        gap: 12px;
+      }
+      
+      .workers-carousel .worker-card {
+        flex: 0 0 200px;
+      }
     }
 
     /* Scrollable containers for all sections */

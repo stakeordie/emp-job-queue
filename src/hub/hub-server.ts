@@ -197,7 +197,7 @@ export class HubServer {
       const jobRequest: JobSubmissionRequest = req.body;
 
       // Validate required fields
-      if (!jobRequest.type || !jobRequest.payload) {
+      if (!jobRequest.service_required || !jobRequest.payload) {
         res.status(400).json({
           error: 'Missing required fields',
           required: ['type', 'payload'],
@@ -206,7 +206,7 @@ export class HubServer {
       }
 
       const jobId = await this.redisService.submitJob({
-        type: jobRequest.type,
+        service_required: jobRequest.service_required,
         priority: jobRequest.priority || 50,
         payload: jobRequest.payload,
         customer_id: jobRequest.customer_id,

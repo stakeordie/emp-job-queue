@@ -51,7 +51,7 @@ export class JobBroker implements JobBrokerInterface {
     }
 
     const job: Omit<Job, 'id' | 'created_at' | 'status' | 'retry_count'> = {
-      type: request.type,
+      service_required: request.service_required,
       priority: workflowPriority,
       payload: request.payload,
       requirements: request.requirements,
@@ -99,7 +99,7 @@ export class JobBroker implements JobBrokerInterface {
     // Store job details with workflow fields
     const jobRecord: Record<string, string> = {
       id: job.id,
-      type: job.type,
+      service_required: job.service_required,
       priority: job.priority.toString(),
       payload: JSON.stringify(job.payload),
       requirements: job.requirements ? JSON.stringify(job.requirements) : '',

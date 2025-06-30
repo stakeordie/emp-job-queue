@@ -25,6 +25,12 @@
 - **Fixed Timestamp Display**: Updated formatDateTime() to handle new millisecond timestamp format
   - Removed incorrect seconds-to-milliseconds conversion that caused "Invalid Date"
   - Jobs now show correct creation times in monitor interface
+- **Enhanced Workers Display**: Redesigned workers section with responsive card grid layout
+  - Moved workers from right column table to left column above submit job section
+  - Created attractive worker cards with status badges, service types, and current job info
+  - Responsive grid layout that adapts to screen size (280px minimum card width)
+  - Hover effects and better visual hierarchy for improved user experience
+  - Maintains backward compatibility with existing table view
 
 ### ✅ Completed - Session 5 (Job Broker Core Implementation)
 - **Job Broker Core Logic**: Implemented complete workflow priority inheritance system

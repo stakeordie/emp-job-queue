@@ -2,7 +2,7 @@
 
 export interface Job {
   id: string;
-  type: string;
+  service_required: string;
   priority: number;
   payload: Record<string, unknown>;
   requirements?: JobRequirements;
@@ -82,7 +82,7 @@ export interface JobResult {
 }
 
 export interface JobSubmissionRequest {
-  type: string;
+  service_required: string;
   payload: Record<string, unknown>;
   priority?: number;
   requirements?: JobRequirements;

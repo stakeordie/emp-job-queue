@@ -45,7 +45,7 @@ global.testUtils = {
   // Create test job with defaults
   createTestJob: (overrides = {}) => ({
     id: 'test-job-123',
-    type: 'text_to_image',
+    service_required: 'text_to_image',
     priority: 50,
     payload: { prompt: 'test prompt' },
     requirements: {

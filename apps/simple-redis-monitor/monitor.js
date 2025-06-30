@@ -268,6 +268,14 @@ const elements = {
     // Updated worker references for table-based layout
     workersTableBody: document.getElementById('workers-table-body'),
     workersTableContainer: document.getElementById('workers-table-container'),
+    // Worker cards elements (old grid)
+    workersCardsContainer: document.getElementById('workers-cards-container'),
+    noWorkersCardsMessage: document.getElementById('no-workers-cards-message'),
+    // Worker carousel elements (new combined layout)
+    workersCarousel: document.getElementById('workers-carousel'),
+    noWorkersCarouselMessage: document.getElementById('no-workers-carousel-message'),
+    carouselPrevBtn: document.getElementById('carousel-prev'),
+    carouselNextBtn: document.getElementById('carousel-next'),
     jobsTableBody: document.getElementById('jobs-table-body'),
     noWorkersMessage: document.getElementById('no-workers-message'),
     noJobsMessage: document.getElementById('no-jobs-message'),
@@ -2954,16 +2962,34 @@ function updateUI() {
     elements.queuedJobsCount.textContent = queuedJobs.length;
     elements.activeJobsCount.textContent = activeJobs.length;
     
-    // Update workers display - using simple table instead of complex cards
+    // Update workers display - using cards grid instead of table
     const workers = Object.values(state.workers);
-    elements.workersTableBody.innerHTML = '';
+    
+    // Update table, cards grid, and carousel
+    if (elements.workersTableBody) {
+        elements.workersTableBody.innerHTML = '';
+    }
+    if (elements.workersCardsContainer) {
+        elements.workersCardsContainer.innerHTML = '';
+    }
+    if (elements.workersCarousel) {
+        elements.workersCarousel.innerHTML = '';
+    }
     
     if (workers.length > 0) {
-        // Show workers table, hide no workers message
-        elements.workersTableContainer.classList.remove('hidden');
-        elements.noWorkersMessage.classList.add('hidden');
+        // Show workers displays, hide no workers messages
+        if (elements.workersTableContainer) {
+            elements.workersTableContainer.classList.remove('hidden');
+            elements.noWorkersMessage.classList.add('hidden');
+        }
+        if (elements.workersCardsContainer) {
+            elements.noWorkersCardsMessage.classList.add('hidden');
+        }
+        if (elements.workersCarousel) {
+            elements.noWorkersCarouselMessage.classList.add('hidden');
+        }
         
-        // Process each worker - create simple table rows
+        // Process each worker - create both table rows and cards
         workers.forEach(worker => {
             // Find current job for this worker
             let currentJob = null;
@@ -2991,10 +3017,6 @@ function updateUI() {
                 }
             }
             
-            // Create table row
-            const row = document.createElement('tr');
-            row.id = `worker-row-${worker.id}`;
-            
             // Format status display
             let statusDisplay = worker.status || 'Connected';
             let statusClass = 'status-idle';
@@ -3021,22 +3043,102 @@ function updateUI() {
             const connectedTime = worker.connectedAt ? 
                 formatDateTime(worker.connectedAt) : 'Unknown';
             
-            row.innerHTML = `
-                <td title="${worker.id}">${worker.id}</td>
-                <td><span class="status ${statusClass}">${statusDisplay}</span></td>
-                <td title="${jobTypes}">${jobTypes}</td>
-                <td>${worker.jobsProcessed || 0}</td>
-                <td title="${currentJobDisplay}">${currentJobDisplay}</td>
-                <td title="${connectedTime}">${connectedTime}</td>
-            `;
+            // Create table row (for existing table view)
+            if (elements.workersTableBody) {
+                const row = document.createElement('tr');
+                row.id = `worker-row-${worker.id}`;
+                row.innerHTML = `
+                    <td title="${worker.id}">${worker.id}</td>
+                    <td><span class="status ${statusClass}">${statusDisplay}</span></td>
+                    <td title="${jobTypes}">${jobTypes}</td>
+                    <td>${worker.jobsProcessed || 0}</td>
+                    <td title="${currentJobDisplay}">${currentJobDisplay}</td>
+                    <td title="${connectedTime}">${connectedTime}</td>
+                `;
+                elements.workersTableBody.appendChild(row);
+            }
             
-            // Add the row to the table body
-            elements.workersTableBody.appendChild(row);
+            // Create worker card (new cards view)
+            if (elements.workersCardsContainer) {
+                const card = document.createElement('div');
+                card.className = 'worker-card';
+                card.id = `worker-card-${worker.id}`;
+                
+                // Worker ID display (truncated for card)
+                const displayId = worker.id.length > 25 ? worker.id.substring(0, 25) + '...' : worker.id;
+                
+                // Current job display for card
+                const currentJobCardDisplay = currentJob ? 
+                    `Processing: ${currentJob.id.substring(0, 12)}...` : '';
+                
+                card.innerHTML = `
+                    <div class="worker-card-header">
+                        <div class="worker-id" title="${worker.id}">${displayId}</div>
+                        <div class="worker-status-badge ${statusClass}">${statusDisplay}</div>
+                    </div>
+                    <div class="worker-card-details">
+                        <div class="worker-detail-row">
+                            <span class="worker-detail-label">Services:</span>
+                            <span class="worker-job-types">${jobTypes}</span>
+                        </div>
+                        <div class="worker-detail-row">
+                            <span class="worker-detail-label">Jobs Done:</span>
+                            <span>${worker.jobsProcessed || 0}</span>
+                        </div>
+                        <div class="worker-detail-row">
+                            <span class="worker-detail-label">Connected:</span>
+                            <span>${connectedTime}</span>
+                        </div>
+                        ${currentJobCardDisplay ? `<div class="worker-current-job">${currentJobCardDisplay}</div>` : ''}
+                    </div>
+                `;
+                
+                elements.workersCardsContainer.appendChild(card);
+            }
+            
+            // Create worker card for carousel (new combined layout)
+            if (elements.workersCarousel) {
+                const carouselCard = document.createElement('div');
+                carouselCard.className = 'worker-card';
+                carouselCard.id = `worker-carousel-card-${worker.id}`;
+                
+                // Worker ID display (truncated for carousel)
+                const displayId = worker.id.length > 22 ? worker.id.substring(0, 22) + '...' : worker.id;
+                
+                // Current job display for carousel
+                const currentJobCarouselDisplay = currentJob ? 
+                    `Processing: ${currentJob.id.substring(0, 10)}...` : '';
+                
+                carouselCard.innerHTML = `
+                    <div class="worker-card-header">
+                        <div class="worker-id" title="${worker.id}">${displayId}</div>
+                        <div class="worker-status-badge ${statusClass}">${statusDisplay}</div>
+                    </div>
+                    <div class="worker-card-details">
+                        <div class="worker-detail-row">
+                            <span class="worker-detail-label">Services:</span>
+                            <span class="worker-job-types">${jobTypes}</span>
+                        </div>
+                        <div class="worker-detail-row">
+                            <span class="worker-detail-label">Jobs:</span>
+                            <span>${worker.jobsProcessed || 0}</span>
+                        </div>
+                        ${currentJobCarouselDisplay ? `<div class="worker-current-job">${currentJobCarouselDisplay}</div>` : ''}
+                    </div>
+                `;
+                
+                elements.workersCarousel.appendChild(carouselCard);
+            }
         });
     } else {
         // No workers connected
-        elements.workersTableContainer.classList.add('hidden');
-        elements.noWorkersMessage.classList.remove('hidden');
+        if (elements.workersTableContainer) {
+            elements.workersTableContainer.classList.add('hidden');
+            elements.noWorkersMessage.classList.remove('hidden');
+        }
+        if (elements.workersCardsContainer) {
+            elements.noWorkersCardsMessage.classList.remove('hidden');
+        }
     }
     
     // [2025-04-06 19:00] Update jobs table - only show queued jobs
