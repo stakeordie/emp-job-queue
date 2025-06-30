@@ -171,6 +171,7 @@ export interface CompleteJobMessage extends BaseMessage {
   job_id: string;
   worker_id: string; // CRITICAL: This field was missing but required in Python
   result?: Record<string, unknown>;
+  client_id?: string; // Present in Python messages
   timestamp: Timestamp;
 }
 
