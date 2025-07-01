@@ -36,6 +36,7 @@ export interface RedisServiceInterface {
   getActiveJobs(workerId?: string): Promise<Job[]>;
   getCompletedJobs(limit?: number): Promise<Job[]>;
   getFailedJobs(limit?: number): Promise<Job[]>;
+  getAllJobs(limit?: number): Promise<Job[]>;
 
   // Job search and filtering
   searchJobs(filter: JobFilter, page?: number, pageSize?: number): Promise<JobSearchResult>;

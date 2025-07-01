@@ -1,8 +1,0 @@
-- We need to make sure that:
-  - Jobs can be submitted with job id and workflow id.
-  - time and priority are handled correctly, the job time and priority can be used, but the workflow overrides both from an orchestration POV
-  - LUIS
-    - Can you add workflow_id to generations?
-- Noticed workers aren't pulling jobs at the same time, but that may be the stats every x sec.
-  - Can we slow down the StatsMonitor messages, but add a send stats method that many processes can trigger so that we get immediate feedback.
-  - for instance when a job is assigned to a worker we an send stats.

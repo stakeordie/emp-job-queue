@@ -595,6 +595,23 @@ export class RedisService implements RedisServiceInterface {
   async getFailedJobs(_limit = 50): Promise<Job[]> {
     return [];
   }
+  async getAllJobs(limit = 100): Promise<Job[]> {
+    // Get jobs from all categories
+    const pending = await this.getPendingJobs(limit);
+    const active = await this.getActiveJobs();
+    const completed = await this.getCompletedJobs(limit);
+    const failed = await this.getFailedJobs(limit);
+
+    // Combine all jobs and sort by creation time (newest first)
+    const allJobs = [...pending, ...active, ...completed, ...failed];
+    return allJobs
+      .sort((a, b) => {
+        const aTime = typeof a.created_at === 'number' ? a.created_at : 0;
+        const bTime = typeof b.created_at === 'number' ? b.created_at : 0;
+        return bTime - aTime;
+      })
+      .slice(0, limit);
+  }
   async searchJobs(filter: JobFilter, page = 1, pageSize = 20): Promise<JobSearchResult> {
     return { jobs: [], total_count: 0, page, page_size: pageSize, has_more: false };
   }

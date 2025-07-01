@@ -23,6 +23,7 @@ import {
   CancelJobMessage,
   FailJobMessage,
   ServiceRequestMessage,
+  SyncJobStateMessage,
 } from './types/messages.js';
 import { JobStatus } from './types/job.js';
 import { WorkerStatus, WorkerCapabilities } from './types/worker.js';
@@ -86,6 +87,7 @@ export class EnhancedMessageHandler implements MessageHandlerInterface {
     this.registerHandler(MessageType.COMPLETE_JOB, this.handleCompleteJob.bind(this));
     this.registerHandler(MessageType.FAIL_JOB, this.handleFailJob.bind(this));
     this.registerHandler(MessageType.CANCEL_JOB, this.handleCancelJob.bind(this));
+    this.registerHandler(MessageType.SYNC_JOB_STATE, this.handleSyncJobState.bind(this));
     this.registerHandler(MessageType.JOB_COMPLETED, this.handleJobComplete.bind(this));
 
     // Worker lifecycle handlers
@@ -350,6 +352,43 @@ export class EnhancedMessageHandler implements MessageHandlerInterface {
       logger.info(`Job ${jobId} cancelled: ${reason}`);
     } catch (error) {
       logger.error(`Failed to handle job cancellation for ${message.job_id}:`, error);
+      throw error;
+    }
+  }
+
+  async handleSyncJobState(message: SyncJobStateMessage): Promise<void> {
+    try {
+      const jobId = message.job_id;
+
+      if (jobId) {
+        // Sync specific job
+        const job = await this.redisService.getJob(jobId);
+        if (job) {
+          // Send updated job state back to client
+          const response: BaseMessage = {
+            type: 'job_state_synced',
+            timestamp: TimestampUtil.now(),
+            job_id: jobId,
+            job_data: job,
+          };
+          await this.connectionManager.sendToClient(message.source || '', response);
+          logger.info(`Synced job state for ${jobId}`);
+        } else {
+          logger.warn(`Job ${jobId} not found for sync request`);
+        }
+      } else {
+        // Sync all jobs - send full state update
+        const allJobs = await this.redisService.getAllJobs();
+        const response: BaseMessage = {
+          type: 'full_state_synced',
+          timestamp: TimestampUtil.now(),
+          jobs: allJobs,
+        };
+        await this.connectionManager.sendToClient(message.source || '', response);
+        logger.info('Synced full job state');
+      }
+    } catch (error) {
+      logger.error(`Failed to handle sync job state request:`, error);
       throw error;
     }
   }

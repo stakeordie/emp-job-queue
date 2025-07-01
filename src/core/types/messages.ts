@@ -65,6 +65,7 @@ export enum MessageType {
 
   // Additional message types
   SYSTEM_STATUS = 'system_status',
+  SYNC_JOB_STATE = 'sync_job_state',
 }
 
 /**
@@ -186,6 +187,15 @@ export interface CancelJobMessage extends BaseMessage {
   type: MessageType.CANCEL_JOB;
   job_id: string;
   reason?: string;
+  timestamp: Timestamp;
+}
+
+/**
+ * Message to sync/refresh job state - for monitor sync functionality
+ */
+export interface SyncJobStateMessage extends BaseMessage {
+  type: MessageType.SYNC_JOB_STATE;
+  job_id?: string; // Optional - if not provided, syncs all jobs
   timestamp: Timestamp;
 }
 
