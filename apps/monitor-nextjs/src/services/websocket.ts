@@ -1,12 +1,14 @@
 import { BaseMessage } from '@/types/message';
 
 export class WebSocketService {
-  private ws: WebSocket | null = null;
+  private monitorWs: WebSocket | null = null;
+  private clientWs: WebSocket | null = null;
   private reconnectAttempts = 0;
   private maxReconnectAttempts = 5;
   private reconnectInterval = 3000;
   private isConnecting = false;
   private messageQueue: BaseMessage[] = [];
+  private baseUrl: string = 'ws://localhost:3002';
   
   // Event listeners
   private onMessageCallbacks: Array<(message: BaseMessage) => void> = [];
@@ -14,20 +16,65 @@ export class WebSocketService {
   private onDisconnectCallbacks: Array<() => void> = [];
   private onErrorCallbacks: Array<(error: Event) => void> = [];
 
-  constructor(private url: string = 'ws://localhost:3002') {}
+  constructor(url: string = 'ws://localhost:3002') {
+    this.baseUrl = url;
+  }
+
+  setUrl(url: string) {
+    this.baseUrl = url;
+  }
 
   connect() {
-    if (this.ws?.readyState === WebSocket.OPEN || this.isConnecting) {
+    if ((this.monitorWs?.readyState === WebSocket.OPEN && this.clientWs?.readyState === WebSocket.OPEN) || this.isConnecting) {
       return;
     }
 
     this.isConnecting = true;
     
+    // Generate timestamp-based IDs like the original monitor
+    const timestamp = Date.now();
+    const monitorId = `monitor-id-${timestamp}`;
+    const clientId = `client-id-${timestamp}`;
+    
+    // Extract host and remove protocol if present
+    const host = this.baseUrl.replace(/^(https?:\/\/|wss?:\/\/)/, '');
+    
+    // Determine protocol based on URL
+    const isSecure = this.baseUrl.startsWith('wss://') || this.baseUrl.startsWith('https://');
+    const protocol = isSecure ? 'wss' : 'ws';
+    
+    // Parse auth token from URL if present
+    const [baseHost, authParams] = host.split('?');
+    const authQuery = authParams ? `?${authParams}` : '';
+    
+    // Create monitor and client URLs
+    const monitorUrl = `${protocol}://${baseHost}/ws/monitor/${monitorId}${authQuery}`;
+    const clientUrl = `${protocol}://${baseHost}/ws/client/${clientId}${authQuery}`;
+    
+    console.log('[WebSocket] Connecting monitor to:', monitorUrl);
+    console.log('[WebSocket] Connecting client to:', clientUrl);
+    
     try {
-      this.ws = new WebSocket(this.url);
+      // Create monitor WebSocket connection
+      this.monitorWs = new WebSocket(monitorUrl);
+      this.setupWebSocketHandlers(this.monitorWs, 'monitor');
       
-      this.ws.onopen = () => {
-        console.log('[WebSocket] Connected to hub');
+      // Create client WebSocket connection  
+      this.clientWs = new WebSocket(clientUrl);
+      this.setupWebSocketHandlers(this.clientWs, 'client');
+      
+    } catch (error) {
+      console.error('[WebSocket] Failed to create connections:', error);
+      this.isConnecting = false;
+    }
+  }
+
+  private setupWebSocketHandlers(ws: WebSocket, type: 'monitor' | 'client') {
+    ws.onopen = () => {
+      console.log(`[WebSocket] ${type} connected`);
+      
+      // Check if both connections are open
+      if (this.monitorWs?.readyState === WebSocket.OPEN && this.clientWs?.readyState === WebSocket.OPEN) {
         this.isConnecting = false;
         this.reconnectAttempts = 0;
         
@@ -36,21 +83,24 @@ export class WebSocketService {
         this.messageQueue = [];
         
         this.onConnectCallbacks.forEach(callback => callback());
-      };
+      }
+    };
 
-      this.ws.onmessage = (event) => {
-        try {
-          const message: BaseMessage = JSON.parse(event.data);
-          this.onMessageCallbacks.forEach(callback => callback(message));
-        } catch (error) {
-          console.error('[WebSocket] Error parsing message:', error);
-        }
-      };
+    ws.onmessage = (event) => {
+      try {
+        const message: BaseMessage = JSON.parse(event.data);
+        this.onMessageCallbacks.forEach(callback => callback(message));
+      } catch (error) {
+        console.error(`[WebSocket] Error parsing ${type} message:`, error);
+      }
+    };
 
-      this.ws.onclose = (event) => {
-        console.log('[WebSocket] Connection closed:', event.code, event.reason);
+    ws.onclose = (event) => {
+      console.log(`[WebSocket] ${type} connection closed:`, event.code, event.reason);
+      
+      // If either connection closes, trigger disconnect
+      if (this.monitorWs?.readyState !== WebSocket.OPEN || this.clientWs?.readyState !== WebSocket.OPEN) {
         this.isConnecting = false;
-        this.ws = null;
         this.onDisconnectCallbacks.forEach(callback => callback());
         
         // Auto-reconnect
@@ -59,30 +109,31 @@ export class WebSocketService {
           console.log(`[WebSocket] Reconnecting... (attempt ${this.reconnectAttempts}/${this.maxReconnectAttempts})`);
           setTimeout(() => this.connect(), this.reconnectInterval);
         }
-      };
+      }
+    };
 
-      this.ws.onerror = (error) => {
-        console.error('[WebSocket] Error:', error);
-        this.isConnecting = false;
-        this.onErrorCallbacks.forEach(callback => callback(error));
-      };
-      
-    } catch (error) {
-      console.error('[WebSocket] Failed to create connection:', error);
+    ws.onerror = (error) => {
+      console.error(`[WebSocket] ${type} error:`, error);
       this.isConnecting = false;
-    }
+      this.onErrorCallbacks.forEach(callback => callback(error));
+    };
   }
 
   disconnect() {
-    if (this.ws) {
-      this.ws.close();
-      this.ws = null;
+    if (this.monitorWs) {
+      this.monitorWs.close();
+      this.monitorWs = null;
+    }
+    if (this.clientWs) {
+      this.clientWs.close();
+      this.clientWs = null;
     }
   }
 
   send(message: BaseMessage) {
-    if (this.ws?.readyState === WebSocket.OPEN) {
-      this.ws.send(JSON.stringify(message));
+    // Send messages via the client connection (for job submission)
+    if (this.clientWs?.readyState === WebSocket.OPEN) {
+      this.clientWs.send(JSON.stringify(message));
     } else {
       // Queue message for when connection is established
       this.messageQueue.push(message);
@@ -93,7 +144,7 @@ export class WebSocketService {
   }
 
   isConnected(): boolean {
-    return this.ws?.readyState === WebSocket.OPEN;
+    return this.monitorWs?.readyState === WebSocket.OPEN && this.clientWs?.readyState === WebSocket.OPEN;
   }
 
   // Event listener management
