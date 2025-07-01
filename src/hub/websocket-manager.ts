@@ -301,6 +301,8 @@ export class WebSocketManager {
 
         // Forward to connection manager for general handling
         // The connection manager will route this to the message handler
+        const connectionType = type === 'monitor' ? 'client' : type;
+        this.connectionManager.forwardMessage(message, connectionType, id);
       } catch (error) {
         logger.error(`Error processing message from ${type} ${id}:`, error);
       }

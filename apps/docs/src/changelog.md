@@ -2,7 +2,7 @@
 
 ## 2025-01-01
 
-### 🐛 Bug Fix - Workflow Parameter Flow
+### 🐛 Bug Fix - Workflow Parameter Flow & WebSocket Message Forwarding
 - **Fixed Missing Workflow Parameters in Job Submission**: Critical fix for workflow parameter handling
   - **Problem**: `handleJobSubmission` in hub-server.ts wasn't extracting workflow fields (workflow_id, workflow_priority, workflow_datetime, step_number)
   - **Solution**: Updated all job submission handlers to properly extract and pass workflow parameters
@@ -13,6 +13,17 @@
     - `src/core/enhanced-message-handler.ts`: Updated handleJobSubmissionImpl with workflow params
   - **Impact**: Workflow jobs can now properly inherit priority and maintain correct execution order
   - **Enables**: Proper workflow step orchestration with priority inheritance as designed
+
+- **Fixed Critical WebSocket Message Forwarding**: Messages from clients weren't being processed
+  - **Problem**: WebSocket manager received messages but never forwarded them to the message handler
+  - **Root Cause**: Missing call to connection manager's message routing in websocket-manager.ts
+  - **Solution**: Added `forwardMessage()` method to ConnectionManager interface and implementation
+  - **Files Fixed**:
+    - `src/core/interfaces/connection-manager.ts`: Added forwardMessage method to interface
+    - `src/core/connection-manager.ts`: Added public forwardMessage method
+    - `src/hub/websocket-manager.ts`: Added message forwarding to connection manager
+  - **Impact**: All WebSocket messages (including workflow submissions) now properly processed
+  - **Enables**: Monitor workflow simulation and job submission now functional
 
 ## 2024-06-30
 

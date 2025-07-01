@@ -612,6 +612,11 @@ export class ConnectionManager implements ConnectionManagerInterface {
     });
   }
 
+  // Public method for WebSocket manager to forward messages
+  public forwardMessage(message: BaseMessage, type: 'worker' | 'client', id: string): void {
+    this.handleCompleteMessage(message, type, id);
+  }
+
   private handleCompleteMessage(message: BaseMessage, type: 'worker' | 'client', id: string): void {
     if (type === 'worker') {
       this.workerMessageCallbacks.forEach(cb => cb(id, message));

@@ -62,6 +62,7 @@ export interface ConnectionManagerInterface {
   // Message handling hooks
   onWorkerMessage(callback: (workerId: string, message: BaseMessage) => void): void;
   onClientMessage(callback: (clientId: string, message: BaseMessage) => void): void;
+  forwardMessage(message: BaseMessage, type: 'worker' | 'client', id: string): void;
   onWorkerConnect(callback: (workerId: string, capabilities?: WorkerCapabilities) => void): void;
   onWorkerDisconnect(callback: (workerId: string) => void): void;
   onClientConnect(callback: (clientId: string) => void): void;
