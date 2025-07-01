@@ -374,21 +374,46 @@ export class EnhancedMessageHandler implements MessageHandlerInterface {
           await this.connectionManager.sendToClient(message.source || '', response);
           logger.info(`Synced job state for ${jobId}`);
         } else {
+          // Job not found - send error response
+          const response: BaseMessage = {
+            type: 'sync_error',
+            timestamp: TimestampUtil.now(),
+            job_id: jobId,
+            error: `Job ${jobId} not found`,
+          };
+          await this.connectionManager.sendToClient(message.source || '', response);
           logger.warn(`Job ${jobId} not found for sync request`);
         }
       } else {
-        // Sync all jobs - send full state update
+        // Sync all jobs - this will detect and fix orphaned jobs
+        logger.info('Starting full job state sync - checking for orphaned jobs...');
+
         const allJobs = await this.redisService.getAllJobs();
+        const orphanedCount = await this.redisService.detectAndFixOrphanedJobs();
+
         const response: BaseMessage = {
           type: 'full_state_synced',
           timestamp: TimestampUtil.now(),
           jobs: allJobs,
+          orphaned_jobs_fixed: orphanedCount,
+          sync_timestamp: Date.now(),
         };
+
         await this.connectionManager.sendToClient(message.source || '', response);
-        logger.info('Synced full job state');
+        logger.info(
+          `Synced full job state - ${allJobs.length} jobs total, fixed ${orphanedCount} orphaned jobs`
+        );
       }
     } catch (error) {
       logger.error(`Failed to handle sync job state request:`, error);
+
+      // Send error response to client
+      const errorResponse: BaseMessage = {
+        type: 'sync_error',
+        timestamp: TimestampUtil.now(),
+        error: error instanceof Error ? error.message : 'Unknown sync error',
+      };
+      await this.connectionManager.sendToClient(message.source || '', errorResponse);
       throw error;
     }
   }

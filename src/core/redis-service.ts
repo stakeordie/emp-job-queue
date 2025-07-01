@@ -588,14 +588,72 @@ export class RedisService implements RedisServiceInterface {
     await this.subscriber.unsubscribe(channel);
   }
 
-  // Placeholder implementations for remaining interface methods
-  async getCompletedJobs(_limit = 50): Promise<Job[]> {
-    return [];
+  // Real implementations for job retrieval methods
+  async getCompletedJobs(limit = 50): Promise<Job[]> {
+    try {
+      const jobsData = await this.redis.hgetall('jobs:completed');
+      const jobs: Job[] = [];
+
+      for (const [jobId, jobDataStr] of Object.entries(jobsData)) {
+        try {
+          const jobData = JSON.parse(jobDataStr);
+          jobs.push({
+            id: jobId,
+            ...jobData,
+            status: JobStatus.COMPLETED,
+          });
+        } catch (parseError) {
+          logger.warn(`Failed to parse completed job ${jobId}:`, parseError);
+        }
+      }
+
+      return jobs
+        .sort((a, b) => {
+          const aTime = typeof a.completed_at === 'number' ? a.completed_at : 0;
+          const bTime = typeof b.completed_at === 'number' ? b.completed_at : 0;
+          return bTime - aTime;
+        })
+        .slice(0, limit);
+    } catch (error) {
+      logger.error('Failed to get completed jobs:', error);
+      return [];
+    }
   }
-  async getFailedJobs(_limit = 50): Promise<Job[]> {
-    return [];
+
+  async getFailedJobs(limit = 50): Promise<Job[]> {
+    try {
+      const jobsData = await this.redis.hgetall('jobs:failed');
+      const jobs: Job[] = [];
+
+      for (const [jobId, jobDataStr] of Object.entries(jobsData)) {
+        try {
+          const jobData = JSON.parse(jobDataStr);
+          jobs.push({
+            id: jobId,
+            ...jobData,
+            status: JobStatus.FAILED,
+          });
+        } catch (parseError) {
+          logger.warn(`Failed to parse failed job ${jobId}:`, parseError);
+        }
+      }
+
+      return jobs
+        .sort((a, b) => {
+          const aTime = typeof a.failed_at === 'number' ? a.failed_at : 0;
+          const bTime = typeof b.failed_at === 'number' ? b.failed_at : 0;
+          return bTime - aTime;
+        })
+        .slice(0, limit);
+    } catch (error) {
+      logger.error('Failed to get failed jobs:', error);
+      return [];
+    }
   }
   async getAllJobs(limit = 100): Promise<Job[]> {
+    // First detect and fix orphaned jobs
+    await this.detectAndFixOrphanedJobs();
+
     // Get jobs from all categories
     const pending = await this.getPendingJobs(limit);
     const active = await this.getActiveJobs();
@@ -611,6 +669,84 @@ export class RedisService implements RedisServiceInterface {
         return bTime - aTime;
       })
       .slice(0, limit);
+  }
+
+  /**
+   * Detect and fix orphaned jobs - active jobs with no worker processing them
+   */
+  async detectAndFixOrphanedJobs(): Promise<number> {
+    try {
+      let fixedCount = 0;
+
+      // Get all active workers
+      const activeWorkers = await this.getAllWorkers();
+      const activeWorkerIds = new Set(activeWorkers.map(w => w.worker_id));
+
+      // Get all active job keys
+      const activeJobKeys = await this.redis.keys('jobs:active:*');
+
+      for (const key of activeJobKeys) {
+        const workerId = key.replace('jobs:active:', '');
+
+        // If worker doesn't exist, these jobs are orphaned
+        if (!activeWorkerIds.has(workerId)) {
+          logger.warn(`Found orphaned jobs for disconnected worker: ${workerId}`);
+
+          // Get all jobs for this orphaned worker
+          const orphanedJobs = await this.redis.hgetall(key);
+
+          for (const [jobId, jobDataStr] of Object.entries(orphanedJobs)) {
+            try {
+              const jobData = JSON.parse(jobDataStr);
+
+              // Reset job to pending status
+              const resetJob: Job = {
+                ...jobData,
+                id: jobId,
+                status: JobStatus.PENDING,
+                worker_id: undefined,
+                assigned_at: undefined,
+                started_at: undefined,
+              };
+
+              // Add back to pending queue with original priority
+              const priorityComponent = resetJob.priority * 1000000;
+              const timeComponent =
+                typeof resetJob.workflow_datetime === 'number'
+                  ? resetJob.workflow_datetime
+                  : typeof resetJob.created_at === 'number'
+                    ? resetJob.created_at
+                    : Date.now();
+              const score = priorityComponent + timeComponent;
+              await this.redis.zadd('jobs:pending', score, JSON.stringify(resetJob));
+
+              // Remove from active jobs
+              await this.redis.hdel(key, jobId);
+
+              fixedCount++;
+              logger.info(`Reset orphaned job ${jobId} from worker ${workerId} back to pending`);
+            } catch (parseError) {
+              logger.error(`Failed to parse orphaned job ${jobId}:`, parseError);
+            }
+          }
+
+          // Clean up empty active job key
+          const remainingJobs = await this.redis.hlen(key);
+          if (remainingJobs === 0) {
+            await this.redis.del(key);
+          }
+        }
+      }
+
+      if (fixedCount > 0) {
+        logger.info(`Fixed ${fixedCount} orphaned jobs`);
+      }
+
+      return fixedCount;
+    } catch (error) {
+      logger.error('Failed to detect and fix orphaned jobs:', error);
+      return 0;
+    }
   }
   async searchJobs(filter: JobFilter, page = 1, pageSize = 20): Promise<JobSearchResult> {
     return { jobs: [], total_count: 0, page, page_size: pageSize, has_more: false };
