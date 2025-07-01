@@ -347,7 +347,7 @@ function updateRestApiUrl(websocketUrl) {
         elements.restApiUrl.textContent = state.restApi.url;
     }
     
-    console.log(`[2025-05-20T11:30:59-04:00] REST API URL updated to: ${state.restApi.url}`);
+    // //console.log(`[2025-05-20T11:30:59-04:00] REST API URL updated to: ${state.restApi.url}`);
 }
 
 /**
@@ -393,7 +393,7 @@ function init() {
     if (elements.restSyncCheckbox) {
         elements.restSyncCheckbox.addEventListener('change', (event) => {
             state.restApi.synchronous = event.target.checked;
-            console.log(`[2025-05-20T11:34:47-04:00] REST API synchronous mode: ${state.restApi.synchronous}`);
+            //console.log(`[2025-05-20T11:34:47-04:00] REST API synchronous mode: ${state.restApi.synchronous}`);
             
             // Update button text based on synchronous mode
             if (state.restApi.synchronous) {
@@ -410,7 +410,7 @@ function init() {
             const timeout = parseInt(event.target.value, 10);
             if (!isNaN(timeout) && timeout > 0) {
                 state.restApi.timeout = timeout;
-                console.log(`[2025-05-20T11:34:47-04:00] REST API timeout: ${state.restApi.timeout} seconds`);
+                //console.log(`[2025-05-20T11:34:47-04:00] REST API timeout: ${state.restApi.timeout} seconds`);
             } else {
                 // Reset to default if invalid
                 event.target.value = state.restApi.timeout;
@@ -514,11 +514,11 @@ function setupEventListeners() {
 function connect() {
     // Get base URL from form
     const baseUrl = elements.websocketUrl.value || 'wss://redisserver-production.up.railway.app';
-    console.log('Base URL:', baseUrl);
+    //console.log('Base URL:', baseUrl);
     
     // Get auth token if provided
     const authToken = elements.authToken ? elements.authToken.value : '3u8sdj5389fj3kljsf90u';
-    console.log('Using auth token:', authToken);
+    //console.log('Using auth token:', authToken);
     
     // Generate timestamp for unique IDs
     const timestamp = Date.now();
@@ -576,7 +576,7 @@ function connectMonitorSocket(baseUrl, monitorId, authToken) {
     const monitorUrl = authToken ? `${base_url}?token=${encodeURIComponent(authToken)}` : base_url;
     
     // Log the URL we're connecting to
-    console.log('Monitor URL:', monitorUrl);
+    //console.log('Monitor URL:', monitorUrl);
     
     addLogEntry(`Connecting monitor socket as '${monitorId}'...`, 'info');
     
@@ -646,7 +646,7 @@ function connectClientSocket(baseUrl, clientId, authToken) {
     const clientUrl = authToken ? `${base_url}?token=${encodeURIComponent(authToken)}` : base_url;
     
     // Log the URL we're connecting to
-    console.log('Client URL:', clientUrl);
+    //console.log('Client URL:', clientUrl);
     
     addLogEntry(`Connecting client socket as '${clientId}'...`, 'info');
     
@@ -949,13 +949,13 @@ function processMessage(data, source) {
         
         // Enhanced logging with timestamp and message details
         const timestamp = new Date().toISOString().substring(11, 19); // HH:MM:SS
-        console.log(`[${timestamp}] ${source} message: ${message.type}`, message);
+        //console.log(`[${timestamp}] ${source} message: ${message.type}`, message);
         
         // Log received message with source
         addLogEntry(`Received ${source} message: ${message.type}`, 'info');
-        console.log(`Received ${source} message: ${message.type}`)
+        //console.log(`Received ${source} message: ${message.type}`)
         try {
-            console.log("the messagetype is: ", message.type)
+            //console.log("the messagetype is: ", message.type)
             // Process the message based on its type
             // [2025-05-20T11:23:31-04:00] Removed cases for unsupported message types
             switch (message.type) {
@@ -1118,7 +1118,7 @@ function handleRawMessage(message, source = 'unknown') {
             break;
         // Add other cases as needed
         default:
-            console.log('Handling raw message:', message);
+            //console.log('Handling raw message:', message);
     }
 }
 
@@ -1128,7 +1128,7 @@ function handleRawMessage(message, source = 'unknown') {
  */
 function updateStats(statsData) {
     try {
-        console.log("[2025-04-06 18:47] Updating stats from server", statsData);
+        //console.log("[2025-04-06 18:47] Updating stats from server", statsData);
         // Extract stats from the response
         const queues = statsData.queues || {};
         const jobs = statsData.jobs || {};
@@ -1144,11 +1144,11 @@ function updateStats(statsData) {
         state.stats.rawFailedJobs = (jobs.status && jobs.status.failed) || 0;
         
         // Log raw job counts from server for debugging
-        console.log('[2025-04-06 18:47] Raw job counts from server:', {
-            queued: state.stats.rawPendingJobs,
-            active: state.stats.rawActiveJobs,
-            failed: state.stats.rawFailedJobs
-        });
+        // console.log('[2025-04-06 18:47] Raw job counts from server:', {
+        //     queued: state.stats.rawPendingJobs,
+        //     active: state.stats.rawActiveJobs,
+        //     failed: state.stats.rawFailedJobs
+        // });
         
         // Update worker information if available
         if (statsData.workers && statsData.workers.list) {
@@ -1177,7 +1177,7 @@ function updateStats(statsData) {
                 }
                 
                 // Log job status for debugging
-                console.log(`[2025-04-06 18:31] Processing job ${jobId} with status: ${jobData.status}`);
+                //console.log(`[2025-04-06 18:31] Processing job ${jobId} with status: ${jobData.status}`);
                 
                 // Update or add job to state
                 state.jobs[jobId] = {
@@ -1193,9 +1193,9 @@ function updateStats(statsData) {
             });
             
             // Log total jobs processed
-            console.log(`[2025-04-06 18:31] Processed ${statsData.jobs.active_jobs.length} jobs from active_jobs array`);
+            //console.log(`[2025-04-06 18:31] Processed ${statsData.jobs.active_jobs.length} jobs from active_jobs array`);
         } else {
-            console.log('[DEBUG] No active_jobs array found in stats data');
+            //console.log('[DEBUG] No active_jobs array found in stats data');
         }
         
         // Refresh the UI with updated stats
@@ -1236,7 +1236,7 @@ function handleStatsResponse(parsedMessage, rawMessage, source = 'unknown') {
             if (request.type === 'request_stats' && request.status === 'pending') {
                 request.status = 'completed';
                 request.completedAt = Date.now();
-                console.log(`Marked stats request ${requestId} as completed`);
+                //console.log(`Marked stats request ${requestId} as completed`);
             }
         });
     }
@@ -1264,7 +1264,7 @@ function handleAckMessage(parsedMessage, rawMessage, source = 'unknown') {
         state.pendingRequests[originalId].source = source; // Track which connection acknowledged
         
         // Log detailed information for debugging
-        console.log(`Request ${originalId} acknowledged by ${source} connection:`, state.pendingRequests[originalId]);
+        //console.log(`Request ${originalId} acknowledged by ${source} connection:`, state.pendingRequests[originalId]);
     }
     
     // Log the acknowledgment with appropriate detail level and source information
@@ -1276,7 +1276,7 @@ function handleAckMessage(parsedMessage, rawMessage, source = 'unknown') {
         addLogEntry(`Job submission acknowledged via ${source} connection (ID: ${originalId})`, 'success');
     } else if (originalType === 'stats_broadcast') {
         // For stats broadcasts, don't log to avoid cluttering the UI
-        //console.log(`Received acknowledgment for stats broadcast via ${source}: ${originalId}`);
+        ////console.log(`Received acknowledgment for stats broadcast via ${source}: ${originalId}`);
     } else {
         // For other message types, show a normal info message
         addLogEntry(`Received acknowledgment for ${originalType} message via ${source} (ID: ${originalId})`, 'info');
@@ -1312,13 +1312,13 @@ function handleStatsBroadcast(parsedMessage, rawMessage, source = 'unknown') {
     const connectedWorkerIds = connections.workers || [];
     
     // Log the connected workers for debugging
-    console.log(`[2025-05-23T09:45:00-04:00] Connected workers from backend: ${connectedWorkerIds.length}`, connectedWorkerIds);
+    // //console.log(`[2025-05-23T09:45:00-04:00] Connected workers from backend: ${connectedWorkerIds.length}`, connectedWorkerIds);
     
     // Only process workers that are actually connected according to the connections data
     Object.entries(workers).forEach(([workerId, workerData]) => {
         // Skip workers that aren't in the connected workers list
         if (!connectedWorkerIds.includes(workerId)) {
-            console.log(`[2025-05-23T09:45:00-04:00] Skipping disconnected worker: ${workerId}`);
+            // //console.log(`[2025-05-23T09:45:00-04:00] Skipping disconnected worker: ${workerId}`);
             return;
         }
         
@@ -1346,13 +1346,13 @@ function handleStatsBroadcast(parsedMessage, rawMessage, source = 'unknown') {
             current_job_id: existingWorker.current_job_id || null
         };
         
-        console.log(`[DEBUG] Worker ${workerId} status: ${newStatus} (had job: ${existingWorker.current_job_id ? 'yes' : 'no'})`);
+        // //console.log(`[DEBUG] Worker ${workerId} status: ${newStatus} (had job: ${existingWorker.current_job_id ? 'yes' : 'no'})`);
         
-        console.log(`[2025-05-23T09:45:00-04:00] Added connected worker: ${workerId}`);
+        // //console.log(`[2025-05-23T09:45:00-04:00] Added connected worker: ${workerId}`);
     });
     
     // Log the final worker count
-    console.log(`[2025-05-23T09:45:00-04:00] Final worker count: ${Object.keys(state.workers).length}`);
+    // //console.log(`[2025-05-23T09:45:00-04:00] Final worker count: ${Object.keys(state.workers).length}`);
     
     // Update client connections
     state.clients = {};
@@ -1475,7 +1475,7 @@ function handleStatsBroadcast(parsedMessage, rawMessage, source = 'unknown') {
                 });
             });
         } else {
-            console.log('[DEBUG] No jobs found in stats broadcast data');
+            //console.log('[DEBUG] No jobs found in stats broadcast data');
         }
 
         // All job processing is now handled above in the unified job array processing
@@ -1504,8 +1504,8 @@ function handleJobAccepted(message, source = 'unknown') {
     // [2025-05-24T23:25:00-04:00] Capture payload from the message
     const payload = message.payload || null;
     
-    console.log(`[DEBUG] Job accepted: ${jobId}, type: ${jobType || 'unknown'}, client: ${clientId || 'unknown'}, source: ${source}`);
-    console.log(`[DEBUG] Job payload:`, payload);
+    //console.log(`[DEBUG] Job accepted: ${jobId}, type: ${jobType || 'unknown'}, client: ${clientId || 'unknown'}, source: ${source}`);
+    //console.log(`[DEBUG] Job payload:`, payload);
     
     // Add job to state
     state.jobs[jobId] = {
@@ -1543,14 +1543,14 @@ function handleJobCancelled(message, rawMessage, source = 'unknown') {
     // [2025-04-06 20:50] Capture client_id from the message
     const clientId = message.client_id || (rawMessage && rawMessage.client_id) || null;
     
-    console.log(`[DEBUG] Job cancellation received for jobId: ${jobId}, type: ${jobType || 'unknown'}, workerId: ${workerId}, client: ${clientId || 'unknown'}, source: ${source}`);
+    //console.log(`[DEBUG] Job cancellation received for jobId: ${jobId}, type: ${jobType || 'unknown'}, workerId: ${workerId}, client: ${clientId || 'unknown'}, source: ${source}`);
     addLogEntry(`Job cancelled: ${jobId} (Type: ${jobType || 'unknown'}) - ${reason}`, 'warning');
     
     // Update the job in state
     if (jobId) {
         // Create job if it doesn't exist yet
         if (!state.jobs[jobId]) {
-            console.log(`[DEBUG] Creating new cancelled job in state for ${jobId}`);
+            //console.log(`[DEBUG] Creating new cancelled job in state for ${jobId}`);
             state.jobs[jobId] = {
                 id: jobId,
                 worker_id: workerId,
@@ -1565,7 +1565,7 @@ function handleJobCancelled(message, rawMessage, source = 'unknown') {
             };
         } else {
             // Log before update
-            console.log(`[DEBUG] Before cancellation update, job status:`, state.jobs[jobId].status);
+            //console.log(`[DEBUG] Before cancellation update, job status:`, state.jobs[jobId].status);
             
             // Update job properties
             state.jobs[jobId].status = 'cancelled';
@@ -1576,13 +1576,13 @@ function handleJobCancelled(message, rawMessage, source = 'unknown') {
             // [2025-04-06 20:50] Update client_id if it's provided and not already set
             if (clientId && !state.jobs[jobId].client_id) {
                 state.jobs[jobId].client_id = clientId;
-                console.log(`[DEBUG] Updated client_id for job ${jobId} to ${clientId}`);
+                //console.log(`[DEBUG] Updated client_id for job ${jobId} to ${clientId}`);
             }
             
             // [2025-04-06 20:50] Update job_type if it's provided and not already set
             if (jobType && (!state.jobs[jobId].job_type && !state.jobs[jobId].type)) {
                 state.jobs[jobId].job_type = jobType;
-                console.log(`[DEBUG] Updated job_type for job ${jobId} to ${jobType}`);
+                //console.log(`[DEBUG] Updated job_type for job ${jobId} to ${jobType}`);
             }
             
             // Calculate duration if possible
@@ -1592,19 +1592,19 @@ function handleJobCancelled(message, rawMessage, source = 'unknown') {
                 state.jobs[jobId].duration = Math.floor((endTime - startTime) / 1000); // Duration in seconds
             }
             
-            console.log(`[DEBUG] Job ${jobId} marked as cancelled with reason: ${reason}`);
+            //console.log(`[DEBUG] Job ${jobId} marked as cancelled with reason: ${reason}`);
         }
         
         // Update worker's current_job_id if needed
         if (workerId && state.workers[workerId] && state.workers[workerId].current_job_id === jobId) {
-            console.log(`[DEBUG] Clearing worker ${workerId} current_job_id as job has been cancelled`);
+            //console.log(`[DEBUG] Clearing worker ${workerId} current_job_id as job has been cancelled`);
             state.workers[workerId].current_job_id = null;
         }
         
         // Log after update
-        console.log(`[DEBUG] After cancellation update, job:`, state.jobs[jobId]);
+        //console.log(`[DEBUG] After cancellation update, job:`, state.jobs[jobId]);
     } else {
-        console.log(`[DEBUG] Job cancellation update missing job ID`, message);
+        //console.log(`[DEBUG] Job cancellation update missing job ID`, message);
     }
     
     // Update the UI
@@ -1629,14 +1629,14 @@ function handleJobFailed(message, rawMessage, source = 'unknown') {
     // [2025-04-06 20:50] Capture client_id from the message
     const clientId = message.client_id || (rawMessage && rawMessage.client_id) || null;
     
-    console.log(`[DEBUG] Job failure received for jobId: ${jobId}, type: ${jobType || 'unknown'}, workerId: ${workerId}, client: ${clientId || 'unknown'}, source: ${source}`);
+    //console.log(`[DEBUG] Job failure received for jobId: ${jobId}, type: ${jobType || 'unknown'}, workerId: ${workerId}, client: ${clientId || 'unknown'}, source: ${source}`);
     addLogEntry(`Job failed: ${jobId} (Type: ${jobType || 'unknown'}) - ${error}`, 'error');
     
     // Update the job in state
     if (jobId) {
         // Create job if it doesn't exist yet
         if (!state.jobs[jobId]) {
-            console.log(`[DEBUG] Creating new failed job in state for ${jobId}`);
+            //console.log(`[DEBUG] Creating new failed job in state for ${jobId}`);
             state.jobs[jobId] = {
                 id: jobId,
                 worker_id: workerId,
@@ -1651,7 +1651,7 @@ function handleJobFailed(message, rawMessage, source = 'unknown') {
             };
         } else {
             // Log before update
-            console.log(`[DEBUG] Before failure update, job status:`, state.jobs[jobId].status);
+            //console.log(`[DEBUG] Before failure update, job status:`, state.jobs[jobId].status);
             
             // Update job properties
             state.jobs[jobId].status = 'failed';
@@ -1662,13 +1662,13 @@ function handleJobFailed(message, rawMessage, source = 'unknown') {
             // [2025-04-06 20:50] Update client_id if it's provided and not already set
             if (clientId && !state.jobs[jobId].client_id) {
                 state.jobs[jobId].client_id = clientId;
-                console.log(`[DEBUG] Updated client_id for job ${jobId} to ${clientId}`);
+                //console.log(`[DEBUG] Updated client_id for job ${jobId} to ${clientId}`);
             }
             
             // [2025-04-06 20:50] Update job_type if it's provided and not already set
             if (jobType && (!state.jobs[jobId].job_type && !state.jobs[jobId].type)) {
                 state.jobs[jobId].job_type = jobType;
-                console.log(`[DEBUG] Updated job_type for job ${jobId} to ${jobType}`);
+                //console.log(`[DEBUG] Updated job_type for job ${jobId} to ${jobType}`);
             }
             
             // Calculate duration if possible
@@ -1678,19 +1678,19 @@ function handleJobFailed(message, rawMessage, source = 'unknown') {
                 state.jobs[jobId].duration = Math.floor((endTime - startTime) / 1000); // Duration in seconds
             }
             
-            console.log(`[DEBUG] Job ${jobId} marked as failed with error: ${error}`);
+            //console.log(`[DEBUG] Job ${jobId} marked as failed with error: ${error}`);
         }
         
         // Update worker's current_job_id if needed
         if (workerId && state.workers[workerId] && state.workers[workerId].current_job_id === jobId) {
-            console.log(`[DEBUG] Clearing worker ${workerId} current_job_id as job has failed`);
+            //console.log(`[DEBUG] Clearing worker ${workerId} current_job_id as job has failed`);
             state.workers[workerId].current_job_id = null;
         }
         
         // Log after update
-        console.log(`[DEBUG] After failure update, job:`, state.jobs[jobId]);
+        //console.log(`[DEBUG] After failure update, job:`, state.jobs[jobId]);
     } else {
-        console.log(`[DEBUG] Job failure update missing job ID`, message);
+        //console.log(`[DEBUG] Job failure update missing job ID`, message);
     }
     
     // Update the UI
@@ -1713,7 +1713,7 @@ function handleJobCompleted(message, source = 'unknown') {
     const payload = message.payload || null;
 
     // Log the completion with job type
-    console.log(`[DEBUG] Job completed: ${jobId} (type: ${jobType || 'unknown'}) by worker ${workerId}, client: ${clientId}`);
+    //console.log(`[DEBUG] Job completed: ${jobId} (type: ${jobType || 'unknown'}) by worker ${workerId}, client: ${clientId}`);
     addLogEntry(`Job completed: ${jobId} (Type: ${jobType || 'unknown'}, Client: ${clientId || 'unknown'})`, 'success');
 
     // Update the job in state or create if it doesn't exist
@@ -1736,7 +1736,7 @@ function handleJobCompleted(message, source = 'unknown') {
                 isPlaceholder: true, // Mark as placeholder for future updates
                 source_update: source
             };
-            console.log(`[DEBUG] Created placeholder completed job for ${jobId} with type ${jobType || 'unknown'}`);
+            //console.log(`[DEBUG] Created placeholder completed job for ${jobId} with type ${jobType || 'unknown'}`);
         } else {
             // Update existing job
             state.jobs[jobId].status = 'completed';
@@ -1750,19 +1750,19 @@ function handleJobCompleted(message, source = 'unknown') {
             // [2025-05-24T23:45:00-04:00] Update payload if it's provided and not already set
             if (payload && !state.jobs[jobId].payload) {
                 state.jobs[jobId].payload = payload;
-                console.log(`[DEBUG] Updated payload for job ${jobId}`);
+                //console.log(`[DEBUG] Updated payload for job ${jobId}`);
             }
 
             // Update client_id if it's provided and not already set
             if (clientId && !state.jobs[jobId].client_id) {
                 state.jobs[jobId].client_id = clientId;
-                console.log(`[DEBUG] Updated client_id for job ${jobId} to ${clientId}`);
+                //console.log(`[DEBUG] Updated client_id for job ${jobId} to ${clientId}`);
             }
             
             // Update job_type if it's provided and not already set
             if (jobType && (!state.jobs[jobId].job_type && !state.jobs[jobId].type)) {
                 state.jobs[jobId].job_type = jobType;
-                console.log(`[DEBUG] Updated job_type for job ${jobId} to ${jobType}`);
+                //console.log(`[DEBUG] Updated job_type for job ${jobId} to ${jobType}`);
             }
 
             // [2025-04-07 23:47] Calculate and store job duration based on processing start time
@@ -1778,10 +1778,10 @@ function handleJobCompleted(message, source = 'unknown') {
                 const durationSec = Math.floor(durationMs / 1000);
                 state.jobs[jobId].duration = durationSec;
                 const startType = state.jobs[jobId].processingStartedAt ? "processing start" : "creation";
-                console.log(`[DEBUG] Job ${jobId} completed in ${durationSec}s (${durationMs}ms) from ${startType}`);
+                //console.log(`[DEBUG] Job ${jobId} completed in ${durationSec}s (${durationMs}ms) from ${startType}`);
             }
 
-            console.log(`[DEBUG] Updated job ${jobId} to completed status`);
+            //console.log(`[DEBUG] Updated job ${jobId} to completed status`);
         }
 
         // If this worker is assigned to this job, update its status
@@ -1789,14 +1789,14 @@ function handleJobCompleted(message, source = 'unknown') {
             if (state.workers[workerId].current_job_id === jobId) {
                 state.workers[workerId].current_job_id = null;
                 state.workers[workerId].status = 'idle';
-                console.log(`[DEBUG] Updated worker ${workerId} status to idle`);
+                // //console.log(`[DEBUG] Updated worker ${workerId} status to idle`);
             }
         }
 
         // Show notification for job completion
         showNotification(`Job ${jobId} completed successfully`, 'success');
     } else {
-        console.log(`[DEBUG] Job completion message missing job ID`, message);
+        //console.log(`[DEBUG] Job completion message missing job ID`, message);
     }
 
     // Handle workflow step completion if this is part of a workflow
@@ -1831,7 +1831,7 @@ function handleJobProgress(message, source = 'unknown') {
     
     // [2025-05-25T11:00:00-04:00] Check if this is a special service request message
     if (status === 'service_request' && messageText.startsWith('SERVICE_REQUEST:')) {
-        console.log(`[2025-05-25T11:00:00-04:00] Detected service request message for job ${jobId}`);
+        //console.log(`[2025-05-25T11:00:00-04:00] Detected service request message for job ${jobId}`);
         
         try {
             // Parse the service request message
@@ -1868,7 +1868,7 @@ function handleJobProgress(message, source = 'unknown') {
                 };
                 
                 // Handle the service request using the existing handler
-                console.log(`[2025-05-25T11:00:00-04:00] Forwarding to handleServiceRequest: ${endpoint}, ${method}, ${url}`);
+                //console.log(`[2025-05-25T11:00:00-04:00] Forwarding to handleServiceRequest: ${endpoint}, ${method}, ${url}`);
                 handleServiceRequest(serviceRequestMessage, source);
                 return; // Skip normal progress update handling
             }
@@ -1877,14 +1877,14 @@ function handleJobProgress(message, source = 'unknown') {
         }
     }
     
-    console.log(`[DEBUG] Job progress update received with jobId: ${jobId}, workerId: ${workerId}, clientId: ${clientId}, source: ${source}`);
+    //console.log(`[DEBUG] Job progress update received with jobId: ${jobId}, workerId: ${workerId}, clientId: ${clientId}, source: ${source}`);
     addLogEntry(`Job progress update: ${jobId} - ${progress}% (Client: ${clientId || 'unknown'})`, 'info');
     
     // Update the job in state
     if (jobId) {
         // Create job if it doesn't exist yet
         if (!state.jobs[jobId]) {
-            console.log(`[DEBUG] Creating new job in state for ${jobId}`);
+            //console.log(`[DEBUG] Creating new job in state for ${jobId}`);
             state.jobs[jobId] = {
                 id: jobId,
                 worker_id: workerId,
@@ -1899,18 +1899,18 @@ function handleJobProgress(message, source = 'unknown') {
             };
         } else {
             // Log before update
-            console.log(`[DEBUG] Before update, job status:`, state.jobs[jobId].status);
+            //console.log(`[DEBUG] Before update, job status:`, state.jobs[jobId].status);
             
             // [2025-05-20T11:58:19-04:00] Ignore progress updates for completed jobs
             // This prevents the A1111 connector's final 10% progress update from reverting completed jobs
             if (state.jobs[jobId].status === 'completed' || state.jobs[jobId].status === 'failed') {
-                console.log(`[2025-05-20T11:58:19-04:00] Ignoring progress update for ${state.jobs[jobId].status} job ${jobId}`);
+                //console.log(`[2025-05-20T11:58:19-04:00] Ignoring progress update for ${state.jobs[jobId].status} job ${jobId}`);
                 addLogEntry(`Ignored progress update for ${state.jobs[jobId].status} job ${jobId}`, 'info');
                 return;
             }
             
             // [2025-04-06 20:40] Always apply monitor updates since we're only using monitor connection
-            console.log(`[DEBUG] Applying monitor update to job ${jobId}`);
+            //console.log(`[DEBUG] Applying monitor update to job ${jobId}`);
             state.jobs[jobId].progress = progress;
             state.jobs[jobId].updated_at = Date.now();
             state.jobs[jobId].worker_id = workerId;
@@ -1919,7 +1919,7 @@ function handleJobProgress(message, source = 'unknown') {
             // [2025-04-06 20:40] Update client_id if it's provided and not already set
             if (clientId && !state.jobs[jobId].client_id) {
                 state.jobs[jobId].client_id = clientId;
-                console.log(`[DEBUG] Updated client_id for job ${jobId} to ${clientId}`);
+                //console.log(`[DEBUG] Updated client_id for job ${jobId} to ${clientId}`);
             }
             
             // If this was a placeholder, it's not anymore since we have real data
@@ -1930,29 +1930,29 @@ function handleJobProgress(message, source = 'unknown') {
             // [2025-04-06 20:10] Ensure job is marked as active/processing when we get progress updates
             // Also track when the job actually starts processing for accurate time estimation
             if (state.jobs[jobId].status !== 'processing' && state.jobs[jobId].status !== 'active') {
-                console.log(`[DEBUG] Updating job status from ${state.jobs[jobId].status} to 'processing'`);
+                //console.log(`[DEBUG] Updating job status from ${state.jobs[jobId].status} to 'processing'`);
                 state.jobs[jobId].status = 'processing';
                 
                 // Record the exact time when the job starts processing
                 // This is critical for accurate completion time estimation
                 state.jobs[jobId].processingStartedAt = new Date().toISOString();
-                console.log(`[DEBUG] Job ${jobId} started processing at ${state.jobs[jobId].processingStartedAt}`);
+                //console.log(`[DEBUG] Job ${jobId} started processing at ${state.jobs[jobId].processingStartedAt}`);
             }
         }
         
         // Update worker's current_job_id if needed and mark as busy
         if (workerId && state.workers[workerId]) {
             if (state.workers[workerId].current_job_id !== jobId) {
-                console.log(`[DEBUG] Updating worker ${workerId} current_job_id to ${jobId} and status to busy`);
+                // //console.log(`[DEBUG] Updating worker ${workerId} current_job_id to ${jobId} and status to busy`);
                 state.workers[workerId].current_job_id = jobId;
                 state.workers[workerId].status = 'busy';  // Mark worker as busy when processing job
             }
         }
         
         // Log after update
-        console.log(`[DEBUG] After update, job:`, state.jobs[jobId]);
+        //console.log(`[DEBUG] After update, job:`, state.jobs[jobId]);
     } else {
-        console.log(`[DEBUG] Job progress update missing job ID`, message);
+        //console.log(`[DEBUG] Job progress update missing job ID`, message);
     }
     
     // Update the UI
@@ -1971,7 +1971,7 @@ function handleWorkerStatus(message, source = 'unknown') {
     const status = message.status || 'unknown';
     const currentJobId = message.currentJobId || message.current_job_id;
     
-    console.log(`[DEBUG] Worker status update received for worker: ${workerId}, status: ${status}`);
+    // //console.log(`[DEBUG] Worker status update received for worker: ${workerId}, status: ${status}`);
     addLogEntry(`Worker status update: ${workerId} - ${status}`, 'info');
     
     // Update the worker in state
@@ -1993,7 +1993,7 @@ function handleWorkerStatus(message, source = 'unknown') {
                 state.workers[workerId].current_job_id = currentJobId;
                 // Mark worker as busy when assigned a job
                 if (state.workers[workerId].status !== 'busy') {
-                    console.log(`[DEBUG] Marking worker ${workerId} as busy due to job assignment`);
+                    //console.log(`[DEBUG] Marking worker ${workerId} as busy due to job assignment`);
                     state.workers[workerId].status = 'busy';
                 }
                 
@@ -2004,11 +2004,11 @@ function handleWorkerStatus(message, source = 'unknown') {
                     // Ensure job is marked as processing if it's assigned to a worker
                     if (state.jobs[currentJobId].status !== 'processing' && 
                         state.jobs[currentJobId].status !== 'active') {
-                        console.log(`[DEBUG] Updating job ${currentJobId} status to 'processing'`);
+                        //console.log(`[DEBUG] Updating job ${currentJobId} status to 'processing'`);
                         state.jobs[currentJobId].status = 'processing';
                     }
                 } else {
-                    console.log(`[DEBUG] Worker has current_job_id ${currentJobId} but job not found in state`);
+                    //console.log(`[DEBUG] Worker has current_job_id ${currentJobId} but job not found in state`);
                     
                     // Create a placeholder job if it doesn't exist
                     // [2025-04-06 19:32] Added a flag to indicate this is a placeholder job
@@ -2022,17 +2022,17 @@ function handleWorkerStatus(message, source = 'unknown') {
                         updated_at: Date.now(),
                         isPlaceholder: true  // Flag to indicate this is a placeholder with minimal info
                     };
-                    console.log(`[DEBUG] Created placeholder job for ${currentJobId}`);
+                    //console.log(`[DEBUG] Created placeholder job for ${currentJobId}`);
                 }
             } else if (state.workers[workerId].current_job_id) {
                 // Worker status update with no current job - mark as idle
-                console.log(`[DEBUG] Worker ${workerId} has no current job, marking as idle`);
+                //console.log(`[DEBUG] Worker ${workerId} has no current job, marking as idle`);
                 state.workers[workerId].current_job_id = null;
                 state.workers[workerId].status = 'idle';
             }
         } else {
             // Create worker if it doesn't exist
-            console.log(`[DEBUG] Creating new worker: ${workerId}`);
+            //console.log(`[DEBUG] Creating new worker: ${workerId}`);
             state.workers[workerId] = {
                 id: workerId,
                 status: status,
@@ -2053,7 +2053,7 @@ function handleWorkerStatus(message, source = 'unknown') {
                     createdAt: Date.now(),
                     updated_at: Date.now()
                 };
-                console.log(`[DEBUG] Created placeholder job for new worker: ${currentJobId}`);
+                //console.log(`[DEBUG] Created placeholder job for new worker: ${currentJobId}`);
             }
         }
         
@@ -2087,7 +2087,7 @@ function handleErrorMessage(message, source = 'unknown') {
         // These are expected errors when using the Request Stats button
         // The server doesn't support these message types, but we can ignore these errors
         // We've updated the requestStats function to not send these messages
-        console.log(`[2025-05-20T11:23:31-04:00] Ignoring expected error for unsupported message type: ${error}`);
+        //console.log(`[2025-05-20T11:23:31-04:00] Ignoring expected error for unsupported message type: ${error}`);
         return;
     }
     
@@ -2450,7 +2450,7 @@ async function checkJobStatusFromUI() {
                     error: jobStatus.error,
                     source_update: 'rest_api'
                 };
-                console.log(`[2025-05-25T09:15:00-04:00] Created job state for ${jobStatus.job_id} from REST API with payload:`, jobStatus.payload);
+                //console.log(`[2025-05-25T09:15:00-04:00] Created job state for ${jobStatus.job_id} from REST API with payload:`, jobStatus.payload);
             } else {
                 // Update existing job, preserving payload if it exists
                 const existingJob = state.jobs[jobStatus.job_id];
@@ -2466,7 +2466,7 @@ async function checkJobStatusFromUI() {
                     error: jobStatus.error || existingJob.error,
                     source_update: 'rest_api'
                 };
-                console.log(`[2025-05-25T09:15:00-04:00] Updated job state for ${jobStatus.job_id} from REST API with payload:`, jobStatus.payload || existingJob.payload);
+                //console.log(`[2025-05-25T09:15:00-04:00] Updated job state for ${jobStatus.job_id} from REST API with payload:`, jobStatus.payload || existingJob.payload);
             }
         }
         
@@ -2634,13 +2634,13 @@ async function submitJobViaRest() {
                         updated_at: Date.now(),
                         source_update: 'rest_api_submit'
                     };
-                    console.log(`[2025-05-25T09:20:00-04:00] Created job state for ${jobId} from REST API submission with payload:`, payload);
+                    //console.log(`[2025-05-25T09:20:00-04:00] Created job state for ${jobId} from REST API submission with payload:`, payload);
                 }
                 
                 // [2025-05-20T13:27:02-04:00] Auto-fill the job status ID field
                 if (elements.jobStatusId && jobId) {
                     elements.jobStatusId.value = jobId;
-                    console.log(`[2025-05-20T13:27:02-04:00] Auto-filled job status ID field with: ${jobId}`);
+                    //console.log(`[2025-05-20T13:27:02-04:00] Auto-filled job status ID field with: ${jobId}`);
                     addLogEntry(`Auto-filled job status ID field with: ${jobId}`, 'info');
                     
                     // Add visual highlight effect to the job status ID field
@@ -2703,6 +2703,10 @@ async function submitJobViaRest() {
  */
 async function submitJob(customMessageId = null) {
     // Debug logging
+    if (!window.submitJobCallCount) window.submitJobCallCount = 0;
+    window.submitJobCallCount++;
+    console.log(`🔍 SUBMIT: submitJob called #${window.submitJobCallCount} with customMessageId:`, customMessageId);
+    console.log('🔍 SUBMIT: Call stack:', new Error().stack.split('\n').slice(1, 4));
     
     if (!state.clientConnected) {
         addLogEntry('Cannot submit job: Client connection not active', 'error');
@@ -2715,6 +2719,10 @@ async function submitJob(customMessageId = null) {
         const priority = parseInt(elements.jobPriority.value, 10);
         const isWorkflowSimulation = elements.workflowSimulation && elements.workflowSimulation.checked;
         
+        //console.log('🔍 Job form data:', { jobType, priority, isWorkflowSimulation });
+        //console.log('🔍 Workflow simulation checkbox element:', elements.workflowSimulation);
+        //console.log('🔍 Workflow simulation checked state:', elements.workflowSimulation?.checked);
+        
         // Parse payload as JSON
         let payload;
         try {
@@ -2725,13 +2733,19 @@ async function submitJob(customMessageId = null) {
         }
         
         // Check if this is a workflow simulation
+        //console.log('🔍 Checking workflow simulation condition:', { isWorkflowSimulation, customMessageId, jobType });
         if (isWorkflowSimulation && !customMessageId) {
+            //console.log('🔍 Workflow simulation detected - validating job type');
             if (jobType !== 'simulation') {
+                //console.log('🔍 Job type validation FAILED - jobType is not "simulation":', jobType);
                 addLogEntry('Workflow simulation is only supported for "simulation" job type', 'error');
                 return;
             }
+            //console.log('🔍 Job type validation PASSED - calling submitWorkflowSimulation');
             return await submitWorkflowSimulation(jobType, priority, payload);
         }
+        
+        //console.log('🔍 Not a workflow simulation - proceeding with single job submission');
         
         // Single job submission (original logic)
         // 2025-04-09 15:01: Fix job ID generation to ensure only string values are used
@@ -2754,7 +2768,7 @@ async function submitJob(customMessageId = null) {
         }
         
         // Debug logging
-        console.log('Submitting job:', message);
+        //console.log('Submitting job:', message);
         
         // Send message through the client connection
         state.clientSocket.send(JSON.stringify(message));
@@ -2806,11 +2820,14 @@ async function submitJob(customMessageId = null) {
  * @returns {Promise<string>} - The workflow ID
  */
 async function submitWorkflowSimulation(jobType, priority, payload) {
+    //console.log('🔍 submitWorkflowSimulation called with:', { jobType, priority, payload });
     try {
         // Generate workflow ID and timestamp for all jobs
         const workflowId = `workflow-${Date.now()}-${generateUUID()}`;
         const workflowDatetime = Date.now(); // Timestamp in milliseconds
         
+        console.log('🔍 WORKFLOW: Generated workflow ID:', workflowId);
+        console.log('🔍 WORKFLOW: Created workflow state for tracking');
         addLogEntry(`Starting sequential workflow: ${workflowId} with 5 steps`, 'info');
         
         // Store workflow state for tracking
@@ -2826,7 +2843,9 @@ async function submitWorkflowSimulation(jobType, priority, payload) {
         };
         
         // Submit the first step
+        console.log('🔍 WORKFLOW: About to submit first step for workflow', workflowId);
         await submitWorkflowStep(workflowId, 1);
+        console.log('🔍 WORKFLOW: First step submission completed');
         
         // Flash the submit button to indicate workflow submission
         const activeButton = document.querySelector('.priority-btn.active');
@@ -2853,9 +2872,10 @@ async function submitWorkflowSimulation(jobType, priority, payload) {
  * @param {number} stepNumber - The step number to submit
  */
 async function submitWorkflowStep(workflowId, stepNumber) {
+    console.log(`🔍 WORKFLOW: submitWorkflowStep called with workflow=${workflowId}, step=${stepNumber}`);
     const workflow = state.activeWorkflows[workflowId];
     if (!workflow) {
-        console.error(`Workflow ${workflowId} not found`);
+        console.error(`🔍 WORKFLOW: ERROR - Workflow ${workflowId} not found`);
         return;
     }
     
@@ -2880,10 +2900,13 @@ async function submitWorkflowStep(workflowId, stepNumber) {
         message.workflow_datetime = workflow.workflowDatetime;
         message.step_number = stepNumber;
         
-        console.log(`Submitting workflow step ${stepNumber}:`, message);
+        console.log(`🔍 WORKFLOW: Submitting step ${stepNumber} with workflow_id:`, message.workflow_id);
+        console.log(`🔍 WORKFLOW: Full message:`, JSON.stringify(message, null, 2));
         
         // Send message through the client connection
+        console.log(`🔍 WEBSOCKET: Sending workflow message to server`);
         state.clientSocket.send(JSON.stringify(message));
+        console.log(`🔍 WEBSOCKET: Message sent successfully`);
         
         // Store the request in state for tracking
         if (!state.pendingRequests) {
@@ -2934,14 +2957,14 @@ function handleWorkflowStepCompletion(jobId) {
     }
     
     if (!workflowRequest || !workflowRequest.workflowId) {
-        console.log(`No workflow request found for job ${jobId}`);
+        //console.log(`No workflow request found for job ${jobId}`);
         return; // Not a workflow job
     }
     
     const workflowId = workflowRequest.workflowId;
     const workflow = state.activeWorkflows[workflowId];
     if (!workflow) {
-        console.log(`Workflow ${workflowId} not found in activeWorkflows`);
+        //console.log(`Workflow ${workflowId} not found in activeWorkflows`);
         return; // Workflow not found
     }
     
@@ -2954,7 +2977,7 @@ function handleWorkflowStepCompletion(jobId) {
     }
     
     addLogEntry(`Workflow step ${completedStep} completed for ${workflowId}`, 'info');
-    console.log(`Workflow step ${completedStep} completed. Next step: ${completedStep + 1}`);
+    //console.log(`Workflow step ${completedStep} completed. Next step: ${completedStep + 1}`);
     
     // Check if there's a next step to submit
     const nextStep = completedStep + 1;
@@ -3173,7 +3196,7 @@ function updateJobTypeDropdown() {
         updateJobPayload(jobTypes[0]);
     }
     
-    console.log(`[2025-05-19T17:51:00-04:00] Updated job type dropdown with ${jobTypes.length} options`);
+    //console.log(`[2025-05-19T17:51:00-04:00] Updated job type dropdown with ${jobTypes.length} options`);
 }
 
 /**
@@ -3190,7 +3213,7 @@ function updateJobPayload(jobType) {
     // Update the payload textarea
     payloadTextarea.value = defaultPayload;
     
-    console.log(`[2025-05-19T17:54:00-04:00] Updated job payload for job type: ${jobType}`);
+    //console.log(`[2025-05-19T17:54:00-04:00] Updated job payload for job type: ${jobType}`);
 }
 
 /**
@@ -3223,7 +3246,7 @@ function updateUI() {
     validJobs.forEach(job => {
         if ((job.status === 'active' || job.status === 'processing' || job.status === 'assigned') && job.progress === 100) {
             // If the job has 100% progress but is still marked as active, update it to completed
-            console.log(`[DEBUG] Moving job ${job.id} from active to completed (100% progress)`); 
+            //console.log(`[DEBUG] Moving job ${job.id} from active to completed (100% progress)`); 
             job.status = 'completed';
             job.completedAt = job.completedAt || Date.now();
         }
@@ -3232,7 +3255,7 @@ function updateUI() {
     const failedJobs = validJobs.filter(job => job.status === 'failed');
     
     // Log job counts by status for debugging
-    console.log(`[2025-04-17-20:10] Job counts by status: queued=${queuedJobs.length}, active=${activeJobs.length}, completed=${completedJobs.length}, failed=${failedJobs.length}`);
+    //console.log(`[2025-04-17-20:10] Job counts by status: queued=${queuedJobs.length}, active=${activeJobs.length}, completed=${completedJobs.length}, failed=${failedJobs.length}`);
     
     // Update UI with accurate counts
     const totalWorkers = state.stats.totalWorkers;
@@ -3499,7 +3522,7 @@ function updateUI() {
         });
         
         // Log once before processing jobs
-        console.log(`[Current Jobs Queue] Displaying ${currentJobsOnly.length} current jobs (excluding completed/failed): ${queuedJobs.length} pending, ${activeJobs.length} active`);
+        //console.log(`[Current Jobs Queue] Displaying ${currentJobsOnly.length} current jobs (excluding completed/failed): ${queuedJobs.length} pending, ${activeJobs.length} active`);
         
         currentJobsOnly.forEach(job => {
             const row = document.createElement('tr');
@@ -3629,7 +3652,7 @@ function updateUI() {
         });
         
         // Log once before processing jobs
-        console.log(`[2025-04-06 19:40] Displaying ${finishedJobs.length} finished jobs`);
+        //console.log(`[2025-04-06 19:40] Displaying ${finishedJobs.length} finished jobs`);
         
         // Only show the most recent 20 finished jobs to avoid cluttering the UI
         const recentFinishedJobs = finishedJobs.slice(0, 20);
@@ -3826,7 +3849,7 @@ function formatDuration(startDate, job) {
     // If job has a stored duration, use that (it's already in seconds)
     if (job && job.duration) {
         diffInSeconds = job.duration;
-        console.log(`[DEBUG] Using stored duration for job: ${diffInSeconds}s`);
+        //console.log(`[DEBUG] Using stored duration for job: ${diffInSeconds}s`);
     }
     // If job has a completion time, calculate duration from start to completion
     else if (job && (job.completedAt || job.completed_at)) {
@@ -3849,7 +3872,7 @@ function formatDuration(startDate, job) {
         }
         
         diffInSeconds = Math.floor((endDate - startDateObj) / 1000);
-        console.log(`[DEBUG] Calculated duration from start to completion: ${diffInSeconds}s`);
+        //console.log(`[DEBUG] Calculated duration from start to completion: ${diffInSeconds}s`);
     }
     // Otherwise, calculate duration from start to now (for active jobs)
     else {
@@ -3863,7 +3886,7 @@ function formatDuration(startDate, job) {
         
         const now = new Date();
         diffInSeconds = Math.floor((now - startDateObj) / 1000);
-        console.log(`[DEBUG] Calculated duration from start to now: ${diffInSeconds}s`);
+        //console.log(`[DEBUG] Calculated duration from start to now: ${diffInSeconds}s`);
     }
     
     // Format as hours:minutes:seconds
@@ -3890,7 +3913,7 @@ function formatPayload(payload) {
     
     try {
         // Log the payload for debugging
-        console.log('[DEBUG] Formatting payload:', payload, 'Type:', typeof payload);
+        //console.log('[DEBUG] Formatting payload:', payload, 'Type:', typeof payload);
         
         // If payload is already a string, try to parse it as JSON for pretty printing
         if (typeof payload === 'string') {
@@ -4488,7 +4511,7 @@ function showNotification(message, type = 'info') {
  */
 function handleServiceRequest(message, source) {
     // [2025-05-25T10:30:00-04:00] Enhanced service request handling with better logging
-    console.log('[2025-05-25T10:30:00-04:00] Received service request message:', message);
+    //console.log('[2025-05-25T10:30:00-04:00] Received service request message:', message);
     
     // Log the service request
     const timestamp = new Date().toLocaleTimeString();
@@ -4505,7 +4528,7 @@ function handleServiceRequest(message, source) {
     
     // Add log entry for the service request with more details
     addLogEntry(`Service request from ${workerInfo} for job ${jobInfo}: ${requestType}${endpointInfo} to ${serviceInfo}`, 'info');
-    console.log(`[2025-05-25T10:30:00-04:00] Service request details - Worker: ${workerInfo}, Job: ${jobInfo}, Type: ${requestType}, Service: ${serviceInfo}`);
+    //console.log(`[2025-05-25T10:30:00-04:00] Service request details - Worker: ${workerInfo}, Job: ${jobInfo}, Type: ${requestType}, Service: ${serviceInfo}`);
     
     // Create a service request item if the container exists
     if (elements.serviceRequestsList) {
@@ -4567,7 +4590,7 @@ function handleServiceRequest(message, source) {
         
         // Add the request item to the list
         elements.serviceRequestsList.insertBefore(requestItem, elements.serviceRequestsList.firstChild);
-        console.log('[2025-05-25T10:30:00-04:00] Added service request item to list');
+        //console.log('[2025-05-25T10:30:00-04:00] Added service request item to list');
         
         // Show the container and hide the no requests message
         if (elements.serviceRequestsContainer) {
