@@ -150,12 +150,12 @@ const jobSubmissionSchema = z.object({
   job_type: z.string().min(1, 'Job type is required'),
   priority: z.number().min(0).max(100).default(50),
   payload: z.string().min(1, 'Payload is required'),
-  customer_id: z.string().optional(),
-  workflow_id: z.string().optional(),
-  workflow_priority: z.number().min(0).max(100).optional(),
-  workflow_datetime: z.number().optional(),
-  step_number: z.number().min(0).optional(),
-  requirements: z.string().optional(),
+  customer_id: z.string().optional().or(z.literal('')),
+  workflow_id: z.string().optional().or(z.literal('')),
+  workflow_priority: z.coerce.number().min(0).max(100).optional().or(z.literal('')),
+  workflow_datetime: z.coerce.number().optional().or(z.literal('')),
+  step_number: z.coerce.number().min(0).optional().or(z.literal('')),
+  requirements: z.string().optional().or(z.literal('')),
 });
 
 type JobSubmissionData = z.infer<typeof jobSubmissionSchema>;
@@ -223,12 +223,12 @@ export function JobSubmissionForm() {
         job_type: data.job_type,
         priority: data.priority,
         payload: parsedPayload,
-        customer_id: data.customer_id || undefined,
+        customer_id: data.customer_id && data.customer_id.trim() ? data.customer_id : undefined,
         requirements: parsedRequirements,
-        workflow_id: data.workflow_id || undefined,
-        workflow_priority: data.workflow_priority || undefined,
-        workflow_datetime: data.workflow_datetime || undefined,
-        step_number: data.step_number || undefined,
+        workflow_id: data.workflow_id && data.workflow_id.trim() ? data.workflow_id : undefined,
+        workflow_priority: data.workflow_priority !== '' ? data.workflow_priority : undefined,
+        workflow_datetime: data.workflow_datetime !== '' ? data.workflow_datetime : undefined,
+        step_number: data.step_number !== '' ? data.step_number : undefined,
       };
 
       submitJob(jobData);
@@ -318,61 +318,61 @@ export function JobSubmissionForm() {
 
           <div className="grid grid-cols-2 gap-4">
             <div className="space-y-2">
-              <Label htmlFor="customer_id">Customer ID</Label>
+              <Label htmlFor="customer_id">Customer ID (optional)</Label>
               <Input
                 id="customer_id"
                 {...register('customer_id')}
-                placeholder="optional"
+                placeholder="customer identifier"
               />
             </div>
 
             <div className="space-y-2">
-              <Label htmlFor="workflow_id">Workflow ID</Label>
+              <Label htmlFor="workflow_id">Workflow ID (optional)</Label>
               <Input
                 id="workflow_id"
                 {...register('workflow_id')}
-                placeholder="optional"
+                placeholder="workflow identifier"
               />
             </div>
           </div>
 
           <div className="grid grid-cols-3 gap-4">
             <div className="space-y-2">
-              <Label htmlFor="workflow_priority">Workflow Priority</Label>
+              <Label htmlFor="workflow_priority">Workflow Priority (optional)</Label>
               <Input
                 id="workflow_priority"
                 type="number"
                 min="0"
                 max="100"
-                {...register('workflow_priority', { valueAsNumber: true })}
-                placeholder="optional"
+                {...register('workflow_priority')}
+                placeholder="0-100"
               />
             </div>
 
             <div className="space-y-2">
-              <Label htmlFor="workflow_datetime">Workflow DateTime</Label>
+              <Label htmlFor="workflow_datetime">Workflow DateTime (optional)</Label>
               <Input
                 id="workflow_datetime"
                 type="number"
-                {...register('workflow_datetime', { valueAsNumber: true })}
+                {...register('workflow_datetime')}
                 placeholder="timestamp"
               />
             </div>
 
             <div className="space-y-2">
-              <Label htmlFor="step_number">Step Number</Label>
+              <Label htmlFor="step_number">Step Number (optional)</Label>
               <Input
                 id="step_number"
                 type="number"
                 min="0"
-                {...register('step_number', { valueAsNumber: true })}
-                placeholder="0"
+                {...register('step_number')}
+                placeholder="step #"
               />
             </div>
           </div>
 
           <div className="space-y-2">
-            <Label htmlFor="requirements">Requirements (JSON)</Label>
+            <Label htmlFor="requirements">Requirements (optional JSON)</Label>
             <textarea
               id="requirements"
               {...register('requirements')}
