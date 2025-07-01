@@ -1,0 +1,62 @@
+export type MessageType = 
+  | 'submit_job'
+  | 'job_assigned' 
+  | 'job_progress'
+  | 'job_completed'
+  | 'job_failed'
+  | 'worker_registration'
+  | 'worker_status'
+  | 'stats_broadcast'
+  | 'heartbeat'
+  | 'error';
+
+export interface BaseMessage {
+  id: string;
+  type: MessageType;
+  timestamp: number;
+  source?: string;
+}
+
+export interface SubmitJobMessage extends BaseMessage {
+  type: 'submit_job';
+  job_type: string;
+  priority: number;
+  payload: Record<string, unknown>;
+  customer_id?: string;
+  requirements?: Record<string, unknown>;
+  workflow_id?: string;
+  workflow_priority?: number;
+  workflow_datetime?: number;
+  step_number?: number;
+}
+
+export interface JobProgressMessage extends BaseMessage {
+  type: 'job_progress';
+  job_id: string;
+  progress: number;
+  status?: string;
+  message?: string;
+}
+
+export interface JobCompletedMessage extends BaseMessage {
+  type: 'job_completed';
+  job_id: string;
+  result?: unknown;
+  worker_id: string;
+}
+
+export interface WorkerStatusMessage extends BaseMessage {
+  type: 'worker_status';
+  worker_id: string;
+  status: string;
+  current_job_id?: string;
+}
+
+export interface StatsBroadcastMessage extends BaseMessage {
+  type: 'stats_broadcast';
+  data: {
+    workers: unknown[];
+    jobs: unknown[];
+    system: unknown;
+  };
+}
