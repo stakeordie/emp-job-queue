@@ -423,4 +423,160 @@ export class JobBroker implements JobBrokerInterface {
       failed: failedKeys,
     };
   }
+
+  /**
+   * Get all connected workers (for monitor full state)
+   */
+  async getConnectedWorkers(): Promise<unknown[]> {
+    try {
+      const workerKeys = await this.redis['redis'].keys('workers:*');
+      const workers = [];
+
+      for (const key of workerKeys) {
+        const workerId = key.replace('workers:', '');
+        const workerData = await this.redis['redis'].hgetall(key);
+
+        if (workerData && Object.keys(workerData).length > 0) {
+          // Parse capabilities if it's a JSON string
+          let capabilities = {};
+          if (workerData.capabilities) {
+            try {
+              capabilities = JSON.parse(workerData.capabilities);
+            } catch (_e) {
+              capabilities = workerData.capabilities;
+            }
+          }
+
+          workers.push({
+            id: workerId,
+            status: workerData.status || 'idle',
+            capabilities,
+            connected_at: workerData.connected_at || new Date().toISOString(),
+            jobs_completed: parseInt(workerData.jobs_completed || '0'),
+            jobs_failed: parseInt(workerData.jobs_failed || '0'),
+            current_job_id: workerData.current_job_id || null,
+            last_activity: workerData.last_activity || new Date().toISOString(),
+          });
+        }
+      }
+
+      return workers;
+    } catch (error) {
+      logger.error('Error getting connected workers:', error);
+      return [];
+    }
+  }
+
+  /**
+   * Get all jobs (for monitor full state)
+   */
+  async getAllJobs(): Promise<unknown[]> {
+    try {
+      const jobs = [];
+
+      // Get pending jobs from sorted set
+      const pendingJobs = await this.redis['redis'].zrange('jobs:pending', 0, -1);
+      for (const jobId of pendingJobs) {
+        const jobData = await this.redis['redis'].hgetall(`job:${jobId}`);
+        if (jobData && Object.keys(jobData).length > 0) {
+          jobs.push(this.parseJobData(jobId, jobData, 'pending'));
+        }
+      }
+
+      // Get active jobs
+      const activeKeys = await this.redis['redis'].keys('jobs:active:*');
+      for (const key of activeKeys) {
+        const activeJobs = await this.redis['redis'].hgetall(key);
+        for (const [jobId, jobDataStr] of Object.entries(activeJobs)) {
+          try {
+            const jobData = JSON.parse(jobDataStr as string);
+            jobs.push(this.parseJobData(jobId, jobData, 'active'));
+          } catch (e) {
+            logger.error(`Error parsing active job ${jobId}:`, e);
+          }
+        }
+      }
+
+      // Get completed jobs (limit to last 100)
+      const completedJobs = await this.redis['redis'].hgetall('jobs:completed');
+      const completedEntries = Object.entries(completedJobs).slice(-100);
+      for (const [jobId, jobDataStr] of completedEntries) {
+        try {
+          const jobData = JSON.parse(jobDataStr as string);
+          jobs.push(this.parseJobData(jobId, jobData, 'completed'));
+        } catch (e) {
+          logger.error(`Error parsing completed job ${jobId}:`, e);
+        }
+      }
+
+      // Get failed jobs (limit to last 100)
+      const failedJobs = await this.redis['redis'].hgetall('jobs:failed');
+      const failedEntries = Object.entries(failedJobs).slice(-100);
+      for (const [jobId, jobDataStr] of failedEntries) {
+        try {
+          const jobData = JSON.parse(jobDataStr as string);
+          jobs.push(this.parseJobData(jobId, jobData, 'failed'));
+        } catch (e) {
+          logger.error(`Error parsing failed job ${jobId}:`, e);
+        }
+      }
+
+      return jobs;
+    } catch (error) {
+      logger.error('Error getting all jobs:', error);
+      return [];
+    }
+  }
+
+  /**
+   * Parse job data from Redis into consistent format
+   */
+  private parseJobData(jobId: string, jobData: Record<string, unknown>, status: string): unknown {
+    // Parse nested JSON fields
+    let payload = {};
+    let requirements = {};
+
+    if (jobData.payload) {
+      try {
+        payload = JSON.parse(jobData.payload as string);
+      } catch (_e) {
+        payload = jobData.payload;
+      }
+    }
+
+    if (jobData.requirements) {
+      try {
+        requirements = JSON.parse(jobData.requirements as string);
+      } catch (_e) {
+        requirements = jobData.requirements;
+      }
+    }
+
+    return {
+      id: jobId,
+      job_type: (jobData.job_type as string) || 'unknown',
+      status: status,
+      priority: parseInt((jobData.priority as string) || '50'),
+      payload,
+      customer_id: jobData.customer_id as string,
+      requirements,
+      workflow_id: jobData.workflow_id as string,
+      workflow_priority: jobData.workflow_priority
+        ? parseInt(jobData.workflow_priority as string)
+        : undefined,
+      workflow_datetime: jobData.workflow_datetime
+        ? parseInt(jobData.workflow_datetime as string)
+        : undefined,
+      step_number: jobData.step_number ? parseInt(jobData.step_number as string) : undefined,
+      created_at: parseInt((jobData.created_at as string) || Date.now().toString()),
+      assigned_at: jobData.assigned_at ? parseInt(jobData.assigned_at as string) : undefined,
+      started_at: jobData.started_at ? parseInt(jobData.started_at as string) : undefined,
+      completed_at: jobData.completed_at ? parseInt(jobData.completed_at as string) : undefined,
+      worker_id: jobData.worker_id as string,
+      progress: jobData.progress ? parseInt(jobData.progress as string) : undefined,
+      result: jobData.result,
+      error: jobData.error as string,
+      failure_count: parseInt((jobData.failure_count as string) || '0'),
+    };
+  }
 }

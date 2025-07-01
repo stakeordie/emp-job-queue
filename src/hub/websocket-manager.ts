@@ -12,6 +12,8 @@ import {
 } from '../core/interfaces/connection-manager.js';
 import { BaseMessage, MessageType, WorkerRegistrationMessage } from '../core/types/messages.js';
 import { logger } from '../core/utils/logger.js';
+import { EventBroadcaster } from '../services/event-broadcaster.js';
+import { MonitorWebSocketHandler } from './monitor-websocket-handler.js';
 
 interface WebSocketManagerConfig {
   port: number;
@@ -30,8 +32,14 @@ export class WebSocketManager {
   private config: WebSocketManagerConfig;
   private isRunningFlag = false;
   private connectionCount = 0;
+  private eventBroadcaster: EventBroadcaster;
+  private monitorHandler: MonitorWebSocketHandler;
 
-  constructor(connectionManager: ConnectionManagerInterface, config: WebSocketManagerConfig) {
+  constructor(
+    connectionManager: ConnectionManagerInterface,
+    config: WebSocketManagerConfig,
+    eventBroadcaster?: EventBroadcaster
+  ) {
     this.connectionManager = connectionManager;
     this.config = {
       enableHeartbeat: true,
@@ -40,6 +48,26 @@ export class WebSocketManager {
       enableCompression: true,
       ...config,
     };
+
+    // Initialize event broadcasting system
+    this.eventBroadcaster = eventBroadcaster || new EventBroadcaster();
+
+    // We'll initialize monitorHandler later when we have jobBroker access
+    this.monitorHandler = null as unknown as MonitorWebSocketHandler;
+  }
+
+  /**
+   * Set the monitor handler (called after jobBroker is available)
+   */
+  setMonitorHandler(monitorHandler: MonitorWebSocketHandler): void {
+    this.monitorHandler = monitorHandler;
+  }
+
+  /**
+   * Get the event broadcaster instance
+   */
+  getEventBroadcaster(): EventBroadcaster {
+    return this.eventBroadcaster;
   }
 
   async start(): Promise<void> {
@@ -171,8 +199,18 @@ export class WebSocketManager {
       if (connectionType === 'worker') {
         await this.connectionManager.addWorkerConnection(connectionId, connection);
         logger.info(`Worker ${connectionId} connected via WebSocket`);
+      } else if (connectionType === 'monitor') {
+        // Handle monitor connections through the event broadcasting system
+        if (this.monitorHandler) {
+          this.monitorHandler.handleConnection(ws, connectionId);
+          logger.info(`Monitor ${connectionId} connected via WebSocket`);
+        } else {
+          logger.warn(`Monitor ${connectionId} connected but no monitor handler available`);
+          ws.close(1011, 'Monitor handler not available');
+          return;
+        }
       } else {
-        // Both 'client' and 'monitor' are treated as clients, but type is preserved
+        // Regular client connections
         await this.connectionManager.addClientConnection(connectionId, connection);
         logger.info(`${connectionType} ${connectionId} connected via WebSocket`);
       }
@@ -184,6 +222,9 @@ export class WebSocketManager {
 
         if (connectionType === 'worker') {
           await this.connectionManager.removeWorkerConnection(connectionId);
+        } else if (connectionType === 'monitor') {
+          // Monitor disconnections are handled by the EventBroadcaster
+          // No need to call removeMonitor here as it's handled in the EventBroadcaster
         } else {
           await this.connectionManager.removeClientConnection(connectionId);
         }
