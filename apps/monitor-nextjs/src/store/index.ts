@@ -149,6 +149,8 @@ export const useMonitorStore = create<MonitorStore>()(
       
       websocketService.onDisconnect(() => {
         setConnection({ isConnected: false });
+        // Clear workers and jobs when disconnected
+        set({ workers: [], jobs: [] });
         addLog({
           level: 'warn',
           category: 'websocket',
@@ -169,40 +171,133 @@ export const useMonitorStore = create<MonitorStore>()(
         // Handle different message types
         switch (message.type) {
           case 'stats_broadcast':
-            const statsMessage = message as { type: 'stats_broadcast'; data?: { workers?: unknown[]; jobs?: unknown[] } };
-            if (statsMessage.data) {
-              // Update workers
-              if (statsMessage.data.workers) {
-                statsMessage.data.workers.forEach((worker: Record<string, unknown>) => {
-                  addWorker({
-                    id: (worker.id as string) || (worker.worker_id as string),
-                    status: (worker.status as string) || 'idle',
-                    capabilities: (worker.capabilities as WorkerCapabilities) || {
-                      gpu_count: 1,
-                      gpu_memory_gb: 8,
-                      gpu_model: 'Unknown',
-                      cpu_cores: 4,
-                      ram_gb: 16,
-                      services: [],
-                      models: [],
-                      customer_access: 'none',
-                      max_concurrent_jobs: 1
-                    },
-                    current_job_id: worker.current_job_id as string,
-                    connected_at: (worker.connected_at as string) || new Date().toISOString(),
-                    last_activity: (worker.last_activity as string) || new Date().toISOString(),
-                    jobs_completed: (worker.jobs_completed as number) || 0,
-                    jobs_failed: (worker.jobs_failed as number) || 0,
-                    total_processing_time: (worker.total_processing_time as number) || 0
-                  });
-                });
-              }
+            console.log('[Store] Received stats_broadcast:', message);
+            const statsMessage = message as unknown as Record<string, unknown>;
+            
+            // Clear existing workers and jobs first (like the original monitor)
+            set({ workers: [], jobs: [] });
+            
+            // Workers is an object with worker IDs as keys, not an array
+            const workers = statsMessage.workers as Record<string, Record<string, unknown>>;
+            console.log('[Store] Found workers object:', workers);
+            
+            if (workers && typeof workers === 'object') {
+              const workerEntries = Object.entries(workers);
+              console.log('[Store] Processing', workerEntries.length, 'workers');
               
-              // Update jobs
-              if (statsMessage.data.jobs) {
-                statsMessage.data.jobs.forEach((job: Record<string, unknown>) => {
+              workerEntries.forEach(([workerId, workerData]) => {
+                console.log('[Store] Adding worker:', workerId, workerData);
+                
+                const capabilities = (workerData.capabilities as WorkerCapabilities) || {
+                  gpu_count: 1,
+                  gpu_memory_gb: 8,
+                  gpu_model: 'Unknown',
+                  cpu_cores: 4,
+                  ram_gb: 16,
+                  services: [],
+                  models: [],
+                  customer_access: 'none',
+                  max_concurrent_jobs: 1
+                };
+                
+                addWorker({
+                  id: workerId,
+                  status: (workerData.status as WorkerStatus) || 'idle',
+                  capabilities,
+                  current_job_id: workerData.current_job_id as string,
+                  connected_at: (workerData.connected_at as string) || new Date().toISOString(),
+                  last_activity: (workerData.last_activity as string) || new Date().toISOString(),
+                  jobs_completed: (workerData.jobs_processed as number) || (workerData.jobs_completed as number) || 0,
+                  jobs_failed: (workerData.jobs_failed as number) || 0,
+                  total_processing_time: (workerData.total_processing_time as number) || 0
+                });
+              });
+            }
+            
+            // Handle jobs from system.jobs structure (like original monitor)
+            const system = statsMessage.system as Record<string, unknown>;
+            console.log('[Store] Found system:', system);
+            
+            if (system?.jobs) {
+              const systemJobs = system.jobs as Record<string, unknown>;
+              console.log('[Store] Found system.jobs:', systemJobs);
+              
+              // Handle different job arrays from system.jobs
+              const jobArrays = [
+                { jobs: (systemJobs.pending_jobs as Record<string, unknown>[]) || [], type: 'pending' },
+                { jobs: (systemJobs.active_jobs as Record<string, unknown>[]) || [], type: 'active' },
+                { jobs: (systemJobs.completed_jobs as Record<string, unknown>[]) || [], type: 'completed' },
+                { jobs: (systemJobs.failed_jobs as Record<string, unknown>[]) || [], type: 'failed' }
+              ];
+              
+              // Process all job arrays
+              jobArrays.forEach(jobArray => {
+                if (Array.isArray(jobArray.jobs)) {
+                  console.log('[Store] Processing', jobArray.jobs.length, jobArray.type, 'jobs');
+                  jobArray.jobs.forEach((job: Record<string, unknown>) => {
+                    addJob({
+                      id: (job.id as string) || (job.job_id as string),
+                      job_type: (job.job_type as string) || (job.type as string) || 'unknown',
+                      status: (job.status as JobStatus) || jobArray.type as JobStatus,
+                      priority: (job.priority as number) || 50,
+                      payload: (job.payload as Record<string, unknown>) || {},
+                      customer_id: job.customer_id as string,
+                      requirements: job.requirements as JobRequirements,
+                      workflow_id: job.workflow_id as string,
+                      workflow_priority: job.workflow_priority as number,
+                      workflow_datetime: job.workflow_datetime as number,
+                      step_number: job.step_number as number,
+                      created_at: (job.created_at as number) || Date.now(),
+                      assigned_at: job.assigned_at as number,
+                      started_at: job.started_at as number,
+                      completed_at: job.completed_at as number,
+                      worker_id: job.worker_id as string,
+                      progress: job.progress as number,
+                      result: job.result as unknown,
+                      error: job.error as string,
+                      failure_count: (job.failure_count as number) || 0
+                    });
+                  });
+                }
+              });
+            }
+            
+            // Also handle direct jobs array (fallback for older format)
+            const directJobs = statsMessage.jobs as Record<string, unknown>[] | Record<string, Record<string, unknown>>;
+            console.log('[Store] Found direct jobs:', directJobs);
+            
+            if (directJobs) {
+              if (Array.isArray(directJobs)) {
+                console.log('[Store] Processing', directJobs.length, 'direct jobs as array');
+                directJobs.forEach((job: Record<string, unknown>) => {
                   addJob({
                     id: (job.id as string) || (job.job_id as string),
+                    job_type: (job.job_type as string) || (job.type as string) || 'unknown',
+                    status: (job.status as JobStatus) || 'pending',
+                    priority: (job.priority as number) || 50,
+                    payload: (job.payload as Record<string, unknown>) || {},
+                    customer_id: job.customer_id as string,
+                    requirements: job.requirements as JobRequirements,
+                    workflow_id: job.workflow_id as string,
+                    workflow_priority: job.workflow_priority as number,
+                    workflow_datetime: job.workflow_datetime as number,
+                    step_number: job.step_number as number,
+                    created_at: (job.created_at as number) || Date.now(),
+                    assigned_at: job.assigned_at as number,
+                    started_at: job.started_at as number,
+                    completed_at: job.completed_at as number,
+                    worker_id: job.worker_id as string,
+                    progress: job.progress as number,
+                    result: job.result as unknown,
+                    error: job.error as string,
+                    failure_count: (job.failure_count as number) || 0
+                  });
+                });
+              } else if (typeof directJobs === 'object') {
+                console.log('[Store] Processing jobs as object');
+                Object.entries(directJobs as Record<string, Record<string, unknown>>).forEach(([jobId, job]) => {
+                  addJob({
+                    id: jobId,
                     job_type: (job.job_type as string) || (job.type as string) || 'unknown',
                     status: (job.status as JobStatus) || 'pending',
                     priority: (job.priority as number) || 50,
@@ -231,12 +326,12 @@ export const useMonitorStore = create<MonitorStore>()(
           case 'job_progress':
           case 'job_completed':
           case 'job_failed':
-            const jobMessage = message as Record<string, unknown>;
+            const jobMessage = message as unknown as Record<string, unknown>;
             if (jobMessage.job_id) {
               updateJob(jobMessage.job_id as string, {
-                status: message.type === 'job_assigned' ? 'assigned' :
-                        message.type === 'job_progress' ? 'processing' :
-                        message.type === 'job_completed' ? 'completed' : 'failed',
+                status: message.type === 'job_assigned' ? 'assigned' as JobStatus :
+                        message.type === 'job_progress' ? 'processing' as JobStatus :
+                        message.type === 'job_completed' ? 'completed' as JobStatus : 'failed' as JobStatus,
                 progress: jobMessage.progress as number,
                 worker_id: jobMessage.worker_id as string,
                 result: jobMessage.result as unknown,
@@ -245,7 +340,7 @@ export const useMonitorStore = create<MonitorStore>()(
             }
             break;
           case 'worker_status':
-            const workerMessage = message as Record<string, unknown>;
+            const workerMessage = message as unknown as Record<string, unknown>;
             if (workerMessage.worker_id) {
               updateWorker(workerMessage.worker_id as string, {
                 status: workerMessage.status as WorkerStatus,
@@ -261,7 +356,16 @@ export const useMonitorStore = create<MonitorStore>()(
     
     disconnect: () => {
       websocketService.disconnect();
-      get().setConnection({ isConnected: false });
+      const { setConnection, addLog } = get();
+      setConnection({ isConnected: false });
+      // Clear workers and jobs when manually disconnecting
+      set({ workers: [], jobs: [] });
+      addLog({
+        level: 'info',
+        category: 'websocket',
+        message: 'Manually disconnected from hub',
+        source: 'store',
+      });
     },
     
     submitJob: (jobData) => {
@@ -283,7 +387,4 @@ export const useMonitorStore = create<MonitorStore>()(
   }))
 );
 
-// Auto-connect when store is created
-if (typeof window !== 'undefined') {
-  useMonitorStore.getState().connect();
-}
+// Note: Auto-connect removed - user must manually connect

@@ -7,6 +7,7 @@ export class WebSocketService {
   private maxReconnectAttempts = 5;
   private reconnectInterval = 3000;
   private isConnecting = false;
+  private manuallyDisconnected = false;
   private messageQueue: BaseMessage[] = [];
   private baseUrl: string = 'ws://localhost:3002';
   
@@ -30,6 +31,7 @@ export class WebSocketService {
     }
 
     this.isConnecting = true;
+    this.manuallyDisconnected = false; // Reset manual disconnect flag
     
     // Generate timestamp-based IDs like the original monitor
     const timestamp = Date.now();
@@ -103,11 +105,13 @@ export class WebSocketService {
         this.isConnecting = false;
         this.onDisconnectCallbacks.forEach(callback => callback());
         
-        // Auto-reconnect
-        if (this.reconnectAttempts < this.maxReconnectAttempts) {
+        // Auto-reconnect only if not manually disconnected
+        if (!this.manuallyDisconnected && this.reconnectAttempts < this.maxReconnectAttempts) {
           this.reconnectAttempts++;
           console.log(`[WebSocket] Reconnecting... (attempt ${this.reconnectAttempts}/${this.maxReconnectAttempts})`);
           setTimeout(() => this.connect(), this.reconnectInterval);
+        } else if (this.manuallyDisconnected) {
+          console.log(`[WebSocket] Skipping auto-reconnect due to manual disconnect`);
         }
       }
     };
@@ -120,6 +124,9 @@ export class WebSocketService {
   }
 
   disconnect() {
+    this.manuallyDisconnected = true; // Set manual disconnect flag
+    this.reconnectAttempts = 0; // Reset reconnect attempts
+    
     if (this.monitorWs) {
       this.monitorWs.close();
       this.monitorWs = null;

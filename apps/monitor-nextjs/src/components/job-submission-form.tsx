@@ -7,7 +7,7 @@ import { z } from 'zod';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { useMonitorStore } from '@/store';
@@ -175,7 +175,7 @@ export function JobSubmissionForm() {
     },
   });
 
-  const { register, handleSubmit, reset, setValue, watch, formState: { errors } } = form;
+  const { register, handleSubmit, reset, setValue, watch } = form;
 
   // Handle job type change
   const handleJobTypeChange = (jobType: string) => {
@@ -242,21 +242,16 @@ export function JobSubmissionForm() {
   };
 
   return (
-    <Card className="w-full max-w-2xl">
-      <CardHeader>
-        <div className="flex items-center justify-between">
-          <div>
-            <CardTitle className="text-lg">Submit Job</CardTitle>
-            <CardDescription>
-              Send a job to the queue for processing
-            </CardDescription>
-          </div>
+    <Card className="w-full">
+      <CardHeader className="pb-3">
+        <div className="space-y-2">
+          <CardTitle className="text-base">Submit Job</CardTitle>
           <div className="flex items-center gap-2">
-            <Badge variant={connection.isConnected ? "default" : "destructive"}>
+            <Badge variant={connection.isConnected ? "default" : "destructive"} className="text-xs">
               {connection.isConnected ? "Connected" : "Disconnected"}
             </Badge>
             {lastSubmission && (
-              <Badge variant="secondary">
+              <Badge variant="secondary" className="text-xs">
                 Last: {lastSubmission}
               </Badge>
             )}
@@ -264,13 +259,13 @@ export function JobSubmissionForm() {
         </div>
       </CardHeader>
       
-      <CardContent>
-        <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
-          <div className="grid grid-cols-2 gap-4">
-            <div className="space-y-2">
-              <Label htmlFor="job_type">Job Type</Label>
+      <CardContent className="p-3">
+        <form onSubmit={handleSubmit(onSubmit)} className="space-y-3">
+          <div className="grid grid-cols-2 gap-3">
+            <div className="space-y-1">
+              <Label htmlFor="job_type" className="text-xs">Job Type</Label>
               <Select value={selectedJobType} onValueChange={handleJobTypeChange}>
-                <SelectTrigger>
+                <SelectTrigger className="h-8">
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
@@ -281,115 +276,67 @@ export function JobSubmissionForm() {
                   ))}
                 </SelectContent>
               </Select>
-              {errors.job_type && (
-                <p className="text-sm text-red-500">{errors.job_type.message}</p>
-              )}
             </div>
 
-            <div className="space-y-2">
-              <Label htmlFor="priority">Priority (0-100)</Label>
+            <div className="space-y-1">
+              <Label htmlFor="priority" className="text-xs">Priority</Label>
               <Input
                 id="priority"
                 type="number"
                 min="0"
                 max="100"
+                className="h-8"
                 {...register('priority', { valueAsNumber: true })}
                 placeholder="50"
               />
-              {errors.priority && (
-                <p className="text-sm text-red-500">{errors.priority.message}</p>
-              )}
             </div>
           </div>
 
-          <div className="space-y-2">
-            <Label htmlFor="payload">Payload (JSON)</Label>
+          <div className="space-y-1">
+            <Label htmlFor="payload" className="text-xs">Payload</Label>
             <textarea
               id="payload"
               {...register('payload')}
-              className="w-full px-3 py-2 border rounded-md resize-y font-mono text-sm"
-              rows={8}
+              className="w-full px-2 py-1 border rounded-md resize-y font-mono text-xs"
+              rows={4}
               placeholder='{"message": "Hello from Next.js monitor"}'
             />
-            {errors.payload && (
-              <p className="text-sm text-red-500">{errors.payload.message}</p>
-            )}
           </div>
 
-          <div className="grid grid-cols-2 gap-4">
-            <div className="space-y-2">
-              <Label htmlFor="customer_id">Customer ID (optional)</Label>
-              <Input
-                id="customer_id"
-                {...register('customer_id')}
-                placeholder="customer identifier"
-              />
-            </div>
-
-            <div className="space-y-2">
-              <Label htmlFor="workflow_id">Workflow ID (optional)</Label>
+          <div className="grid grid-cols-2 gap-3">
+            <div className="space-y-1">
+              <Label htmlFor="workflow_id" className="text-xs">Workflow ID</Label>
               <Input
                 id="workflow_id"
+                className="h-7 text-xs"
                 {...register('workflow_id')}
-                placeholder="workflow identifier"
+                placeholder="optional"
               />
             </div>
-          </div>
 
-          <div className="grid grid-cols-3 gap-4">
-            <div className="space-y-2">
-              <Label htmlFor="workflow_priority">Workflow Priority (optional)</Label>
+            <div className="space-y-1">
+              <Label htmlFor="workflow_priority" className="text-xs">W. Priority</Label>
               <Input
                 id="workflow_priority"
                 type="number"
                 min="0"
                 max="100"
+                className="h-7 text-xs"
                 {...register('workflow_priority')}
                 placeholder="0-100"
               />
             </div>
-
-            <div className="space-y-2">
-              <Label htmlFor="workflow_datetime">Workflow DateTime (optional)</Label>
-              <Input
-                id="workflow_datetime"
-                type="number"
-                {...register('workflow_datetime')}
-                placeholder="timestamp"
-              />
-            </div>
-
-            <div className="space-y-2">
-              <Label htmlFor="step_number">Step Number (optional)</Label>
-              <Input
-                id="step_number"
-                type="number"
-                min="0"
-                {...register('step_number')}
-                placeholder="step #"
-              />
-            </div>
           </div>
 
-          <div className="space-y-2">
-            <Label htmlFor="requirements">Requirements (optional JSON)</Label>
-            <textarea
-              id="requirements"
-              {...register('requirements')}
-              className="w-full px-3 py-2 border rounded-md resize-none font-mono text-sm"
-              rows={2}
-              placeholder='{"gpu_memory_gb": 8, "service_types": ["comfyui"]}'
-            />
-            {errors.requirements && (
-              <p className="text-sm text-red-500">{errors.requirements.message}</p>
-            )}
-          </div>
-
-          <div className="flex gap-2 pt-4">
+          <div className="flex gap-2">
             <Button 
               type="submit" 
               disabled={isSubmitting || !connection.isConnected}
-              className="flex-1"
+              className={`flex-1 h-8 text-sm transition-all duration-200 transform ${
+                isSubmitting || !connection.isConnected
+                  ? "opacity-50 cursor-not-allowed"
+                  : "hover:bg-green-600 hover:scale-105 active:scale-95 shadow-md hover:shadow-lg"
+              }`}
             >
               {isSubmitting ? 'Submitting...' : 'Submit Job'}
             </Button>
@@ -397,6 +344,7 @@ export function JobSubmissionForm() {
               type="button" 
               variant="outline" 
               onClick={() => reset()}
+              className="h-8 text-sm transition-all duration-200 transform hover:bg-gray-100 hover:scale-105 active:scale-95 shadow-sm hover:shadow-md"
             >
               Reset
             </Button>

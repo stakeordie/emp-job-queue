@@ -5,7 +5,6 @@ import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { 
   Select, 
   SelectContent, 
@@ -13,7 +12,7 @@ import {
   SelectTrigger, 
   SelectValue 
 } from "@/components/ui/select"
-import { Activity, Server, Zap, Play, Square } from "lucide-react"
+import { Play, Square } from "lucide-react"
 import { JobSubmissionForm } from "@/components/job-submission-form"
 import { useMonitorStore } from "@/store"
 import { useState } from "react"
@@ -125,6 +124,11 @@ export default function Home() {
               onClick={connection.isConnected ? disconnect : handleConnect}
               variant={connection.isConnected ? "destructive" : "default"}
               size="sm"
+              className={`transition-all duration-200 transform ${
+                connection.isConnected 
+                  ? "hover:bg-red-600 hover:scale-105 active:scale-95 shadow-md hover:shadow-lg" 
+                  : "hover:bg-blue-600 hover:scale-105 active:scale-95 shadow-md hover:shadow-lg"
+              }`}
             >
               {connection.isConnected ? (
                 <>
@@ -142,149 +146,182 @@ export default function Home() {
         </CardContent>
       </Card>
 
-      {/* Stats */}
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-        <Card className="p-4">
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="text-sm font-medium text-muted-foreground">Active Jobs</p>
-              <p className="text-2xl font-bold">{activeJobs}</p>
-            </div>
-            <Activity className="h-5 w-5 text-muted-foreground" />
+      {/* Workers Carousel */}
+      <div className="space-y-3">
+        <div className="flex items-center justify-between">
+          <h2 className="text-lg font-semibold">Workers ({workers.length})</h2>
+          <div className="flex items-center gap-4 text-sm text-muted-foreground">
+            <span>Active Jobs: {activeJobs}</span>
+            <span>Completed: {completedJobs}</span>
+            <span>Failed: {failedJobs}</span>
           </div>
-        </Card>
-
-        <Card className="p-4">
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="text-sm font-medium text-muted-foreground">Workers</p>
-              <p className="text-2xl font-bold">{workers.length}</p>
-            </div>
-            <Server className="h-5 w-5 text-muted-foreground" />
+        </div>
+        
+        {workers.length === 0 ? (
+          <Card className="p-8">
+            <p className="text-muted-foreground text-center">No workers connected. Start some workers to see them here.</p>
+          </Card>
+        ) : (
+          <div className="flex gap-4 overflow-x-auto pb-4">
+            {workers.map((worker) => (
+              <Card key={worker.id} className="flex-shrink-0 w-80 p-4 border-l-4" style={{
+                borderLeftColor: 
+                  worker.status === 'idle' ? '#22c55e' :
+                  worker.status === 'busy' ? '#f59e0b' :
+                  worker.status === 'error' ? '#ef4444' :
+                  '#6b7280'
+              }}>
+                <div className="space-y-3">
+                  <div className="flex items-center justify-between">
+                    <h3 className="font-medium truncate" title={worker.id}>{worker.id}</h3>
+                    <Badge variant={
+                      worker.status === 'idle' ? 'default' :
+                      worker.status === 'busy' ? 'secondary' :
+                      'destructive'
+                    }>
+                      {worker.status}
+                    </Badge>
+                  </div>
+                  
+                  <div className="space-y-2 text-sm">
+                    <div>
+                      <p className="text-muted-foreground">GPU: {worker.capabilities.gpu_model}</p>
+                      <p className="text-muted-foreground">Memory: {worker.capabilities.gpu_memory_gb}GB</p>
+                    </div>
+                    
+                    <div>
+                      <p className="text-muted-foreground">Services:</p>
+                      <div className="flex flex-wrap gap-1 mt-1">
+                        {worker.capabilities.services.map((service) => (
+                          <Badge key={service} variant="outline" className="text-xs">
+                            {service}
+                          </Badge>
+                        ))}
+                      </div>
+                    </div>
+                    
+                    {worker.current_job_id && (
+                      <div>
+                        <p className="text-muted-foreground">Current Job:</p>
+                        <p className="font-mono text-xs truncate" title={worker.current_job_id}>
+                          {worker.current_job_id}
+                        </p>
+                      </div>
+                    )}
+                    
+                    <div className="flex justify-between text-xs text-muted-foreground pt-2 border-t">
+                      <span>✓ {worker.jobs_completed}</span>
+                      <span>✗ {worker.jobs_failed}</span>
+                      <span>{worker.capabilities.cpu_cores} cores</span>
+                    </div>
+                  </div>
+                </div>
+              </Card>
+            ))}
           </div>
-        </Card>
-
-        <Card className="p-4">
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="text-sm font-medium text-muted-foreground">Completed</p>
-              <p className="text-2xl font-bold text-green-600">{completedJobs}</p>
-            </div>
-            <Zap className="h-5 w-5 text-green-600" />
-          </div>
-        </Card>
-
-        <Card className="p-4">
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="text-sm font-medium text-muted-foreground">Failed</p>
-              <p className="text-2xl font-bold text-red-600">{failedJobs}</p>
-            </div>
-            <Zap className="h-5 w-5 text-red-600" />
-          </div>
-        </Card>
+        )}
       </div>
 
-      {/* Main Content - Side by Side Layout */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        {/* Left Side - Job Submission */}
-        <div>
+      {/* Main Content - Job Focused Layout */}
+      <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
+        {/* Left Side - Compact Job Submission (1/4 width) */}
+        <div className="lg:col-span-1">
           <JobSubmissionForm />
         </div>
 
-        {/* Right Side - Job Queue and Workers */}
-        <div className="space-y-6">
-          <Tabs defaultValue="jobs" className="space-y-4">
-            <TabsList className="grid w-full grid-cols-2">
-              <TabsTrigger value="jobs">Jobs ({jobs.length})</TabsTrigger>
-              <TabsTrigger value="workers">Workers ({workers.length})</TabsTrigger>
-            </TabsList>
-
-            <TabsContent value="jobs" className="space-y-4">
-              <Card>
-                <CardHeader>
-                  <CardTitle>Job Queue</CardTitle>
-                </CardHeader>
-                <CardContent className="max-h-96 overflow-y-auto">
-                  {jobs.length === 0 ? (
-                    <p className="text-muted-foreground text-center py-8">No jobs yet. Submit a job to get started.</p>
-                  ) : (
-                    <div className="space-y-2">
-                      {jobs.slice(0, 20).map((job) => (
-                        <div key={job.id} className="flex items-center justify-between p-3 border rounded">
-                          <div className="flex items-center gap-3">
-                            <Badge variant={
-                              job.status === 'completed' ? 'default' :
-                              job.status === 'failed' ? 'destructive' :
-                              job.status === 'processing' || job.status === 'active' ? 'secondary' :
-                              'outline'
-                            }>
-                              {job.status}
-                            </Badge>
-                            <div>
-                              <p className="font-medium text-sm">{job.id}</p>
-                              <p className="text-xs text-muted-foreground">
-                                {job.job_type} | Priority: {job.priority}
-                                {job.workflow_id && ` | Workflow: ${job.workflow_id}`}
-                              </p>
-                            </div>
-                          </div>
-                          <div className="text-right text-xs text-muted-foreground">
-                            {job.worker_id && <p>Worker: {job.worker_id}</p>}
-                            {job.progress !== undefined && <p>Progress: {job.progress}%</p>}
-                          </div>
+        {/* Right Side - Job Monitoring (3/4 width) */}
+        <div className="lg:col-span-3 space-y-6">
+          {/* Active Job Queue */}
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center justify-between">
+                <span>Job Queue ({jobs.filter(job => job.status === 'pending' || job.status === 'active' || job.status === 'processing').length})</span>
+                <div className="flex items-center gap-4 text-sm text-muted-foreground">
+                  <span>Active: {activeJobs}</span>
+                  <span>Completed: {completedJobs}</span>
+                  <span>Failed: {failedJobs}</span>
+                </div>
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="max-h-80 overflow-y-auto">
+              {jobs.filter(job => job.status === 'pending' || job.status === 'active' || job.status === 'processing').length === 0 ? (
+                <p className="text-muted-foreground text-center py-8">No active jobs. Submit a job to get started.</p>
+              ) : (
+                <div className="space-y-2">
+                  {jobs
+                    .filter(job => job.status === 'pending' || job.status === 'active' || job.status === 'processing')
+                    .slice(0, 20)
+                    .map((job) => (
+                    <div key={job.id} className="flex items-center justify-between p-3 border rounded">
+                      <div className="flex items-center gap-3">
+                        <Badge variant={
+                          job.status === 'processing' || job.status === 'active' ? 'secondary' : 'outline'
+                        }>
+                          {job.status}
+                        </Badge>
+                        <div>
+                          <p className="font-medium text-sm">{job.id}</p>
+                          <p className="text-xs text-muted-foreground">
+                            {job.job_type} | Priority: {job.priority}
+                            {job.workflow_id && ` | Workflow: ${job.workflow_id}`}
+                          </p>
                         </div>
-                      ))}
-                      {jobs.length > 20 && (
-                        <p className="text-center text-muted-foreground text-sm">
-                          Showing 20 of {jobs.length} jobs
-                        </p>
-                      )}
+                      </div>
+                      <div className="text-right text-xs text-muted-foreground">
+                        {job.worker_id && <p>Worker: {job.worker_id}</p>}
+                        {job.progress !== undefined && <p>Progress: {job.progress}%</p>}
+                      </div>
                     </div>
-                  )}
-                </CardContent>
-              </Card>
-            </TabsContent>
+                  ))}
+                </div>
+              )}
+            </CardContent>
+          </Card>
 
-            <TabsContent value="workers" className="space-y-4">
-              <Card>
-                <CardHeader>
-                  <CardTitle>Connected Workers</CardTitle>
-                </CardHeader>
-                <CardContent className="max-h-96 overflow-y-auto">
-                  {workers.length === 0 ? (
-                    <p className="text-muted-foreground text-center py-8">No workers connected.</p>
-                  ) : (
-                    <div className="space-y-2">
-                      {workers.map((worker) => (
-                        <div key={worker.id} className="flex items-center justify-between p-3 border rounded">
-                          <div className="flex items-center gap-3">
-                            <Badge variant={
-                              worker.status === 'idle' ? 'default' :
-                              worker.status === 'busy' ? 'secondary' :
-                              'destructive'
-                            }>
-                              {worker.status}
-                            </Badge>
-                            <div>
-                              <p className="font-medium text-sm">{worker.id}</p>
-                              <p className="text-xs text-muted-foreground">
-                                Services: {worker.capabilities.services.join(', ')}
-                              </p>
-                            </div>
-                          </div>
-                          <div className="text-right text-xs text-muted-foreground">
-                            {worker.current_job_id && <p>Job: {worker.current_job_id}</p>}
-                            <p>GPU: {worker.capabilities.gpu_model}</p>
-                          </div>
+          {/* Finished Jobs */}
+          <Card>
+            <CardHeader>
+              <CardTitle>Finished Jobs ({jobs.filter(job => job.status === 'completed' || job.status === 'failed').length})</CardTitle>
+            </CardHeader>
+            <CardContent className="max-h-64 overflow-y-auto">
+              {jobs.filter(job => job.status === 'completed' || job.status === 'failed').length === 0 ? (
+                <p className="text-muted-foreground text-center py-4">No finished jobs yet.</p>
+              ) : (
+                <div className="space-y-2">
+                  {jobs
+                    .filter(job => job.status === 'completed' || job.status === 'failed')
+                    .slice(0, 15)
+                    .map((job) => (
+                    <div key={job.id} className="flex items-center justify-between p-2 border rounded text-sm">
+                      <div className="flex items-center gap-3">
+                        <Badge variant={
+                          job.status === 'completed' ? 'default' : 'destructive'
+                        }>
+                          {job.status}
+                        </Badge>
+                        <div>
+                          <p className="font-medium">{job.id}</p>
+                          <p className="text-xs text-muted-foreground">
+                            {job.job_type} | Priority: {job.priority}
+                            {job.workflow_id && ` | Workflow: ${job.workflow_id}`}
+                          </p>
                         </div>
-                      ))}
+                      </div>
+                      <div className="text-right text-xs text-muted-foreground">
+                        {job.worker_id && <p>Worker: {job.worker_id}</p>}
+                        {job.error && <p className="text-red-500">Error: {job.error}</p>}
+                      </div>
                     </div>
+                  ))}
+                  {jobs.filter(job => job.status === 'completed' || job.status === 'failed').length > 15 && (
+                    <p className="text-center text-muted-foreground text-sm">
+                      Showing 15 of {jobs.filter(job => job.status === 'completed' || job.status === 'failed').length} finished jobs
+                    </p>
                   )}
-                </CardContent>
-              </Card>
-            </TabsContent>
-          </Tabs>
+                </div>
+              )}
+            </CardContent>
+          </Card>
         </div>
       </div>
     </main>
