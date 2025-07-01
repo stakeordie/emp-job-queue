@@ -1,8 +1,24 @@
 /**
  * Monitor WebSocket Handler
  *
- * Handles WebSocket connections from monitors for real-time event streaming.
- * Supports subscription management, full state snapshots, and heartbeat monitoring.
+ * ⚠️  CRITICAL: MONITORS ARE READ-ONLY OBSERVERS ONLY! ⚠️
+ * 
+ * This handler is STRICTLY for passive monitoring operations:
+ * - Event subscription management
+ * - Real-time event streaming  
+ * - Connection health/heartbeat
+ * - State synchronization after reconnection
+ * 
+ * 🚫 DO NOT ADD ANY CONTROL/COMMAND OPERATIONS HERE! 🚫
+ * 
+ * All control operations (submit job, sync job state, cancel job, etc.) 
+ * MUST go through the client WebSocket connection and be handled by 
+ * the core MessageHandler, NOT here!
+ * 
+ * If you're tempted to add a new message type here, ask yourself:
+ * "Does this CHANGE system state or is it READ-ONLY monitoring?"
+ * If it changes state → Use client connection + MessageHandler
+ * If it's read-only → This handler is appropriate
  */
 
 import WebSocket from 'ws';
@@ -10,6 +26,23 @@ import { EventBroadcaster } from '../services/event-broadcaster.js';
 import { JobBroker } from '../core/job-broker.js';
 import { ConnectionManagerInterface } from '../core/interfaces/connection-manager.js';
 import { MonitorConnectEvent, SubscribeEvent, HeartbeatEvent } from '../types/monitor-events.js';
+
+/**
+ * STRICTLY TYPED: Only read-only monitoring messages allowed
+ * This prevents any control operations from being added here
+ */
+type MonitorOnlyMessageType = 
+  | 'monitor_connect'
+  | 'subscribe' 
+  | 'heartbeat'
+  | 'resync_request';
+
+interface MonitorOnlyMessage {
+  type: MonitorOnlyMessageType;
+  id?: string;
+  timestamp: number;
+  [key: string]: unknown;
+}
 
 export class MonitorWebSocketHandler {
   private eventBroadcaster: EventBroadcaster;
@@ -38,7 +71,16 @@ export class MonitorWebSocketHandler {
     // Set up message handling
     ws.on('message', async data => {
       try {
-        const message = JSON.parse(data.toString());
+        const rawMessage = JSON.parse(data.toString());
+        
+        // Validate that this is a monitor-only message
+        if (!this.isValidMonitorMessage(rawMessage)) {
+          console.error(`[MonitorWS] Invalid message type for monitor: ${rawMessage.type}`);
+          this.sendError(ws, `Monitor connections can only send: monitor_connect, subscribe, heartbeat, resync_request. Use client WebSocket for control operations.`);
+          return;
+        }
+        
+        const message = rawMessage as MonitorOnlyMessage;
         await this.handleMessage(monitorId, message);
       } catch (error) {
         console.error(`[MonitorWS] Error handling message from ${monitorId}:`, error);
@@ -59,8 +101,11 @@ export class MonitorWebSocketHandler {
 
   /**
    * Handle incoming messages from monitors
+   * 
+   * TypeScript ENFORCES only read-only monitoring operations!
+   * Control operations will cause compile-time errors.
    */
-  private async handleMessage(monitorId: string, message: Record<string, unknown>): Promise<void> {
+  private async handleMessage(monitorId: string, message: MonitorOnlyMessage): Promise<void> {
     switch (message.type) {
       case 'monitor_connect':
         await this.handleMonitorConnect(monitorId, message as unknown as MonitorConnectEvent);
@@ -79,7 +124,10 @@ export class MonitorWebSocketHandler {
         break;
 
       default:
-        console.warn(`[MonitorWS] Unknown message type from ${monitorId}:`, message.type);
+        // TypeScript should prevent this, but handle runtime edge cases
+        const _exhaustive: never = message.type;
+        console.error(`[MonitorWS] Unexpected message type from ${monitorId}: ${message.type}`);
+        console.error(`[MonitorWS] This should be impossible due to TypeScript types!`);
     }
   }
 
@@ -275,6 +323,22 @@ export class MonitorWebSocketHandler {
       timestamp: Date.now(),
     });
   }
+
+  /**
+   * Type guard: validates that a message is allowed for monitors
+   * Prevents control operations from being processed here
+   */
+  private isValidMonitorMessage(message: unknown): message is MonitorOnlyMessage {
+    if (!message || typeof message !== 'object') return false;
+    
+    const msg = message as Record<string, unknown>;
+    const validTypes: MonitorOnlyMessageType[] = ['monitor_connect', 'subscribe', 'heartbeat', 'resync_request'];
+    
+    return typeof msg.type === 'string' && 
+           validTypes.includes(msg.type as MonitorOnlyMessageType) &&
+           typeof msg.timestamp === 'number';
+  }
+
 
   /**
    * Get connected monitors info

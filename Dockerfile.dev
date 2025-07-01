@@ -1,0 +1,47 @@
+# Development Dockerfile with live reloading
+# Multi-stage build for both hub and worker with volume mounting support
+
+FROM node:18-alpine AS base
+
+# Install development dependencies
+RUN apk add --no-cache curl
+
+WORKDIR /app
+
+# Install pnpm globally
+RUN npm install -g pnpm
+
+# Copy package files
+COPY package.json pnpm-lock.yaml ./
+
+# Install dependencies (this will be cached in a volume)
+RUN pnpm install
+
+# Copy configuration files
+COPY tsconfig*.json ./
+COPY .eslintrc.json .eslintignore ./
+COPY .prettierrc* ./
+
+# Hub development stage
+FROM base AS hub
+
+# Set development environment
+ENV NODE_ENV=development
+
+# Expose ports
+EXPOSE 3001 3002
+
+# Use tsx for development with live reloading
+CMD ["pnpm", "tsx", "--watch", "src/hub/index.ts"]
+
+# Worker development stage  
+FROM base AS worker
+
+# Set development environment
+ENV NODE_ENV=development
+
+# Expose worker dashboard port (will be overridden by environment)
+EXPOSE 1511
+
+# Use tsx for development with live reloading
+CMD ["pnpm", "tsx", "--watch", "src/worker/index.ts"]

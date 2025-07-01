@@ -709,16 +709,17 @@ export class RedisService implements RedisServiceInterface {
                 started_at: undefined,
               };
 
+              // Update the job in Redis with reset status
+              await this.redis.hmset(`job:${jobId}`, {
+                status: JobStatus.PENDING,
+                worker_id: '',
+                assigned_at: '',
+                started_at: '',
+              });
+
               // Add back to pending queue with original priority
-              const priorityComponent = resetJob.priority * 1000000;
-              const timeComponent =
-                typeof resetJob.workflow_datetime === 'number'
-                  ? resetJob.workflow_datetime
-                  : typeof resetJob.created_at === 'number'
-                    ? resetJob.created_at
-                    : Date.now();
-              const score = priorityComponent + timeComponent;
-              await this.redis.zadd('jobs:pending', score, JSON.stringify(resetJob));
+              const score = resetJob.priority * 1000 + Date.now();
+              await this.redis.zadd('jobs:pending', score, jobId);
 
               // Remove from active jobs
               await this.redis.hdel(key, jobId);
