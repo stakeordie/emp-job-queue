@@ -185,105 +185,108 @@ export default function Home() {
         </Card>
       </div>
 
-      {/* Main Content */}
-      <Tabs defaultValue="jobs" className="space-y-4">
-        <TabsList className="grid w-full grid-cols-3">
-          <TabsTrigger value="jobs">Jobs ({jobs.length})</TabsTrigger>
-          <TabsTrigger value="workers">Workers ({workers.length})</TabsTrigger>
-          <TabsTrigger value="submit">Submit Job</TabsTrigger>
-        </TabsList>
+      {/* Main Content - Side by Side Layout */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        {/* Left Side - Job Submission */}
+        <div>
+          <JobSubmissionForm />
+        </div>
 
-        <TabsContent value="jobs" className="space-y-4">
-          <Card>
-            <CardHeader>
-              <CardTitle>Job Queue</CardTitle>
-            </CardHeader>
-            <CardContent>
-              {jobs.length === 0 ? (
-                <p className="text-muted-foreground text-center py-8">No jobs yet. Submit a job to get started.</p>
-              ) : (
-                <div className="space-y-2">
-                  {jobs.slice(0, 20).map((job) => (
-                    <div key={job.id} className="flex items-center justify-between p-3 border rounded">
-                      <div className="flex items-center gap-3">
-                        <Badge variant={
-                          job.status === 'completed' ? 'default' :
-                          job.status === 'failed' ? 'destructive' :
-                          job.status === 'processing' || job.status === 'active' ? 'secondary' :
-                          'outline'
-                        }>
-                          {job.status}
-                        </Badge>
-                        <div>
-                          <p className="font-medium">{job.id}</p>
-                          <p className="text-sm text-muted-foreground">
-                            Type: {job.job_type} | Priority: {job.priority}
-                            {job.workflow_id && ` | Workflow: ${job.workflow_id}`}
-                          </p>
+        {/* Right Side - Job Queue and Workers */}
+        <div className="space-y-6">
+          <Tabs defaultValue="jobs" className="space-y-4">
+            <TabsList className="grid w-full grid-cols-2">
+              <TabsTrigger value="jobs">Jobs ({jobs.length})</TabsTrigger>
+              <TabsTrigger value="workers">Workers ({workers.length})</TabsTrigger>
+            </TabsList>
+
+            <TabsContent value="jobs" className="space-y-4">
+              <Card>
+                <CardHeader>
+                  <CardTitle>Job Queue</CardTitle>
+                </CardHeader>
+                <CardContent className="max-h-96 overflow-y-auto">
+                  {jobs.length === 0 ? (
+                    <p className="text-muted-foreground text-center py-8">No jobs yet. Submit a job to get started.</p>
+                  ) : (
+                    <div className="space-y-2">
+                      {jobs.slice(0, 20).map((job) => (
+                        <div key={job.id} className="flex items-center justify-between p-3 border rounded">
+                          <div className="flex items-center gap-3">
+                            <Badge variant={
+                              job.status === 'completed' ? 'default' :
+                              job.status === 'failed' ? 'destructive' :
+                              job.status === 'processing' || job.status === 'active' ? 'secondary' :
+                              'outline'
+                            }>
+                              {job.status}
+                            </Badge>
+                            <div>
+                              <p className="font-medium text-sm">{job.id}</p>
+                              <p className="text-xs text-muted-foreground">
+                                {job.job_type} | Priority: {job.priority}
+                                {job.workflow_id && ` | Workflow: ${job.workflow_id}`}
+                              </p>
+                            </div>
+                          </div>
+                          <div className="text-right text-xs text-muted-foreground">
+                            {job.worker_id && <p>Worker: {job.worker_id}</p>}
+                            {job.progress !== undefined && <p>Progress: {job.progress}%</p>}
+                          </div>
                         </div>
-                      </div>
-                      <div className="text-right text-sm text-muted-foreground">
-                        {job.worker_id && <p>Worker: {job.worker_id}</p>}
-                        {job.progress !== undefined && <p>Progress: {job.progress}%</p>}
-                      </div>
+                      ))}
+                      {jobs.length > 20 && (
+                        <p className="text-center text-muted-foreground text-sm">
+                          Showing 20 of {jobs.length} jobs
+                        </p>
+                      )}
                     </div>
-                  ))}
-                  {jobs.length > 20 && (
-                    <p className="text-center text-muted-foreground">
-                      Showing 20 of {jobs.length} jobs
-                    </p>
                   )}
-                </div>
-              )}
-            </CardContent>
-          </Card>
-        </TabsContent>
+                </CardContent>
+              </Card>
+            </TabsContent>
 
-        <TabsContent value="workers" className="space-y-4">
-          <Card>
-            <CardHeader>
-              <CardTitle>Connected Workers</CardTitle>
-            </CardHeader>
-            <CardContent>
-              {workers.length === 0 ? (
-                <p className="text-muted-foreground text-center py-8">No workers connected.</p>
-              ) : (
-                <div className="space-y-2">
-                  {workers.map((worker) => (
-                    <div key={worker.id} className="flex items-center justify-between p-3 border rounded">
-                      <div className="flex items-center gap-3">
-                        <Badge variant={
-                          worker.status === 'idle' ? 'default' :
-                          worker.status === 'busy' ? 'secondary' :
-                          'destructive'
-                        }>
-                          {worker.status}
-                        </Badge>
-                        <div>
-                          <p className="font-medium">{worker.id}</p>
-                          <p className="text-sm text-muted-foreground">
-                            Services: {worker.capabilities.services.join(', ')}
-                          </p>
+            <TabsContent value="workers" className="space-y-4">
+              <Card>
+                <CardHeader>
+                  <CardTitle>Connected Workers</CardTitle>
+                </CardHeader>
+                <CardContent className="max-h-96 overflow-y-auto">
+                  {workers.length === 0 ? (
+                    <p className="text-muted-foreground text-center py-8">No workers connected.</p>
+                  ) : (
+                    <div className="space-y-2">
+                      {workers.map((worker) => (
+                        <div key={worker.id} className="flex items-center justify-between p-3 border rounded">
+                          <div className="flex items-center gap-3">
+                            <Badge variant={
+                              worker.status === 'idle' ? 'default' :
+                              worker.status === 'busy' ? 'secondary' :
+                              'destructive'
+                            }>
+                              {worker.status}
+                            </Badge>
+                            <div>
+                              <p className="font-medium text-sm">{worker.id}</p>
+                              <p className="text-xs text-muted-foreground">
+                                Services: {worker.capabilities.services.join(', ')}
+                              </p>
+                            </div>
+                          </div>
+                          <div className="text-right text-xs text-muted-foreground">
+                            {worker.current_job_id && <p>Job: {worker.current_job_id}</p>}
+                            <p>GPU: {worker.capabilities.gpu_model}</p>
+                          </div>
                         </div>
-                      </div>
-                      <div className="text-right text-sm text-muted-foreground">
-                        {worker.current_job_id && <p>Job: {worker.current_job_id}</p>}
-                        <p>GPU: {worker.capabilities.gpu_model}</p>
-                      </div>
+                      ))}
                     </div>
-                  ))}
-                </div>
-              )}
-            </CardContent>
-          </Card>
-        </TabsContent>
-
-        <TabsContent value="submit">
-          <div className="flex justify-center">
-            <JobSubmissionForm />
-          </div>
-        </TabsContent>
-      </Tabs>
+                  )}
+                </CardContent>
+              </Card>
+            </TabsContent>
+          </Tabs>
+        </div>
+      </div>
     </main>
   )
 }
