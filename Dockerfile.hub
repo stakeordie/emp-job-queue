@@ -12,8 +12,13 @@ COPY package.json pnpm-lock.yaml ./
 RUN npm install -g pnpm
 RUN pnpm install
 
-# Copy source code
-COPY . .
+# Copy configuration files
+COPY tsconfig*.json ./
+COPY .eslintrc.json .eslintignore ./
+COPY .prettierrc* ./
+
+# Copy source code (only what's needed)
+COPY src/ ./src/
 
 # Build the project
 RUN pnpm build

@@ -20,8 +20,8 @@ describe('Job Broker Behavior Integration Test', () => {
   let workflows: Array<{ id: string; priority: number; jobs: JobSubmissionRequest[] }>;
 
   beforeAll(async () => {
-    // Setup Redis and JobBroker
-    redisService = new RedisService(process.env.REDIS_URL || 'redis://localhost:6379');
+    // Setup Redis and JobBroker - USE TEST REDIS DATABASE
+    redisService = new RedisService(process.env.TEST_REDIS_URL || 'redis://localhost:6379/15');
     await redisService.connect();
     jobBroker = new JobBroker(redisService);
 

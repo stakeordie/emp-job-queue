@@ -39,6 +39,7 @@ export interface Job {
   assigned_at?: number;
   started_at?: number;
   completed_at?: number;
+  failed_at?: number;
   
   // Worker assignment
   worker_id?: string;

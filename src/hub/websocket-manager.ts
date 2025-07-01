@@ -326,28 +326,29 @@ export class WebSocketManager {
       },
     };
 
-    // Set up message handling
-    ws.on('message', async (data: Buffer) => {
-      try {
-        connection.lastActivity = new Date().toISOString();
-        connection.messagesReceived++;
-        connection.bytesReceived += data.length;
+    // Set up message handling (skip for monitor connections as they handle their own messages)
+    if (type !== 'monitor') {
+      ws.on('message', async (data: Buffer) => {
+        try {
+          connection.lastActivity = new Date().toISOString();
+          connection.messagesReceived++;
+          connection.bytesReceived += data.length;
 
-        const message = JSON.parse(data.toString()) as BaseMessage;
+          const message = JSON.parse(data.toString()) as BaseMessage;
 
-        // Handle worker registration specially
-        if (message.type === MessageType.REGISTER_WORKER && type === 'worker') {
-          await this.handleWorkerRegistration(id, message as WorkerRegistrationMessage);
+          // Handle worker registration specially
+          if (message.type === MessageType.REGISTER_WORKER && type === 'worker') {
+            await this.handleWorkerRegistration(id, message as WorkerRegistrationMessage);
+          }
+
+          // Forward to connection manager for general handling
+          // The connection manager will route this to the message handler
+          this.connectionManager.forwardMessage(message, type, id);
+        } catch (error) {
+          logger.error(`Error processing message from ${type} ${id}:`, error);
         }
-
-        // Forward to connection manager for general handling
-        // The connection manager will route this to the message handler
-        const connectionType = type === 'monitor' ? 'client' : type;
-        this.connectionManager.forwardMessage(message, connectionType, id);
-      } catch (error) {
-        logger.error(`Error processing message from ${type} ${id}:`, error);
-      }
-    });
+      });
+    }
 
     ws.on('pong', () => {
       connection.lastActivity = new Date().toISOString();

@@ -5,7 +5,7 @@
  * Conversion to/from ISO strings only happens at API boundaries
  */
 
-import { Timestamp } from '../types/timestamp.js';
+import { Timestamp } from '../types/timestamp';
 
 /**
  * Timestamp utility functions
@@ -78,5 +78,5 @@ export const TimestampUtil = {
   },
 } as const;
 
-// Re-export for convenience
-export { Timestamp } from '../types/timestamp.js';
+// Re-export type for convenience
+export type { Timestamp } from '../types/timestamp';

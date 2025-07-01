@@ -12,6 +12,7 @@ import {
   SelectTrigger, 
   SelectValue 
 } from "@/components/ui/select"
+import { Progress } from "@/components/ui/progress"
 import { Play, Square } from "lucide-react"
 import { JobSubmissionForm } from "@/components/job-submission-form"
 import { useMonitorStore } from "@/store"
@@ -264,12 +265,23 @@ export default function Home() {
                           <p className="text-xs text-muted-foreground">
                             {job.job_type} | Priority: {job.priority}
                             {job.workflow_id && ` | Workflow: ${job.workflow_id}`}
+                            {job.workflow_priority !== undefined && ` | W.Priority: ${job.workflow_priority}`}
+                            {job.workflow_datetime && ` | ${new Date(job.workflow_datetime).toLocaleTimeString()}`}
+                            {job.step_number !== undefined && ` | Step: ${job.step_number}`}
                           </p>
                         </div>
                       </div>
-                      <div className="text-right text-xs text-muted-foreground">
+                      <div className="text-right text-xs text-muted-foreground space-y-1 min-w-[120px]">
                         {job.worker_id && <p>Worker: {job.worker_id}</p>}
-                        {job.progress !== undefined && <p>Progress: {job.progress}%</p>}
+                        {job.progress !== undefined && (
+                          <div className="space-y-1">
+                            <div className="flex justify-between items-center">
+                              <span className="text-xs">Progress:</span>
+                              <span className="text-xs font-medium">{job.progress}%</span>
+                            </div>
+                            <Progress value={job.progress} className="w-full h-1.5" />
+                          </div>
+                        )}
                       </div>
                     </div>
                   ))}
@@ -304,6 +316,9 @@ export default function Home() {
                           <p className="text-xs text-muted-foreground">
                             {job.job_type} | Priority: {job.priority}
                             {job.workflow_id && ` | Workflow: ${job.workflow_id}`}
+                            {job.workflow_priority !== undefined && ` | W.Priority: ${job.workflow_priority}`}
+                            {job.workflow_datetime && ` | ${new Date(job.workflow_datetime).toLocaleTimeString()}`}
+                            {job.step_number !== undefined && ` | Step: ${job.step_number}`}
                           </p>
                         </div>
                       </div>

@@ -161,7 +161,6 @@ const jobSubmissionSchema = z.object({
 type JobSubmissionData = z.infer<typeof jobSubmissionSchema>;
 
 export function JobSubmissionForm() {
-  const [isSubmitting, setIsSubmitting] = useState(false);
   const [lastSubmission, setLastSubmission] = useState<string | null>(null);
   const [selectedJobType, setSelectedJobType] = useState('simulation');
   const { submitJob, connection } = useMonitorStore();
@@ -198,8 +197,6 @@ export function JobSubmissionForm() {
   }, [watchedJobType, selectedJobType]);
 
   const onSubmit = async (data: JobSubmissionData) => {
-    setIsSubmitting(true);
-    
     try {
       // Parse JSON payload
       let parsedPayload;
@@ -236,8 +233,6 @@ export function JobSubmissionForm() {
       
     } catch (error) {
       console.error('Job submission error:', error);
-    } finally {
-      setIsSubmitting(false);
     }
   };
 
@@ -265,7 +260,7 @@ export function JobSubmissionForm() {
             <div className="space-y-1">
               <Label htmlFor="job_type" className="text-xs">Job Type</Label>
               <Select value={selectedJobType} onValueChange={handleJobTypeChange}>
-                <SelectTrigger className="h-8">
+                <SelectTrigger id="job_type" size="sm" className="w-full">
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
@@ -308,7 +303,7 @@ export function JobSubmissionForm() {
               <Label htmlFor="workflow_id" className="text-xs">Workflow ID</Label>
               <Input
                 id="workflow_id"
-                className="h-7 text-xs"
+                className="h-8"
                 {...register('workflow_id')}
                 placeholder="optional"
               />
@@ -321,7 +316,7 @@ export function JobSubmissionForm() {
                 type="number"
                 min="0"
                 max="100"
-                className="h-7 text-xs"
+                className="h-8"
                 {...register('workflow_priority')}
                 placeholder="0-100"
               />
@@ -331,14 +326,14 @@ export function JobSubmissionForm() {
           <div className="flex gap-2">
             <Button 
               type="submit" 
-              disabled={isSubmitting || !connection.isConnected}
+              disabled={!connection.isConnected}
               className={`flex-1 h-8 text-sm transition-all duration-200 transform ${
-                isSubmitting || !connection.isConnected
+                !connection.isConnected
                   ? "opacity-50 cursor-not-allowed"
                   : "hover:bg-green-600 hover:scale-105 active:scale-95 shadow-md hover:shadow-lg"
               }`}
             >
-              {isSubmitting ? 'Submitting...' : 'Submit Job'}
+              Submit Job
             </Button>
             <Button 
               type="button" 

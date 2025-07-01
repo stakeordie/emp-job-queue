@@ -6,6 +6,9 @@ import { WebSocketManager } from './websocket-manager.js';
 import { RedisService } from '../core/redis-service.js';
 import { MessageHandler } from '../core/message-handler.js';
 import { ConnectionManager } from '../core/connection-manager.js';
+import { EventBroadcaster } from '../services/event-broadcaster.js';
+import { MonitorWebSocketHandler } from './monitor-websocket-handler.js';
+import { JobBroker } from '../core/job-broker.js';
 import { logger } from '../core/utils/logger.js';
 import dotenv from 'dotenv';
 
@@ -18,13 +21,18 @@ class Hub {
   private messageHandler: MessageHandler;
   private hubServer: HubServer;
   private websocketManager: WebSocketManager;
+  private eventBroadcaster: EventBroadcaster;
+  private jobBroker: JobBroker;
   private isRunning = false;
 
   constructor() {
     const redisUrl = process.env.REDIS_URL || 'redis://localhost:6379';
 
     // Initialize core services
-    this.redisService = new RedisService(redisUrl);
+    this.eventBroadcaster = new EventBroadcaster();
+    this.redisService = new RedisService(redisUrl, this.eventBroadcaster);
+    this.jobBroker = new JobBroker(this.redisService);
+
     this.connectionManager = new ConnectionManager(
       {
         maxMessageSizeBytes: parseInt(process.env.MAX_WS_MESSAGE_SIZE_MB || '100') * 1024 * 1024,
@@ -34,7 +42,11 @@ class Hub {
       this.redisService
     );
 
-    this.messageHandler = new MessageHandler(this.redisService, this.connectionManager);
+    this.messageHandler = new MessageHandler(
+      this.redisService,
+      this.connectionManager,
+      this.eventBroadcaster
+    );
 
     // Initialize HTTP and WebSocket servers
     this.hubServer = new HubServer(
@@ -46,10 +58,22 @@ class Hub {
       this.connectionManager
     );
 
-    this.websocketManager = new WebSocketManager(this.connectionManager, {
-      port: parseInt(process.env.WS_PORT || '3002'),
-      host: process.env.WS_HOST || '0.0.0.0',
-    });
+    this.websocketManager = new WebSocketManager(
+      this.connectionManager,
+      {
+        port: parseInt(process.env.WS_PORT || '3002'),
+        host: process.env.WS_HOST || '0.0.0.0',
+      },
+      this.eventBroadcaster
+    );
+
+    // Set up monitor WebSocket handler after all dependencies are ready
+    const monitorHandler = new MonitorWebSocketHandler(
+      this.eventBroadcaster,
+      this.jobBroker,
+      this.connectionManager
+    );
+    this.websocketManager.setMonitorHandler(monitorHandler);
   }
 
   async start(): Promise<void> {
@@ -60,9 +84,18 @@ class Hub {
       await this.redisService.connect();
       await this.connectionManager.start();
 
-      // Start stats broadcasting for monitor
-      const statsInterval = parseInt(process.env.STATS_BROADCAST_INTERVAL_MS || '5000');
-      this.connectionManager.startStatsBroadcast(statsInterval);
+      // Legacy stats broadcasting (DISABLED - replaced with EventBroadcaster)
+      // TODO: Remove this entire block after confirming event system is stable
+      const enableLegacyStats = process.env.ENABLE_LEGACY_STATS_BROADCAST === 'true';
+      if (enableLegacyStats) {
+        const statsInterval = parseInt(process.env.STATS_BROADCAST_INTERVAL_MS || '5000');
+        this.connectionManager.startStatsBroadcast(statsInterval);
+        logger.warn('Legacy stats broadcast enabled - consider migrating to EventBroadcaster');
+      } else {
+        logger.info(
+          'Legacy stats broadcast disabled - using EventBroadcaster for real-time updates'
+        );
+      }
 
       // Start servers
       await this.hubServer.start();

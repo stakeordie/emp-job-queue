@@ -4,6 +4,7 @@
 import { MessageHandlerInterface } from './interfaces/message-handler.js';
 import { RedisServiceInterface } from './interfaces/redis-service.js';
 import { ConnectionManagerInterface } from './interfaces/connection-manager.js';
+import { EventBroadcaster } from '../services/event-broadcaster.js';
 import { TimestampUtil } from './utils/timestamp.js';
 import {
   BaseMessage,
@@ -29,6 +30,7 @@ import { v4 as uuidv4 } from 'uuid';
 export class MessageHandler implements MessageHandlerInterface {
   private redisService: RedisServiceInterface;
   private connectionManager: ConnectionManagerInterface;
+  private eventBroadcaster?: EventBroadcaster;
   private messageStats = {
     processed: 0,
     failed: 0,
@@ -55,9 +57,14 @@ export class MessageHandler implements MessageHandlerInterface {
     return Object.values(MessageType);
   }
 
-  constructor(redisService: RedisServiceInterface, connectionManager: ConnectionManagerInterface) {
+  constructor(
+    redisService: RedisServiceInterface,
+    connectionManager: ConnectionManagerInterface,
+    eventBroadcaster?: EventBroadcaster
+  ) {
     this.redisService = redisService;
     this.connectionManager = connectionManager;
+    this.eventBroadcaster = eventBroadcaster;
     this.setupMessageRouting();
   }
 
@@ -160,6 +167,21 @@ export class MessageHandler implements MessageHandlerInterface {
       // Notify available workers about the new job
       await this.notifyWorkersOfNewJob(jobId, message.job_type, message.requirements);
 
+      // Broadcast job submitted event
+      if (this.eventBroadcaster) {
+        this.eventBroadcaster.broadcastJobSubmitted(jobId, {
+          job_type: message.job_type,
+          priority: message.priority,
+          workflow_id: message.workflow_id,
+          workflow_priority: message.workflow_priority,
+          workflow_datetime: message.workflow_datetime,
+          step_number: message.step_number,
+          customer_id: message.customer_id,
+          requirements: message.requirements,
+          created_at: Date.now(),
+        });
+      }
+
       logger.info(`Job ${jobId} submitted and workers notified`);
     } catch (error) {
       logger.error(`Failed to handle job submission:`, error);
@@ -186,6 +208,15 @@ export class MessageHandler implements MessageHandlerInterface {
 
       // Broadcast progress to monitors
       await this.connectionManager.broadcastToMonitors(message);
+
+      // Broadcast job progress event
+      if (this.eventBroadcaster) {
+        this.eventBroadcaster.broadcastJobProgress(
+          message.job_id,
+          message.worker_id,
+          message.progress
+        );
+      }
 
       logger.debug(`Job ${message.job_id} progress: ${message.progress}%`);
     } catch (error) {
@@ -214,6 +245,16 @@ export class MessageHandler implements MessageHandlerInterface {
       // Forward to clients subscribed to this job
       await this.connectionManager.forwardJobCompletion(message.job_id, message.result);
 
+      // Broadcast job completed event
+      if (this.eventBroadcaster) {
+        this.eventBroadcaster.broadcastJobCompleted(
+          message.job_id,
+          message.worker_id,
+          message.result,
+          Date.now()
+        );
+      }
+
       logger.info(`Job ${message.job_id} completed by worker ${message.worker_id}`);
     } catch (error) {
       logger.error(`Failed to handle job completion for ${message.job_id}:`, error);
@@ -230,6 +271,16 @@ export class MessageHandler implements MessageHandlerInterface {
 
       // Broadcast failure to monitors
       await this.connectionManager.broadcastToMonitors(message);
+
+      // Broadcast job failed event
+      if (this.eventBroadcaster) {
+        this.eventBroadcaster.broadcastJobFailed(
+          message.job_id,
+          message.error || 'Unknown error',
+          message.worker_id,
+          Date.now()
+        );
+      }
 
       logger.info(`Job ${message.job_id} failed on worker ${message.worker_id}: ${message.error}`);
     } catch (error) {
@@ -303,6 +354,18 @@ export class MessageHandler implements MessageHandlerInterface {
         status: WorkerStatus.IDLE,
       });
 
+      // Broadcast worker connected event
+      if (this.eventBroadcaster) {
+        this.eventBroadcaster.broadcastWorkerConnected(message.worker_id, {
+          id: message.worker_id,
+          status: WorkerStatus.IDLE,
+          capabilities: capabilities,
+          connected_at: new Date().toISOString(),
+          jobs_completed: 0,
+          jobs_failed: 0,
+        });
+      }
+
       logger.info(
         `Worker ${message.worker_id} registered with services: ${Array.isArray(message.capabilities.services) ? message.capabilities.services.join(', ') : 'unknown'}`
       );
@@ -352,6 +415,11 @@ export class MessageHandler implements MessageHandlerInterface {
 
       // Remove worker from active list
       await this.redisService.removeWorker(workerId);
+
+      // Broadcast worker disconnected event
+      if (this.eventBroadcaster) {
+        this.eventBroadcaster.broadcastWorkerDisconnected(workerId);
+      }
 
       logger.info(`Worker ${workerId} disconnected and cleaned up`);
     } catch (error) {

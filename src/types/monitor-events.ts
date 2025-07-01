@@ -138,6 +138,21 @@ export interface SubscribeEvent extends BaseMonitorEvent {
   filters?: SubscriptionFilters;
 }
 
+export interface ResyncRequestEvent extends BaseMonitorEvent {
+  type: 'resync_request';
+  monitor_id: string;
+  since_timestamp: number;
+  max_events?: number;
+}
+
+export interface ResyncResponseEvent extends BaseMonitorEvent {
+  type: 'resync_response';
+  monitor_id: string;
+  events: MonitorEvent[];
+  has_more: boolean;
+  oldest_available_timestamp: number;
+}
+
 export interface FullStateSnapshotEvent extends BaseMonitorEvent {
   type: 'full_state_snapshot';
   data: {
@@ -192,6 +207,8 @@ export type MonitorEvent =
   | JobFailedEvent
   | MonitorConnectEvent
   | SubscribeEvent
+  | ResyncRequestEvent
+  | ResyncResponseEvent
   | FullStateSnapshotEvent
   | HeartbeatEvent
   | HeartbeatAckEvent

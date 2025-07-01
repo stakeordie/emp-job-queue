@@ -569,34 +569,8 @@ export class ConnectionManager implements ConnectionManagerInterface {
   ): void {
     const ws = connection.socket as WebSocket;
 
-    ws.on('message', async (data: Buffer) => {
-      try {
-        connection.lastActivity = new Date().toISOString();
-        connection.messagesReceived++;
-        connection.bytesReceived += data.length;
-
-        const message = JSON.parse(data.toString());
-
-        // Handle chunked messages
-        if (message.chunk_info) {
-          const reconstructed = await this.handleChunkedMessage(id, {
-            chunkId: message.chunk_info.chunk_id,
-            chunkIndex: message.chunk_info.chunk_index,
-            totalChunks: message.chunk_info.total_chunks,
-            data: message.data,
-            dataHash: message.chunk_info.data_hash,
-          });
-
-          if (reconstructed) {
-            this.handleCompleteMessage(reconstructed, type, id);
-          }
-        } else {
-          this.handleCompleteMessage(message, type, id);
-        }
-      } catch (error) {
-        logger.error(`Error processing message from ${type} ${id}:`, error);
-      }
-    });
+    // NOTE: Message handling is done by WebSocketManager via forwardMessage()
+    // We should NOT add another message handler here as it causes duplicate processing
 
     ws.on('close', () => {
       connection.connected = false;

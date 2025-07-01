@@ -6,6 +6,7 @@ import { v4 as uuidv4 } from 'uuid';
 import { RedisServiceInterface } from './interfaces/redis-service.js';
 import { Job, JobStatus, JobProgress, JobResult, JobFilter, JobSearchResult } from './types/job.js';
 import { WorkerCapabilities, WorkerInfo, WorkerFilter, WorkerStatus } from './types/worker.js';
+import { EventBroadcaster } from '../services/event-broadcaster.js';
 import { logger } from './utils/logger.js';
 
 export class RedisService implements RedisServiceInterface {
@@ -13,8 +14,10 @@ export class RedisService implements RedisServiceInterface {
   private subscriber: Redis;
   private isConnectedFlag = false;
   private subscriptions = new Map<string, (message) => void>();
+  private eventBroadcaster?: EventBroadcaster;
 
-  constructor(redisUrl: string) {
+  constructor(redisUrl: string, eventBroadcaster?: EventBroadcaster) {
+    this.eventBroadcaster = eventBroadcaster;
     this.redis = new Redis(redisUrl, {
       enableReadyCheck: true,
       maxRetriesPerRequest: 3,
@@ -147,6 +150,17 @@ export class RedisService implements RedisServiceInterface {
   }
 
   async updateJobStatus(jobId: string, status: JobStatus): Promise<void> {
+    // Get old status and worker for event broadcasting
+    let oldStatus = 'unknown';
+    let workerId: string | undefined = undefined;
+    try {
+      const jobData = await this.redis.hgetall(`job:${jobId}`);
+      oldStatus = jobData.status || 'unknown';
+      workerId = jobData.worker_id || undefined;
+    } catch (error) {
+      // Job might not exist yet, that's ok
+    }
+
     const updateData: Record<string, string> = { status };
 
     if (status === JobStatus.COMPLETED) {
@@ -158,6 +172,11 @@ export class RedisService implements RedisServiceInterface {
     }
 
     await this.redis.hmset(`job:${jobId}`, updateData);
+
+    // Broadcast job status change event
+    if (this.eventBroadcaster && oldStatus !== status) {
+      this.eventBroadcaster.broadcastJobStatusChanged(jobId, oldStatus, status, workerId);
+    }
 
     // Publish update
     await this.publishMessage('job_updates', {
@@ -340,6 +359,11 @@ export class RedisService implements RedisServiceInterface {
     const job = await this.getJob(jobId);
     if (job) {
       await this.redis.hset(`jobs:active:${workerId}`, jobId, JSON.stringify(job));
+    }
+
+    // Broadcast job assigned event
+    if (this.eventBroadcaster) {
+      this.eventBroadcaster.broadcastJobAssigned(jobId, workerId, Date.now());
     }
 
     logger.info(`Job ${jobId} claimed by worker ${workerId}`);
@@ -594,6 +618,15 @@ export class RedisService implements RedisServiceInterface {
   ): Promise<void> {
     const now = new Date().toISOString();
 
+    // Get old status for event broadcasting
+    let oldStatus = 'unknown';
+    try {
+      const workerData = await this.redis.hgetall(`worker:${workerId}`);
+      oldStatus = workerData.status || 'unknown';
+    } catch (error) {
+      // Worker might not exist yet, that's ok
+    }
+
     // Update worker status in Redis
     const updateData: Record<string, string> = {
       status,
@@ -618,6 +651,16 @@ export class RedisService implements RedisServiceInterface {
     } else {
       await this.redis.sadd('workers:active', workerId);
       await this.redis.srem('workers:offline', workerId);
+    }
+
+    // Broadcast worker status change event
+    if (this.eventBroadcaster && oldStatus !== status) {
+      this.eventBroadcaster.broadcastWorkerStatusChanged(
+        workerId,
+        oldStatus,
+        status,
+        updateData.current_job_id || undefined
+      );
     }
 
     logger.debug(

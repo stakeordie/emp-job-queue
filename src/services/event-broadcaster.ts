@@ -138,8 +138,60 @@ export class EventBroadcaster {
   /**
    * Get events since timestamp (for resync)
    */
-  getEventsSince(timestamp: number): MonitorEvent[] {
-    return this.eventHistory.filter(event => event.timestamp > timestamp);
+  getEventsSince(
+    timestamp: number,
+    maxEvents?: number
+  ): { events: MonitorEvent[]; hasMore: boolean } {
+    const filteredEvents = this.eventHistory.filter(event => event.timestamp > timestamp);
+
+    if (maxEvents && filteredEvents.length > maxEvents) {
+      return {
+        events: filteredEvents.slice(0, maxEvents),
+        hasMore: true,
+      };
+    }
+
+    return {
+      events: filteredEvents,
+      hasMore: false,
+    };
+  }
+
+  /**
+   * Get oldest available timestamp in history
+   */
+  getOldestTimestamp(): number {
+    if (this.eventHistory.length === 0) {
+      return Date.now();
+    }
+    return this.eventHistory[0].timestamp;
+  }
+
+  /**
+   * Handle resync request from monitor
+   */
+  handleResyncRequest(monitorId: string, sinceTimestamp: number, maxEvents?: number): void {
+    const ws = this.monitors.get(monitorId);
+    if (!ws) return;
+
+    const { events, hasMore } = this.getEventsSince(sinceTimestamp, maxEvents);
+    const oldestTimestamp = this.getOldestTimestamp();
+
+    const resyncResponse = {
+      type: 'resync_response' as const,
+      monitor_id: monitorId,
+      events: events,
+      has_more: hasMore,
+      oldest_available_timestamp: oldestTimestamp,
+      timestamp: Date.now(),
+    };
+
+    this.sendToMonitor(ws, resyncResponse);
+
+    // Log resync activity
+    console.log(
+      `[EventBroadcaster] Sent ${events.length} events to monitor ${monitorId} since ${sinceTimestamp}`
+    );
   }
 
   // Event Broadcasting Methods

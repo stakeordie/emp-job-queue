@@ -8,15 +8,22 @@
 import WebSocket from 'ws';
 import { EventBroadcaster } from '../services/event-broadcaster.js';
 import { JobBroker } from '../core/job-broker.js';
+import { ConnectionManagerInterface } from '../core/interfaces/connection-manager.js';
 import { MonitorConnectEvent, SubscribeEvent, HeartbeatEvent } from '../types/monitor-events.js';
 
 export class MonitorWebSocketHandler {
   private eventBroadcaster: EventBroadcaster;
   private jobBroker: JobBroker;
+  private connectionManager: ConnectionManagerInterface;
 
-  constructor(eventBroadcaster: EventBroadcaster, jobBroker: JobBroker) {
+  constructor(
+    eventBroadcaster: EventBroadcaster,
+    jobBroker: JobBroker,
+    connectionManager: ConnectionManagerInterface
+  ) {
     this.eventBroadcaster = eventBroadcaster;
     this.jobBroker = jobBroker;
+    this.connectionManager = connectionManager;
   }
 
   /**
@@ -114,19 +121,13 @@ export class MonitorWebSocketHandler {
     message: Record<string, unknown>
   ): Promise<void> {
     // Monitor requesting resync
+    console.log(`[MonitorWS] Resync requested by ${monitorId} since ${message.since_timestamp}`);
 
-    const events = this.eventBroadcaster.getEventsSince(message.last_event_timestamp as number);
+    const sinceTimestamp = message.since_timestamp as number;
+    const maxEvents = message.max_events as number | undefined;
 
-    const ws = this.eventBroadcaster.getMonitorWebSocket(monitorId);
-    if (ws) {
-      const resyncResponse = {
-        type: 'resync_data',
-        events: events,
-        timestamp: Date.now(),
-      };
-
-      this.sendMessage(ws, resyncResponse);
-    }
+    // Use enhanced resync functionality
+    this.eventBroadcaster.handleResyncRequest(monitorId, sinceTimestamp, maxEvents);
   }
 
   /**
@@ -162,13 +163,22 @@ export class MonitorWebSocketHandler {
   }
 
   /**
-   * Get current workers state from job broker
+   * Get current workers state from connection manager
    */
   private async getWorkersState(): Promise<Record<string, unknown>[]> {
     try {
-      // Get workers from job broker's Redis store
-      const workersData = await this.jobBroker.getConnectedWorkers();
-      return (workersData as Record<string, unknown>[]) || [];
+      // Get workers from connection manager (in-memory)
+      const workersData = await this.connectionManager.getConnectedWorkers();
+      return workersData.map(worker => ({
+        id: worker.workerId,
+        status: 'idle', // Default status - could be enhanced later
+        capabilities: worker.capabilities || {},
+        connected_at: worker.connectedAt,
+        last_activity: worker.lastActivity,
+        jobs_completed: 0, // Could be tracked separately
+        jobs_failed: 0, // Could be tracked separately
+        current_job_id: null, // Could be tracked separately
+      }));
     } catch (error) {
       console.error('[MonitorWS] Error getting workers state:', error);
       return [];

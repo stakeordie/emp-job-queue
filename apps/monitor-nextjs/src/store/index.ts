@@ -1,7 +1,7 @@
 import { create } from 'zustand';
 import { subscribeWithSelector } from 'zustand/middleware';
 import { Job, Worker, WorkerCapabilities, WorkerStatus, JobStatus, JobRequirements, ConnectionState, UIState, LogEntry } from '@/types';
-import { websocketService } from '@/services/websocket';
+import { websocketService, MonitorEvent } from '@/services/websocket';
 
 interface MonitorStore {
   // Connection state
@@ -14,6 +14,7 @@ interface MonitorStore {
   
   // UI state
   ui: UIState;
+  
   
   // Actions
   setConnection: (state: Partial<ConnectionState>) => void;
@@ -31,6 +32,10 @@ interface MonitorStore {
   connect: (url?: string) => void;
   disconnect: () => void;
   submitJob: (jobData: Record<string, unknown>) => void;
+  
+  // Event-driven state management
+  handleFullState: (state: unknown) => void;
+  handleEvent: (event: MonitorEvent) => void;
 }
 
 export const useMonitorStore = create<MonitorStore>()(
@@ -63,9 +68,20 @@ export const useMonitorStore = create<MonitorStore>()(
     
     // Job actions
     addJob: (job) =>
-      set((state) => ({
-        jobs: [job, ...state.jobs].slice(0, 1000), // Keep last 1000 jobs
-      })),
+      set((state) => {
+        // Check if job already exists
+        const existingJobIndex = state.jobs.findIndex(existingJob => existingJob.id === job.id);
+        
+        if (existingJobIndex >= 0) {
+          // Update existing job instead of adding duplicate
+          const updatedJobs = [...state.jobs];
+          updatedJobs[existingJobIndex] = { ...updatedJobs[existingJobIndex], ...job };
+          return { jobs: updatedJobs };
+        } else {
+          // Add new job
+          return { jobs: [job, ...state.jobs].slice(0, 1000) }; // Keep last 1000 jobs
+        }
+      }),
     
     updateJob: (jobId, updates) =>
       set((state) => ({
@@ -121,9 +137,311 @@ export const useMonitorStore = create<MonitorStore>()(
         ui: { ...state.ui, ...updates },
       })),
     
+    // Event-driven state management
+    handleFullState: (state: unknown) => {
+      const { addLog, addWorker, addJob } = get();
+      
+      addLog({
+        level: 'info',
+        category: 'event',
+        message: 'Received full state snapshot',
+        source: 'store',
+      });
+      
+      const stateData = state as {
+        workers: Record<string, unknown>;
+        jobs: {
+          pending: unknown[];
+          active: unknown[];
+          completed: unknown[];
+          failed: unknown[];
+        };
+        system_stats: Record<string, number>;
+      };
+      
+      // Clear existing data
+      set({ workers: [], jobs: [] });
+      
+      // Process workers
+      if (stateData.workers && typeof stateData.workers === 'object') {
+        Object.entries(stateData.workers).forEach(([workerId, workerData]) => {
+          const worker = workerData as Record<string, unknown>;
+          const capabilities = (worker.capabilities as WorkerCapabilities) || {
+            gpu_count: 1,
+            gpu_memory_gb: 8,
+            gpu_model: 'Unknown',
+            cpu_cores: 4,
+            ram_gb: 16,
+            services: [],
+            models: [],
+            customer_access: 'none',
+            max_concurrent_jobs: 1
+          };
+          
+          addWorker({
+            id: workerId,
+            status: (worker.status as WorkerStatus) || 'idle',
+            capabilities,
+            current_job_id: worker.current_job_id as string,
+            connected_at: (worker.connected_at as string) || new Date().toISOString(),
+            last_activity: (worker.last_activity as string) || new Date().toISOString(),
+            jobs_completed: (worker.jobs_completed as number) || 0,
+            jobs_failed: (worker.jobs_failed as number) || 0,
+            total_processing_time: (worker.total_processing_time as number) || 0
+          });
+        });
+      }
+      
+      // Process jobs
+      if (stateData.jobs) {
+        const jobArrays = [
+          { jobs: stateData.jobs.pending || [], status: 'pending' as JobStatus },
+          { jobs: stateData.jobs.active || [], status: 'processing' as JobStatus },
+          { jobs: stateData.jobs.completed || [], status: 'completed' as JobStatus },
+          { jobs: stateData.jobs.failed || [], status: 'failed' as JobStatus }
+        ];
+        
+        jobArrays.forEach(({ jobs, status }) => {
+          if (Array.isArray(jobs)) {
+            jobs.forEach((jobData: unknown) => {
+              const job = jobData as Record<string, unknown>;
+              addJob({
+                id: (job.id as string) || (job.job_id as string),
+                job_type: (job.job_type as string) || (job.type as string) || 'unknown',
+                status: (job.status as JobStatus) || status,
+                priority: (job.priority as number) || 50,
+                payload: (job.payload as Record<string, unknown>) || {},
+                customer_id: job.customer_id as string,
+                requirements: job.requirements as JobRequirements,
+                workflow_id: job.workflow_id as string,
+                workflow_priority: job.workflow_priority as number,
+                workflow_datetime: job.workflow_datetime as number,
+                step_number: job.step_number as number,
+                created_at: (job.created_at as number) || Date.now(),
+                assigned_at: job.assigned_at as number,
+                started_at: job.started_at as number,
+                completed_at: job.completed_at as number,
+                worker_id: job.worker_id as string,
+                progress: job.progress as number,
+                result: job.result as unknown,
+                error: job.error as string,
+                failure_count: (job.failure_count as number) || 0
+              });
+            });
+          }
+        });
+      }
+    },
+
+    handleEvent: (event: MonitorEvent) => {
+      const { addLog, addWorker, updateWorker, removeWorker, addJob, updateJob } = get();
+      
+      // Only log important events, skip progress spam
+      if (event.type !== 'job_progress' && event.type !== 'heartbeat_ack' && event.type !== 'heartbeat') {
+        addLog({
+          level: 'debug',
+          category: 'event',
+          message: `Received event: ${event.type}`,
+          data: event,
+          source: 'websocket',
+        });
+      }
+      
+      switch (event.type) {
+        case 'worker_connected': {
+          const workerEvent = event as {
+            type: 'worker_connected';
+            worker_id: string;
+            worker_data: {
+              id: string;
+              status: string;
+              capabilities: WorkerCapabilities;
+              connected_at: string;
+              jobs_completed: number;
+              jobs_failed: number;
+            };
+            timestamp: number;
+          };
+          const workerData = workerEvent.worker_data;
+          addWorker({
+            id: workerEvent.worker_id,
+            status: workerData.status as WorkerStatus,
+            capabilities: workerData.capabilities,
+            current_job_id: undefined,
+            connected_at: workerData.connected_at,
+            last_activity: new Date().toISOString(),
+            jobs_completed: workerData.jobs_completed || 0,
+            jobs_failed: workerData.jobs_failed || 0,
+            total_processing_time: 0
+          });
+          break;
+        }
+        
+        case 'worker_disconnected': {
+          const workerEvent = event as {
+            type: 'worker_disconnected';
+            worker_id: string;
+            timestamp: number;
+          };
+          removeWorker(workerEvent.worker_id);
+          break;
+        }
+        
+        case 'worker_status_changed': {
+          const workerEvent = event as {
+            type: 'worker_status_changed';
+            worker_id: string;
+            old_status: string;
+            new_status: string;
+            current_job_id?: string;
+            timestamp: number;
+          };
+          updateWorker(workerEvent.worker_id, {
+            status: workerEvent.new_status as WorkerStatus,
+            current_job_id: workerEvent.current_job_id,
+            last_activity: new Date().toISOString()
+          });
+          break;
+        }
+        
+        case 'job_submitted': {
+          const jobEvent = event as {
+            type: 'job_submitted';
+            job_id: string;
+            job_data: {
+              id: string;
+              job_type: string;
+              priority: number;
+              customer_id?: string;
+              requirements?: JobRequirements;
+              workflow_id?: string;
+              workflow_priority?: number;
+              workflow_datetime?: number;
+              step_number?: number;
+              created_at: number;
+            };
+            timestamp: number;
+          };
+          const jobData = jobEvent.job_data;
+          addJob({
+            id: jobEvent.job_id,
+            job_type: jobData.job_type,
+            status: 'pending' as JobStatus,
+            priority: jobData.priority,
+            payload: {},
+            customer_id: jobData.customer_id,
+            requirements: jobData.requirements,
+            workflow_id: jobData.workflow_id,
+            workflow_priority: jobData.workflow_priority,
+            workflow_datetime: jobData.workflow_datetime,
+            step_number: jobData.step_number,
+            created_at: jobData.created_at,
+            assigned_at: undefined,
+            started_at: undefined,
+            completed_at: undefined,
+            worker_id: undefined,
+            progress: 0,
+            result: undefined,
+            error: undefined,
+            failure_count: 0
+          });
+          break;
+        }
+        
+        case 'job_assigned': {
+          const jobEvent = event as {
+            type: 'job_assigned';
+            job_id: string;
+            worker_id: string;
+            assigned_at: number;
+            timestamp: number;
+          };
+          updateJob(jobEvent.job_id, {
+            status: 'assigned' as JobStatus,
+            worker_id: jobEvent.worker_id,
+            assigned_at: jobEvent.assigned_at
+          });
+          break;
+        }
+        
+        case 'job_status_changed': {
+          const jobEvent = event as {
+            type: 'job_status_changed';
+            job_id: string;
+            old_status: JobStatus;
+            new_status: JobStatus;
+            worker_id?: string;
+            timestamp: number;
+          };
+          updateJob(jobEvent.job_id, {
+            status: jobEvent.new_status,
+            worker_id: jobEvent.worker_id
+          });
+          break;
+        }
+        
+        case 'job_progress': {
+          const jobEvent = event as {
+            type: 'job_progress';
+            job_id: string;
+            worker_id: string;
+            progress: number;
+            timestamp: number;
+          };
+          updateJob(jobEvent.job_id, {
+            status: 'processing' as JobStatus,
+            progress: jobEvent.progress,
+            worker_id: jobEvent.worker_id
+          });
+          break;
+        }
+        
+        case 'job_completed': {
+          const jobEvent = event as {
+            type: 'job_completed';
+            job_id: string;
+            worker_id: string;
+            result?: unknown;
+            completed_at: number;
+            timestamp: number;
+          };
+          updateJob(jobEvent.job_id, {
+            status: 'completed' as JobStatus,
+            worker_id: jobEvent.worker_id,
+            result: jobEvent.result,
+            completed_at: jobEvent.completed_at,
+            progress: 100
+          });
+          break;
+        }
+        
+        case 'job_failed': {
+          const jobEvent = event as {
+            type: 'job_failed';
+            job_id: string;
+            worker_id?: string;
+            error: string;
+            failed_at: number;
+            timestamp: number;
+          };
+          updateJob(jobEvent.job_id, {
+            status: 'failed' as JobStatus,
+            worker_id: jobEvent.worker_id,
+            error: jobEvent.error,
+            failed_at: jobEvent.failed_at
+          });
+          break;
+        }
+        
+        default:
+          // Handle other event types as needed
+          break;
+      }
+    },
+
     // WebSocket actions
     connect: (url?: string) => {
-      const { addLog, setConnection, updateJob, addJob, updateWorker, addWorker } = get();
+      const { addLog, setConnection, handleFullState, handleEvent } = get();
       
       if (url) {
         websocketService.setUrl(url);
@@ -142,7 +460,7 @@ export const useMonitorStore = create<MonitorStore>()(
         addLog({
           level: 'info',
           category: 'websocket',
-          message: 'Connected to hub',
+          message: 'Connected to hub and subscribed to events',
           source: 'websocket',
         });
       });
@@ -159,196 +477,24 @@ export const useMonitorStore = create<MonitorStore>()(
         });
       });
       
+      // Handle full state snapshots
+      websocketService.onFullState(handleFullState);
+      
+      // Handle real-time events
+      websocketService.onEvent(handleEvent);
+      
+      // Handle legacy message types (for backward compatibility)
       websocketService.onMessage((message) => {
         addLog({
           level: 'debug',
           category: 'message',
-          message: `Received: ${message.type}`,
+          message: `Received legacy message: ${message.type}`,
           data: message,
           source: 'websocket',
         });
         
-        // Handle different message types
-        switch (message.type) {
-          case 'stats_broadcast':
-            console.log('[Store] Received stats_broadcast:', message);
-            const statsMessage = message as unknown as Record<string, unknown>;
-            
-            // Clear existing workers and jobs first (like the original monitor)
-            set({ workers: [], jobs: [] });
-            
-            // Workers is an object with worker IDs as keys, not an array
-            const workers = statsMessage.workers as Record<string, Record<string, unknown>>;
-            console.log('[Store] Found workers object:', workers);
-            
-            if (workers && typeof workers === 'object') {
-              const workerEntries = Object.entries(workers);
-              console.log('[Store] Processing', workerEntries.length, 'workers');
-              
-              workerEntries.forEach(([workerId, workerData]) => {
-                console.log('[Store] Adding worker:', workerId, workerData);
-                
-                const capabilities = (workerData.capabilities as WorkerCapabilities) || {
-                  gpu_count: 1,
-                  gpu_memory_gb: 8,
-                  gpu_model: 'Unknown',
-                  cpu_cores: 4,
-                  ram_gb: 16,
-                  services: [],
-                  models: [],
-                  customer_access: 'none',
-                  max_concurrent_jobs: 1
-                };
-                
-                addWorker({
-                  id: workerId,
-                  status: (workerData.status as WorkerStatus) || 'idle',
-                  capabilities,
-                  current_job_id: workerData.current_job_id as string,
-                  connected_at: (workerData.connected_at as string) || new Date().toISOString(),
-                  last_activity: (workerData.last_activity as string) || new Date().toISOString(),
-                  jobs_completed: (workerData.jobs_processed as number) || (workerData.jobs_completed as number) || 0,
-                  jobs_failed: (workerData.jobs_failed as number) || 0,
-                  total_processing_time: (workerData.total_processing_time as number) || 0
-                });
-              });
-            }
-            
-            // Handle jobs from system.jobs structure (like original monitor)
-            const system = statsMessage.system as Record<string, unknown>;
-            console.log('[Store] Found system:', system);
-            
-            if (system?.jobs) {
-              const systemJobs = system.jobs as Record<string, unknown>;
-              console.log('[Store] Found system.jobs:', systemJobs);
-              
-              // Handle different job arrays from system.jobs
-              const jobArrays = [
-                { jobs: (systemJobs.pending_jobs as Record<string, unknown>[]) || [], type: 'pending' },
-                { jobs: (systemJobs.active_jobs as Record<string, unknown>[]) || [], type: 'active' },
-                { jobs: (systemJobs.completed_jobs as Record<string, unknown>[]) || [], type: 'completed' },
-                { jobs: (systemJobs.failed_jobs as Record<string, unknown>[]) || [], type: 'failed' }
-              ];
-              
-              // Process all job arrays
-              jobArrays.forEach(jobArray => {
-                if (Array.isArray(jobArray.jobs)) {
-                  console.log('[Store] Processing', jobArray.jobs.length, jobArray.type, 'jobs');
-                  jobArray.jobs.forEach((job: Record<string, unknown>) => {
-                    addJob({
-                      id: (job.id as string) || (job.job_id as string),
-                      job_type: (job.job_type as string) || (job.type as string) || 'unknown',
-                      status: (job.status as JobStatus) || jobArray.type as JobStatus,
-                      priority: (job.priority as number) || 50,
-                      payload: (job.payload as Record<string, unknown>) || {},
-                      customer_id: job.customer_id as string,
-                      requirements: job.requirements as JobRequirements,
-                      workflow_id: job.workflow_id as string,
-                      workflow_priority: job.workflow_priority as number,
-                      workflow_datetime: job.workflow_datetime as number,
-                      step_number: job.step_number as number,
-                      created_at: (job.created_at as number) || Date.now(),
-                      assigned_at: job.assigned_at as number,
-                      started_at: job.started_at as number,
-                      completed_at: job.completed_at as number,
-                      worker_id: job.worker_id as string,
-                      progress: job.progress as number,
-                      result: job.result as unknown,
-                      error: job.error as string,
-                      failure_count: (job.failure_count as number) || 0
-                    });
-                  });
-                }
-              });
-            }
-            
-            // Also handle direct jobs array (fallback for older format)
-            const directJobs = statsMessage.jobs as Record<string, unknown>[] | Record<string, Record<string, unknown>>;
-            console.log('[Store] Found direct jobs:', directJobs);
-            
-            if (directJobs) {
-              if (Array.isArray(directJobs)) {
-                console.log('[Store] Processing', directJobs.length, 'direct jobs as array');
-                directJobs.forEach((job: Record<string, unknown>) => {
-                  addJob({
-                    id: (job.id as string) || (job.job_id as string),
-                    job_type: (job.job_type as string) || (job.type as string) || 'unknown',
-                    status: (job.status as JobStatus) || 'pending',
-                    priority: (job.priority as number) || 50,
-                    payload: (job.payload as Record<string, unknown>) || {},
-                    customer_id: job.customer_id as string,
-                    requirements: job.requirements as JobRequirements,
-                    workflow_id: job.workflow_id as string,
-                    workflow_priority: job.workflow_priority as number,
-                    workflow_datetime: job.workflow_datetime as number,
-                    step_number: job.step_number as number,
-                    created_at: (job.created_at as number) || Date.now(),
-                    assigned_at: job.assigned_at as number,
-                    started_at: job.started_at as number,
-                    completed_at: job.completed_at as number,
-                    worker_id: job.worker_id as string,
-                    progress: job.progress as number,
-                    result: job.result as unknown,
-                    error: job.error as string,
-                    failure_count: (job.failure_count as number) || 0
-                  });
-                });
-              } else if (typeof directJobs === 'object') {
-                console.log('[Store] Processing jobs as object');
-                Object.entries(directJobs as Record<string, Record<string, unknown>>).forEach(([jobId, job]) => {
-                  addJob({
-                    id: jobId,
-                    job_type: (job.job_type as string) || (job.type as string) || 'unknown',
-                    status: (job.status as JobStatus) || 'pending',
-                    priority: (job.priority as number) || 50,
-                    payload: (job.payload as Record<string, unknown>) || {},
-                    customer_id: job.customer_id as string,
-                    requirements: job.requirements as JobRequirements,
-                    workflow_id: job.workflow_id as string,
-                    workflow_priority: job.workflow_priority as number,
-                    workflow_datetime: job.workflow_datetime as number,
-                    step_number: job.step_number as number,
-                    created_at: (job.created_at as number) || Date.now(),
-                    assigned_at: job.assigned_at as number,
-                    started_at: job.started_at as number,
-                    completed_at: job.completed_at as number,
-                    worker_id: job.worker_id as string,
-                    progress: job.progress as number,
-                    result: job.result as unknown,
-                    error: job.error as string,
-                    failure_count: (job.failure_count as number) || 0
-                  });
-                });
-              }
-            }
-            break;
-          case 'job_assigned':
-          case 'job_progress':
-          case 'job_completed':
-          case 'job_failed':
-            const jobMessage = message as unknown as Record<string, unknown>;
-            if (jobMessage.job_id) {
-              updateJob(jobMessage.job_id as string, {
-                status: message.type === 'job_assigned' ? 'assigned' as JobStatus :
-                        message.type === 'job_progress' ? 'processing' as JobStatus :
-                        message.type === 'job_completed' ? 'completed' as JobStatus : 'failed' as JobStatus,
-                progress: jobMessage.progress as number,
-                worker_id: jobMessage.worker_id as string,
-                result: jobMessage.result as unknown,
-                error: jobMessage.error as string
-              });
-            }
-            break;
-          case 'worker_status':
-            const workerMessage = message as unknown as Record<string, unknown>;
-            if (workerMessage.worker_id) {
-              updateWorker(workerMessage.worker_id as string, {
-                status: workerMessage.status as WorkerStatus,
-                current_job_id: workerMessage.current_job_id as string
-              });
-            }
-            break;
-        }
+        // Keep some legacy message handling for non-event messages
+        // Most message handling is now done through handleEvent
       });
       
       websocketService.connect();
