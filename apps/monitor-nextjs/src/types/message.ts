@@ -8,7 +8,9 @@ export type MessageType =
   | 'worker_status'
   | 'stats_broadcast'
   | 'heartbeat'
-  | 'error';
+  | 'error'
+  | 'sync_job_state'
+  | 'cancel_job';
 
 export interface BaseMessage {
   id: string;
@@ -59,4 +61,14 @@ export interface StatsBroadcastMessage extends BaseMessage {
     jobs: unknown[];
     system: unknown;
   };
+}
+
+export interface SyncJobStateMessage extends BaseMessage {
+  type: 'sync_job_state';
+  job_id?: string;
+}
+
+export interface CancelJobMessage extends BaseMessage {
+  type: 'cancel_job';
+  job_id: string;
 }

@@ -1,6 +1,7 @@
 import { create } from 'zustand';
 import { subscribeWithSelector } from 'zustand/middleware';
 import { Job, Worker, WorkerCapabilities, WorkerStatus, JobStatus, JobRequirements, ConnectionState, UIState, LogEntry } from '@/types';
+import { SyncJobStateMessage, CancelJobMessage } from '@/types/message';
 import { websocketService, MonitorEvent } from '@/services/websocket';
 
 interface MonitorStore {
@@ -32,6 +33,8 @@ interface MonitorStore {
   connect: (url?: string) => void;
   disconnect: () => void;
   submitJob: (jobData: Record<string, unknown>) => void;
+  syncJobState: (jobId?: string) => void;
+  cancelJob: (jobId: string) => void;
   
   // Event-driven state management
   handleFullState: (state: unknown) => void;
@@ -528,6 +531,53 @@ export const useMonitorStore = create<MonitorStore>()(
       websocketService.submitJob({
         type: 'submit_job',
         ...jobData,
+      });
+    },
+
+    syncJobState: (jobId?: string) => {
+      const { addLog } = get();
+      
+      addLog({
+        level: 'info',
+        category: 'job',
+        message: jobId ? `Syncing job state for: ${jobId}` : 'Syncing all job states',
+        source: 'store',
+      });
+      
+      // Send a sync request to the hub to get the latest job state
+      const syncMessage: SyncJobStateMessage = {
+        type: 'sync_job_state',
+        id: crypto.randomUUID(),
+        timestamp: Date.now(),
+        job_id: jobId
+      };
+      websocketService.send(syncMessage);
+    },
+
+    cancelJob: (jobId: string) => {
+      const { addLog, updateJob } = get();
+      
+      addLog({
+        level: 'info',
+        category: 'job',
+        message: `Cancelling job: ${jobId}`,
+        source: 'store',
+      });
+      
+      // Send cancel request to hub
+      const cancelMessage: CancelJobMessage = {
+        type: 'cancel_job',
+        id: crypto.randomUUID(),
+        timestamp: Date.now(),
+        job_id: jobId
+      };
+      websocketService.send(cancelMessage);
+      
+      // Optimistically update the job status to failed
+      updateJob(jobId, {
+        status: 'failed' as JobStatus,
+        error: 'Cancelled by user',
+        failed_at: Date.now()
       });
     },
   }))

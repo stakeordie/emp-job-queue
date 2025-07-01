@@ -5,6 +5,16 @@ import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog"
 import { 
   Select, 
   SelectContent, 
@@ -13,7 +23,7 @@ import {
   SelectValue 
 } from "@/components/ui/select"
 import { Progress } from "@/components/ui/progress"
-import { Play, Square } from "lucide-react"
+import { Play, Square, RefreshCw, X } from "lucide-react"
 import { JobSubmissionForm } from "@/components/job-submission-form"
 import { useMonitorStore } from "@/store"
 import { useState } from "react"
@@ -43,10 +53,11 @@ const CONNECTION_PRESETS = {
 };
 
 export default function Home() {
-  const { connection, jobs, workers, connect, disconnect } = useMonitorStore();
+  const { connection, jobs, workers, connect, disconnect, syncJobState, cancelJob } = useMonitorStore();
   const [websocketUrl, setWebsocketUrl] = useState(CONNECTION_PRESETS.local.websocket);
   const [authToken, setAuthToken] = useState(CONNECTION_PRESETS.local.auth);
   const [selectedPreset, setSelectedPreset] = useState('local');
+  const [cancelJobId, setCancelJobId] = useState<string | null>(null);
 
   const handlePresetChange = (preset: string) => {
     setSelectedPreset(preset);
@@ -60,6 +71,21 @@ export default function Home() {
   const handleConnect = () => {
     const urlWithAuth = authToken ? `${websocketUrl}?token=${encodeURIComponent(authToken)}` : websocketUrl;
     connect(urlWithAuth);
+  };
+
+  const handleSyncJob = (jobId: string) => {
+    syncJobState(jobId);
+  };
+
+  const handleCancelJob = (jobId: string) => {
+    setCancelJobId(jobId);
+  };
+
+  const confirmCancelJob = () => {
+    if (cancelJobId) {
+      cancelJob(cancelJobId);
+      setCancelJobId(null);
+    }
   };
 
   const activeJobs = jobs.filter(job => job.status === 'active' || job.status === 'processing').length;
@@ -254,13 +280,13 @@ export default function Home() {
                     .slice(0, 20)
                     .map((job) => (
                     <div key={job.id} className="flex items-center justify-between p-3 border rounded">
-                      <div className="flex items-center gap-3">
+                      <div className="flex items-center gap-3 flex-1">
                         <Badge variant={
                           job.status === 'processing' || job.status === 'active' ? 'secondary' : 'outline'
                         }>
                           {job.status}
                         </Badge>
-                        <div>
+                        <div className="flex-1">
                           <p className="font-medium text-sm">{job.id}</p>
                           <p className="text-xs text-muted-foreground">
                             {job.job_type} | Priority: {job.priority}
@@ -271,17 +297,43 @@ export default function Home() {
                           </p>
                         </div>
                       </div>
-                      <div className="text-right text-xs text-muted-foreground space-y-1 min-w-[120px]">
-                        {job.worker_id && <p>Worker: {job.worker_id}</p>}
-                        {job.progress !== undefined && (
-                          <div className="space-y-1">
-                            <div className="flex justify-between items-center">
-                              <span className="text-xs">Progress:</span>
-                              <span className="text-xs font-medium">{job.progress}%</span>
+                      
+                      <div className="flex items-center gap-3">
+                        {/* Progress Display */}
+                        <div className="text-right text-xs text-muted-foreground space-y-1 min-w-[120px]">
+                          {job.worker_id && <p>Worker: {job.worker_id}</p>}
+                          {job.progress !== undefined && (
+                            <div className="space-y-1">
+                              <div className="flex justify-between items-center">
+                                <span className="text-xs">Progress:</span>
+                                <span className="text-xs font-medium">{job.progress}%</span>
+                              </div>
+                              <Progress value={job.progress} className="w-full h-1.5" />
                             </div>
-                            <Progress value={job.progress} className="w-full h-1.5" />
-                          </div>
-                        )}
+                          )}
+                        </div>
+                        
+                        {/* Action Buttons */}
+                        <div className="flex gap-1">
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => handleSyncJob(job.id)}
+                            className="h-7 w-7 p-0"
+                            title="Sync job state"
+                          >
+                            <RefreshCw className="h-3 w-3" />
+                          </Button>
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => handleCancelJob(job.id)}
+                            className="h-7 w-7 p-0 hover:bg-red-50 hover:border-red-200"
+                            title="Cancel job"
+                          >
+                            <X className="h-3 w-3" />
+                          </Button>
+                        </div>
                       </div>
                     </div>
                   ))}
@@ -339,6 +391,28 @@ export default function Home() {
           </Card>
         </div>
       </div>
+
+      {/* Cancel Job Confirmation Dialog */}
+      <AlertDialog open={!!cancelJobId} onOpenChange={() => setCancelJobId(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Cancel Job</AlertDialogTitle>
+            <AlertDialogDescription>
+              Are you sure you want to cancel job &quot;{cancelJobId}&quot;? This action cannot be undone.
+              The job will be marked as failed and removed from the queue.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Keep Job</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={confirmCancelJob}
+              className="bg-red-600 hover:bg-red-700"
+            >
+              Cancel Job
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </main>
   )
 }
