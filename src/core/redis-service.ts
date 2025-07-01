@@ -588,10 +588,42 @@ export class RedisService implements RedisServiceInterface {
     _capabilities: WorkerCapabilities
   ): Promise<void> {}
   async updateWorkerStatus(
-    _workerId: string,
-    _status: string,
-    _currentJobs?: string[]
-  ): Promise<void> {}
+    workerId: string,
+    status: string,
+    currentJobs?: string[]
+  ): Promise<void> {
+    const now = new Date().toISOString();
+
+    // Update worker status in Redis
+    const updateData: Record<string, string> = {
+      status,
+      last_status_update: now,
+    };
+
+    // Update current job ID - set to empty if no current jobs
+    if (currentJobs && currentJobs.length > 0) {
+      updateData.current_job_id = currentJobs[0]; // For single job workers, use first job
+      updateData.active_jobs = JSON.stringify(currentJobs);
+    } else {
+      updateData.current_job_id = ''; // Clear current job ID
+      updateData.active_jobs = JSON.stringify([]);
+    }
+
+    await this.redis.hmset(`worker:${workerId}`, updateData);
+
+    // Update worker status in active workers set based on status
+    if (status === WorkerStatus.OFFLINE) {
+      await this.redis.srem('workers:active', workerId);
+      await this.redis.sadd('workers:offline', workerId);
+    } else {
+      await this.redis.sadd('workers:active', workerId);
+      await this.redis.srem('workers:offline', workerId);
+    }
+
+    logger.debug(
+      `Worker ${workerId} status updated to ${status}, current_job_id: ${updateData.current_job_id || 'none'}`
+    );
+  }
   async removeWorker(_workerId: string): Promise<void> {}
   async getWorker(_workerId: string): Promise<WorkerInfo | null> {
     return null;

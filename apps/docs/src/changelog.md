@@ -1,6 +1,97 @@
 # EmProps Job Queue Development Changelog
 
+## 2025-01-01
+
+### 🐛 Bug Fix - Workflow Parameter Flow
+- **Fixed Missing Workflow Parameters in Job Submission**: Critical fix for workflow parameter handling
+  - **Problem**: `handleJobSubmission` in hub-server.ts wasn't extracting workflow fields (workflow_id, workflow_priority, workflow_datetime, step_number)
+  - **Solution**: Updated all job submission handlers to properly extract and pass workflow parameters
+  - **Files Fixed**:
+    - `src/core/types/messages.ts`: Added workflow fields to SubmitJobMessage interface
+    - `src/hub/hub-server.ts`: Modified handleJobSubmission to extract workflow params from request
+    - `src/core/message-handler.ts`: Updated handleJobSubmission to pass workflow params to Redis
+    - `src/core/enhanced-message-handler.ts`: Updated handleJobSubmissionImpl with workflow params
+  - **Impact**: Workflow jobs can now properly inherit priority and maintain correct execution order
+  - **Enables**: Proper workflow step orchestration with priority inheritance as designed
+
 ## 2024-06-30
+
+### ✅ Completed - Session 12 (Multi-GPU Architecture & Docker Integration Testing)
+- **Comprehensive Integration Testing Infrastructure**: Created complete Docker-based testing environment
+  - **Multi-GPU Server Architecture**: Implemented proper 1 container = 1 GPU server with multiple workers (1 worker per GPU)
+  - **Realistic Worker Spawning**: Each GPU server can spawn multiple workers bound to specific GPUs and services
+  - **Mock AI Services**: ComfyUI, A1111, and Flux mock services with realistic processing times for testing
+  - **Isolated Test Environment**: Docker Compose setup with Redis, Hub, and 4 GPU servers (15 total workers)
+  - **Production-like Testing**: Tests actual WebSocket connections, job routing, and concurrent processing
+- **Unworkable Job Detection System**: Enhanced job broker to handle jobs no workers can process
+  - **Problem Solved**: Jobs requiring unavailable services now marked as "unworkable" instead of stuck in queue
+  - **User Visibility**: Users can see which jobs can't be processed and make decisions about canceling/modifying
+  - **Automatic Detection**: `markUnworkableJobs()` scans pending jobs and moves unworkable ones to separate queue
+  - **Requeue Capability**: `requeueUnworkableJob()` allows jobs to be retried when worker capabilities change
+  - **Status Tracking**: Added `JobStatus.UNWORKABLE` for proper job lifecycle management
+- **Mock Worker Simulation**: Created realistic job processing simulation for fast, reliable tests
+  - **Instant Processing**: Workers simulate job completion without waiting for actual AI generation
+  - **Proper Status Updates**: Jobs properly transition through assigned → in_progress → completed states
+  - **Worker Assignment Tracking**: Full tracking of which workers handle which jobs with capabilities verification
+
+### 🏗️ Multi-GPU Server Architecture
+- **Container = GPU Server**: Each Docker container represents one physical machine with multiple GPUs
+- **Worker per GPU**: Each GPU gets its own worker instance with dedicated service bindings
+- **Service-GPU Binding**: Services (ComfyUI, A1111, Flux) are bound to specific GPUs within a server
+- **Realistic Hardware Configs**: 
+  - GPU Server 1: 4x RTX 4090 (mixed services per GPU)
+  - GPU Server 2: 2x RTX 3080 (hybrid capabilities)
+  - GPU Server 3: 1x GTX 1660 (budget with customer restrictions)
+  - GPU Server 4: 8x H100 (enterprise high-capacity setup)
+- **Production-Ready Testing**: Tests validate job routing to correct GPU workers based on service requirements
+
+### 🔧 Enhanced Job Broker Features
+- **Capability-based Job Routing**: Jobs automatically routed to workers with matching service and hardware capabilities
+- **Customer Isolation Enforcement**: Strict customer access controls tested with restricted workers
+- **Hardware Requirement Matching**: GPU memory and compute requirements properly validated
+- **Concurrent Processing**: Multiple workers can process jobs simultaneously across different GPUs
+- **Race Condition Prevention**: Atomic job claiming ensures no double-assignment in concurrent scenarios
+
+### ✅ Completed - Session 11 (Worker Status & Job Completion Fixes)
+- **Fixed Worker Status Persistence**: Resolved critical issue where workers weren't returning to idle state after completing jobs
+  - **Problem**: `updateWorkerStatus` method in RedisService was just a stub that did nothing
+  - **Solution**: Implemented full `updateWorkerStatus` method to properly update worker status and `current_job_id` in Redis
+  - **Worker Status Communication**: Added `sendStatusUpdate` method to WorkerClient for immediate status notifications
+  - **Job Lifecycle Tracking**: Workers now notify hub when transitioning from busy→idle and idle→busy states
+  - **Current Job ID Management**: Worker `current_job_id` is properly set when starting jobs and cleared when completing
+- **Enhanced Job Completion Flow**: Fixed message handlers to properly clear worker status on job completion/failure
+  - **Job Complete Handler**: Now calls `updateWorkerStatus(workerId, IDLE, [])` to clear current job
+  - **Job Failed Handler**: Similarly clears worker status and current job assignment
+  - **Status Notifications**: Workers proactively notify hub of status changes rather than waiting for heartbeat
+- **Worker State Synchronization**: Ensured local worker status stays synchronized with Redis state
+  - **Job Start Notifications**: Workers notify hub when starting to process jobs
+  - **Job End Notifications**: Workers notify hub immediately when jobs complete/fail/timeout
+  - **Real-time Updates**: Status changes communicated via WebSocket for immediate hub awareness
+
+### ✅ Completed - Session 10 (Monitor State Management & Disconnect Fixes)
+- **Fixed Monitor Queue State Management**: Resolved critical issue where monitor couldn't properly track job states
+  - **Problem**: Monitor was only looking at `system.jobs.active_jobs` but new system splits jobs into separate arrays (`pending_jobs`, `active_jobs`, `completed_jobs`, `failed_jobs`)
+  - **Solution**: Updated monitor to process all job arrays and maintain backward compatibility with old format
+  - **Fixed Worker Status**: Workers now properly show `current_job_id` in stats broadcasts when processing jobs
+  - **Fixed Job Counting**: Monitor now correctly counts queued and active jobs from proper data sources
+  - **Added Status Mapping**: Monitor now recognizes 'assigned' status as active (new system uses 'assigned' instead of 'active')
+- **Enhanced Monitor Disconnect Handling**: Fixed aggressive disconnect behavior that was causing connection issues
+  - **Problem**: When either monitor OR client socket failed, both connections would disconnect and clear all data
+  - **Solution**: Implemented individual socket disconnect handlers (`handleMonitorDisconnect`, `handleClientDisconnect`)
+  - **Selective Data Clearing**: Data only clears when BOTH connections are down, not when just one fails
+  - **Independent Connections**: Monitor and client sockets now fail independently for better resilience
+
+### 🔧 Connection Manager Stats Broadcast Fixes
+- **Worker Current Job ID**: Fixed hardcoded `undefined` to fetch actual job assignments from Redis
+- **Worker Status Logic**: Workers now show 'working' when they have a job, 'idle' when they don't
+- **Backward Compatibility**: Added unified `active_jobs` array containing all jobs for monitor compatibility
+- **Job-to-Worker Mapping**: Enhanced stats generation to map active jobs to workers by `worker_id`
+
+### 🔧 Monitor Processing Improvements  
+- **Unified Job Processing**: Monitor now processes all job types (pending, active, completed, failed) in single pass
+- **Status Recognition**: Added support for 'assigned' job status from new system
+- **Removed Duplicate Processing**: Eliminated redundant job array processing sections
+- **Enhanced Job Filtering**: Improved job categorization for accurate counts and display
 
 ### ✅ Completed - Session 9 (Worker Job Selection Logic)
 - **Complete Pull-Based Job Selection**: Implemented sophisticated worker job claiming with conflict resolution

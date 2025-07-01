@@ -116,6 +116,10 @@ export interface SubmitJobMessage extends BaseMessage {
   payload: Record<string, unknown>;
   customer_id?: string;
   requirements?: JobRequirements;
+  workflow_id?: string;
+  workflow_priority?: number;
+  workflow_datetime?: number;
+  step_number?: number;
   timestamp: Timestamp;
 }
 

@@ -397,6 +397,21 @@ export class WorkerClient {
     await this.redisService.updateWorkerHeartbeat(this.workerId, systemInfo);
   }
 
+  async sendStatusUpdate(status: WorkerStatus, currentJobIds: string[] = []): Promise<void> {
+    const message = {
+      id: uuidv4(),
+      type: MessageType.WORKER_STATUS,
+      timestamp: TimestampUtil.now(),
+      worker_id: this.workerId,
+      status,
+      current_job_id: currentJobIds[0] || null,
+      active_jobs: currentJobIds,
+    };
+
+    await this.sendMessage(message);
+    logger.debug(`Worker ${this.workerId} sent status update: ${status}`);
+  }
+
   // Message sending
   private async sendMessage(message: BaseMessage): Promise<void> {
     if (this.websocket?.readyState === WebSocket.OPEN) {

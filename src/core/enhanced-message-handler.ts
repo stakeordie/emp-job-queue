@@ -222,6 +222,10 @@ export class EnhancedMessageHandler implements MessageHandlerInterface {
         customer_id: message.customer_id,
         requirements: message.requirements,
         max_retries: 3,
+        workflow_id: message.workflow_id,
+        workflow_priority: message.workflow_priority,
+        workflow_datetime: message.workflow_datetime,
+        step_number: message.step_number,
       });
 
       // Notify available workers about the new job

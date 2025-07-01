@@ -1,40 +1,29 @@
-# Dockerfile for Hub service
-FROM node:18-bullseye
+FROM node:18-alpine
 
 WORKDIR /app
 
-# Install system dependencies and useful tools
-RUN apt-get update && apt-get install -y \
-    curl \
-    vim \
-    htop \
-    net-tools \
-    procps \
-    && rm -rf /var/lib/apt/lists/*
+# Install curl for healthcheck
+RUN apk add --no-cache curl
 
-# Install pnpm
-RUN npm install -g pnpm
-
-# Install dependencies
+# Copy package files
 COPY package.json pnpm-lock.yaml ./
-RUN pnpm install --frozen-lockfile --prod
 
-# Copy built application
-COPY dist/ ./dist/
-COPY .env.example ./.env
+# Install pnpm and dependencies
+RUN npm install -g pnpm
+RUN pnpm install
 
-# Create logs directory with proper permissions
-RUN mkdir -p logs && chown -R node:node logs
+# Copy source code
+COPY . .
 
-# Switch to non-root user
-USER node
+# Build the project
+RUN pnpm build
 
 # Expose ports
 EXPOSE 3001 3002
 
 # Health check
-HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
+HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
   CMD curl -f http://localhost:3001/health || exit 1
 
-# Run hub service
+# Start the hub
 CMD ["node", "dist/hub/index.js"]

@@ -1,34 +1,19 @@
-# Dockerfile for Worker service
-FROM node:18-bullseye
+FROM node:18-alpine
 
 WORKDIR /app
 
-# Install system dependencies and useful tools
-RUN apt-get update && apt-get install -y \
-    curl \
-    vim \
-    htop \
-    net-tools \
-    procps \
-    wget \
-    && rm -rf /var/lib/apt/lists/*
-
-# Install pnpm
-RUN npm install -g pnpm
-
-# Install dependencies
+# Copy package files
 COPY package.json pnpm-lock.yaml ./
-RUN pnpm install --frozen-lockfile --prod
 
-# Copy built application
-COPY dist/ ./dist/
-COPY .env.example ./.env
+# Install pnpm and dependencies
+RUN npm install -g pnpm
+RUN pnpm install
 
-# Create logs directory with proper permissions
-RUN mkdir -p logs && chown -R node:node logs
+# Copy source code
+COPY . .
 
-# Switch to non-root user
-USER node
+# Build the project
+RUN pnpm build
 
-# Run worker service
+# Start the worker
 CMD ["node", "dist/worker/index.js"]

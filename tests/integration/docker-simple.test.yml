@@ -1,0 +1,136 @@
+version: '3.8'
+
+services:
+  # Redis for the test environment
+  redis-test:
+    image: redis:7-alpine
+    ports:
+      - "6380:6379"
+    networks:
+      - test-network
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
+  # Hub service for testing
+  hub-test:
+    build:
+      context: ../..
+      dockerfile: Dockerfile.hub
+    environment:
+      - REDIS_URL=redis://redis-test:6379
+      - HUB_PORT=3001
+      - WS_PORT=3002
+      - NODE_ENV=test
+      - LOG_LEVEL=info
+    ports:
+      - "3011:3001"  # Different ports to avoid conflicts
+      - "3012:3002"
+    depends_on:
+      redis-test:
+        condition: service_healthy
+    networks:
+      - test-network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3001/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # GPU Server 1: ComfyUI specialist (simulates RTX 4090)
+  worker-comfyui-1:
+    build:
+      context: ../..
+      dockerfile: Dockerfile.worker
+    environment:
+      - HUB_REDIS_URL=redis://redis-test:6379
+      - HUB_WS_URL=ws://hub-test:3002
+      - WORKER_ID=gpu-server-1-gpu-0
+      - GPU_ID=0
+      - GPU_MEMORY_GB=24
+      - GPU_MODEL=RTX_4090
+      - SERVICES=comfyui
+      - MODELS={"comfyui":["flux-dev","sdxl","sd15"]}
+      - CUSTOMER_ACCESS={"isolation":"loose","max_concurrent_customers":5}
+      - MOCK_MODE=true
+      - LOG_LEVEL=info
+    depends_on:
+      hub-test:
+        condition: service_healthy
+    networks:
+      - test-network
+
+  # GPU Server 2: A1111 specialist (simulates RTX 3080)
+  worker-a1111-1:
+    build:
+      context: ../..
+      dockerfile: Dockerfile.worker
+    environment:
+      - HUB_REDIS_URL=redis://redis-test:6379
+      - HUB_WS_URL=ws://hub-test:3002
+      - WORKER_ID=gpu-server-2-gpu-0
+      - GPU_ID=0
+      - GPU_MEMORY_GB=16
+      - GPU_MODEL=RTX_3080
+      - SERVICES=a1111
+      - MODELS={"a1111":["sdxl","sd15","sd21"]}
+      - CUSTOMER_ACCESS={"isolation":"loose","max_concurrent_customers":3}
+      - MOCK_MODE=true
+      - LOG_LEVEL=info
+    depends_on:
+      hub-test:
+        condition: service_healthy
+    networks:
+      - test-network
+
+  # GPU Server 3: Hybrid worker (simulates RTX 3080)
+  worker-hybrid-1:
+    build:
+      context: ../..
+      dockerfile: Dockerfile.worker
+    environment:
+      - HUB_REDIS_URL=redis://redis-test:6379
+      - HUB_WS_URL=ws://hub-test:3002
+      - WORKER_ID=gpu-server-2-gpu-1
+      - GPU_ID=1
+      - GPU_MEMORY_GB=16
+      - GPU_MODEL=RTX_3080
+      - SERVICES=comfyui,a1111
+      - MODELS={"comfyui":["sdxl","sd15"],"a1111":["sdxl","sd15"]}
+      - CUSTOMER_ACCESS={"isolation":"loose","max_concurrent_customers":3}
+      - MOCK_MODE=true
+      - LOG_LEVEL=info
+    depends_on:
+      hub-test:
+        condition: service_healthy
+    networks:
+      - test-network
+
+  # GPU Server 4: Flux specialist (simulates H100)
+  worker-flux-1:
+    build:
+      context: ../..
+      dockerfile: Dockerfile.worker
+    environment:
+      - HUB_REDIS_URL=redis://redis-test:6379
+      - HUB_WS_URL=ws://hub-test:3002
+      - WORKER_ID=gpu-server-4-gpu-0
+      - GPU_ID=0
+      - GPU_MEMORY_GB=80
+      - GPU_MODEL=H100
+      - SERVICES=flux
+      - MODELS={"flux":["flux-dev","flux-pro","flux-schnell"]}
+      - CUSTOMER_ACCESS={"isolation":"loose","max_concurrent_customers":10}
+      - MOCK_MODE=true
+      - LOG_LEVEL=info
+    depends_on:
+      hub-test:
+        condition: service_healthy
+    networks:
+      - test-network
+
+networks:
+  test-network:
+    driver: bridge

@@ -43,14 +43,18 @@ const state = {
     clientSocket: null,   // For job submission
     
     // Pending requests tracking
-    pendingRequests: {}
+    pendingRequests: {},
+    
+    // Workflow tracking
+    activeWorkflows: {}
 };
 
 // Connection URLs
 const CONNECTION_URLS = {
     railway: "wss://redisserver-production.up.railway.app",
     railwaynew: "wss://redisservernew-production.up.railway.app",
-    local: "ws://localhost:3002"
+    local: "ws://localhost:3002",
+    "local-test": "ws://localhost:3012"
 };
 
 // [2025-05-19T17:53:00-04:00] Default payloads for different job types
@@ -229,6 +233,8 @@ const elements = {
     // Job submission
     jobType: document.getElementById('job-type'),
     jobPriority: document.getElementById('job-priority'),
+    workflowSimulation: document.getElementById('workflow-simulation'),
+    submitTestJobsBtn: document.getElementById('submit-test-jobs-btn'),
     priorityButtons: document.querySelectorAll('.priority-btn'),
     // [2025-05-24T12:41:00-04:00] This is a duplicate of the jobPayload element defined in the connection controls sectio
     submitJobBtn: document.getElementById('submit-job-btn'),
@@ -374,6 +380,14 @@ function init() {
         event.preventDefault();
         submitJobViaRest();
     });
+    
+    // Add event listener for test jobs button
+    if (elements.submitTestJobsBtn) {
+        elements.submitTestJobsBtn.addEventListener('click', (event) => {
+            event.preventDefault();
+            submitTestJobs();
+        });
+    }
     
     // [2025-05-20T11:34:47-04:00] Add event listeners for synchronous option
     if (elements.restSyncCheckbox) {
@@ -1384,12 +1398,34 @@ function handleStatsBroadcast(parsedMessage, rawMessage, source = 'unknown') {
             state.stats.standardJobs = system.queues.standard || 0;
         }
         
-        // Process active jobs if available
-        if (system.jobs && system.jobs.active_jobs && Array.isArray(system.jobs.active_jobs)) {
-            
+        // Process all job arrays from the new system structure
+        const allJobArrays = [
+            { jobs: system.jobs?.pending_jobs || [], type: 'pending' },
+            { jobs: system.jobs?.active_jobs || [], type: 'active' },
+            { jobs: system.jobs?.completed_jobs || [], type: 'completed' },
+            { jobs: system.jobs?.failed_jobs || [], type: 'failed' }
+        ];
+        
+        // Also support backward compatibility with old format
+        if (system.jobs && system.jobs.active_jobs && Array.isArray(system.jobs.active_jobs) && 
+            !system.jobs.pending_jobs) {
+            // Old format - all jobs in active_jobs array
+            allJobArrays.length = 0; // Clear the new format arrays
+            allJobArrays.push({ jobs: system.jobs.active_jobs, type: 'mixed' });
+        }
+        
+        // Process all jobs from all arrays
+        const allJobs = [];
+        allJobArrays.forEach(jobArray => {
+            jobArray.jobs.forEach(jobData => {
+                allJobs.push(jobData);
+            });
+        });
+        
+        if (allJobs.length > 0) {
             // First, separate jobs into priority levels
             const jobsByPriority = {};
-            system.jobs.active_jobs.forEach(jobData => {
+            allJobs.forEach(jobData => {
                 const priority = parseInt(jobData.priority || 0);
                 if (!jobsByPriority[priority]) {
                     jobsByPriority[priority] = [];
@@ -1439,90 +1475,10 @@ function handleStatsBroadcast(parsedMessage, rawMessage, source = 'unknown') {
                 });
             });
         } else {
-            console.log('[DEBUG] No active_jobs array found in stats broadcast data');
+            console.log('[DEBUG] No jobs found in stats broadcast data');
         }
 
-        // Process pending jobs for queue display
-        if (system.jobs && system.jobs.pending_jobs && Array.isArray(system.jobs.pending_jobs)) {
-            console.log(`[DEBUG] Processing ${system.jobs.pending_jobs.length} pending jobs from stats broadcast`);
-            
-            // Process each pending job
-            system.jobs.pending_jobs.forEach(jobData => {
-                const jobId = jobData.id;
-                if (!jobId) {
-                    console.warn('[WARNING] Pending job data missing ID:', jobData);
-                    return;
-                }
-
-                // Add pending job to state
-                state.jobs[jobId] = {
-                    ...state.jobs[jobId],
-                    ...jobData,
-                    id: jobId,
-                    job_type: jobData.job_type || jobData.type || '',
-                    priority: parseInt(jobData.priority || 0),
-                    status: 'pending',
-                    createdAt: jobData.created_at ? new Date(jobData.created_at * 1000) : new Date(),
-                    updatedAt: jobData.updated_at ? new Date(jobData.updated_at * 1000) : new Date()
-                };
-            });
-            
-            console.log(`[DEBUG] Processed ${system.jobs.pending_jobs.length} pending jobs for queue display`);
-        } else {
-            console.log('[DEBUG] No pending_jobs array found in stats broadcast data');
-        }
-
-        // Process completed jobs for display
-        if (system.jobs && system.jobs.completed_jobs && Array.isArray(system.jobs.completed_jobs)) {
-            console.log(`[DEBUG] Processing ${system.jobs.completed_jobs.length} completed jobs from stats broadcast`);
-            
-            system.jobs.completed_jobs.forEach(jobData => {
-                const jobId = jobData.id;
-                if (!jobId) {
-                    console.warn('[WARNING] Completed job data missing ID:', jobData);
-                    return;
-                }
-
-                // Add completed job to state
-                state.jobs[jobId] = {
-                    ...state.jobs[jobId],
-                    ...jobData,
-                    id: jobId,
-                    job_type: jobData.job_type || jobData.type || '',
-                    priority: parseInt(jobData.priority || 0),
-                    status: 'completed',
-                    progress: 100,
-                    createdAt: jobData.created_at ? new Date(jobData.created_at * 1000) : new Date(),
-                    updatedAt: jobData.updated_at ? new Date(jobData.updated_at * 1000) : new Date()
-                };
-            });
-        }
-
-        // Process failed jobs for display
-        if (system.jobs && system.jobs.failed_jobs && Array.isArray(system.jobs.failed_jobs)) {
-            console.log(`[DEBUG] Processing ${system.jobs.failed_jobs.length} failed jobs from stats broadcast`);
-            
-            system.jobs.failed_jobs.forEach(jobData => {
-                const jobId = jobData.id;
-                if (!jobId) {
-                    console.warn('[WARNING] Failed job data missing ID:', jobData);
-                    return;
-                }
-
-                // Add failed job to state
-                state.jobs[jobId] = {
-                    ...state.jobs[jobId],
-                    ...jobData,
-                    id: jobId,
-                    job_type: jobData.job_type || jobData.type || '',
-                    priority: parseInt(jobData.priority || 0),
-                    status: 'failed',
-                    progress: 0,
-                    createdAt: jobData.created_at ? new Date(jobData.created_at * 1000) : new Date(),
-                    updatedAt: jobData.updated_at ? new Date(jobData.updated_at * 1000) : new Date()
-                };
-            });
-        }
+        // All job processing is now handled above in the unified job array processing
     }
     
     // Update subscriptions if available
@@ -1841,6 +1797,11 @@ function handleJobCompleted(message, source = 'unknown') {
         showNotification(`Job ${jobId} completed successfully`, 'success');
     } else {
         console.log(`[DEBUG] Job completion message missing job ID`, message);
+    }
+
+    // Handle workflow step completion if this is part of a workflow
+    if (jobId) {
+        handleWorkflowStepCompletion(jobId);
     }
 
     // Update the UI
@@ -2751,23 +2712,34 @@ async function submitJob(customMessageId = null) {
     try {
         // Get job details from form
         const jobType = elements.jobType.value;
+        const priority = parseInt(elements.jobPriority.value, 10);
+        const isWorkflowSimulation = elements.workflowSimulation && elements.workflowSimulation.checked;
+        
+        // Parse payload as JSON
+        let payload;
+        try {
+            payload = JSON.parse(elements.jobPayload.value);
+        } catch (error) {
+            addLogEntry(`Invalid JSON payload: ${error.message}`, 'error');
+            return;
+        }
+        
+        // Check if this is a workflow simulation
+        if (isWorkflowSimulation && !customMessageId) {
+            if (jobType !== 'simulation') {
+                addLogEntry('Workflow simulation is only supported for "simulation" job type', 'error');
+                return;
+            }
+            return await submitWorkflowSimulation(jobType, priority, payload);
+        }
+        
+        // Single job submission (original logic)
         // 2025-04-09 15:01: Fix job ID generation to ensure only string values are used
         // If a custom message ID is provided and it's a string, use it; otherwise get from the form
         let userMessageId = (typeof customMessageId === 'string') ? customMessageId : document.getElementById('message-id').value.trim();
         // Generate a UUID and concatenate with the user's message ID
         const uuid = generateUUID();
         const messageId = userMessageId ? `${userMessageId}-${uuid}` : `job-submit-${Date.now()}`;
-        const priority = parseInt(elements.jobPriority.value, 10);
-        
-        let payload;
-        
-        try {
-            // Parse payload as JSON
-            payload = JSON.parse(elements.jobPayload.value);
-        } catch (error) {
-            addLogEntry(`Invalid JSON payload: ${error.message}`, 'error');
-            return;
-        }
         
         // Create submit job message using Messages class
         const message = Messages.createSubmitJobMessage(jobType, priority, payload);
@@ -2822,6 +2794,240 @@ async function submitJob(customMessageId = null) {
             addLogEntry(`Error submitting job: ${error.message}`, 'error');
         }
         return null;
+    }
+}
+
+/**
+ * Submit a workflow simulation with 5 sequential steps
+ * Each step is only submitted after the previous step completes
+ * @param {string} jobType - The job type to use for all steps
+ * @param {number} priority - The priority to use for all steps
+ * @param {object} payload - The base payload to use for all steps
+ * @returns {Promise<string>} - The workflow ID
+ */
+async function submitWorkflowSimulation(jobType, priority, payload) {
+    try {
+        // Generate workflow ID and timestamp for all jobs
+        const workflowId = `workflow-${Date.now()}-${generateUUID()}`;
+        const workflowDatetime = Date.now(); // Timestamp in milliseconds
+        
+        addLogEntry(`Starting sequential workflow: ${workflowId} with 5 steps`, 'info');
+        
+        // Store workflow state for tracking
+        state.activeWorkflows[workflowId] = {
+            jobType,
+            priority,
+            payload,
+            workflowDatetime,
+            totalSteps: 5,
+            currentStep: 0,
+            completedSteps: [],
+            submittedJobs: []
+        };
+        
+        // Submit the first step
+        await submitWorkflowStep(workflowId, 1);
+        
+        // Flash the submit button to indicate workflow submission
+        const activeButton = document.querySelector('.priority-btn.active');
+        if (activeButton) {
+            activeButton.classList.add('btn-flash');
+            setTimeout(() => {
+                activeButton.classList.remove('btn-flash');
+            }, 1000);
+        }
+        
+        addLogEntry(`Sequential workflow started: Step 1 submitted`, 'success');
+        return workflowId;
+        
+    } catch (error) {
+        console.error('Workflow simulation error:', error);
+        addLogEntry(`Error starting workflow simulation: ${error.message}`, 'error');
+        return null;
+    }
+}
+
+/**
+ * Submit a single workflow step
+ * @param {string} workflowId - The workflow ID
+ * @param {number} stepNumber - The step number to submit
+ */
+async function submitWorkflowStep(workflowId, stepNumber) {
+    const workflow = state.activeWorkflows[workflowId];
+    if (!workflow) {
+        console.error(`Workflow ${workflowId} not found`);
+        return;
+    }
+    
+    try {
+        const messageId = `${workflowId}-step-${stepNumber}`;
+        
+        // Create workflow-enabled payload
+        const workflowPayload = {
+            ...workflow.payload,
+            workflow_step: stepNumber,
+            total_steps: workflow.totalSteps,
+            workflow_id: workflowId
+        };
+        
+        // Create submit job message using Messages class
+        const message = Messages.createSubmitJobMessage(workflow.jobType, workflow.priority, workflowPayload);
+        
+        // Add workflow metadata to the message
+        message.message_id = messageId;
+        message.workflow_id = workflowId;
+        message.workflow_priority = workflow.priority;
+        message.workflow_datetime = workflow.workflowDatetime;
+        message.step_number = stepNumber;
+        
+        console.log(`Submitting workflow step ${stepNumber}:`, message);
+        
+        // Send message through the client connection
+        state.clientSocket.send(JSON.stringify(message));
+        
+        // Store the request in state for tracking
+        if (!state.pendingRequests) {
+            state.pendingRequests = {};
+        }
+        
+        state.pendingRequests[messageId] = {
+            type: message.type,
+            timestamp: message.timestamp,
+            status: 'pending',
+            jobType: workflow.jobType,
+            priority: workflow.priority,
+            workflowId: workflowId,
+            stepNumber: stepNumber,
+            messageId: messageId
+        };
+        
+        // Update workflow state
+        workflow.currentStep = stepNumber;
+        workflow.submittedJobs.push(messageId);
+        
+        addLogEntry(`Submitted workflow step ${stepNumber}/${workflow.totalSteps}: ${messageId}`, 'info');
+        
+    } catch (error) {
+        console.error(`Error submitting workflow step ${stepNumber}:`, error);
+        addLogEntry(`Error submitting workflow step ${stepNumber}: ${error.message}`, 'error');
+    }
+}
+
+/**
+ * Handle workflow step completion - submit next step if available
+ * @param {string} jobId - The completed job ID
+ */
+function handleWorkflowStepCompletion(jobId) {
+    // Check if this job belongs to a workflow by searching through pending requests
+    let workflowRequest = null;
+    let requestKey = null;
+    
+    // Look for the request that matches this job - it could be stored by messageId or jobId
+    for (const [key, request] of Object.entries(state.pendingRequests || {})) {
+        if (key === jobId || request.messageId === jobId || 
+            (state.jobs[jobId] && state.jobs[jobId].workflow_id && 
+             request.workflowId === state.jobs[jobId].workflow_id)) {
+            workflowRequest = request;
+            requestKey = key;
+            break;
+        }
+    }
+    
+    if (!workflowRequest || !workflowRequest.workflowId) {
+        console.log(`No workflow request found for job ${jobId}`);
+        return; // Not a workflow job
+    }
+    
+    const workflowId = workflowRequest.workflowId;
+    const workflow = state.activeWorkflows[workflowId];
+    if (!workflow) {
+        console.log(`Workflow ${workflowId} not found in activeWorkflows`);
+        return; // Workflow not found
+    }
+    
+    const completedStep = workflowRequest.stepNumber;
+    workflow.completedSteps.push(completedStep);
+    
+    // Clean up the completed request
+    if (requestKey) {
+        delete state.pendingRequests[requestKey];
+    }
+    
+    addLogEntry(`Workflow step ${completedStep} completed for ${workflowId}`, 'info');
+    console.log(`Workflow step ${completedStep} completed. Next step: ${completedStep + 1}`);
+    
+    // Check if there's a next step to submit
+    const nextStep = completedStep + 1;
+    if (nextStep <= workflow.totalSteps) {
+        // Submit the next step
+        addLogEntry(`Submitting workflow step ${nextStep}/${workflow.totalSteps}`, 'info');
+        setTimeout(() => {
+            submitWorkflowStep(workflowId, nextStep);
+        }, 500); // Small delay to ensure proper ordering
+    } else {
+        // Workflow is complete
+        addLogEntry(`Workflow ${workflowId} completed! All ${workflow.totalSteps} steps finished.`, 'success');
+        delete state.activeWorkflows[workflowId];
+    }
+}
+
+/**
+ * Submit 3 test jobs to verify ordering with workflows
+ */
+async function submitTestJobs() {
+    if (!state.clientConnected) {
+        addLogEntry('Cannot submit test jobs: Client connection not active', 'error');
+        return;
+    }
+
+    try {
+        const jobType = 'simulation';
+        const priority = parseInt(elements.jobPriority.value, 10);
+        const payload = JSON.parse(elements.jobPayload.value);
+
+        addLogEntry(`Submitting 3 test jobs with priority ${priority}`, 'info');
+
+        for (let i = 1; i <= 3; i++) {
+            const messageId = `test-job-${Date.now()}-${i}`;
+            
+            // Create submit job message
+            const message = Messages.createSubmitJobMessage(jobType, priority, {
+                ...payload,
+                test_job: i,
+                description: `Test job ${i} for ordering verification`
+            });
+            
+            message.message_id = messageId;
+            
+            // Send message
+            state.clientSocket.send(JSON.stringify(message));
+            
+            // Store in pending requests
+            if (!state.pendingRequests) {
+                state.pendingRequests = {};
+            }
+            
+            state.pendingRequests[messageId] = {
+                type: message.type,
+                timestamp: message.timestamp,
+                status: 'pending',
+                jobType: jobType,
+                priority: priority
+            };
+            
+            addLogEntry(`Submitted test job ${i}: ${messageId}`, 'info');
+            
+            // Small delay between submissions to ensure different timestamps
+            if (i < 3) {
+                await new Promise(resolve => setTimeout(resolve, 100));
+            }
+        }
+        
+        addLogEntry('All 3 test jobs submitted', 'success');
+        
+    } catch (error) {
+        console.error('Test jobs submission error:', error);
+        addLogEntry(`Error submitting test jobs: ${error.message}`, 'error');
     }
 }
 
@@ -3006,16 +3212,16 @@ function updateUI() {
     // Check for jobs with 100% progress and completed status or explicitly marked as completed
     const completedJobs = validJobs.filter(job => job.status === 'completed');
     
-    // Jobs are only active if they're explicitly marked as active/processing AND not at 100% progress
+    // Jobs are active if they're assigned to workers or explicitly marked as active/processing
     const activeJobs = validJobs.filter(job => 
-        (job.status === 'active' || job.status === 'processing') && 
+        (job.status === 'active' || job.status === 'processing' || job.status === 'assigned') && 
         // If a job has 100% progress and a completedAt timestamp, treat it as completed
         !(job.progress === 100 && job.completedAt)
     );
     
-    // Move jobs with 100% progress to completed if they're still marked as active/processing
+    // Move jobs with 100% progress to completed if they're still marked as active/processing/assigned
     validJobs.forEach(job => {
-        if ((job.status === 'active' || job.status === 'processing') && job.progress === 100) {
+        if ((job.status === 'active' || job.status === 'processing' || job.status === 'assigned') && job.progress === 100) {
             // If the job has 100% progress but is still marked as active, update it to completed
             console.log(`[DEBUG] Moving job ${job.id} from active to completed (100% progress)`); 
             job.status = 'completed';
@@ -3033,7 +3239,7 @@ function updateUI() {
     const totalClients = state.stats.totalClients;
     const queuedCount = queuedJobs.length;
     const activeCount = activeJobs.length;
-    const allJobsTotal = queuedJobs.length + activeJobs.length + completedJobs.length + failedJobs.length;
+    const allJobsTotal = queuedJobs.length + activeJobs.length; // Only current jobs (pending + active)
     const finishedJobsTotal = completedJobs.length + failedJobs.length;
     
     // Update main stats (if elements exist)
@@ -3244,15 +3450,21 @@ function updateUI() {
     // Only display queued (pending) jobs in the job queue
     elements.jobsTableBody.innerHTML = '';
     
-    // Enhanced: Show ALL jobs (pending, assigned, active, completed, failed) in unified view
-    const allJobsForQueue = [...queuedJobs, ...activeJobs, ...completedJobs, ...failedJobs];
+    // Job Queue: Show only current jobs (pending and active) - exclude completed and failed
+    const allJobsForQueue = [...queuedJobs, ...activeJobs];
     
-    if (allJobsForQueue.length > 0) {
+    // Clean up completed/failed jobs from being shown in Current Jobs table
+    // Remove any jobs that have completed/failed status from the queue display
+    const currentJobsOnly = allJobsForQueue.filter(job => 
+        job.status !== 'completed' && job.status !== 'failed' && job.status !== 'cancelled'
+    );
+    
+    if (currentJobsOnly.length > 0) {
         elements.jobsTableContainer.classList.remove('hidden');
         elements.noJobsMessage.classList.add('hidden');
         
         // Sort jobs by status priority first, then by priority/time
-        allJobsForQueue.sort((a, b) => {
+        currentJobsOnly.sort((a, b) => {
             // Define status priority order
             const statusPriority = {
                 'pending': 1,
@@ -3287,9 +3499,9 @@ function updateUI() {
         });
         
         // Log once before processing jobs
-        console.log(`[Enhanced Job Queue] Displaying ${allJobsForQueue.length} jobs: ${queuedJobs.length} pending, ${activeJobs.length} active, ${completedJobs.length} completed, ${failedJobs.length} failed`);
+        console.log(`[Current Jobs Queue] Displaying ${currentJobsOnly.length} current jobs (excluding completed/failed): ${queuedJobs.length} pending, ${activeJobs.length} active`);
         
-        allJobsForQueue.forEach(job => {
+        currentJobsOnly.forEach(job => {
             const row = document.createElement('tr');
             
             // Format status class and display based on actual job status
@@ -3355,6 +3567,9 @@ function updateUI() {
                 });
             }
             
+            // Get workflow ID display
+            const workflowDisplay = job.workflow_id || '-';
+            
             // Create the job row
             // [2025-04-06 20:40] Added client_id column
             // 2025-04-09 13:53: Modified to display full job ID without truncation
@@ -3363,6 +3578,7 @@ function updateUI() {
             // [2025-05-19T18:03:00-04:00] Added force retry button
             row.innerHTML = `
                 <td class="job-id-cell" title="${job.id}">${job.id}</td>
+                <td class="workflow-cell" title="${workflowDisplay}">${workflowDisplay}</td>
                 <td>${job.job_type || job.type || ''}</td>
                 <td><span class="status ${statusClass}">${displayStatus}</span></td>
                 <td class="worker-cell">${workerDisplay}</td>
@@ -3464,11 +3680,14 @@ function updateUI() {
                 finishedTime = formatDateTime(job.updated_at);
             }
             
-            // Create the job row with client ID and worker ID columns
+            // Create the job row with workflow ID, client ID and worker ID columns
             // [2025-04-06 20:40] Added client_id column
+            const workflowDisplay = job.workflow_id || '-';
+            
             row.innerHTML = `
                 <!-- 2025-04-09 13:53: Modified to display full job ID without truncation -->
                 <td class="job-id-cell" title="${job.id}">${job.id}</td>
+                <td class="workflow-cell" title="${workflowDisplay}">${workflowDisplay}</td>
                 <td>${job.client_id || 'N/A'}</td>
                 <td>${job.worker_id || job.workerId || 'N/A'}</td>
                 <td>${job.job_type || job.type || ''}</td>

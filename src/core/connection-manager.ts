@@ -782,6 +782,21 @@ export class ConnectionManager implements ConnectionManagerInterface {
       `Stats broadcast: ${connectedWorkers.length} workers, ${clientIds.length} clients, ${monitorIds.length} monitors`
     );
 
+    // Get active jobs to determine which workers are busy
+    const activeJobsByWorker = new Map<string, string>(); // workerId -> jobId
+    if (this.redisService && this.redisService.isConnected()) {
+      try {
+        const jobs = await this.redisService.getActiveJobs();
+        for (const job of jobs) {
+          if (job.worker_id) {
+            activeJobsByWorker.set(job.worker_id, job.id);
+          }
+        }
+      } catch (error) {
+        logger.error('Error fetching active jobs for worker status:', error);
+      }
+    }
+
     // Build workers object matching Python format
     const workersData: Record<
       string,
@@ -800,17 +815,19 @@ export class ConnectionManager implements ConnectionManagerInterface {
 
     for (const worker of connectedWorkers) {
       const jobsProcessed = this.workerJobCounts.get(worker.workerId) || 0;
+      const currentJobId = activeJobsByWorker.get(worker.workerId);
+      const isWorking = currentJobId !== undefined;
 
       workersData[worker.workerId] = {
-        status: 'idle', // TODO: track actual status
-        connection_status: 'idle',
-        is_accepting_jobs: true,
+        status: isWorking ? 'working' : 'idle',
+        connection_status: isWorking ? 'working' : 'idle',
+        is_accepting_jobs: !isWorking, // Don't accept jobs if already working
         supported_job_types: worker.capabilities?.services || [],
         capabilities: worker.capabilities,
         connected_at: worker.connectedAt,
         jobs_processed: jobsProcessed,
         last_heartbeat: worker.lastActivity,
-        current_job_id: undefined, // TODO: track current jobs
+        current_job_id: currentJobId,
       };
     }
 
@@ -947,6 +964,10 @@ export class ConnectionManager implements ConnectionManagerInterface {
       }
     }
 
+    // Create backward-compatible active_jobs array that contains all jobs
+    // This matches the old Python format where the monitor expected all jobs in one array
+    const allJobs = [...activeJobs, ...pendingJobs, ...completedJobs, ...failedJobs];
+
     // Count workers by status
     const workerStatusCounts = {
       idle: 0,
@@ -963,7 +984,8 @@ export class ConnectionManager implements ConnectionManagerInterface {
     }> = [];
 
     for (const worker of connectedWorkers) {
-      const status = workersData[worker.workerId].current_job_id ? 'working' : 'idle';
+      const workerData = workersData[worker.workerId];
+      const status = workerData.status; // Use the status we already calculated
       if (status === 'idle') {
         workerStatusCounts.idle++;
       } else {
@@ -976,7 +998,7 @@ export class ConnectionManager implements ConnectionManagerInterface {
         connected_at: worker.connectedAt,
         jobs_processed: this.workerJobCounts.get(worker.workerId) || 0,
         last_heartbeat: worker.lastActivity,
-        current_job_id: workersData[worker.workerId].current_job_id,
+        current_job_id: workerData.current_job_id,
       });
     }
 
@@ -1013,7 +1035,9 @@ export class ConnectionManager implements ConnectionManagerInterface {
             completed: jobStats.completed,
             failed: jobStats.failed,
           },
-          active_jobs: activeJobs,
+          // Backward-compatible: single array containing all jobs (old Python format)
+          active_jobs: allJobs,
+          // New format: separate arrays by status
           pending_jobs: pendingJobs,
           completed_jobs: completedJobs,
           failed_jobs: failedJobs,

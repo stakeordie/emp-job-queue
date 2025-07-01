@@ -212,6 +212,10 @@ export class HubServer {
         customer_id: jobRequest.customer_id,
         requirements: jobRequest.requirements,
         max_retries: jobRequest.max_retries || 3,
+        workflow_id: jobRequest.workflow_id,
+        workflow_priority: jobRequest.workflow_priority,
+        workflow_datetime: jobRequest.workflow_datetime,
+        step_number: jobRequest.step_number,
       });
 
       const job = await this.redisService.getJob(jobId);

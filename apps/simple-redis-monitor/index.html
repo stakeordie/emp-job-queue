@@ -926,6 +926,7 @@
             <option value="railway">Railway (Production)</option>
             <option value="railwaynew">Railway New (Production)</option>
             <option value="local">Local (Development)</option>
+            <option value="local-test">Local (TEST)</option>
           </select>
         </div>
         <div class="form-group">
@@ -1009,6 +1010,19 @@
               <option value="comfyui">comfyui</option>
               <!-- Additional options will be populated dynamically based on connected workers -->
             </select>
+          </div>
+          <div class="form-group compact">
+            <label>
+              <input type="checkbox" id="workflow-simulation" style="margin-right: 8px;">
+              Workflow Simulation (5 sequential steps)
+            </label>
+            <div class="form-help-text">Creates 5 simulation jobs that run sequentially with shared workflow ID and priority</div>
+          </div>
+          <div class="form-group compact">
+            <button type="button" id="submit-test-jobs-btn" class="btn-test" style="margin-top: 10px;">
+              Submit 3 Test Jobs (to test ordering)
+            </button>
+            <div class="form-help-text">Submit 3 regular simulation jobs to test workflow vs regular job ordering</div>
           </div>
           <div class="form-group compact">
             <label for="message-id">Message ID (Optional)</label>
@@ -1184,16 +1198,17 @@
     <div class="right-column-container">
       <!-- [2025-05-24T13:05:00-04:00] Jobs section - workers moved to left column -->
       <div class="single-column-container">
-        <!-- All Jobs Section -->
+        <!-- Current Jobs Section -->
         <div class="card job-queue-section">
-          <h2>All Jobs (<span id="all-jobs-count">0</span>) - Queued: <span id="queued-jobs-count">0</span>, Active: <span id="active-jobs-count">0</span></h2>
-        <!-- Enhanced to show all job states: pending, assigned, in_progress, completed -->
+          <h2>Current Jobs (<span id="all-jobs-count">0</span>) - Queued: <span id="queued-jobs-count">0</span>, Active: <span id="active-jobs-count">0</span></h2>
+        <!-- Shows only current jobs: pending, assigned, in_progress (excludes completed/failed) -->
         <!-- [2025-05-20T13:55:06-04:00] Added proper overflow handling for the jobs table -->
         <div id="jobs-table-container" class="table-responsive">
           <table id="jobs-table" class="compact-table">
             <thead>
               <tr>
                 <th class="job-id-column">Job ID</th>
+                <th>Workflow ID</th>
                 <th>Job Type</th>
                 <th>Status</th>
                 <th>Worker</th>
@@ -1224,6 +1239,7 @@
             <thead>
               <tr>
                 <th class="job-id-column">Job ID</th>
+                <th>Workflow ID</th>
                 <th>Client ID</th>
                 <th>Worker ID</th>
                 <th>Job Type</th>
@@ -1836,6 +1852,36 @@
       font-style: italic;
       padding: 10px;
       text-align: center;
+    }
+
+    .form-help-text {
+      font-size: 0.8rem;
+      color: #666;
+      margin-top: 4px;
+      font-style: italic;
+    }
+
+    .workflow-cell {
+      max-width: 120px;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      font-size: 0.8rem;
+      color: #666;
+    }
+
+    .btn-test {
+      background-color: #17a2b8;
+      color: white;
+      border: none;
+      padding: 8px 16px;
+      border-radius: 4px;
+      cursor: pointer;
+      font-size: 0.9rem;
+    }
+
+    .btn-test:hover {
+      background-color: #138496;
     }
   </style>
 

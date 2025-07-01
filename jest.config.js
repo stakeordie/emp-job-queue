@@ -14,11 +14,23 @@ export default {
     '^@/(.*)$': '<rootDir>/src/$1',
     '^@core/(.*)$': '<rootDir>/src/core/$1',
     '^@hub/(.*)$': '<rootDir>/src/hub/$1',
-    '^@worker/(.*)$': '<rootDir>/src/worker/$1'
+    '^@worker/(.*)$': '<rootDir>/src/worker/$1',
+    // Handle .js imports in TypeScript files
+    '^(\\.{1,2}/.*)\\.js$': '$1'
   },
   
   // Module file extensions
   moduleFileExtensions: ['ts', 'js', 'json'],
+  
+  // Extension mapping for imports
+  extensionsToTreatAsEsm: ['.ts'],
+  
+  // Transform TypeScript files
+  transform: {
+    '^.+\\.ts$': ['ts-jest', {
+      useESM: true
+    }]
+  },
   
   // Setup files
   // setupFilesAfterEnv: ['<rootDir>/tests/setup.ts'],

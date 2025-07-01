@@ -307,8 +307,17 @@ export class BaseWorker {
       if (this.dashboard) {
         this.dashboard.recordJobStarted(job);
       }
-      this.status =
+      const newStatus =
         this.currentJobs.size >= this.maxConcurrentJobs ? WorkerStatus.BUSY : WorkerStatus.IDLE;
+      const statusChanged = this.status !== newStatus;
+      this.status = newStatus;
+
+      // Notify hub that we're now processing this job
+      if (statusChanged || this.status === WorkerStatus.BUSY) {
+        this.notifyStatusChange().catch(error => {
+          logger.error(`Failed to notify hub of job start status:`, error);
+        });
+      }
 
       // Find appropriate connector
       const connector = this.connectorManager.getConnectorByServiceType(job.service_required);
@@ -523,7 +532,28 @@ export class BaseWorker {
     }
 
     // Update worker status
-    this.status = this.currentJobs.size > 0 ? WorkerStatus.BUSY : WorkerStatus.IDLE;
+    const newStatus = this.currentJobs.size > 0 ? WorkerStatus.BUSY : WorkerStatus.IDLE;
+    const statusChanged = this.status !== newStatus;
+    this.status = newStatus;
+
+    // Notify hub of status change if worker went from busy to idle
+    if (statusChanged && this.status === WorkerStatus.IDLE) {
+      this.notifyStatusChange().catch(error => {
+        logger.error(`Failed to notify hub of status change to idle:`, error);
+      });
+    }
+  }
+
+  private async notifyStatusChange(): Promise<void> {
+    try {
+      // Send status update to hub via WorkerClient
+      const currentJobIds = Array.from(this.currentJobs.keys());
+      await this.workerClient.sendStatusUpdate(this.status as MessageWorkerStatus, currentJobIds);
+      logger.debug(`Worker ${this.workerId} notified hub of status change to ${this.status}`);
+    } catch (error) {
+      logger.error(`Failed to notify hub of status change:`, error);
+      throw error;
+    }
   }
 
   private getSystemInfo(): SystemInfo {

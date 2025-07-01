@@ -35,6 +35,7 @@ export enum JobStatus {
   FAILED = 'failed',
   CANCELLED = 'cancelled',
   TIMEOUT = 'timeout',
+  UNWORKABLE = 'unworkable', // No available workers can handle this job
 }
 
 export interface JobRequirements {
