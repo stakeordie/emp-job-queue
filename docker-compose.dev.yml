@@ -42,6 +42,12 @@ services:
       - hub_node_modules:/app/node_modules
     depends_on:
       - redis
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:3001/health || exit 1"]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+      start_period: 10s
     networks:
       - emp-redis-dev-network
     restart: unless-stopped
@@ -76,7 +82,8 @@ services:
       # Cache node_modules to avoid reinstalling
       - worker1_node_modules:/app/node_modules
     depends_on:
-      - hub-dev
+      hub-dev:
+        condition: service_healthy
     networks:
       - emp-redis-dev-network
     restart: unless-stopped
@@ -111,7 +118,8 @@ services:
       # Cache node_modules to avoid reinstalling
       - worker2_node_modules:/app/node_modules
     depends_on:
-      - hub-dev
+      hub-dev:
+        condition: service_healthy
     networks:
       - emp-redis-dev-network
     restart: unless-stopped
@@ -156,7 +164,8 @@ services:
       # Cache node_modules to avoid reinstalling
       - worker3_node_modules:/app/node_modules
     depends_on:
-      - hub-dev
+      hub-dev:
+        condition: service_healthy
     networks:
       - emp-redis-dev-network
     restart: unless-stopped
@@ -191,7 +200,8 @@ services:
       # Cache node_modules to avoid reinstalling
       - worker4_node_modules:/app/node_modules
     depends_on:
-      - hub-dev
+      hub-dev:
+        condition: service_healthy
     networks:
       - emp-redis-dev-network
     restart: unless-stopped
