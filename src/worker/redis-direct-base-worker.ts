@@ -10,7 +10,7 @@ import {
   CustomerAccessConfig,
   PerformanceConfig,
 } from '../core/types/worker.js';
-import { Job, JobProgress } from '../core/types/job.js';
+import { Job, JobProgress, JobStatus } from '../core/types/job.js';
 import { logger } from '../core/utils/logger.js';
 import { WorkerDashboard } from './worker-dashboard.js';
 import os from 'os';
@@ -224,6 +224,9 @@ export class RedisDirectBaseWorker {
     if (!connector) {
       throw new Error(`No connector available for service: ${job.service_required}`);
     }
+
+    // Update job status to IN_PROGRESS when processing begins
+    await this.redisClient.startJobProcessing(job.id);
 
     // Set up progress callback
     const onProgress = async (progress: JobProgress) => {

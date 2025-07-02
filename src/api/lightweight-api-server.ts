@@ -757,13 +757,62 @@ export class LightweightAPIServer {
       }
     }
 
-    // Broadcast to monitor connections
-    this.broadcastToMonitors({
-      type: 'job_progress',
-      job_id: jobId,
-      data: progressData,
-      timestamp: Date.now(),
-    });
+    // Check if this is a status change (assigned/processing/completed/failed)
+    const status = progressData.status;
+    if (status === 'assigned') {
+      // Broadcast job assignment
+      this.broadcastToMonitors({
+        type: 'job_assigned',
+        job_id: jobId,
+        worker_id: progressData.worker_id || 'unknown',
+        assigned_at: Date.now(),
+        timestamp: Date.now(),
+      });
+    } else if (status === 'processing') {
+      // Broadcast job processing start
+      this.broadcastToMonitors({
+        type: 'job_status_changed',
+        job_id: jobId,
+        old_status: 'assigned',
+        new_status: 'processing',
+        worker_id: progressData.worker_id || 'unknown',
+        timestamp: Date.now(),
+      });
+    } else if (status === 'completed') {
+      // Broadcast job completion
+      this.broadcastToMonitors({
+        type: 'job_completed',
+        job_id: jobId,
+        worker_id: progressData.worker_id || 'unknown',
+        result: progressData.result || null,
+        completed_at: Date.now(),
+        timestamp: Date.now(),
+      });
+    } else if (status === 'failed') {
+      // Broadcast job failure
+      this.broadcastToMonitors({
+        type: 'job_failed',
+        job_id: jobId,
+        worker_id: progressData.worker_id || 'unknown',
+        error: progressData.message || 'Job failed',
+        failed_at: Date.now(),
+        timestamp: Date.now(),
+      });
+    } else {
+      // Broadcast progress update
+      this.broadcastToMonitors({
+        type: 'job_progress',
+        job_id: jobId,
+        worker_id: progressData.worker_id || 'unknown',
+        progress: parseInt(progressData.progress || '0'),
+        status: status || 'in_progress',
+        message: progressData.message || '',
+        current_step: progressData.current_step || '',
+        total_steps: progressData.total_steps ? parseInt(progressData.total_steps) : undefined,
+        estimated_completion: progressData.estimated_completion || undefined,
+        timestamp: Date.now(),
+      });
+    }
   }
 
   private async submitJob(jobData: Record<string, unknown>): Promise<string> {
@@ -870,7 +919,8 @@ export class LightweightAPIServer {
       await this.redisService.connect();
 
       // Enable keyspace notifications for progress streaming
-      await this.redis.config('SET', 'notify-keyspace-events', 'Ex');
+      // K = Keyspace events, $ = Stream commands, E = Keyevent, x = Expired
+      await this.redis.config('SET', 'notify-keyspace-events', 'K$Ex');
 
       // Start HTTP server
       await new Promise<void>((resolve, reject) => {

@@ -300,7 +300,7 @@ export default function Home() {
                       
                       <div className="flex items-center gap-3">
                         {/* Progress Display */}
-                        <div className="text-right text-xs text-muted-foreground space-y-1 min-w-[120px]">
+                        <div className="text-right text-xs text-muted-foreground space-y-1 min-w-[160px]">
                           {job.worker_id && <p>Worker: {job.worker_id}</p>}
                           {job.progress !== undefined && (
                             <div className="space-y-1">
@@ -309,6 +309,21 @@ export default function Home() {
                                 <span className="text-xs font-medium">{job.progress}%</span>
                               </div>
                               <Progress value={job.progress} className="w-full h-1.5" />
+                              {job.progress_message && (
+                                <p className="text-xs text-blue-600 truncate" title={job.progress_message}>
+                                  {job.progress_message}
+                                </p>
+                              )}
+                              {job.current_step && job.total_steps && (
+                                <p className="text-xs">
+                                  Step: {job.current_step} / {job.total_steps}
+                                </p>
+                              )}
+                              {job.estimated_completion && (
+                                <p className="text-xs text-green-600">
+                                  ETA: {job.estimated_completion}
+                                </p>
+                              )}
                             </div>
                           )}
                         </div>

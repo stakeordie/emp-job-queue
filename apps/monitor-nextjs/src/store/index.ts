@@ -362,7 +362,8 @@ export const useMonitorStore = create<MonitorStore>()(
           updateJob(jobEvent.job_id, {
             status: 'assigned' as JobStatus,
             worker_id: jobEvent.worker_id,
-            assigned_at: jobEvent.assigned_at
+            assigned_at: jobEvent.assigned_at,
+            progress: 0
           });
           break;
         }
@@ -376,10 +377,17 @@ export const useMonitorStore = create<MonitorStore>()(
             worker_id?: string;
             timestamp: number;
           };
-          updateJob(jobEvent.job_id, {
+          const updates: Partial<Job> = {
             status: jobEvent.new_status,
             worker_id: jobEvent.worker_id
-          });
+          };
+          
+          // Set appropriate timestamp based on new status
+          if (jobEvent.new_status === 'processing') {
+            updates.started_at = jobEvent.timestamp;
+          }
+          
+          updateJob(jobEvent.job_id, updates);
           break;
         }
         
@@ -389,12 +397,21 @@ export const useMonitorStore = create<MonitorStore>()(
             job_id: string;
             worker_id: string;
             progress: number;
+            status?: string;
+            message?: string;
+            current_step?: string;
+            total_steps?: number;
+            estimated_completion?: string;
             timestamp: number;
           };
           updateJob(jobEvent.job_id, {
-            status: 'processing' as JobStatus,
+            status: (jobEvent.status as JobStatus) || 'processing',
             progress: jobEvent.progress,
-            worker_id: jobEvent.worker_id
+            worker_id: jobEvent.worker_id,
+            progress_message: jobEvent.message,
+            current_step: jobEvent.current_step,
+            total_steps: jobEvent.total_steps,
+            estimated_completion: jobEvent.estimated_completion
           });
           break;
         }
@@ -413,7 +430,8 @@ export const useMonitorStore = create<MonitorStore>()(
             worker_id: jobEvent.worker_id,
             result: jobEvent.result,
             completed_at: jobEvent.completed_at,
-            progress: 100
+            progress: 100,
+            progress_message: 'Job completed successfully'
           });
           break;
         }
@@ -431,7 +449,8 @@ export const useMonitorStore = create<MonitorStore>()(
             status: 'failed' as JobStatus,
             worker_id: jobEvent.worker_id,
             error: jobEvent.error,
-            failed_at: jobEvent.failed_at
+            failed_at: jobEvent.failed_at,
+            progress_message: jobEvent.error
           });
           break;
         }

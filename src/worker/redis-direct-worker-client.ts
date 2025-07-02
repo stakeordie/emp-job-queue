@@ -208,6 +208,24 @@ export class RedisDirectWorkerClient {
         await this.redis.hset(`jobs:active:${this.workerId}`, jobId, JSON.stringify(jobData));
       }
 
+      // Publish job assignment to progress stream
+      await this.redis.xadd(
+        `progress:${jobId}`,
+        '*',
+        'job_id',
+        jobId,
+        'worker_id',
+        this.workerId,
+        'status',
+        'assigned',
+        'progress',
+        '0',
+        'message',
+        'Job assigned to worker',
+        'assigned_at',
+        new Date().toISOString()
+      );
+
       return true;
     } catch (error) {
       logger.error(`Worker ${this.workerId} failed to claim job ${jobId}:`, error);
@@ -291,6 +309,42 @@ export class RedisDirectWorkerClient {
       );
     } catch (error) {
       logger.error(`Worker ${this.workerId} failed to send progress for job ${jobId}:`, error);
+    }
+  }
+
+  /**
+   * Update job status to processing when worker starts handling it
+   */
+  async startJobProcessing(jobId: string): Promise<void> {
+    try {
+      // Update job status to IN_PROGRESS when processing begins
+      await this.redis.hmset(`job:${jobId}`, {
+        status: JobStatus.IN_PROGRESS,
+        started_at: new Date().toISOString(),
+      });
+
+      // Publish job processing start to progress stream
+      await this.redis.xadd(
+        `progress:${jobId}`,
+        '*',
+        'job_id',
+        jobId,
+        'worker_id',
+        this.workerId,
+        'status',
+        'processing',
+        'progress',
+        '0',
+        'message',
+        'Job processing started',
+        'started_at',
+        new Date().toISOString()
+      );
+
+      logger.debug(`Worker ${this.workerId} marked job ${jobId} as processing`);
+    } catch (error) {
+      logger.error(`Worker ${this.workerId} failed to start job processing for ${jobId}:`, error);
+      throw error;
     }
   }
 

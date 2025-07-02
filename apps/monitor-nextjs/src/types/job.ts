@@ -46,6 +46,10 @@ export interface Job {
   
   // Progress and results
   progress?: number;
+  progress_message?: string;
+  current_step?: string;
+  total_steps?: number;
+  estimated_completion?: string;
   result?: unknown;
   error?: string;
   failure_count?: number;
