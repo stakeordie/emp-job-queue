@@ -200,7 +200,7 @@ export class HubServer {
       if (!jobRequest.service_required || !jobRequest.payload) {
         res.status(400).json({
           error: 'Missing required fields',
-          required: ['type', 'payload'],
+          required: ['service_required', 'payload'],
         });
         return;
       }

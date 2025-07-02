@@ -1,5 +1,70 @@
 # EmProps Job Queue Development Changelog
 
+## 2025-01-02
+
+### ✅ Completed - Redis-Direct Architecture Phase 1A & 1B
+
+#### 🔄 Architecture Migration to Redis-Direct Workers
+- **Goal**: Transform from hub-centric WebSocket orchestration to Redis-direct polling for bulletproof 40+ worker scalability
+- **Phase 1A - Strip Job Filtering**: ✅ COMPLETED
+  - **Simplified Job Claiming**: Removed complex Lua scripts and capability matching
+    - `src/core/redis-service.ts`: Stripped to simple `ZREM` job claiming (race conditions acceptable for Phase 1)
+    - `src/core/job-broker.ts`: Removed multi-dimensional worker-job matching
+    - **Result**: Any worker can claim any job, simplified FIFO model
+  - **Fixed Backwards Compatibility**: Resolved "unknown" job type display in monitor
+    - Added fallback: `service_required: jobData.service_required || jobData.type || 'unknown'`
+
+#### 🚀 Phase 1B - Redis-Direct Worker Implementation: ✅ COMPLETED
+- **Created New Redis-Direct Worker Stack**:
+  - `src/worker/redis-direct-worker-client.ts`: Direct Redis polling client
+    - Direct Redis connections (no WebSocket dependency)
+    - Simple job claiming via `ZREVRANGE` + `ZREM` from `jobs:pending`
+    - Progress publishing to Redis Streams (`XADD progress:{jobId}`)
+    - Worker heartbeats directly to Redis with TTL
+  - `src/worker/redis-direct-base-worker.ts`: Complete worker implementation
+    - Continuous job polling at configurable intervals (1000ms default)
+    - Any-worker-any-job model (no capability filtering)
+    - Compatible with existing connector system
+    - Graceful shutdown and timeout handling
+  - `src/worker/redis-direct-worker.ts`: Standalone worker entry point
+    - Environment-based configuration
+    - Graceful shutdown handling
+    - Worker capability logging
+
+#### 🎯 Architecture Benefits Achieved
+- **Simplified Complexity**: Workers operate completely independently
+- **Bulletproof Scalability**: 40+ workers can poll Redis concurrently without coordination
+- **Eliminated Hub Dependency**: No WebSocket orchestration layer required for workers
+- **Maintained Progress Streaming**: Redis Streams replace WebSocket for real-time updates
+
+#### 🚀 Phase 1C - Lightweight API with Hybrid Support: ✅ COMPLETED
+- **Created New Lightweight API Stack**:
+  - `src/api/lightweight-api-server.ts`: HTTP + WebSocket hybrid API server
+    - **HTTP Endpoints**: Modern REST API (`POST /api/jobs`, `GET /api/jobs/:id`, `GET /api/jobs`)
+    - **Server-Sent Events**: Real-time progress streaming (`GET /api/jobs/:id/progress`)
+    - **WebSocket Support**: Backwards compatibility for legacy clients
+    - **Direct Redis Integration**: No hub orchestration layer required
+  - `src/api/hybrid-client.ts`: Universal client library
+    - **Auto-detection**: Try HTTP first, fallback to WebSocket
+    - **Dual Protocol Support**: Works with both legacy and modern endpoints
+    - **Event-driven Progress**: Real-time updates via SSE or WebSocket
+  - `src/api/index.ts`: Standalone API server entry point
+    - **Environment Configuration**: Supports existing hub environment variables
+    - **CORS Support**: Configurable cross-origin policies
+    - **Graceful Shutdown**: Clean connection termination
+
+#### 🎯 Architecture Transformation Complete (Phase 1A-1C)
+- **Eliminated Hub Dependency**: Workers and API operate independently via Redis
+- **Maintained Backwards Compatibility**: All existing WebSocket clients work unchanged
+- **Added Modern HTTP+SSE Support**: New clients can use standard REST + Server-Sent Events
+- **Real-time Progress Streaming**: Redis Streams power instant progress updates
+- **Any-Worker-Any-Job Model**: Simplified job assignment without complex filtering
+
+#### 📋 Next: Phase 1D - Update Monitor for Hybrid Architecture
+- **Goal**: Monitor dashboard reads directly from Redis, supports both WebSocket and SSE clients
+- **Redis Stream Integration**: Subscribe to progress updates via Redis instead of hub
+- **Dual Client Support**: Monitor works with both legacy hub and new lightweight API
+
 ## 2025-01-01
 
 ### 🚧 In Progress - Task Management System & Job Control UI

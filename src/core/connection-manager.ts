@@ -877,7 +877,7 @@ export class ConnectionManager implements ConnectionManagerInterface {
         const jobs = await this.redisService.getActiveJobs();
         activeJobs = jobs.map(job => ({
           id: job.id,
-          job_type: job.service_required,
+          job_type: job.service_required || 'unknown',
           status: job.status,
           priority: job.priority,
           workflow_id: job.workflow_id,
@@ -894,7 +894,7 @@ export class ConnectionManager implements ConnectionManagerInterface {
         const pendingJobsList = await this.redisService.getPendingJobs(50);
         pendingJobs = pendingJobsList.map(job => ({
           id: job.id,
-          job_type: job.service_required,
+          job_type: job.service_required || 'unknown',
           status: 'pending',
           priority: job.priority,
           workflow_id: job.workflow_id,
@@ -909,7 +909,7 @@ export class ConnectionManager implements ConnectionManagerInterface {
         const completedJobsList = await this.redisService.getCompletedJobs(20);
         completedJobs = completedJobsList.map(job => ({
           id: job.id,
-          job_type: job.service_required,
+          job_type: job.service_required || 'unknown',
           status: 'completed',
           priority: job.priority,
           workflow_id: job.workflow_id,
@@ -926,7 +926,7 @@ export class ConnectionManager implements ConnectionManagerInterface {
         const failedJobsList = await this.redisService.getFailedJobs(20);
         failedJobs = failedJobsList.map(job => ({
           id: job.id,
-          job_type: job.service_required,
+          job_type: job.service_required || 'unknown',
           status: 'failed',
           priority: job.priority,
           workflow_id: job.workflow_id,

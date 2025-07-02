@@ -2,19 +2,19 @@
  * Monitor WebSocket Handler
  *
  * ⚠️  CRITICAL: MONITORS ARE READ-ONLY OBSERVERS ONLY! ⚠️
- * 
+ *
  * This handler is STRICTLY for passive monitoring operations:
  * - Event subscription management
- * - Real-time event streaming  
+ * - Real-time event streaming
  * - Connection health/heartbeat
  * - State synchronization after reconnection
- * 
+ *
  * 🚫 DO NOT ADD ANY CONTROL/COMMAND OPERATIONS HERE! 🚫
- * 
- * All control operations (submit job, sync job state, cancel job, etc.) 
- * MUST go through the client WebSocket connection and be handled by 
+ *
+ * All control operations (submit job, sync job state, cancel job, etc.)
+ * MUST go through the client WebSocket connection and be handled by
  * the core MessageHandler, NOT here!
- * 
+ *
  * If you're tempted to add a new message type here, ask yourself:
  * "Does this CHANGE system state or is it READ-ONLY monitoring?"
  * If it changes state → Use client connection + MessageHandler
@@ -31,11 +31,7 @@ import { MonitorConnectEvent, SubscribeEvent, HeartbeatEvent } from '../types/mo
  * STRICTLY TYPED: Only read-only monitoring messages allowed
  * This prevents any control operations from being added here
  */
-type MonitorOnlyMessageType = 
-  | 'monitor_connect'
-  | 'subscribe' 
-  | 'heartbeat'
-  | 'resync_request';
+type MonitorOnlyMessageType = 'monitor_connect' | 'subscribe' | 'heartbeat' | 'resync_request';
 
 interface MonitorOnlyMessage {
   type: MonitorOnlyMessageType;
@@ -72,14 +68,17 @@ export class MonitorWebSocketHandler {
     ws.on('message', async data => {
       try {
         const rawMessage = JSON.parse(data.toString());
-        
+
         // Validate that this is a monitor-only message
         if (!this.isValidMonitorMessage(rawMessage)) {
           console.error(`[MonitorWS] Invalid message type for monitor: ${rawMessage.type}`);
-          this.sendError(ws, `Monitor connections can only send: monitor_connect, subscribe, heartbeat, resync_request. Use client WebSocket for control operations.`);
+          this.sendError(
+            ws,
+            `Monitor connections can only send: monitor_connect, subscribe, heartbeat, resync_request. Use client WebSocket for control operations.`
+          );
           return;
         }
-        
+
         const message = rawMessage as MonitorOnlyMessage;
         await this.handleMessage(monitorId, message);
       } catch (error) {
@@ -101,7 +100,7 @@ export class MonitorWebSocketHandler {
 
   /**
    * Handle incoming messages from monitors
-   * 
+   *
    * TypeScript ENFORCES only read-only monitoring operations!
    * Control operations will cause compile-time errors.
    */
@@ -330,15 +329,21 @@ export class MonitorWebSocketHandler {
    */
   private isValidMonitorMessage(message: unknown): message is MonitorOnlyMessage {
     if (!message || typeof message !== 'object') return false;
-    
-    const msg = message as Record<string, unknown>;
-    const validTypes: MonitorOnlyMessageType[] = ['monitor_connect', 'subscribe', 'heartbeat', 'resync_request'];
-    
-    return typeof msg.type === 'string' && 
-           validTypes.includes(msg.type as MonitorOnlyMessageType) &&
-           typeof msg.timestamp === 'number';
-  }
 
+    const msg = message as Record<string, unknown>;
+    const validTypes: MonitorOnlyMessageType[] = [
+      'monitor_connect',
+      'subscribe',
+      'heartbeat',
+      'resync_request',
+    ];
+
+    return (
+      typeof msg.type === 'string' &&
+      validTypes.includes(msg.type as MonitorOnlyMessageType) &&
+      typeof msg.timestamp === 'number'
+    );
+  }
 
   /**
    * Get connected monitors info

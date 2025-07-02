@@ -7,7 +7,7 @@
  * - Verification of correct job ordering and worker assignment with workflow inheritance
  */
 
-import { RedisService } from '@core/redis-service';
+import { RedisService } from 'src/core/interfaces/redis-service';
 import { JobBroker } from '@core/job-broker';
 import { WorkerCapabilities, HardwareSpecs, CustomerAccessConfig, PerformanceConfig } from '@core/types/worker';
 import { Job, JobSubmissionRequest, JobStatus } from '@core/types/job';

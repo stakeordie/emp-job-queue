@@ -28,11 +28,13 @@ export const logger = winston.createLogger({
   ],
 });
 
-// Add file logging in production
-if (process.env.NODE_ENV === 'production') {
+// Add file logging in production (use /tmp for containers)
+if (process.env.NODE_ENV === 'production' && !process.env.DISABLE_FILE_LOGGING) {
+  const logDir = process.env.LOG_DIR || '/tmp';
+
   logger.add(
     new winston.transports.File({
-      filename: 'logs/error.log',
+      filename: `${logDir}/error.log`,
       level: 'error',
       format: winston.format.combine(winston.format.timestamp(), winston.format.json()),
     })
@@ -40,7 +42,7 @@ if (process.env.NODE_ENV === 'production') {
 
   logger.add(
     new winston.transports.File({
-      filename: 'logs/combined.log',
+      filename: `${logDir}/combined.log`,
       format: winston.format.combine(winston.format.timestamp(), winston.format.json()),
     })
   );

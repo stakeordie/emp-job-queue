@@ -60,7 +60,7 @@ export class WebSocketService {
   private isConnecting = false;
   private manuallyDisconnected = false;
   private messageQueue: BaseMessage[] = [];
-  private baseUrl: string = 'ws://localhost:3002';
+  private baseUrl: string = 'ws://localhost:3001';
   private monitorId: string = '';
   private subscriptions: SubscriptionTopic[] = [];
   private heartbeatInterval: NodeJS.Timeout | null = null;
@@ -74,7 +74,7 @@ export class WebSocketService {
   private onErrorCallbacks: Array<(error: Event) => void> = [];
   private onFullStateCallbacks: Array<(state: unknown) => void> = [];
 
-  constructor(url: string = 'ws://localhost:3002') {
+  constructor(url: string = 'ws://localhost:3001') {
     this.baseUrl = url;
   }
 

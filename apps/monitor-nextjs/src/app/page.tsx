@@ -31,12 +31,12 @@ import { useState } from "react"
 // Environment presets
 const CONNECTION_PRESETS = {
   local: {
-    websocket: 'ws://localhost:3002',
+    websocket: 'ws://localhost:3001',
     auth: '3u8sdj5389fj3kljsf90u',
     name: 'Local Dev'
   },
   'local-test': {
-    websocket: 'ws://localhost:3012', 
+    websocket: 'ws://localhost:3011', 
     auth: '3u8sdj5389fj3kljsf90u',
     name: 'Local Test'
   },
@@ -219,7 +219,7 @@ export default function Home() {
                     <div>
                       <p className="text-muted-foreground">Services:</p>
                       <div className="flex flex-wrap gap-1 mt-1">
-                        {worker.capabilities.services.map((service) => (
+                        {(worker.capabilities?.services || []).map((service) => (
                           <Badge key={service} variant="outline" className="text-xs">
                             {service}
                           </Badge>

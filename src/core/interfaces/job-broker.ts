@@ -7,7 +7,7 @@ export interface JobBrokerInterface {
   // Job submission with workflow inheritance
   submitJob(request: JobSubmissionRequest): Promise<string>;
 
-  // Get next job for worker (pull-based selection)
+  // Get next job for worker (pull-based selection) - Phase 1A: simplified to any-worker-any-job
   getNextJobForWorker(workerCapabilities: WorkerCapabilities): Promise<Job | null>;
 
   // Workflow management

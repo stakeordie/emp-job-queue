@@ -44,82 +44,118 @@ const DEFAULT_PAYLOADS = {
   },
   comfyui: {
     workflow: {
-      "3": {
-        inputs: {
-          seed: 156680208700286,
-          steps: 8,
-          cfg: 7.5,
-          sampler_name: "euler",
-          scheduler: "normal",
-          denoise: 1,
-          model: ["4", 0],
-          positive: ["6", 0],
-          negative: ["7", 0],
-          latent_image: ["5", 0]
+      "55": {
+        "inputs": {
+          "id": ""
         },
-        class_type: "KSampler",
-        _meta: {
-          title: "KSampler"
+        "class_type": "AssetDownloader",
+        "_meta": {
+          "title": "AssetDownloader"
         }
       },
-      "4": {
-        inputs: {
-          ckpt_name: "sd_xl_base_1.0_0.9vae.safetensors"
+      "85": {
+        "inputs": {
+          "seed": Date.now(), // Dynamic seed to prevent caching
+          "steps": 8,
+          "cfg": 7,
+          "sampler_name": "euler",
+          "scheduler": "normal",
+          "denoise": 1,
+          "model": [
+            "86",
+            0
+          ],
+          "positive": [
+            "87",
+            0
+          ],
+          "negative": [
+            "88",
+            0
+          ],
+          "latent_image": [
+            "89",
+            0
+          ]
         },
-        class_type: "CheckpointLoaderSimple",
-        _meta: {
-          title: "Load Checkpoint"
+        "class_type": "KSampler",
+        "_meta": {
+          "title": "KSampler"
         }
       },
-      "5": {
-        inputs: {
-          width: 512,
-          height: 512,
-          batch_size: 1
+      "86": {
+        "inputs": {
+          "ckpt_name": "sd_xl_base_1.0_0.9vae.safetensors"
         },
-        class_type: "EmptyLatentImage",
-        _meta: {
-          title: "Empty Latent Image"
+        "class_type": "CheckpointLoaderSimple",
+        "_meta": {
+          "title": "Load Checkpoint"
         }
       },
-      "6": {
-        inputs: {
-          text: "a beautiful landscape",
-          clip: ["4", 1]
+      "87": {
+        "inputs": {
+          "text": "a beautiful landscape",
+          "clip": [
+            "86",
+            1
+          ]
         },
-        class_type: "CLIPTextEncode",
-        _meta: {
-          title: "CLIP Text Encode (Prompt)"
+        "class_type": "CLIPTextEncode",
+        "_meta": {
+          "title": "CLIP Text Encode (Prompt)"
         }
       },
-      "7": {
-        inputs: {
-          text: "",
-          clip: ["4", 1]
+      "88": {
+        "inputs": {
+          "text": "",
+          "clip": [
+            "86",
+            1
+          ]
         },
-        class_type: "CLIPTextEncode",
-        _meta: {
-          title: "CLIP Text Encode (Negative Prompt)"
+        "class_type": "CLIPTextEncode",
+        "_meta": {
+          "title": "CLIP Text Encode (Negative Prompt)"
         }
       },
-      "8": {
-        inputs: {
-          samples: ["3", 0],
-          vae: ["4", 2]
+      "89": {
+        "inputs": {
+          "width": 512,
+          "height": 512,
+          "batch_size": 1
         },
-        class_type: "VAEDecode",
-        _meta: {
-          title: "VAE Decode"
+        "class_type": "EmptyLatentImage",
+        "_meta": {
+          "title": "Empty Latent Image"
         }
       },
-      "9": {
-        inputs: {
-          filename_prefix: "ComfyUI",
-          images: ["8", 0]
+      "90": {
+        "inputs": {
+          "samples": [
+            "85",
+            0
+          ],
+          "vae": [
+            "86",
+            2
+          ]
         },
-        class_type: "SaveImage",
-        _meta: {
-          title: "Save Image"
+        "class_type": "VAEDecode",
+        "_meta": {
+          "title": "VAE Decode"
+        }
+      },
+      "91": {
+        "inputs": {
+          "filename_prefix": "EmProps_ComfyUI",
+          "images": [
+            "90",
+            0
+          ]
+        },
+        "class_type": "EmProps_Cloud_Storage_Saver",
+        "_meta": {
+          "title": "EmProps_Cloud_Storage_Saver"
         }
       }
     }

@@ -61,8 +61,9 @@ export class RedisService implements RedisServiceInterface {
 
   async connect(): Promise<void> {
     await Promise.all([this.redis.ping(), this.subscriber.ping()]);
+
     this.isConnectedFlag = true;
-    logger.info('Redis service connected');
+    logger.info('Redis service connected - Phase 1A: simplified without Lua scripts');
   }
 
   async disconnect(): Promise<void> {
@@ -129,7 +130,7 @@ export class RedisService implements RedisServiceInterface {
 
     return {
       id: jobData.id,
-      service_required: jobData.service_required,
+      service_required: jobData.service_required || jobData.type || 'unknown', // Backwards compatibility
       priority: parseInt(jobData.priority),
       payload: JSON.parse(jobData.payload || '{}'),
       requirements: jobData.requirements ? JSON.parse(jobData.requirements) : undefined,
@@ -210,109 +211,137 @@ export class RedisService implements RedisServiceInterface {
   }
 
   async completeJob(jobId: string, result: JobResult): Promise<void> {
-    const now = new Date().toISOString();
+    try {
+      const job = await this.getJob(jobId);
+      if (!job || !job.worker_id) {
+        logger.warn(`Cannot complete job ${jobId} - job not found or no worker assigned`);
+        return;
+      }
 
-    // Update job status
-    await this.redis.hmset(`job:${jobId}`, {
-      status: JobStatus.COMPLETED,
-      completed_at: now,
-      processing_time: result.processing_time?.toString() || '',
-    });
+      // Phase 1A: Simple Redis operations instead of Lua scripts
+      await this.redis.hmset(`job:${jobId}`, {
+        status: JobStatus.COMPLETED,
+        completed_at: new Date().toISOString(),
+        worker_id: job.worker_id,
+      });
 
-    // Store result with TTL (24 hours like Python version)
-    await this.redis.hset('jobs:completed', jobId, JSON.stringify(result));
-    await this.redis.expire('jobs:completed', 24 * 60 * 60);
+      // Remove from worker's active jobs
+      if (job.worker_id) {
+        await this.redis.hdel(`jobs:active:${job.worker_id}`, jobId);
+      }
 
-    // Remove from active jobs
-    const job = await this.getJob(jobId);
-    if (job?.worker_id) {
-      await this.redis.hdel(`jobs:active:${job.worker_id}`, jobId);
+      // Store result with TTL (24 hours like Python version)
+      await this.redis.hset('jobs:completed', jobId, JSON.stringify(result));
+      await this.redis.expire('jobs:completed', 24 * 60 * 60);
+
+      // Update processing time
+      if (result.processing_time) {
+        await this.redis.hset(`job:${jobId}`, 'processing_time', result.processing_time.toString());
+      }
+
+      // Publish completion
+      await this.publishMessage('job_completed', {
+        job_id: jobId,
+        result,
+        completed_at: new Date().toISOString(),
+      });
+
+      logger.info(`Job ${jobId} atomically completed by worker ${job.worker_id}`);
+    } catch (error) {
+      logger.error(`Failed to complete job ${jobId}:`, error);
+      throw error;
     }
-
-    // Publish completion
-    await this.publishMessage('job_completed', {
-      job_id: jobId,
-      result,
-      completed_at: now,
-    });
-
-    logger.info(`Job ${jobId} completed successfully`);
   }
 
   async failJob(jobId: string, error: string, canRetry = true): Promise<void> {
-    const job = await this.getJob(jobId);
-    if (!job) return;
-
-    // Don't retry cancelled jobs - they should stay cancelled
-    if (job.status === JobStatus.CANCELLED) {
-      logger.info(`Job ${jobId} is already cancelled, ignoring failure`);
-      return;
-    }
-
-    const now = new Date().toISOString();
-    const newRetryCount = job.retry_count + 1;
-    const shouldRetry = canRetry && newRetryCount < job.max_retries;
-
-    // Update job
-    const updateData: Record<string, string> = {
-      retry_count: newRetryCount.toString(),
-      failed_at: now,
-    };
-
-    if (shouldRetry) {
-      updateData.status = JobStatus.PENDING;
-      updateData.last_failed_worker = job.worker_id || '';
-      updateData.worker_id = ''; // Clear worker assignment
-      updateData.assigned_at = ''; // Clear assignment time
-      // Re-add to queue with same priority
-      const score = job.priority * 1000 + Date.now();
-      await this.redis.zadd('jobs:pending', score, jobId);
-    } else {
-      updateData.status = JobStatus.FAILED;
-      updateData.worker_id = ''; // Clear worker assignment
-      // Store in failed jobs with TTL (7 days like Python version)
-      await this.redis.hset(
-        'jobs:failed',
-        jobId,
-        JSON.stringify({
-          error,
-          failed_at: now,
-          retry_count: newRetryCount,
-        })
-      );
-      await this.redis.expire('jobs:failed', 7 * 24 * 60 * 60);
-    }
-
-    await this.redis.hmset(`job:${jobId}`, updateData);
-
-    // Remove from active jobs - be more thorough
-    if (job.worker_id) {
-      const removed = await this.redis.hdel(`jobs:active:${job.worker_id}`, jobId);
-      logger.debug(
-        `Removed job ${jobId} from active jobs for worker ${job.worker_id}: ${removed > 0 ? 'success' : 'not found'}`
-      );
-    }
-
-    // Also check if job is in any other worker's active jobs (cleanup orphaned entries)
-    const allActiveKeys = await this.redis.keys('jobs:active:*');
-    for (const key of allActiveKeys) {
-      const removed = await this.redis.hdel(key, jobId);
-      if (removed > 0) {
-        const workerId = key.replace('jobs:active:', '');
-        logger.warn(`Cleaned up orphaned job ${jobId} from worker ${workerId}'s active jobs`);
+    try {
+      const job = await this.getJob(jobId);
+      if (!job) {
+        logger.warn(`Cannot fail job ${jobId} - job not found`);
+        return;
       }
+
+      // Don't retry cancelled jobs - they should stay cancelled
+      if (job.status === JobStatus.CANCELLED) {
+        logger.info(`Job ${jobId} is already cancelled, ignoring failure`);
+        return;
+      }
+
+      const newRetryCount = job.retry_count + 1;
+      const shouldRetry = canRetry && newRetryCount < job.max_retries;
+      const workerId = job.worker_id || '';
+
+      if (shouldRetry) {
+        // Phase 1A: Simple job retry instead of Lua scripts
+        await this.redis.hmset(`job:${jobId}`, {
+          status: JobStatus.PENDING,
+          worker_id: '',
+          assigned_at: '',
+          retry_count: newRetryCount.toString(),
+          last_failed_worker: workerId,
+        });
+
+        // Re-add to pending queue
+        const score = job.priority * 1000 + Date.now();
+        await this.redis.zadd('jobs:pending', score, jobId);
+
+        // Remove from worker's active jobs
+        if (workerId) {
+          await this.redis.hdel(`jobs:active:${workerId}`, jobId);
+        }
+
+        logger.info(
+          `Job ${jobId} failed but will retry (${newRetryCount}/${job.max_retries}): ${error}`
+        );
+      } else {
+        // Phase 1A: Simple job failure instead of Lua scripts
+        await this.redis.hmset(`job:${jobId}`, {
+          status: JobStatus.FAILED,
+          failed_at: new Date().toISOString(),
+          retry_count: newRetryCount.toString(),
+          last_failed_worker: workerId,
+          worker_id: '',
+        });
+
+        // Remove from worker's active jobs
+        if (workerId) {
+          await this.redis.hdel(`jobs:active:${workerId}`, jobId);
+        }
+
+        // Store in failed jobs with TTL (7 days like Python version)
+        await this.redis.hset(
+          'jobs:failed',
+          jobId,
+          JSON.stringify({
+            error,
+            failed_at: new Date().toISOString(),
+            retry_count: newRetryCount,
+          })
+        );
+        await this.redis.expire('jobs:failed', 7 * 24 * 60 * 60);
+
+        logger.info(`Job ${jobId} permanently failed after ${newRetryCount} attempts: ${error}`);
+      }
+
+      // Update job with error details
+      await this.redis.hmset(`job:${jobId}`, {
+        retry_count: newRetryCount.toString(),
+        failed_at: new Date().toISOString(),
+        last_failed_worker: workerId,
+      });
+
+      // Publish failure event
+      await this.publishMessage('job_failed', {
+        job_id: jobId,
+        error,
+        retry_count: newRetryCount,
+        will_retry: shouldRetry,
+        failed_at: new Date().toISOString(),
+      });
+    } catch (err) {
+      logger.error(`Failed to fail job ${jobId}:`, err);
+      throw err;
     }
-
-    // Publish failure
-    await this.publishMessage('job_failed', {
-      job_id: jobId,
-      error,
-      retry_count: newRetryCount,
-      will_retry: shouldRetry,
-      failed_at: now,
-    });
-
-    logger.info(`Job ${jobId} failed: ${error} (retry ${newRetryCount}/${job.max_retries})`);
   }
 
   async cancelJob(jobId: string, reason: string): Promise<void> {
@@ -342,32 +371,46 @@ export class RedisService implements RedisServiceInterface {
   }
 
   async claimJob(jobId: string, workerId: string): Promise<boolean> {
-    // Remove from pending queue atomically
-    const removed = await this.redis.zrem('jobs:pending', jobId);
-    if (removed === 0) return false;
+    try {
+      // Phase 1A: Simple job claiming (race conditions possible but acceptable for now)
+      // Check if job is still in pending queue
+      const stillPending = await this.redis.zrem('jobs:pending', jobId);
+      if (stillPending === 0) {
+        // Job already claimed by another worker
+        return false;
+      }
 
-    const now = new Date().toISOString();
+      // Update job with worker assignment
+      await this.redis.hmset(`job:${jobId}`, {
+        worker_id: workerId,
+        status: JobStatus.ASSIGNED,
+        assigned_at: new Date().toISOString(),
+      });
 
-    // Update job with worker assignment
-    await this.redis.hmset(`job:${jobId}`, {
-      worker_id: workerId,
-      status: JobStatus.ASSIGNED,
-      assigned_at: now,
-    });
+      // Add to worker's active jobs
+      const jobData = await this.getJob(jobId);
+      if (jobData) {
+        await this.redis.hset(`jobs:active:${workerId}`, jobId, JSON.stringify(jobData));
+      }
 
-    // Add to worker's active jobs
-    const job = await this.getJob(jobId);
-    if (job) {
-      await this.redis.hset(`jobs:active:${workerId}`, jobId, JSON.stringify(job));
+      const claimed = true;
+
+      if (claimed) {
+        // Broadcast job assigned event
+        if (this.eventBroadcaster) {
+          this.eventBroadcaster.broadcastJobAssigned(jobId, workerId, Date.now());
+        }
+
+        logger.info(`Job ${jobId} atomically claimed by worker ${workerId}`);
+        return true;
+      } else {
+        logger.debug(`Job ${jobId} already claimed by another worker`);
+        return false;
+      }
+    } catch (error) {
+      logger.error(`Failed to claim job ${jobId} for worker ${workerId}:`, error);
+      return false;
     }
-
-    // Broadcast job assigned event
-    if (this.eventBroadcaster) {
-      this.eventBroadcaster.broadcastJobAssigned(jobId, workerId, Date.now());
-    }
-
-    logger.info(`Job ${jobId} claimed by worker ${workerId}`);
-    return true;
   }
 
   async releaseJob(jobId: string): Promise<void> {
@@ -394,24 +437,46 @@ export class RedisService implements RedisServiceInterface {
   }
 
   async getNextJob(workerCapabilities: WorkerCapabilities): Promise<Job | null> {
-    // Get jobs from pending queue (highest priority first)
-    const jobIds = await this.redis.zrevrange('jobs:pending', 0, 9); // Check top 10 jobs
+    try {
+      // Phase 1A: Simple job retrieval (no capability filtering)
+      const jobIds = await this.redis.zrevrange('jobs:pending', 0, 19);
+      const eligibleJobs = [];
 
-    for (const jobId of jobIds) {
-      const job = await this.getJob(jobId);
-      if (!job) continue;
-
-      // Check if worker can handle this job
-      if (await this.canWorkerHandleJob(job, workerCapabilities)) {
-        // Try to claim the job
-        const claimed = await this.claimJob(jobId, workerCapabilities.worker_id);
-        if (claimed) {
-          return job;
+      for (const jobId of jobIds) {
+        const jobData = await this.redis.hgetall(`job:${jobId}`);
+        if (jobData.id) {
+          eligibleJobs.push({
+            id: jobData.id,
+            service_required: jobData.service_required || 'unknown',
+            priority: jobData.priority || '50',
+            retry_count: jobData.retry_count || '0',
+            last_failed_worker: jobData.last_failed_worker || '',
+          });
         }
       }
-    }
 
-    return null;
+      // Phase 1A: Take first available job (no capability filtering)
+      for (const jobCandidate of eligibleJobs) {
+        // Get full job details
+        const job = await this.getJob(jobCandidate.id);
+        if (!job) continue;
+
+        // Try to claim the job (any worker can take any job)
+        const claimed = await this.claimJob(job.id, workerCapabilities.worker_id);
+        if (claimed) {
+          logger.debug(
+            `Worker ${workerCapabilities.worker_id} successfully claimed job ${job.id} (any-worker-any-job mode)`
+          );
+          return job;
+        }
+        // If claiming failed, another worker got it first - continue to next job
+      }
+
+      return null;
+    } catch (error) {
+      logger.error(`Error getting next job for worker ${workerCapabilities.worker_id}:`, error);
+      return null;
+    }
   }
 
   private async canWorkerHandleJob(job: Job, capabilities: WorkerCapabilities): Promise<boolean> {
@@ -673,6 +738,7 @@ export class RedisService implements RedisServiceInterface {
 
   /**
    * Detect and fix orphaned jobs - active jobs with no worker processing them
+   * Also handles stuck jobs where workers stopped responding during processing
    */
   async detectAndFixOrphanedJobs(): Promise<number> {
     try {
@@ -739,14 +805,245 @@ export class RedisService implements RedisServiceInterface {
         }
       }
 
+      // ENHANCEMENT: Also check for workers stuck on cancelled/completed jobs
+      for (const worker of activeWorkers) {
+        const workerData = await this.redis.hgetall(`worker:${worker.worker_id}`);
+        const currentJobId = workerData.current_job_id;
+
+        if (currentJobId && currentJobId !== 'none' && currentJobId !== '') {
+          // Check if the job this worker thinks it's processing is actually cancelled/completed
+          const jobStatus = await this.redis.hget(`job:${currentJobId}`, 'status');
+
+          if (jobStatus === 'cancelled' || jobStatus === 'completed' || jobStatus === 'failed') {
+            logger.warn(
+              `Worker ${worker.worker_id} stuck on ${jobStatus} job ${currentJobId} - clearing worker state`
+            );
+
+            // Clear the worker's job assignment
+            await this.redis.hmset(`worker:${worker.worker_id}`, {
+              status: 'idle',
+              current_job_id: '',
+              active_jobs: '[]',
+            });
+
+            fixedCount++;
+            logger.info(
+              `Cleared stuck worker ${worker.worker_id} from ${jobStatus} job ${currentJobId}`
+            );
+          }
+        }
+      }
+
+      // NEW: Check for stuck jobs where workers stopped responding (heartbeat timeout)
+      const stuckJobs = await this.detectStuckJobs();
+      fixedCount += stuckJobs;
+
       if (fixedCount > 0) {
-        logger.info(`Fixed ${fixedCount} orphaned jobs`);
+        logger.info(`Fixed ${fixedCount} orphaned/stuck jobs`);
       }
 
       return fixedCount;
     } catch (error) {
       logger.error('Failed to detect and fix orphaned jobs:', error);
       return 0;
+    }
+  }
+
+  /**
+   * Detect jobs that are stuck because workers stopped responding
+   * Uses heartbeat timeouts to determine if a worker is unresponsive
+   */
+  async detectStuckJobs(): Promise<number> {
+    try {
+      let fixedCount = 0;
+      const now = Date.now();
+
+      // Configurable timeouts (in seconds)
+      const heartbeatTimeoutSec = parseInt(process.env.WORKER_HEARTBEAT_TIMEOUT_SEC || '120'); // 2 minutes
+      const jobProgressTimeoutSec = parseInt(process.env.JOB_PROGRESS_TIMEOUT_SEC || '300'); // 5 minutes
+
+      // Get all active jobs across all workers
+      const activeJobs = await this.getActiveJobs();
+
+      for (const job of activeJobs) {
+        if (!job.worker_id || !job.assigned_at) continue;
+
+        // Check worker heartbeat
+        const heartbeatKey = `worker:${job.worker_id}:heartbeat`;
+        const lastHeartbeat = await this.redis.get(heartbeatKey);
+
+        if (!lastHeartbeat) {
+          // No heartbeat found - worker is definitely down
+          logger.warn(`Worker ${job.worker_id} has no heartbeat - releasing stuck job ${job.id}`);
+          await this.releaseStuckJob(job, 'Worker heartbeat missing');
+          fixedCount++;
+          continue;
+        }
+
+        // Check if heartbeat is too old
+        const lastHeartbeatTime = new Date(lastHeartbeat).getTime();
+        const timeSinceHeartbeat = (now - lastHeartbeatTime) / 1000;
+
+        if (timeSinceHeartbeat > heartbeatTimeoutSec) {
+          logger.warn(
+            `Worker ${job.worker_id} heartbeat timeout (${Math.round(timeSinceHeartbeat)}s > ${heartbeatTimeoutSec}s) - releasing stuck job ${job.id}`
+          );
+          await this.releaseStuckJob(
+            job,
+            `Worker heartbeat timeout (${Math.round(timeSinceHeartbeat)}s)`
+          );
+          fixedCount++;
+          continue;
+        }
+
+        // Check if job has been running too long without progress
+        const jobStartTime = new Date(job.assigned_at).getTime();
+        const timeSinceJobStart = (now - jobStartTime) / 1000;
+
+        if (timeSinceJobStart > jobProgressTimeoutSec) {
+          // Check if there has been any recent progress
+          const progressKey = `job:${job.id}:progress`;
+          const progressData = await this.redis.hgetall(progressKey);
+
+          if (progressData.updated_at) {
+            const lastProgress = new Date(progressData.updated_at).getTime();
+            const timeSinceProgress = (now - lastProgress) / 1000;
+
+            if (timeSinceProgress > jobProgressTimeoutSec) {
+              logger.warn(
+                `Job ${job.id} stuck - no progress for ${Math.round(timeSinceProgress)}s - releasing from worker ${job.worker_id}`
+              );
+              await this.releaseStuckJob(
+                job,
+                `No progress timeout (${Math.round(timeSinceProgress)}s)`
+              );
+              fixedCount++;
+            }
+          } else {
+            // No progress data at all after a long time
+            logger.warn(
+              `Job ${job.id} stuck - no progress data after ${Math.round(timeSinceJobStart)}s - releasing from worker ${job.worker_id}`
+            );
+            await this.releaseStuckJob(
+              job,
+              `No progress data timeout (${Math.round(timeSinceJobStart)}s)`
+            );
+            fixedCount++;
+          }
+        }
+      }
+
+      return fixedCount;
+    } catch (error) {
+      logger.error('Failed to detect stuck jobs:', error);
+      return 0;
+    }
+  }
+
+  /**
+   * Release a stuck job back to the queue and increment retry count
+   */
+  private async releaseStuckJob(job: Job, reason: string): Promise<void> {
+    try {
+      const newRetryCount = job.retry_count + 1;
+      const maxRetries = job.max_retries || 3;
+      const workerId = job.worker_id || '';
+
+      if (newRetryCount >= maxRetries) {
+        // Job has exceeded max retries - fail it permanently using atomic operation
+        logger.warn(
+          `Job ${job.id} exceeded max retries (${newRetryCount}/${maxRetries}) - marking as failed`
+        );
+
+        // Phase 1A: Simple job failure
+        await this.redis.hmset(`job:${job.id}`, {
+          status: JobStatus.FAILED,
+          failed_at: new Date().toISOString(),
+          retry_count: newRetryCount.toString(),
+          last_failed_worker: workerId,
+          worker_id: '',
+        });
+
+        // Remove from worker's active jobs
+        if (workerId) {
+          await this.redis.hdel(`jobs:active:${workerId}`, job.id);
+        }
+
+        // Store in failed jobs with TTL
+        await this.redis.hset(
+          'jobs:failed',
+          job.id,
+          JSON.stringify({
+            error: `Worker timeout: ${reason}`,
+            failed_at: new Date().toISOString(),
+            retry_count: newRetryCount,
+          })
+        );
+        await this.redis.expire('jobs:failed', 7 * 24 * 60 * 60); // 7 days
+
+        // Publish failure event
+        await this.publishMessage('job_failed', {
+          job_id: job.id,
+          error: `Worker timeout: ${reason}`,
+          retry_count: newRetryCount,
+          will_retry: false,
+          failed_at: new Date().toISOString(),
+        });
+      } else {
+        // Job can be retried - use atomic operation to return to queue
+        logger.info(
+          `Job ${job.id} will be retried (${newRetryCount}/${maxRetries}) - returning to queue`
+        );
+
+        // Phase 1A: Simple job retry
+        await this.redis.hmset(`job:${job.id}`, {
+          status: JobStatus.PENDING,
+          worker_id: '',
+          assigned_at: '',
+          retry_count: newRetryCount.toString(),
+          last_failed_worker: workerId,
+        });
+
+        // Re-add to pending queue
+        const score = job.priority * 1000 + Date.now();
+        await this.redis.zadd('jobs:pending', score, job.id);
+
+        // Remove from worker's active jobs
+        if (workerId) {
+          await this.redis.hdel(`jobs:active:${workerId}`, job.id);
+        }
+
+        // Publish retry event
+        await this.publishMessage('job_failed', {
+          job_id: job.id,
+          error: `Worker timeout: ${reason}`,
+          retry_count: newRetryCount,
+          will_retry: true,
+          failed_at: new Date().toISOString(),
+        });
+      }
+
+      // Update job details
+      await this.redis.hmset(`job:${job.id}`, {
+        retry_count: newRetryCount.toString(),
+        last_failed_worker: workerId,
+        failed_at: new Date().toISOString(),
+      });
+
+      // Clear worker's current job assignment using atomic timestamp update
+      if (workerId) {
+        await this.redis.hmset(`worker:${workerId}`, {
+          status: 'idle',
+          current_job_id: '',
+          active_jobs: '[]',
+          last_status_update: new Date().toISOString(),
+        });
+      }
+
+      logger.info(`Atomically released stuck job ${job.id} from worker ${workerId}: ${reason}`);
+    } catch (error) {
+      logger.error(`Failed to release stuck job ${job.id}:`, error);
+      throw error;
     }
   }
   async searchJobs(filter: JobFilter, page = 1, pageSize = 20): Promise<JobSearchResult> {

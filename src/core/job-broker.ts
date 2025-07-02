@@ -129,129 +129,41 @@ export class JobBroker implements JobBrokerInterface {
   }
 
   /**
-   * Get next job for worker using pull-based selection
-   * Implements multi-dimensional capability matching
+   * Get next job for worker using simple FIFO selection
+   * Phase 1A: Removed capability matching - any worker takes any job
    */
   async getNextJobForWorker(workerCapabilities: WorkerCapabilities): Promise<Job | null> {
-    // Get top 20 jobs to check (higher than Redis service default)
-    const jobIds = await this.redis['redis'].zrevrange('jobs:pending', 0, 19);
+    // Simple approach: get highest priority job (FIFO within priority)
+    const jobIds = await this.redis['redis'].zrevrange('jobs:pending', 0, 0);
 
-    logger.debug(
-      `Checking ${jobIds.length} pending jobs for worker ${workerCapabilities.worker_id}`
-    );
-
-    for (const jobId of jobIds) {
-      const job = await this.redis.getJob(jobId);
-      if (!job) {
-        logger.warn(`Job ${jobId} not found, cleaning from queue`);
-        await this.redis['redis'].zrem('jobs:pending', jobId);
-        continue;
-      }
-
-      // Check worker capability match
-      if (await this.canWorkerHandleJob(job, workerCapabilities)) {
-        // Try to claim job atomically
-        const claimed = await this.claimJob(jobId, workerCapabilities.worker_id);
-        if (claimed) {
-          logger.info(
-            `Worker ${workerCapabilities.worker_id} claimed job ${jobId} (workflow: ${job.workflow_id || 'none'})`
-          );
-          return job;
-        } else {
-          logger.debug(`Job ${jobId} already claimed by another worker`);
-        }
-      } else {
-        logger.debug(`Job ${jobId} requirements not met by worker ${workerCapabilities.worker_id}`);
-      }
+    if (jobIds.length === 0) {
+      logger.debug(`No pending jobs available for worker ${workerCapabilities.worker_id}`);
+      return null;
     }
 
-    return null;
-  }
+    const jobId = jobIds[0];
+    const job = await this.redis.getJob(jobId);
 
-  /**
-   * Enhanced capability matching with workflow awareness
-   */
-  private async canWorkerHandleJob(job: Job, capabilities: WorkerCapabilities): Promise<boolean> {
-    // Reuse the existing capability matching from RedisService
-    // This ensures consistency with the existing implementation
-    return await this.redis['canWorkerHandleJob'](job, capabilities);
-  }
-
-  /**
-   * Check if any available workers can handle a job
-   */
-  async canAnyWorkerHandleJob(job: Job): Promise<boolean> {
-    const workers = await this.redis.getActiveWorkers();
-
-    for (const worker of workers) {
-      if (await this.canWorkerHandleJob(job, worker.capabilities)) {
-        return true;
-      }
+    if (!job) {
+      logger.warn(`Job ${jobId} not found, cleaning from queue`);
+      await this.redis['redis'].zrem('jobs:pending', jobId);
+      return null;
     }
 
-    return false;
+    // Try to claim job atomically (no capability check)
+    const claimed = await this.claimJob(jobId, workerCapabilities.worker_id);
+    if (claimed) {
+      logger.info(
+        `Worker ${workerCapabilities.worker_id} claimed job ${jobId} (any-worker-any-job mode)`
+      );
+      return job;
+    } else {
+      logger.debug(`Job ${jobId} already claimed by another worker`);
+      return null;
+    }
   }
 
-  /**
-   * Mark jobs as unworkable if no available workers can handle them
-   * This allows users to see stuck jobs and make decisions about canceling or modifying worker capabilities
-   */
-  async markUnworkableJobs(): Promise<string[]> {
-    const markedJobs: string[] = [];
-
-    // Get all pending jobs
-    const jobIds = await this.redis['redis'].zrevrange('jobs:pending', 0, -1);
-
-    for (const jobId of jobIds) {
-      const job = await this.redis.getJob(jobId);
-      if (!job) {
-        // Clean up orphaned job IDs
-        await this.redis['redis'].zrem('jobs:pending', jobId);
-        continue;
-      }
-
-      // Check if any worker can handle this job
-      const canBeHandled = await this.canAnyWorkerHandleJob(job);
-
-      if (!canBeHandled) {
-        // Mark job as unworkable
-        await this.redis.updateJobStatus(jobId, JobStatus.UNWORKABLE);
-
-        // Remove from pending queue and add to unworkable queue
-        await this.redis['redis'].zrem('jobs:pending', jobId);
-        await this.redis['redis'].zadd('jobs:unworkable', job.priority, jobId);
-
-        markedJobs.push(jobId);
-        logger.info(`Job ${jobId} marked as unworkable - no available workers can handle it`);
-      }
-    }
-
-    if (markedJobs.length > 0) {
-      logger.info(`Marked ${markedJobs.length} jobs as unworkable`);
-    }
-
-    return markedJobs;
-  }
-
-  /**
-   * Get unworkable jobs that users might want to cancel or address
-   */
-  async getUnworkableJobs(): Promise<Job[]> {
-    const jobIds = await this.redis['redis'].zrevrange('jobs:unworkable', 0, -1);
-    const jobs: Job[] = [];
-
-    for (const jobId of jobIds) {
-      const job = await this.redis.getJob(jobId);
-      if (job) {
-        jobs.push(job);
-      } else {
-        // Clean up orphaned job ID
-        await this.redis['redis'].zrem('jobs:unworkable', jobId);
-      }
-    }
-
-    return jobs;
-  }
+  // Phase 1A: Removed capability matching methods - no longer needed for any-worker-any-job
 
   /**
    * Requeue an unworkable job (e.g., after new workers join or capabilities change)
@@ -262,12 +174,8 @@ export class JobBroker implements JobBrokerInterface {
       return false;
     }
 
-    // Check if job can now be handled
-    const canBeHandled = await this.canAnyWorkerHandleJob(job);
-    if (!canBeHandled) {
-      logger.warn(`Job ${jobId} still cannot be handled by any worker`);
-      return false;
-    }
+    // Phase 1A: Skip capability checking - any worker can handle any job
+    logger.info(`Job ${jobId} being re-queued - any worker can handle it now`);
 
     // Move back to pending queue
     await this.redis['redis'].zrem('jobs:unworkable', jobId);

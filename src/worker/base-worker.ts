@@ -367,6 +367,12 @@ export class BaseWorker {
   private async reportJobProgress(jobId: string, progress: JobProgress): Promise<void> {
     try {
       await this.workerClient.reportProgress(jobId, progress);
+
+      // Also update heartbeat when reporting progress to indicate worker is actively working
+      await this.workerClient.sendHeartbeat(
+        this.status as MessageWorkerStatus,
+        this.getSystemInfo()
+      );
     } catch (error) {
       logger.error(`Failed to report progress for job ${jobId}:`, error);
     }

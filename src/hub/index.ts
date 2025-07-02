@@ -24,6 +24,7 @@ class Hub {
   private eventBroadcaster: EventBroadcaster;
   private jobBroker: JobBroker;
   private isRunning = false;
+  private stuckJobCleanupInterval?: NodeJS.Timeout;
 
   constructor() {
     const redisUrl = process.env.REDIS_URL || 'redis://localhost:6379';
@@ -101,6 +102,9 @@ class Hub {
       await this.hubServer.start();
       await this.websocketManager.start();
 
+      // Start stuck job cleanup background task
+      this.startStuckJobCleanup();
+
       this.isRunning = true;
 
       logger.info(`Hub service started successfully`);
@@ -122,6 +126,9 @@ class Hub {
     logger.info('Stopping Hub service...');
 
     try {
+      // Stop background tasks
+      this.stopStuckJobCleanup();
+
       // Stop servers
       await this.websocketManager.stop();
       await this.hubServer.stop();
@@ -146,6 +153,39 @@ class Hub {
       this.hubServer.isRunning() &&
       this.websocketManager.isRunning()
     );
+  }
+
+  /**
+   * Start background task to detect and fix stuck jobs
+   */
+  private startStuckJobCleanup(): void {
+    // Configurable cleanup interval (default: 60 seconds)
+    const cleanupIntervalSec = parseInt(process.env.STUCK_JOB_CLEANUP_INTERVAL_SEC || '60');
+    const cleanupIntervalMs = cleanupIntervalSec * 1000;
+
+    logger.info(`Starting stuck job cleanup with ${cleanupIntervalSec}s interval`);
+
+    this.stuckJobCleanupInterval = setInterval(async () => {
+      try {
+        const fixedCount = await this.redisService.detectAndFixOrphanedJobs();
+        if (fixedCount > 0) {
+          logger.info(`Background cleanup fixed ${fixedCount} stuck/orphaned jobs`);
+        }
+      } catch (error) {
+        logger.error('Error in stuck job cleanup background task:', error);
+      }
+    }, cleanupIntervalMs);
+  }
+
+  /**
+   * Stop background stuck job cleanup task
+   */
+  private stopStuckJobCleanup(): void {
+    if (this.stuckJobCleanupInterval) {
+      clearInterval(this.stuckJobCleanupInterval);
+      this.stuckJobCleanupInterval = undefined;
+      logger.info('Stopped stuck job cleanup background task');
+    }
   }
 }
 

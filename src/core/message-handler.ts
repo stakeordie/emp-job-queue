@@ -594,9 +594,9 @@ export class MessageHandler implements MessageHandlerInterface {
   async handleSyncJobState(message: Record<string, unknown>): Promise<void> {
     try {
       const jobId = message.job_id as string | undefined;
-      
+
       logger.info(`Sync job state request: ${jobId ? `job ${jobId}` : 'all jobs'}`);
-      
+
       if (jobId) {
         // Sync specific job
         const job = await this.redisService.getJob(jobId);
@@ -610,7 +610,7 @@ export class MessageHandler implements MessageHandlerInterface {
               job.worker_id
             );
           }
-          
+
           logger.info(`Synced job ${jobId} state: ${job.status}`);
         } else {
           logger.warn(`Job ${jobId} not found for sync`);
@@ -618,12 +618,12 @@ export class MessageHandler implements MessageHandlerInterface {
       } else {
         // Sync all jobs - detect and fix orphaned jobs
         logger.info('Starting full job state sync - checking for orphaned jobs...');
-        
+
         const orphanedCount = await this.redisService.detectAndFixOrphanedJobs();
-        
+
         // Get all jobs and broadcast updated states
         const allJobs = await this.redisService.getAllJobs();
-        
+
         // Broadcast job state updates to monitors
         if (this.eventBroadcaster) {
           allJobs.forEach(job => {
@@ -635,8 +635,10 @@ export class MessageHandler implements MessageHandlerInterface {
             );
           });
         }
-        
-        logger.info(`Synced full job state - ${allJobs.length} jobs total, fixed ${orphanedCount} orphaned jobs`);
+
+        logger.info(
+          `Synced full job state - ${allJobs.length} jobs total, fixed ${orphanedCount} orphaned jobs`
+        );
       }
     } catch (error) {
       logger.error('Error handling sync job state request:', error);
