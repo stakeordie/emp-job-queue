@@ -192,6 +192,7 @@ const jobSubmissionSchema = z.object({
   workflow_datetime: z.coerce.number().optional().or(z.literal('')),
   step_number: z.coerce.number().min(0).optional().or(z.literal('')),
   requirements: z.string().optional().or(z.literal('')),
+  batch_number: z.coerce.number().min(1).max(100),
 });
 
 type JobSubmissionData = z.infer<typeof jobSubmissionSchema>;
@@ -252,6 +253,8 @@ export function JobSubmissionForm() {
         }
       }
 
+      const job_number = data.batch_number;
+
       const jobData = {
         job_type: data.job_type,
         priority: data.priority,
@@ -264,8 +267,10 @@ export function JobSubmissionForm() {
         step_number: data.step_number !== '' ? data.step_number : undefined,
       };
 
-      submitJob(jobData);
-      setLastSubmission(new Date().toLocaleTimeString());
+      for(let v = 1; v <= job_number; v++){
+        submitJob(jobData);
+        setLastSubmission(new Date().toLocaleTimeString());
+      }
       
     } catch (error) {
       console.error('Job submission error:', error);
@@ -357,6 +362,19 @@ export function JobSubmissionForm() {
                 placeholder="0-100"
               />
             </div>
+          </div>
+
+          <div>
+            <Label htmlFor="batch_number" className="text-xs">Batch Number</Label>
+              <Input
+                id="batch_number"
+                type="number"
+                min="1"
+                max="100"
+                className="h-8"
+                {...register('batch_number')}
+                placeholder="0-100"
+              />
           </div>
 
           <div className="flex gap-2">
