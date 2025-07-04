@@ -2,7 +2,46 @@
 
 ## 2025-07-04
 
-### 🚧 In Progress - Redis Function Worker Integration
+### ✅ Completed - Capability Test Docker Profile
+
+#### 🎯 **Test Environment for Capability Matching**
+- **Goal**: Validate Redis Function capability-based job matching with diverse workers
+- **Implementation**: New `capability-test` Docker profile with 5 different worker types
+- **Worker Types**:
+  1. `worker-sim-only`: Basic simulation only (CPU, no GPU)
+  2. `worker-comfy-sim`: ComfyUI simulation (16GB GPU)
+  3. `worker-a1111-sim`: A1111 simulation (24GB GPU)
+  4. `worker-multi-sim`: Multiple services (48GB GPU, dual GPU)
+  5. `worker-low-gpu`: Limited GPU memory (8GB)
+
+#### 📊 **Capability Variations**
+```yaml
+# Service capabilities
+- simulation only
+- comfyui-sim only
+- a1111-sim only  
+- comfyui-sim + a1111-sim + simulation
+
+# Hardware variations
+- No GPU (CPU only)
+- Low GPU (8GB RTX 3060)
+- Mid GPU (16GB RTX 3080)
+- High GPU (24GB RTX 4090)
+- Multi-GPU (2x24GB RTX A6000)
+```
+
+#### 🚀 **Usage**
+```bash
+# Start capability test workers
+pnpm docker:dev:railway:capability:build
+
+# View logs to see job matching
+docker compose -f docker-compose.redis-direct.yml --profile capability-test logs -f
+```
+
+---
+
+### ✅ Completed - Redis Function Worker Integration
 
 #### 🎯 **Capability-Based Job Matching**
 - **Goal**: Workers claim jobs they can actually process using Redis Function orchestration

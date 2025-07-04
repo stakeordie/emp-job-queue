@@ -51,6 +51,8 @@
     "docker:dev:railway": "docker compose -f docker-compose.redis-direct.yml --profile all-workers down && docker compose -f docker-compose.redis-direct.yml --profile all-workers up",
     "docker:dev:railway:1:build": "docker compose -f docker-compose.redis-direct.yml --profile all-workers down && docker compose -f docker-compose.redis-direct.yml --profile one-worker up --build",
     "docker:dev:railway:1": "docker compose -f docker-compose.redis-direct.yml --profile all-workers down && docker compose -f docker-compose.redis-direct.yml --profile one-worker up",
+    "docker:dev:railway:capability:build": "docker compose -f docker-compose.redis-direct.yml --profile capability-test down && docker compose -f docker-compose.redis-direct.yml --profile capability-test up --build",
+    "docker:dev:railway:capability": "docker compose -f docker-compose.redis-direct.yml --profile capability-test down && docker compose -f docker-compose.redis-direct.yml --profile capability-test up",
     "docker:dev:railway:down": "docker compose -f docker-compose.redis-direct.yml --profile all-workers down",
     "docker:dev:logs": "docker-compose -f docker-compose.dev.yml logs -f",
     "monitor": "pnpm -F monitor dev",

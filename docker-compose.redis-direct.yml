@@ -378,6 +378,169 @@ services:
   # Note: Redis is now hosted on Railway with Functions support
   # Access Railway Redis dashboard for monitoring instead of local Redis Commander
 
+  # ===============================
+  # CAPABILITY TEST WORKERS PROFILE
+  # ===============================
+  
+  # Worker with only simulation capability
+  worker-sim-only:
+    container_name: emp-worker-sim-only
+    build:
+      context: .
+      dockerfile: Dockerfile.worker-direct
+    environment:
+      - NODE_ENV=production
+      - WORKER_ID=worker-sim-only
+      - HUB_REDIS_URL=redis://default:JQSoNVpIPsuaDQYicNvocglialxPrTjj@ballast.proxy.rlwy.net:30645
+      - WORKER_SERVICES=simulation
+      - WORKER_CONNECTORS=simulation
+      - WORKER_POLL_INTERVAL_MS=1000
+      - WORKER_HEARTBEAT_INTERVAL_MS=30000
+      - WORKER_JOB_TIMEOUT_MINUTES=60
+      # Simulation config
+      - WORKER_SIMULATION_PROCESSING_TIME=5
+      - WORKER_SIMULATION_STEPS=3
+      # Hardware specs (low-end)
+      - WORKER_GPU_COUNT=0
+      - WORKER_GPU_MEMORY_GB=0
+      - WORKER_RAM_GB=8
+      - WORKER_MACHINE_ID=cpu-only-machine
+      - LOG_LEVEL=info
+      - DISABLE_FILE_LOGGING=true
+    networks:
+      - emp-network
+    restart: unless-stopped
+    profiles:
+      - capability-test
+
+  # Worker with ComfyUI simulation capability  
+  worker-comfy-sim:
+    container_name: emp-worker-comfy-sim
+    build:
+      context: .
+      dockerfile: Dockerfile.worker-direct
+    environment:
+      - NODE_ENV=production
+      - WORKER_ID=worker-comfy-sim
+      - HUB_REDIS_URL=redis://default:JQSoNVpIPsuaDQYicNvocglialxPrTjj@ballast.proxy.rlwy.net:30645
+      - WORKER_SERVICES=comfyui-sim
+      - WORKER_CONNECTORS=simulation
+      - WORKER_POLL_INTERVAL_MS=1000
+      - WORKER_HEARTBEAT_INTERVAL_MS=30000
+      - WORKER_JOB_TIMEOUT_MINUTES=60
+      # Simulation config (slower for ComfyUI)
+      - WORKER_SIMULATION_PROCESSING_TIME=15
+      - WORKER_SIMULATION_STEPS=5
+      # Hardware specs (GPU enabled)
+      - WORKER_GPU_COUNT=1
+      - WORKER_GPU_MEMORY_GB=16
+      - WORKER_GPU_MODEL=RTX 3080
+      - WORKER_RAM_GB=32
+      - WORKER_MACHINE_ID=gpu-machine-2
+      - LOG_LEVEL=info
+      - DISABLE_FILE_LOGGING=true
+    networks:
+      - emp-network
+    restart: unless-stopped
+    profiles:
+      - capability-test
+
+  # Worker with A1111 simulation capability
+  worker-a1111-sim:
+    container_name: emp-worker-a1111-sim
+    build:
+      context: .
+      dockerfile: Dockerfile.worker-direct
+    environment:
+      - NODE_ENV=production
+      - WORKER_ID=worker-a1111-sim
+      - HUB_REDIS_URL=redis://default:JQSoNVpIPsuaDQYicNvocglialxPrTjj@ballast.proxy.rlwy.net:30645
+      - WORKER_SERVICES=a1111-sim
+      - WORKER_CONNECTORS=simulation
+      - WORKER_POLL_INTERVAL_MS=1000
+      - WORKER_HEARTBEAT_INTERVAL_MS=30000
+      - WORKER_JOB_TIMEOUT_MINUTES=60
+      # Simulation config (faster for A1111)
+      - WORKER_SIMULATION_PROCESSING_TIME=8
+      - WORKER_SIMULATION_STEPS=4
+      # Hardware specs (GPU enabled)
+      - WORKER_GPU_COUNT=1
+      - WORKER_GPU_MEMORY_GB=24
+      - WORKER_GPU_MODEL=RTX 4090
+      - WORKER_RAM_GB=64
+      - WORKER_MACHINE_ID=gpu-machine-3
+      - LOG_LEVEL=info
+      - DISABLE_FILE_LOGGING=true
+    networks:
+      - emp-network
+    restart: unless-stopped
+    profiles:
+      - capability-test
+
+  # Worker with multiple capabilities (ComfyUI + A1111 sim)
+  worker-multi-sim:
+    container_name: emp-worker-multi-sim
+    build:
+      context: .
+      dockerfile: Dockerfile.worker-direct
+    environment:
+      - NODE_ENV=production
+      - WORKER_ID=worker-multi-sim
+      - HUB_REDIS_URL=redis://default:JQSoNVpIPsuaDQYicNvocglialxPrTjj@ballast.proxy.rlwy.net:30645
+      - WORKER_SERVICES=comfyui-sim,a1111-sim,simulation
+      - WORKER_CONNECTORS=simulation
+      - WORKER_POLL_INTERVAL_MS=1000
+      - WORKER_HEARTBEAT_INTERVAL_MS=30000
+      - WORKER_JOB_TIMEOUT_MINUTES=60
+      # Simulation config (balanced)
+      - WORKER_SIMULATION_PROCESSING_TIME=10
+      - WORKER_SIMULATION_STEPS=4
+      # Hardware specs (high-end GPU)
+      - WORKER_GPU_COUNT=2
+      - WORKER_GPU_MEMORY_GB=48
+      - WORKER_GPU_MODEL=RTX A6000
+      - WORKER_RAM_GB=128
+      - WORKER_MACHINE_ID=gpu-machine-4
+      - LOG_LEVEL=info
+      - DISABLE_FILE_LOGGING=true
+    networks:
+      - emp-network
+    restart: unless-stopped
+    profiles:
+      - capability-test
+
+  # Worker with low GPU memory (can't handle large models)
+  worker-low-gpu:
+    container_name: emp-worker-low-gpu
+    build:
+      context: .
+      dockerfile: Dockerfile.worker-direct
+    environment:
+      - NODE_ENV=production
+      - WORKER_ID=worker-low-gpu
+      - HUB_REDIS_URL=redis://default:JQSoNVpIPsuaDQYicNvocglialxPrTjj@ballast.proxy.rlwy.net:30645
+      - WORKER_SERVICES=comfyui-sim,a1111-sim
+      - WORKER_CONNECTORS=simulation
+      - WORKER_POLL_INTERVAL_MS=1000
+      - WORKER_HEARTBEAT_INTERVAL_MS=30000
+      - WORKER_JOB_TIMEOUT_MINUTES=60
+      # Simulation config
+      - WORKER_SIMULATION_PROCESSING_TIME=20
+      - WORKER_SIMULATION_STEPS=3
+      # Hardware specs (low GPU memory)
+      - WORKER_GPU_COUNT=1
+      - WORKER_GPU_MEMORY_GB=8
+      - WORKER_GPU_MODEL=RTX 3060
+      - WORKER_RAM_GB=16
+      - WORKER_MACHINE_ID=gpu-machine-5
+      - LOG_LEVEL=info
+      - DISABLE_FILE_LOGGING=true
+    networks:
+      - emp-network
+    restart: unless-stopped
+    profiles:
+      - capability-test
+
 networks:
   emp-network:
     driver: bridge
