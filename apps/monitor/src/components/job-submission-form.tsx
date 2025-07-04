@@ -10,6 +10,7 @@ import { Label } from '@/components/ui/label';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Checkbox } from '@/components/ui/checkbox';
 import { useMonitorStore } from '@/store';
 
 // Default payloads for different job types from original monitor
@@ -175,10 +176,12 @@ const DEFAULT_PAYLOADS = {
   }
 };
 
-const JOB_TYPES = [
-  { value: 'simulation', label: 'Simulation (Default)' },
-  { value: 'a1111', label: 'Automatic1111' },
+const SERVICE_TYPES = [
+  { value: 'simulation', label: 'Simulation' },
   { value: 'comfyui', label: 'ComfyUI' },
+  { value: 'a1111', label: 'Automatic1111' },
+  { value: 'comfyui-sim', label: 'ComfyUI (Simulated)' },
+  { value: 'a1111-sim', label: 'A1111 (Simulated)' },
   { value: 'rest', label: 'REST API' }
 ];
 
@@ -200,6 +203,8 @@ type JobSubmissionData = z.infer<typeof jobSubmissionSchema>;
 export function JobSubmissionForm() {
   const [lastSubmission, setLastSubmission] = useState<string | null>(null);
   const [selectedJobType, setSelectedJobType] = useState('simulation');
+  const [useSimulation, setUseSimulation] = useState(false);
+  const [showRequirements, setShowRequirements] = useState(false);
   const { submitJob, connection } = useMonitorStore();
 
   const form = useForm({
@@ -208,6 +213,8 @@ export function JobSubmissionForm() {
       job_type: 'simulation',
       priority: 50,
       payload: JSON.stringify(DEFAULT_PAYLOADS.simulation, null, 2),
+      batch_number: 1,
+      requirements: '',
     },
   });
 
@@ -255,12 +262,18 @@ export function JobSubmissionForm() {
 
       const job_number = data.batch_number;
 
+      // Determine service type based on simulation checkbox
+      const serviceType = useSimulation && data.job_type !== 'simulation' 
+        ? `${data.job_type}-sim` 
+        : data.job_type;
+
       const jobData = {
-        job_type: data.job_type,
+        job_type: serviceType,
+        service_required: serviceType,
         priority: data.priority,
         payload: parsedPayload,
         customer_id: data.customer_id && data.customer_id.trim() ? data.customer_id : undefined,
-        requirements: parsedRequirements,
+        requirements: parsedRequirements || { service_type: serviceType },
         workflow_id: data.workflow_id && data.workflow_id.trim() ? data.workflow_id : undefined,
         workflow_priority: data.workflow_priority !== '' ? data.workflow_priority : undefined,
         workflow_datetime: data.workflow_datetime !== '' ? data.workflow_datetime : undefined,
@@ -299,13 +312,16 @@ export function JobSubmissionForm() {
         <form onSubmit={handleSubmit(onSubmit)} className="space-y-3">
           <div className="grid grid-cols-2 gap-3">
             <div className="space-y-1">
-              <Label htmlFor="job_type" className="text-xs">Job Type</Label>
+              <Label htmlFor="job_type" className="text-xs">Service Type</Label>
               <Select value={selectedJobType} onValueChange={handleJobTypeChange}>
                 <SelectTrigger id="job_type" size="sm" className="w-full">
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  {JOB_TYPES.map((type) => (
+                  {SERVICE_TYPES.filter(type => 
+                    // Don't show -sim variants in dropdown, use checkbox instead
+                    !type.value.endsWith('-sim')
+                  ).map((type) => (
                     <SelectItem key={type.value} value={type.value}>
                       {type.label}
                     </SelectItem>
@@ -328,6 +344,20 @@ export function JobSubmissionForm() {
             </div>
           </div>
 
+          {/* Simulation mode checkbox */}
+          {selectedJobType !== 'simulation' && selectedJobType !== 'rest' && (
+            <div className="flex items-center space-x-2">
+              <Checkbox 
+                id="simulation" 
+                checked={useSimulation}
+                onCheckedChange={(checked) => setUseSimulation(checked as boolean)}
+              />
+              <Label htmlFor="simulation" className="text-xs cursor-pointer">
+                Use simulation mode (testing only)
+              </Label>
+            </div>
+          )}
+
           <div className="space-y-1">
             <Label htmlFor="payload" className="text-xs">Payload</Label>
             <textarea
@@ -337,6 +367,44 @@ export function JobSubmissionForm() {
               rows={4}
               placeholder='{"message": "Hello from Next.js monitor"}'
             />
+          </div>
+
+          {/* Requirements section */}
+          <div className="space-y-2">
+            <div className="flex items-center justify-between">
+              <Label className="text-xs">Requirements (Optional)</Label>
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                className="h-6 text-xs"
+                onClick={() => setShowRequirements(!showRequirements)}
+              >
+                {showRequirements ? 'Hide' : 'Show'}
+              </Button>
+            </div>
+            
+            {showRequirements && (
+              <div className="space-y-2 p-2 border rounded-md bg-muted/50">
+                <div className="text-xs text-muted-foreground mb-2">
+                  Specify job requirements for capability matching
+                </div>
+                <textarea
+                  {...register('requirements')}
+                  className="w-full px-2 py-1 border rounded-md resize-y font-mono text-xs"
+                  rows={3}
+                  placeholder={JSON.stringify({
+                    service_type: "comfyui",
+                    hardware: {
+                      gpu_memory_gb: 16,
+                      gpu_model: "RTX 4090"
+                    },
+                    models: ["sdxl", "sd15"],
+                    customer_isolation: "none"
+                  }, null, 2)}
+                />
+              </div>
+            )}
           </div>
 
           <div className="grid grid-cols-2 gap-3">

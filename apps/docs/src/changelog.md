@@ -2,6 +2,37 @@
 
 ## 2025-07-04
 
+### ✅ Completed - Enhanced Monitor Job Submission
+
+#### 🎯 **Improved Job Submission Interface**
+- **Goal**: Better support for testing capability-based job matching
+- **Features Added**:
+  - Service type dropdown (ComfyUI, A1111, Simulation, REST)
+  - Simulation mode checkbox for testing with `-sim` services
+  - Collapsible requirements section for capability matching
+  - Proper `service_required` field population
+
+#### 📊 **Requirements Example**
+```json
+{
+  "service_type": "comfyui",
+  "hardware": {
+    "gpu_memory_gb": 16,
+    "gpu_model": "RTX 4090"
+  },
+  "models": ["sdxl", "sd15"],
+  "customer_isolation": "none"
+}
+```
+
+#### 🚀 **Usage**
+- Select service type from dropdown
+- Check "Use simulation mode" to test with simulated services
+- Expand requirements section to add capability constraints
+- Jobs will be routed only to workers matching requirements
+
+---
+
 ### ✅ Completed - Capability Test Docker Profile
 
 #### 🎯 **Test Environment for Capability Matching**
