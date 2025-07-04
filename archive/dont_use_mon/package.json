@@ -1,5 +1,5 @@
 {
-  "name": "emp-redis-simple-monitor",
+  "name": "dont-use-mon",
   "version": "1.0.  0",
   "description": "Simple Redis Monitor for emp-redis JavaScript - Standalone monitoring dashboard",
   "type": "module",

@@ -527,8 +527,6 @@ export class RedisService implements RedisServiceInterface {
         capabilities.hardware.gpu_memory_gb < hw.gpu_memory_gb
       )
         return false;
-      if (hw.cpu_cores && hw.cpu_cores !== 'all' && capabilities.hardware.cpu_cores < hw.cpu_cores)
-        return false;
       if (hw.ram_gb && hw.ram_gb !== 'all' && capabilities.hardware.ram_gb < hw.ram_gb)
         return false;
     }

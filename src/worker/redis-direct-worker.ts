@@ -46,7 +46,7 @@ async function main() {
     const capabilities = worker.getCapabilities();
     logger.info(`  - Services: ${capabilities.services.join(', ')}`);
     logger.info(`  - GPU Memory: ${capabilities.hardware.gpu_memory_gb}GB`);
-    logger.info(`  - CPU Cores: ${capabilities.hardware.cpu_cores}`);
+    logger.info(`  - Machine ID: ${capabilities.machine_id || 'unknown'}`);
     logger.info(`  - RAM: ${capabilities.hardware.ram_gb}GB`);
     logger.info('Polling Redis for jobs...');
 

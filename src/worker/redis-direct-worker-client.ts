@@ -148,6 +148,57 @@ export class RedisDirectWorkerClient {
   }
 
   /**
+   * Get current worker status from Redis
+   */
+  private async getWorkerStatus(): Promise<string> {
+    try {
+      const status = await this.redis.hget(`worker:${this.workerId}`, 'status');
+      return status || 'idle';
+    } catch (error) {
+      logger.error(`Worker ${this.workerId} failed to get status:`, error);
+      return 'idle';
+    }
+  }
+
+  /**
+   * Update worker status in Redis
+   */
+  async updateWorkerStatus(status: 'idle' | 'busy', currentJobId?: string): Promise<void> {
+    try {
+      const updates: Record<string, string> = {
+        status,
+        last_status_change: new Date().toISOString(),
+      };
+
+      if (currentJobId) {
+        updates.current_job_id = currentJobId;
+      } else {
+        updates.current_job_id = '';
+      }
+
+      await this.redis.hmset(`worker:${this.workerId}`, updates);
+
+      // Also publish worker status change to Redis pub/sub for real-time updates
+      const statusEvent = {
+        worker_id: this.workerId,
+        old_status: 'unknown', // We don't track previous status in this client
+        new_status: status,
+        current_job_id: currentJobId || '',
+        timestamp: Date.now(),
+      };
+
+      await this.redis.publish('worker_status', JSON.stringify(statusEvent));
+
+      logger.info(
+        `🔄 Worker ${this.workerId} status changed to: ${status}${currentJobId ? ` (job: ${currentJobId})` : ''}`
+      );
+      logger.info(`📢 Worker ${this.workerId} published status change event`);
+    } catch (error) {
+      logger.error(`Worker ${this.workerId} failed to update status to ${status}:`, error);
+    }
+  }
+
+  /**
    * Poll Redis for jobs directly using simple FIFO
    */
   async requestJob(_capabilities: WorkerCapabilities): Promise<Job | null> {
@@ -194,6 +245,9 @@ export class RedisDirectWorkerClient {
       if (removed === 0) {
         return false; // Job already claimed
       }
+
+      // Update worker status to busy
+      await this.updateWorkerStatus('busy', jobId);
 
       // Update job with worker assignment
       await this.redis.hmset(`job:${jobId}`, {
@@ -272,8 +326,12 @@ export class RedisDirectWorkerClient {
    */
   async sendJobProgress(jobId: string, progress: JobProgress): Promise<void> {
     try {
+      logger.info(
+        `🔄 Worker ${this.workerId} sending progress for job ${jobId}: ${progress.progress}% - ${progress.message || 'no message'}`
+      );
+
       // Phase 1B: Publish progress to Redis Stream instead of WebSocket
-      await this.redis.xadd(
+      const streamResult = await this.redis.xadd(
         `progress:${jobId}`,
         '*',
         'job_id',
@@ -296,6 +354,10 @@ export class RedisDirectWorkerClient {
         new Date().toISOString()
       );
 
+      logger.info(
+        `✅ Worker ${this.workerId} wrote to Redis stream progress:${jobId} - ID: ${streamResult}`
+      );
+
       // Also update job progress in hash for compatibility
       await this.redis.hmset(`job:${jobId}:progress`, {
         progress: progress.progress.toString(),
@@ -304,8 +366,24 @@ export class RedisDirectWorkerClient {
         updated_at: new Date().toISOString(),
       });
 
-      logger.debug(
-        `Worker ${this.workerId} published progress for job ${jobId}: ${progress.progress}%`
+      logger.info(`✅ Worker ${this.workerId} updated Redis hash job:${jobId}:progress`);
+
+      // Publish to Redis pub/sub for real-time delivery to API server
+      const progressEvent = {
+        job_id: jobId,
+        worker_id: this.workerId,
+        progress: progress.progress,
+        status: progress.status || 'in_progress',
+        message: progress.message || '',
+        current_step: progress.current_step || '',
+        total_steps: progress.total_steps || 0,
+        estimated_completion: progress.estimated_completion || '',
+        timestamp: Date.now(),
+      };
+
+      await this.redis.publish('job_progress', JSON.stringify(progressEvent));
+      logger.info(
+        `📢 Worker ${this.workerId} published real-time progress for job ${jobId}: ${progress.progress}%`
       );
     } catch (error) {
       logger.error(`Worker ${this.workerId} failed to send progress for job ${jobId}:`, error);
@@ -317,14 +395,21 @@ export class RedisDirectWorkerClient {
    */
   async startJobProcessing(jobId: string): Promise<void> {
     try {
+      logger.info(`🚀 Worker ${this.workerId} starting job processing for ${jobId}`);
+
+      // Update worker status to busy (when starting job processing)
+      await this.updateWorkerStatus('busy', jobId);
+
       // Update job status to IN_PROGRESS when processing begins
       await this.redis.hmset(`job:${jobId}`, {
         status: JobStatus.IN_PROGRESS,
         started_at: new Date().toISOString(),
       });
 
+      logger.info(`✅ Worker ${this.workerId} updated job:${jobId} status to IN_PROGRESS`);
+
       // Publish job processing start to progress stream
-      await this.redis.xadd(
+      const streamResult = await this.redis.xadd(
         `progress:${jobId}`,
         '*',
         'job_id',
@@ -341,6 +426,10 @@ export class RedisDirectWorkerClient {
         new Date().toISOString()
       );
 
+      logger.info(
+        `✅ Worker ${this.workerId} wrote processing start to stream progress:${jobId} - ID: ${streamResult}`
+      );
+
       logger.debug(`Worker ${this.workerId} marked job ${jobId} as processing`);
     } catch (error) {
       logger.error(`Worker ${this.workerId} failed to start job processing for ${jobId}:`, error);
@@ -353,11 +442,15 @@ export class RedisDirectWorkerClient {
    */
   async completeJob(jobId: string, result: unknown): Promise<void> {
     try {
+      logger.info(`🎉 Worker ${this.workerId} completing job ${jobId}`);
+
       // Update job status
       await this.redis.hmset(`job:${jobId}`, {
         status: JobStatus.COMPLETED,
         completed_at: new Date().toISOString(),
       });
+
+      logger.info(`✅ Worker ${this.workerId} updated job:${jobId} status to COMPLETED`);
 
       // Remove from worker's active jobs
       await this.redis.hdel(`jobs:active:${this.workerId}`, jobId);
@@ -375,7 +468,7 @@ export class RedisDirectWorkerClient {
       await this.redis.expire('jobs:completed', 24 * 60 * 60); // 24 hours
 
       // Publish completion to progress stream
-      await this.redis.xadd(
+      const streamResult = await this.redis.xadd(
         `progress:${jobId}`,
         '*',
         'job_id',
@@ -391,6 +484,27 @@ export class RedisDirectWorkerClient {
         'completed_at',
         new Date().toISOString()
       );
+
+      logger.info(
+        `✅ Worker ${this.workerId} wrote completion to stream progress:${jobId} - ID: ${streamResult}`
+      );
+
+      // Publish completion event to Redis pub/sub for real-time delivery
+      const completionEvent = {
+        job_id: jobId,
+        worker_id: this.workerId,
+        progress: 100,
+        status: 'completed',
+        message: 'Job completed successfully',
+        result: result,
+        timestamp: Date.now(),
+      };
+
+      await this.redis.publish('job_progress', JSON.stringify(completionEvent));
+      logger.info(`📢 Worker ${this.workerId} published completion event for job ${jobId}`);
+
+      // Update worker status back to idle
+      await this.updateWorkerStatus('idle');
 
       logger.info(`Worker ${this.workerId} completed job ${jobId} via Redis-direct`);
     } catch (error) {
@@ -479,6 +593,9 @@ export class RedisDirectWorkerClient {
         'failed_at',
         new Date().toISOString()
       );
+
+      // Update worker status back to idle
+      await this.updateWorkerStatus('idle');
     } catch (err) {
       logger.error(`Worker ${this.workerId} failed to fail job ${jobId}:`, err);
       throw err;
@@ -492,6 +609,15 @@ export class RedisDirectWorkerClient {
     const poll = async () => {
       try {
         if (!this.isConnected()) {
+          return;
+        }
+
+        // CRITICAL FIX: Check if worker is already busy before requesting jobs
+        const workerStatus = await this.getWorkerStatus();
+        if (workerStatus === 'busy') {
+          logger.debug(`Worker ${this.workerId} is ${workerStatus}, skipping job request`);
+          // Schedule next poll
+          this.pollTimeout = setTimeout(poll, this.pollIntervalMs);
           return;
         }
 

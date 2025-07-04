@@ -4,12 +4,12 @@ export interface WorkerCapabilities {
   gpu_count: number;
   gpu_memory_gb: number;
   gpu_model: string;
-  cpu_cores: number;
   ram_gb: number;
   services: string[];
   models: string[];
   customer_access: 'strict' | 'loose' | 'none';
   max_concurrent_jobs: number;
+  machine_id?: string;
 }
 
 export interface Worker {
@@ -19,6 +19,7 @@ export interface Worker {
   current_job_id?: string;
   connected_at: string;
   last_activity: string;
+  machine_id?: string;
   
   // Stats
   jobs_completed: number;

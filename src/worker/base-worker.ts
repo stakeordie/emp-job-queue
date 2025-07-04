@@ -70,8 +70,6 @@ export class BaseWorker {
     const hardware: HardwareSpecs = {
       gpu_memory_gb: parseInt(process.env.GPU_MEMORY_GB || '0'),
       gpu_model: process.env.GPU_MODEL || 'unknown',
-      cpu_cores: os.cpus().length,
-      cpu_threads: os.cpus().length * 2, // Estimate
       ram_gb: Math.round(os.totalmem() / (1024 * 1024 * 1024)),
     };
 
@@ -274,7 +272,7 @@ export class BaseWorker {
       return;
     }
 
-    // Check if we can take more jobs
+    // CRITICAL FIX: Check if we can take more jobs
     if (this.currentJobs.size >= this.maxConcurrentJobs) {
       return;
     }
@@ -296,6 +294,12 @@ export class BaseWorker {
     const startTime = Date.now();
 
     try {
+      // CRITICAL FIX: Check if job is already being processed
+      if (this.currentJobs.has(job.id)) {
+        logger.warn(`Job ${job.id} is already being processed by this worker, ignoring duplicate`);
+        return;
+      }
+
       // Update status
       this.currentJobs.set(job.id, job);
       this.jobStartTimes.set(job.id, startTime);

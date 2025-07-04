@@ -2,6 +2,7 @@
 
 export interface WorkerCapabilities {
   worker_id: string;
+  machine_id?: string; // Physical machine identifier for multi-GPU setups
   services: string[]; // ["comfyui", "a1111"]
   components?: string[] | 'all'; // ["text-to-image-xl"] or "all" for no filtering
   workflows?: string[] | 'all'; // ["workflow-v1.2", "workflow-v2.0"] or "all" for no filtering
@@ -19,8 +20,6 @@ export interface WorkerCapabilities {
 export interface HardwareSpecs {
   gpu_memory_gb: number;
   gpu_model: string;
-  cpu_cores: number;
-  cpu_threads?: number;
   ram_gb: number;
   storage_gb?: number;
   network_speed?: string;
@@ -139,7 +138,6 @@ export interface WorkerFilter {
   status?: WorkerStatus[];
   services?: string[];
   min_gpu_memory?: number;
-  min_cpu_cores?: number;
   customer_access?: string;
   region?: string;
   available_only?: boolean;

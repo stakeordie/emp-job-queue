@@ -10,6 +10,16 @@ import { v4 as uuidv4 } from 'uuid';
 import { Job, JobStatus, JobRequirements } from '../core/types/job.js';
 import { logger } from '../core/utils/logger.js';
 import { RedisService } from '../core/redis-service.js';
+import {
+  JobSubmittedEvent,
+  JobAssignedEvent,
+  JobStatusChangedEvent,
+  JobProgressEvent,
+  JobCompletedEvent,
+  JobFailedEvent,
+  WorkerStatusChangedEvent,
+  FullStateSnapshotEvent,
+} from '../types/monitor-events.js';
 
 interface LightweightAPIConfig {
   port: number;
@@ -55,6 +65,8 @@ export class LightweightAPIServer {
   private monitorConnections = new Map<string, MonitorConnection>();
   private clientConnections = new Map<string, ClientConnection>();
   private progressSubscriber: Redis;
+  // Track which client submitted which job
+  private jobToClientMap = new Map<string, string>();
 
   constructor(config: LightweightAPIConfig) {
     this.config = config;
@@ -555,6 +567,10 @@ export class LightweightAPIServer {
           const jobData = message as Record<string, unknown>;
           logger.info(`Job data: ${JSON.stringify(jobData, null, 2)}`);
           const jobId = await this.submitJob(jobData);
+
+          // Track that this client submitted this job
+          this.jobToClientMap.set(jobId, clientId);
+
           ws.send(
             JSON.stringify({
               type: 'job_submitted',
@@ -564,12 +580,7 @@ export class LightweightAPIServer {
             })
           );
 
-          // Broadcast job submission event to monitors
-          this.broadcastToMonitors({
-            type: 'job_submitted',
-            job_id: jobId,
-            timestamp: Date.now(),
-          });
+          // Note: Job submission event will be broadcasted from submitJob method with proper JobSubmittedEvent format
         } catch (error) {
           ws.send(
             JSON.stringify({
@@ -579,6 +590,23 @@ export class LightweightAPIServer {
               timestamp: new Date().toISOString(),
             })
           );
+        }
+        break;
+
+      case 'subscribe_progress':
+        const jobId = message.job_id as string;
+        if (jobId) {
+          // For client connections, we automatically subscribe them to their own jobs
+          // This message acknowledges the subscription
+          ws.send(
+            JSON.stringify({
+              type: 'subscribed',
+              job_id: jobId,
+              message_id: message.id,
+              timestamp: new Date().toISOString(),
+            })
+          );
+          logger.debug(`Client ${clientId} subscribed to job ${jobId} progress`);
         }
         break;
 
@@ -602,6 +630,7 @@ export class LightweightAPIServer {
 
       for (const key of workerKeys) {
         const workerId = key.split(':')[1];
+        console.log(`Full state: Found worker key ${key} -> worker ID: ${workerId}`);
         const workerData = await this.redis.hgetall(`worker:${workerId}`);
         if (Object.keys(workerData).length > 0) {
           // Parse capabilities JSON from Redis
@@ -665,7 +694,16 @@ export class LightweightAPIServer {
     }
   }
 
-  private broadcastToMonitors(event: Record<string, unknown>): void {
+  private broadcastToMonitors(
+    event:
+      | JobSubmittedEvent
+      | JobAssignedEvent
+      | JobStatusChangedEvent
+      | JobProgressEvent
+      | JobCompletedEvent
+      | JobFailedEvent
+      | WorkerStatusChangedEvent
+  ): void {
     const eventJson = JSON.stringify(event);
 
     for (const [monitorId, connection] of this.monitorConnections) {
@@ -684,31 +722,123 @@ export class LightweightAPIServer {
     }
   }
 
+  private broadcastJobEventToClient(
+    jobId: string,
+    event:
+      | JobAssignedEvent
+      | JobStatusChangedEvent
+      | JobProgressEvent
+      | JobCompletedEvent
+      | JobFailedEvent
+  ): void {
+    const submittingClientId = this.jobToClientMap.get(jobId);
+    if (submittingClientId) {
+      const clientConnection = this.clientConnections.get(submittingClientId);
+      if (clientConnection && clientConnection.ws.readyState === WebSocket.OPEN) {
+        try {
+          clientConnection.ws.send(JSON.stringify(event));
+          logger.debug(`Sent ${event.type} event to job submitter client ${submittingClientId}`);
+        } catch (error) {
+          logger.error(
+            `Failed to send ${event.type} to submitting client ${submittingClientId}:`,
+            error
+          );
+          this.clientConnections.delete(submittingClientId);
+        }
+      }
+    }
+  }
+
   private setupProgressStreaming(): void {
-    // Subscribe to all progress streams using pattern
-    this.progressSubscriber.psubscribe('__keyspace@0__:progress:*');
+    logger.info('🔔 Setting up Redis stream consumers for real-time updates...');
+
+    // Start polling for progress streams
+    this.startProgressStreamPolling();
+
+    // Also monitor job status changes via keyspace notifications (for HSET operations)
+    this.progressSubscriber.psubscribe('__keyspace@0__:job:*'); // Job status changes
+    this.progressSubscriber.psubscribe('__keyspace@0__:worker:*'); // Worker status changes
 
     this.progressSubscriber.on('pmessage', async (pattern, channel, event) => {
-      // Extract job ID from keyspace notification
-      const match = channel.match(/progress:(.+)$/);
-      if (!match || event !== 'xadd') return;
-
-      const jobId = match[1];
-
       try {
-        // Get latest progress from Redis Stream
-        const entries = await this.redis.xrevrange(`progress:${jobId}`, '+', '-', 'COUNT', 1);
-        if (entries.length === 0) return;
+        logger.debug(
+          `🔔 Redis keyspace notification: pattern=${pattern}, channel=${channel}, event=${event}`
+        );
 
-        const [_streamId, fields] = entries[0];
-        const progressData = this.parseStreamFields(fields);
+        // Handle job status changes
+        if (channel.includes(':job:') && event === 'hset') {
+          const match = channel.match(/job:(.+)$/);
+          if (!match) return;
 
-        // Broadcast to all relevant connections
-        await this.broadcastProgress(jobId, progressData);
+          const jobId = match[1];
+          logger.info(`📋 Job status change detected for job: ${jobId}`);
+          await this.handleJobStatusChange(jobId);
+        }
+
+        // Handle worker status changes
+        else if (channel.includes(':worker:') && event === 'hset') {
+          const match = channel.match(/worker:(.+)$/);
+          if (!match) return;
+
+          const workerId = match[1];
+          logger.info(`👷 Worker status change detected for worker: ${workerId}, event: ${event}`);
+          await this.handleWorkerStatusChange(workerId);
+        }
       } catch (error) {
-        logger.error(`Failed to handle progress update for job ${jobId}:`, error);
+        logger.error(`Failed to handle Redis keyspace notification:`, error);
       }
     });
+  }
+
+  private async startProgressStreamPolling(): Promise<void> {
+    // Subscribe to real-time progress events from all workers
+    this.progressSubscriber.subscribe('job_progress');
+    // Subscribe to real-time worker status changes
+    this.progressSubscriber.subscribe('worker_status');
+
+    this.progressSubscriber.on('message', async (channel, message) => {
+      if (channel === 'job_progress') {
+        try {
+          const progressData = JSON.parse(message);
+          logger.info(
+            `📊 Received real-time progress: job ${progressData.job_id}: ${progressData.progress}% (status: ${progressData.status})`
+          );
+
+          // Broadcast the progress update immediately
+          await this.broadcastProgress(progressData.job_id, progressData);
+        } catch (error) {
+          logger.error('Error processing progress message:', error);
+        }
+      } else if (channel === 'worker_status') {
+        try {
+          const statusData = JSON.parse(message);
+          logger.info(
+            `👷 Received real-time worker status: ${statusData.worker_id}: ${statusData.new_status} (job: ${statusData.current_job_id || 'none'})`
+          );
+
+          // Create and broadcast worker status event
+          const workerStatusEvent: WorkerStatusChangedEvent = {
+            type: 'worker_status_changed',
+            worker_id: statusData.worker_id,
+            old_status: statusData.old_status,
+            new_status: statusData.new_status,
+            current_job_id: statusData.current_job_id,
+            timestamp: statusData.timestamp,
+          };
+          this.broadcastToMonitors(workerStatusEvent);
+
+          logger.info(
+            `📢 Broadcasted worker status change: ${statusData.worker_id} -> ${statusData.new_status}`
+          );
+        } catch (error) {
+          logger.error('Error processing worker status message:', error);
+        }
+      }
+    });
+
+    logger.info(
+      '✅ Started Redis pub/sub subscription for real-time progress and worker status updates'
+    );
   }
 
   private parseStreamFields(fields: string[]): Record<string, string> {
@@ -717,6 +847,97 @@ export class LightweightAPIServer {
       data[fields[i]] = fields[i + 1];
     }
     return data;
+  }
+
+  private async handleJobStatusChange(jobId: string): Promise<void> {
+    try {
+      const jobData = await this.redis.hgetall(`job:${jobId}`);
+      if (!jobData.id) return;
+
+      const status = jobData.status as JobStatus;
+      const workerId = jobData.worker_id;
+
+      // Broadcast appropriate event based on status
+      if (status === JobStatus.ASSIGNED && workerId) {
+        const jobAssignedEvent: JobAssignedEvent = {
+          type: 'job_assigned',
+          job_id: jobId,
+          worker_id: workerId,
+          old_status: 'pending',
+          new_status: 'assigned',
+          assigned_at: Date.now(),
+          timestamp: Date.now(),
+        };
+        this.broadcastToMonitors(jobAssignedEvent);
+      } else if (status === JobStatus.IN_PROGRESS) {
+        const jobStatusEvent: JobStatusChangedEvent = {
+          type: 'job_status_changed',
+          job_id: jobId,
+          old_status: JobStatus.ASSIGNED,
+          new_status: JobStatus.IN_PROGRESS,
+          worker_id: workerId,
+          timestamp: Date.now(),
+        };
+        this.broadcastToMonitors(jobStatusEvent);
+      } else if (status === JobStatus.COMPLETED) {
+        const jobCompletedEvent: JobCompletedEvent = {
+          type: 'job_completed',
+          job_id: jobId,
+          worker_id: workerId,
+          result: jobData.result ? JSON.parse(jobData.result) : undefined,
+          completed_at: Date.now(),
+          timestamp: Date.now(),
+        };
+        this.broadcastToMonitors(jobCompletedEvent);
+      } else if (status === JobStatus.FAILED) {
+        const jobFailedEvent: JobFailedEvent = {
+          type: 'job_failed',
+          job_id: jobId,
+          worker_id: workerId,
+          error: jobData.error || 'Unknown error',
+          failed_at: Date.now(),
+          timestamp: Date.now(),
+        };
+        this.broadcastToMonitors(jobFailedEvent);
+      }
+
+      logger.debug(`Broadcasted job status change: ${jobId} -> ${status}`);
+    } catch (error) {
+      logger.error(`Failed to handle job status change for ${jobId}:`, error);
+    }
+  }
+
+  private async handleWorkerStatusChange(workerId: string): Promise<void> {
+    try {
+      const workerData = await this.redis.hgetall(`worker:${workerId}`);
+      logger.info(`👷 Worker data for ${workerId}:`, workerData);
+
+      if (!workerData.worker_id) {
+        logger.warn(`No worker data found for ${workerId}`);
+        return;
+      }
+
+      const newStatus = workerData.status;
+      const oldStatus = workerData.previous_status || 'unknown';
+
+      logger.info(
+        `👷 Worker ${workerId} status change: ${oldStatus} -> ${newStatus}, current_job: ${workerData.current_job_id || 'none'}`
+      );
+
+      const workerStatusEvent: WorkerStatusChangedEvent = {
+        type: 'worker_status_changed',
+        worker_id: workerId,
+        old_status: oldStatus,
+        new_status: newStatus,
+        current_job_id: workerData.current_job_id,
+        timestamp: Date.now(),
+      };
+      this.broadcastToMonitors(workerStatusEvent);
+
+      logger.info(`📢 Broadcasted worker status change: ${workerId} ${oldStatus} -> ${newStatus}`);
+    } catch (error) {
+      logger.error(`Failed to handle worker status change for ${workerId}:`, error);
+    }
   }
 
   private async broadcastProgress(
@@ -729,6 +950,18 @@ export class LightweightAPIServer {
       data: progressData,
       timestamp: new Date().toISOString(),
     };
+
+    // Also broadcast to monitors as JobProgressEvent
+    if (progressData.worker_id && progressData.progress) {
+      const jobProgressEvent: JobProgressEvent = {
+        type: 'job_progress',
+        job_id: jobId,
+        worker_id: progressData.worker_id,
+        progress: parseInt(progressData.progress) || 0,
+        timestamp: Date.now(),
+      };
+      this.broadcastToMonitors(jobProgressEvent);
+    }
 
     // Broadcast to SSE connections
     for (const [_clientId, connection] of this.sseConnections) {
@@ -757,61 +990,102 @@ export class LightweightAPIServer {
       }
     }
 
+    // Broadcast to the client that submitted this job
+    const submittingClientId = this.jobToClientMap.get(jobId);
+    if (submittingClientId) {
+      const clientConnection = this.clientConnections.get(submittingClientId);
+      if (clientConnection && clientConnection.ws.readyState === WebSocket.OPEN) {
+        try {
+          clientConnection.ws.send(JSON.stringify(progressMessage));
+          logger.debug(`Sent progress update to job submitter client ${submittingClientId}`);
+        } catch (error) {
+          logger.error(
+            `Failed to send progress to submitting client ${submittingClientId}:`,
+            error
+          );
+          this.clientConnections.delete(submittingClientId);
+        }
+      }
+    }
+
     // Check if this is a status change (assigned/processing/completed/failed)
     const status = progressData.status;
     if (status === 'assigned') {
       // Broadcast job assignment
-      this.broadcastToMonitors({
+      const jobAssignedEvent: JobAssignedEvent = {
         type: 'job_assigned',
         job_id: jobId,
         worker_id: progressData.worker_id || 'unknown',
+        old_status: 'pending',
+        new_status: 'assigned',
         assigned_at: Date.now(),
         timestamp: Date.now(),
-      });
+      };
+      this.broadcastToMonitors(jobAssignedEvent);
+      this.broadcastJobEventToClient(jobId, jobAssignedEvent);
     } else if (status === 'processing') {
       // Broadcast job processing start
-      this.broadcastToMonitors({
+      const jobStatusEvent: JobStatusChangedEvent = {
         type: 'job_status_changed',
         job_id: jobId,
-        old_status: 'assigned',
-        new_status: 'processing',
+        old_status: JobStatus.ASSIGNED,
+        new_status: JobStatus.IN_PROGRESS,
         worker_id: progressData.worker_id || 'unknown',
         timestamp: Date.now(),
-      });
+      };
+      this.broadcastToMonitors(jobStatusEvent);
+      this.broadcastJobEventToClient(jobId, jobStatusEvent);
     } else if (status === 'completed') {
-      // Broadcast job completion
-      this.broadcastToMonitors({
+      // First ensure we broadcast 100% progress
+      const jobProgressEvent: JobProgressEvent = {
+        type: 'job_progress',
+        job_id: jobId,
+        worker_id: progressData.worker_id || 'unknown',
+        progress: 100,
+        timestamp: Date.now(),
+      };
+      this.broadcastToMonitors(jobProgressEvent);
+
+      // Then broadcast job completion
+      const jobCompletedEvent: JobCompletedEvent = {
         type: 'job_completed',
         job_id: jobId,
         worker_id: progressData.worker_id || 'unknown',
         result: progressData.result || null,
         completed_at: Date.now(),
         timestamp: Date.now(),
-      });
+      };
+      this.broadcastToMonitors(jobCompletedEvent);
+      this.broadcastJobEventToClient(jobId, jobCompletedEvent);
+
+      // Clean up job-to-client mapping for completed jobs
+      this.jobToClientMap.delete(jobId);
     } else if (status === 'failed') {
       // Broadcast job failure
-      this.broadcastToMonitors({
+      const jobFailedEvent: JobFailedEvent = {
         type: 'job_failed',
         job_id: jobId,
         worker_id: progressData.worker_id || 'unknown',
         error: progressData.message || 'Job failed',
         failed_at: Date.now(),
         timestamp: Date.now(),
-      });
+      };
+      this.broadcastToMonitors(jobFailedEvent);
+      this.broadcastJobEventToClient(jobId, jobFailedEvent);
+
+      // Clean up job-to-client mapping for failed jobs
+      this.jobToClientMap.delete(jobId);
     } else {
       // Broadcast progress update
-      this.broadcastToMonitors({
+      const jobProgressEvent: JobProgressEvent = {
         type: 'job_progress',
         job_id: jobId,
         worker_id: progressData.worker_id || 'unknown',
         progress: parseInt(progressData.progress || '0'),
-        status: status || 'in_progress',
-        message: progressData.message || '',
-        current_step: progressData.current_step || '',
-        total_steps: progressData.total_steps ? parseInt(progressData.total_steps) : undefined,
-        estimated_completion: progressData.estimated_completion || undefined,
         timestamp: Date.now(),
-      });
+      };
+      this.broadcastToMonitors(jobProgressEvent);
+      this.broadcastJobEventToClient(jobId, jobProgressEvent);
     }
   }
 
@@ -857,6 +1131,27 @@ export class LightweightAPIServer {
     // Add to pending queue with priority scoring
     const score = job.priority * 1000 + Date.now();
     await this.redis.zadd('jobs:pending', score, jobId);
+
+    // Broadcast job_submitted event to monitors
+    const jobSubmittedEvent: JobSubmittedEvent = {
+      type: 'job_submitted',
+      job_id: jobId,
+      job_data: {
+        id: jobId,
+        job_type: job.service_required,
+        status: 'pending',
+        priority: job.priority,
+        workflow_id: jobData.workflow_id as string,
+        workflow_priority: jobData.workflow_priority as number,
+        workflow_datetime: jobData.workflow_datetime as number,
+        step_number: jobData.step_number as number,
+        customer_id: job.customer_id,
+        requirements: job.requirements,
+        created_at: Date.now(),
+      },
+      timestamp: Date.now(),
+    };
+    this.broadcastToMonitors(jobSubmittedEvent);
 
     logger.info(`Job ${jobId} submitted via lightweight API (${job.service_required})`);
     return jobId;
@@ -919,8 +1214,8 @@ export class LightweightAPIServer {
       await this.redisService.connect();
 
       // Enable keyspace notifications for progress streaming
-      // K = Keyspace events, $ = Stream commands, E = Keyevent, x = Expired
-      await this.redis.config('SET', 'notify-keyspace-events', 'K$Ex');
+      // K = Keyspace events, $ = String commands, s = Stream commands, E = Keyevent, x = Expired
+      await this.redis.config('SET', 'notify-keyspace-events', 'Ks$Ex');
 
       // Start HTTP server
       await new Promise<void>((resolve, reject) => {

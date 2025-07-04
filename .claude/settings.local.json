@@ -1,0 +1,23 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(ls:*)",
+      "Bash(mv:*)",
+      "Bash(grep:*)",
+      "Bash(find:*)",
+      "Bash(rg:*)",
+      "Bash(redis-cli:*)",
+      "Bash(pnpm docker:dev:local:*)",
+      "Bash(docker compose:*)",
+      "Bash(pnpm dev:*)",
+      "Bash(curl:*)",
+      "Bash(docker logs:*)",
+      "Bash(pnpm install:*)",
+      "Bash(docker exec:*)",
+      "Bash(pnpm build:*)",
+      "Bash(pnpm typecheck:*)",
+      "Bash(pnpm lint:*)"
+    ],
+    "deny": []
+  }
+}

@@ -1,5 +1,12 @@
 // Redis-Direct Base Worker - Phase 1B Implementation
 // Core worker logic with Redis-direct polling instead of WebSocket hub communication
+//
+// CRITICAL ARCHITECTURE NOTE:
+// Workers are SINGLE-JOB processors. Each worker executes exactly ONE job at a time.
+// - Multi-GPU machines run MULTIPLE workers (one per GPU)
+// - Each worker connects to its own service port (worker0→8188, worker1→8189, etc.)
+// - A 4x GPU machine = 4 separate workers = 4 separate service instances
+// - This is NOT multi-threading - it's multiple single-threaded processes
 
 import { ConnectorManager } from './connector-manager.js';
 import { RedisDirectWorkerClient } from './redis-direct-worker-client.js';
@@ -10,7 +17,7 @@ import {
   CustomerAccessConfig,
   PerformanceConfig,
 } from '../core/types/worker.js';
-import { Job, JobProgress, JobStatus } from '../core/types/job.js';
+import { Job, JobProgress } from '../core/types/job.js';
 import { logger } from '../core/utils/logger.js';
 import { WorkerDashboard } from './worker-dashboard.js';
 import os from 'os';
@@ -38,7 +45,8 @@ export class RedisDirectBaseWorker {
 
     // Configuration from environment - match existing patterns
     this.pollIntervalMs = parseInt(process.env.WORKER_POLL_INTERVAL_MS || '1000'); // Faster polling for Redis-direct
-    this.maxConcurrentJobs = parseInt(process.env.WORKER_MAX_CONCURRENT_JOBS || '1');
+    // ENFORCED: Workers process exactly ONE job at a time - no concurrency within a worker
+    this.maxConcurrentJobs = 1; // NEVER change this - workers are single-job processors
     this.jobTimeoutMinutes = parseInt(process.env.WORKER_JOB_TIMEOUT_MINUTES || '30');
 
     // Build capabilities
@@ -53,9 +61,8 @@ export class RedisDirectBaseWorker {
     // Services this worker can handle
     const services = (process.env.WORKER_SERVICES || 'comfyui,a1111').split(',').map(s => s.trim());
 
-    // Hardware specs
+    // Hardware specs - Each worker represents ONE GPU + supporting resources
     const hardware: HardwareSpecs = {
-      cpu_cores: parseInt(process.env.WORKER_CPU_CORES || os.cpus().length.toString()),
       ram_gb: parseInt(process.env.WORKER_RAM_GB || '8'),
       gpu_memory_gb: parseInt(process.env.WORKER_GPU_MEMORY_GB || '8'),
       gpu_model: process.env.WORKER_GPU_MODEL || 'unknown',
@@ -69,9 +76,9 @@ export class RedisDirectBaseWorker {
       max_concurrent_customers: parseInt(process.env.MAX_CONCURRENT_CUSTOMERS || '10'),
     };
 
-    // Performance configuration
+    // Performance configuration - Single job processing only
     const performance: PerformanceConfig = {
-      concurrent_jobs: this.maxConcurrentJobs,
+      concurrent_jobs: 1, // ENFORCED: Each worker processes exactly one job at a time
       quality_levels: (process.env.QUALITY_LEVELS || 'fast,balanced,quality')
         .split(',')
         .map(s => s.trim()),
@@ -80,6 +87,7 @@ export class RedisDirectBaseWorker {
 
     return {
       worker_id: this.workerId,
+      machine_id: process.env.WORKER_MACHINE_ID || os.hostname(),
       services,
       hardware,
       models: {}, // Will be populated by connectors
@@ -165,7 +173,7 @@ export class RedisDirectBaseWorker {
     }
 
     // Cancel any ongoing jobs
-    for (const [jobId, job] of this.currentJobs) {
+    for (const [jobId, _job] of this.currentJobs) {
       await this.failJob(jobId, 'Worker shutdown', false);
     }
 
@@ -195,6 +203,18 @@ export class RedisDirectBaseWorker {
     if (this.currentJobs.size >= this.maxConcurrentJobs) {
       logger.warn(`Worker ${this.workerId} at max capacity, cannot take job ${job.id}`);
       // Job should be returned to queue, but Redis-direct client handles this
+      return;
+    }
+
+    // CRITICAL FIX: Check if job is already being processed
+    if (this.currentJobs.has(job.id)) {
+      logger.warn(`Job ${job.id} is already being processed by this worker, ignoring duplicate`);
+      return;
+    }
+
+    // CRITICAL FIX: Double-check worker status
+    if (this.status === WorkerStatus.BUSY) {
+      logger.warn(`Worker ${this.workerId} is already ${this.status}, cannot take job ${job.id}`);
       return;
     }
 
@@ -242,6 +262,9 @@ export class RedisDirectBaseWorker {
     };
     const result = await connector.processJob(jobData, onProgress);
 
+    // Small delay to ensure final progress updates are written to Redis
+    await new Promise(resolve => setTimeout(resolve, 100));
+
     // Complete the job
     await this.completeJob(job.id, result);
   }
@@ -280,6 +303,13 @@ export class RedisDirectBaseWorker {
 
     // Update status
     this.status = this.currentJobs.size > 0 ? WorkerStatus.BUSY : WorkerStatus.IDLE;
+
+    // Ensure Redis status is updated when worker becomes idle
+    if (this.status === WorkerStatus.IDLE) {
+      this.redisClient.updateWorkerStatus('idle').catch(error => {
+        logger.error(`Failed to update worker status to idle: ${error}`);
+      });
+    }
   }
 
   private handleJobTimeout(jobId: string): void {

@@ -337,15 +337,6 @@ export class WorkerClient {
         }
 
         if (
-          required.cpu_cores &&
-          required.cpu_cores !== 'all' &&
-          typeof required.cpu_cores === 'number' &&
-          hardware.cpu_cores < required.cpu_cores
-        ) {
-          return false;
-        }
-
-        if (
           required.ram_gb &&
           required.ram_gb !== 'all' &&
           typeof required.ram_gb === 'number' &&

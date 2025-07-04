@@ -1,5 +1,38 @@
 # EmProps Job Queue Development Changelog
 
+## 2025-07-04
+
+### ✅ Completed - Real-Time Worker Status Updates System
+
+#### 🚀 Worker Status Phase 1E: Complete Worker Monitoring Implementation
+- **Goal**: Enable real-time worker status updates and proper WorkerCard functionality in monitor
+- **Problem Solved**: Worker cards always showed "idle" status even when processing jobs, causing confusion about system state
+- **Real-Time Worker Status Tracking**: ✅ COMPLETED
+  - **Redis Pub/Sub Integration**: Workers publish status changes to `worker_status` channel for instant delivery
+  - **Worker Status Events**: Complete status lifecycle: `idle` → `busy` → `idle` with job assignment tracking
+  - **API Server Broadcasting**: Enhanced event broadcasting to monitor WebSocket connections
+  - **Event-Driven Updates**: Monitor receives real-time updates for all worker status changes
+
+#### 🎯 Worker Status Flow Implementation
+- **Status Change Publishing**: Workers publish status updates when claiming/starting/completing jobs
+- **Job Assignment Tracking**: Worker cards show current job ID when processing
+- **Multi-Job Prevention**: Fixed critical bug where workers could claim multiple jobs simultaneously
+- **Real-Time Updates**: Instant status updates via Redis pub/sub instead of inefficient polling
+- **Auto-Worker Creation**: Monitor automatically creates worker entries from status events when missing
+
+#### 📋 Enhanced WorkerCard UI Features
+- **Compact Design**: Reduced WorkerCard size by 50% for better screen utilization
+- **Real-Time Status**: Worker cards update instantly (idle → busy → idle) during job processing
+- **Job Tracking**: Shows current job ID when worker is processing
+- **Machine Grouping**: Optional machine ID display for multi-GPU server identification
+- **Status Color Coding**: Visual status indicators with color-coded borders and badges
+
+#### 🔧 Critical Bug Fixes
+- **Single-Job Architecture**: Fixed race condition where workers could process multiple jobs simultaneously
+- **Worker ID Matching**: Fixed data structure mismatch where full state workers were processed as objects instead of arrays
+- **Status Synchronization**: Aligned worker status enums between backend and frontend (`busy` instead of `processing`)
+- **Event Processing**: Fixed worker status events not updating existing workers due to ID mismatches
+
 ## 2025-07-02
 
 ### ✅ Completed - Real-Time Job Progress System Implementation

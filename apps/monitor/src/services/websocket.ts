@@ -1,25 +1,9 @@
 import { BaseMessage } from '@/types/message';
-
-// Monitor event types
-export type SubscriptionTopic =
-  | 'workers' // All worker events
-  | 'jobs' // All job events
-  | 'jobs:progress' // Only progress updates
-  | 'jobs:status' // Only status changes
-  | 'system_stats' // System statistics
-  | 'heartbeat'; // Connection health
-
-export interface SubscriptionFilters {
-  job_types?: string[];
-  worker_ids?: string[];
-  priority_range?: [number, number];
-}
-
-export interface MonitorEvent {
-  type: string;
-  timestamp: number;
-  [key: string]: unknown;
-}
+import type { 
+  MonitorEvent,
+  SubscriptionTopic,
+  SubscriptionFilters 
+} from 'emp-redis-js/src/types/monitor-events';
 
 // Monitor-specific message types
 export interface MonitorConnectMessage {

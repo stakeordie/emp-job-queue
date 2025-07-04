@@ -1,5 +1,12 @@
 # Docker Compose configuration for Redis-Direct Architecture
 # Phase 1C - Lightweight API with direct Redis polling workers
+#
+# CRITICAL WORKER ARCHITECTURE:
+# - Each worker processes EXACTLY ONE job at a time (single-threaded)
+# - Multi-GPU machines run MULTIPLE workers (one per GPU)
+# - Each worker connects to its own service port (worker0→8188, worker1→8189, etc.)
+# - A 4x GPU machine = 4 separate workers = 4 separate service instances
+# - NEVER set WORKER_MAX_CONCURRENT_JOBS > 1
 
 services:
   # Redis database - central communication hub
@@ -10,7 +17,7 @@ services:
       - "6379:6379"
     volumes:
       - redis_data:/data
-    command: redis-server --appendonly yes --notify-keyspace-events Ex
+    command: redis-server --appendonly yes --notify-keyspace-events AKE
     networks:
       - emp-network
     restart: unless-stopped
@@ -19,6 +26,9 @@ services:
       interval: 5s
       timeout: 3s
       retries: 5
+    profiles:
+      - one-worker
+      - all-workers
 
   # Lightweight API Server (replaces hub orchestration)
   api:
@@ -46,6 +56,9 @@ services:
       interval: 10s
       timeout: 5s
       retries: 3
+    profiles:
+      - one-worker
+      - all-workers
 
   # Redis-Direct Worker 1 - Simulation connector
   worker1:
@@ -55,13 +68,13 @@ services:
       dockerfile: Dockerfile.worker-direct
     environment:
       - NODE_ENV=production
+      - WORKER_MACHINE_ID:server-1
       - WORKER_ID=worker1-direct
       - HUB_REDIS_URL=redis://redis:6379/0
       - WORKER_SERVICES=simulation
       - WORKER_CONNECTORS=simulation
       - WORKER_POLL_INTERVAL_MS=1000
       - WORKER_HEARTBEAT_INTERVAL_MS=30000
-      - WORKER_MAX_CONCURRENT_JOBS=2
       - WORKER_JOB_TIMEOUT_MINUTES=30
       # Simulation connector config
       - WORKER_SIMULATION_PROCESSING_TIME=5
@@ -70,7 +83,7 @@ services:
       - WORKER_GPU_COUNT=1
       - WORKER_GPU_MEMORY_GB=8
       - WORKER_GPU_MODEL=Simulation
-      - WORKER_CPU_CORES=4
+      - WORKER_MACHINE_ID=dev-machine-1
       - WORKER_RAM_GB=16
       - LOG_LEVEL=info
       - DISABLE_FILE_LOGGING=true
@@ -80,6 +93,8 @@ services:
     networks:
       - emp-network
     restart: unless-stopped
+    profiles:
+      - one-worker
 
   worker2:
     container_name: emp-worker2
@@ -88,13 +103,13 @@ services:
       dockerfile: Dockerfile.worker-direct
     environment:
       - NODE_ENV=production
+      - WORKER_MACHINE_ID:server-1
       - WORKER_ID=worker2-direct
       - HUB_REDIS_URL=redis://redis:6379/0
       - WORKER_SERVICES=simulation
       - WORKER_CONNECTORS=simulation
       - WORKER_POLL_INTERVAL_MS=1000
       - WORKER_HEARTBEAT_INTERVAL_MS=30000
-      - WORKER_MAX_CONCURRENT_JOBS=3
       - WORKER_JOB_TIMEOUT_MINUTES=30
       # Simulation connector config (faster)
       - WORKER_SIMULATION_PROCESSING_TIME=3
@@ -103,7 +118,7 @@ services:
       - WORKER_GPU_COUNT=1
       - WORKER_GPU_MEMORY_GB=8
       - WORKER_GPU_MODEL=Simulation
-      - WORKER_CPU_CORES=4
+      - WORKER_MACHINE_ID=dev-machine-2
       - WORKER_RAM_GB=16
       - LOG_LEVEL=info
       - DISABLE_FILE_LOGGING=true
@@ -112,6 +127,8 @@ services:
         condition: service_healthy
     networks:
       - emp-network
+    profiles:
+      - all-workers
 
 
   # Redis-Direct Worker 3 - ComfyUI + Simulation
@@ -122,13 +139,13 @@ services:
       dockerfile: Dockerfile.worker-direct
     environment:
       - NODE_ENV=production
+      - WORKER_MACHINE_ID:server-1
       - WORKER_ID=worker3-comfyui
       - HUB_REDIS_URL=redis://redis:6379/0
       - WORKER_SERVICES=comfyui,simulation
       - WORKER_CONNECTORS=comfyui,simulation
       - WORKER_POLL_INTERVAL_MS=1000
       - WORKER_HEARTBEAT_INTERVAL_MS=30000
-      - WORKER_MAX_CONCURRENT_JOBS=1
       - WORKER_JOB_TIMEOUT_MINUTES=60
       # ComfyUI connector config
       - WORKER_COMFYUI_HOST=${COMFYUI_HOST:-host.docker.internal}
@@ -143,7 +160,7 @@ services:
       - WORKER_GPU_COUNT=1
       - WORKER_GPU_MEMORY_GB=24
       - WORKER_GPU_MODEL=RTX 4090
-      - WORKER_CPU_CORES=16
+      - WORKER_MACHINE_ID=gpu-machine-1
       - WORKER_RAM_GB=64
       - LOG_LEVEL=info
       - DISABLE_FILE_LOGGING=true
@@ -153,7 +170,8 @@ services:
     networks:
       - emp-network
     restart: unless-stopped
-
+    profiles:
+      - all-workers
   # Redis-Direct Worker 4 - Multiple instances (scale test)
   worker4:
     container_name: emp-worker4
@@ -162,20 +180,20 @@ services:
       dockerfile: Dockerfile.worker-direct
     environment:
       - NODE_ENV=production
+      - WORKER_MACHINE_ID:server-1
       - WORKER_ID=worker4-scale
       - HUB_REDIS_URL=redis://redis:6379/0
       - WORKER_SERVICES=simulation
       - WORKER_CONNECTORS=simulation
       - WORKER_POLL_INTERVAL_MS=500  # Faster polling for scale test
       - WORKER_HEARTBEAT_INTERVAL_MS=30000
-      - WORKER_MAX_CONCURRENT_JOBS=5
       - WORKER_JOB_TIMEOUT_MINUTES=15
       # Simulation connector config (very fast)
       - WORKER_SIMULATION_PROCESSING_TIME=1
       - WORKER_SIMULATION_STEPS=10
       # Hardware specs
       - WORKER_GPU_COUNT=0
-      - WORKER_CPU_CORES=2
+      - WORKER_MACHINE_ID=scale-machine
       - WORKER_RAM_GB=8
       - LOG_LEVEL=info
       - DISABLE_FILE_LOGGING=true
@@ -185,7 +203,8 @@ services:
     networks:
       - emp-network
     restart: unless-stopped
-
+    profiles:
+      - all-workers
   worker5:
     container_name: emp-worker5
     build:
@@ -199,14 +218,13 @@ services:
       - WORKER_CONNECTORS=simulation
       - WORKER_POLL_INTERVAL_MS=500  # Faster polling for scale test
       - WORKER_HEARTBEAT_INTERVAL_MS=30000
-      - WORKER_MAX_CONCURRENT_JOBS=5
       - WORKER_JOB_TIMEOUT_MINUTES=15
       # Simulation connector config (very fast)
       - WORKER_SIMULATION_PROCESSING_TIME=1
       - WORKER_SIMULATION_STEPS=10
       # Hardware specs
       - WORKER_GPU_COUNT=0
-      - WORKER_CPU_CORES=2
+      - WORKER_MACHINE_ID=scale-machine
       - WORKER_RAM_GB=8
       - LOG_LEVEL=info
       - DISABLE_FILE_LOGGING=true
@@ -216,7 +234,8 @@ services:
     networks:
       - emp-network
     restart: unless-stopped
-
+    profiles:
+      - all-workers
   worker6:
     container_name: emp-worker6
     build:
@@ -230,14 +249,13 @@ services:
       - WORKER_CONNECTORS=simulation
       - WORKER_POLL_INTERVAL_MS=500  # Faster polling for scale test
       - WORKER_HEARTBEAT_INTERVAL_MS=30000
-      - WORKER_MAX_CONCURRENT_JOBS=5
       - WORKER_JOB_TIMEOUT_MINUTES=15
       # Simulation connector config (very fast)
       - WORKER_SIMULATION_PROCESSING_TIME=1
       - WORKER_SIMULATION_STEPS=10
       # Hardware specs
       - WORKER_GPU_COUNT=0
-      - WORKER_CPU_CORES=2
+      - WORKER_MACHINE_ID=scale-machine
       - WORKER_RAM_GB=8
       - LOG_LEVEL=info
       - DISABLE_FILE_LOGGING=true
@@ -247,7 +265,8 @@ services:
     networks:
       - emp-network
     restart: unless-stopped
-
+    profiles:
+      - all-workers
   worker7:
     container_name: emp-worker7
     build:
@@ -261,14 +280,13 @@ services:
       - WORKER_CONNECTORS=simulation
       - WORKER_POLL_INTERVAL_MS=500  # Faster polling for scale test
       - WORKER_HEARTBEAT_INTERVAL_MS=30000
-      - WORKER_MAX_CONCURRENT_JOBS=5
       - WORKER_JOB_TIMEOUT_MINUTES=15
       # Simulation connector config (very fast)
       - WORKER_SIMULATION_PROCESSING_TIME=1
       - WORKER_SIMULATION_STEPS=10
       # Hardware specs
       - WORKER_GPU_COUNT=0
-      - WORKER_CPU_CORES=2
+      - WORKER_MACHINE_ID=scale-machine
       - WORKER_RAM_GB=8
       - LOG_LEVEL=info
       - DISABLE_FILE_LOGGING=true
@@ -278,7 +296,8 @@ services:
     networks:
       - emp-network
     restart: unless-stopped
-
+    profiles:
+      - all-workers
   worker8:
     container_name: emp-worker8
     build:
@@ -292,14 +311,13 @@ services:
       - WORKER_CONNECTORS=simulation
       - WORKER_POLL_INTERVAL_MS=500  # Faster polling for scale test
       - WORKER_HEARTBEAT_INTERVAL_MS=30000
-      - WORKER_MAX_CONCURRENT_JOBS=5
       - WORKER_JOB_TIMEOUT_MINUTES=15
       # Simulation connector config (very fast)
       - WORKER_SIMULATION_PROCESSING_TIME=1
       - WORKER_SIMULATION_STEPS=10
       # Hardware specs
       - WORKER_GPU_COUNT=0
-      - WORKER_CPU_CORES=2
+      - WORKER_MACHINE_ID=scale-machine
       - WORKER_RAM_GB=8
       - LOG_LEVEL=info
       - DISABLE_FILE_LOGGING=true
@@ -309,7 +327,8 @@ services:
     networks:
       - emp-network
     restart: unless-stopped
-
+    profiles:
+      - all-workers
   worker9:
     container_name: emp-worker9
     build:
@@ -323,14 +342,13 @@ services:
       - WORKER_CONNECTORS=simulation
       - WORKER_POLL_INTERVAL_MS=500  # Faster polling for scale test
       - WORKER_HEARTBEAT_INTERVAL_MS=30000
-      - WORKER_MAX_CONCURRENT_JOBS=5
       - WORKER_JOB_TIMEOUT_MINUTES=15
       # Simulation connector config (very fast)
       - WORKER_SIMULATION_PROCESSING_TIME=1
       - WORKER_SIMULATION_STEPS=10
       # Hardware specs
       - WORKER_GPU_COUNT=0
-      - WORKER_CPU_CORES=2
+      - WORKER_MACHINE_ID=scale-machine
       - WORKER_RAM_GB=8
       - LOG_LEVEL=info
       - DISABLE_FILE_LOGGING=true
@@ -340,7 +358,8 @@ services:
     networks:
       - emp-network
     restart: unless-stopped
-
+    profiles:
+      - all-workers
 
   worker10:
     container_name: emp-worker10
@@ -355,7 +374,6 @@ services:
       - WORKER_CONNECTORS=simulation
       - WORKER_POLL_INTERVAL_MS=1000
       - WORKER_HEARTBEAT_INTERVAL_MS=30000
-      - WORKER_MAX_CONCURRENT_JOBS=2
       - WORKER_JOB_TIMEOUT_MINUTES=30
       # Simulation connector config
       - WORKER_SIMULATION_PROCESSING_TIME=5
@@ -364,7 +382,7 @@ services:
       - WORKER_GPU_COUNT=1
       - WORKER_GPU_MEMORY_GB=8
       - WORKER_GPU_MODEL=Simulation
-      - WORKER_CPU_CORES=4
+      - WORKER_MACHINE_ID=dev-machine-3
       - WORKER_RAM_GB=16
       - LOG_LEVEL=info
       - DISABLE_FILE_LOGGING=true
@@ -374,6 +392,8 @@ services:
     networks:
       - emp-network
     restart: unless-stopped
+    profiles:
+      - all-workers
     # Redis-Direct Worker 2 - Simulation connector (faster)
   worker11:
     container_name: emp-worker11
@@ -388,7 +408,6 @@ services:
       - WORKER_CONNECTORS=simulation
       - WORKER_POLL_INTERVAL_MS=1000
       - WORKER_HEARTBEAT_INTERVAL_MS=30000
-      - WORKER_MAX_CONCURRENT_JOBS=3
       - WORKER_JOB_TIMEOUT_MINUTES=30
       # Simulation connector config (faster)
       - WORKER_SIMULATION_PROCESSING_TIME=3
@@ -397,7 +416,7 @@ services:
       - WORKER_GPU_COUNT=1
       - WORKER_GPU_MEMORY_GB=8
       - WORKER_GPU_MODEL=Simulation
-      - WORKER_CPU_CORES=4
+      - WORKER_MACHINE_ID=dev-machine-4
       - WORKER_RAM_GB=16
       - LOG_LEVEL=info
       - DISABLE_FILE_LOGGING=true
@@ -407,8 +426,9 @@ services:
     networks:
       - emp-network
     restart: unless-stopped
-    # deploy:
-    #   replicas: 5  # Create 5 instances for scale testing
+    profiles:
+      - all-workers
+
 
   # Redis Commander - Web UI for Redis inspection
   redis-commander:
@@ -426,6 +446,8 @@ services:
     profiles:
       - debug
       - full
+      - all-workers
+      - one-worker
 
 networks:
   emp-network:

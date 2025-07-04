@@ -2,7 +2,8 @@ import { create } from 'zustand';
 import { subscribeWithSelector } from 'zustand/middleware';
 import { Job, Worker, WorkerCapabilities, WorkerStatus, JobStatus, JobRequirements, ConnectionState, UIState, LogEntry } from '@/types';
 import { SyncJobStateMessage, CancelJobMessage } from '@/types/message';
-import { websocketService, MonitorEvent } from '@/services/websocket';
+import { websocketService } from '@/services/websocket';
+import type { MonitorEvent } from 'emp-redis-js/src/types/monitor-events';
 
 interface MonitorStore {
   // Connection state
@@ -108,11 +109,17 @@ export const useMonitorStore = create<MonitorStore>()(
       })),
     
     updateWorker: (workerId, updates) =>
-      set((state) => ({
-        workers: state.workers.map((worker) =>
+      set((state) => {
+        console.log(`updateWorker called for ${workerId} with updates:`, updates);
+        const targetWorker = state.workers.find(w => w.id === workerId);
+        console.log(`Target worker ${workerId}:`, targetWorker ? { id: targetWorker.id, status: targetWorker.status } : 'NOT FOUND');
+        const newWorkers = state.workers.map((worker) =>
           worker.id === workerId ? { ...worker, ...updates } : worker
-        ),
-      })),
+        );
+        const updatedWorker = newWorkers.find(w => w.id === workerId);
+        console.log(`Updated worker ${workerId}:`, updatedWorker ? { id: updatedWorker.id, status: updatedWorker.status } : 'NOT FOUND');
+        return { workers: newWorkers };
+      }),
     
     removeWorker: (workerId) =>
       set((state) => ({
@@ -166,33 +173,66 @@ export const useMonitorStore = create<MonitorStore>()(
       set({ workers: [], jobs: [] });
       
       // Process workers
-      if (stateData.workers && typeof stateData.workers === 'object') {
-        Object.entries(stateData.workers).forEach(([workerId, workerData]) => {
-          const worker = workerData as Record<string, unknown>;
-          const capabilities = (worker.capabilities as WorkerCapabilities) || {
-            gpu_count: 1,
-            gpu_memory_gb: 8,
-            gpu_model: 'Unknown',
-            cpu_cores: 4,
-            ram_gb: 16,
-            services: [],
-            models: [],
-            customer_access: 'none',
-            max_concurrent_jobs: 1
-          };
-          
-          addWorker({
-            id: workerId,
-            status: (worker.status as WorkerStatus) || 'idle',
-            capabilities,
-            current_job_id: worker.current_job_id as string,
-            connected_at: (worker.connected_at as string) || new Date().toISOString(),
-            last_activity: (worker.last_activity as string) || new Date().toISOString(),
-            jobs_completed: (worker.jobs_completed as number) || 0,
-            jobs_failed: (worker.jobs_failed as number) || 0,
-            total_processing_time: (worker.total_processing_time as number) || 0
+      if (stateData.workers) {
+        if (Array.isArray(stateData.workers)) {
+          console.log('Full state workers received (array):', stateData.workers.map(w => (w as any).id));
+          stateData.workers.forEach((workerData) => {
+            const worker = workerData as Record<string, unknown>;
+            console.log(`Processing full state worker: ${worker.id}`);
+            const capabilities = (worker.capabilities as WorkerCapabilities) || {
+              gpu_count: 1,
+              gpu_memory_gb: 8,
+              gpu_model: 'Unknown',
+              cpu_cores: 4,
+              ram_gb: 16,
+              services: [],
+              models: [],
+              customer_access: 'none',
+              max_concurrent_jobs: 1
+            };
+            
+            addWorker({
+              id: worker.id as string,
+              status: (worker.status as WorkerStatus) || 'idle',
+              capabilities,
+              current_job_id: worker.current_job_id as string,
+              connected_at: (worker.connected_at as string) || new Date().toISOString(),
+              last_activity: (worker.last_activity as string) || new Date().toISOString(),
+              jobs_completed: (worker.jobs_completed as number) || 0,
+              jobs_failed: (worker.jobs_failed as number) || 0,
+              total_processing_time: (worker.total_processing_time as number) || 0
+            });
           });
-        });
+        } else if (typeof stateData.workers === 'object') {
+          console.log('Full state workers received (object):', Object.keys(stateData.workers));
+          Object.entries(stateData.workers).forEach(([workerId, workerData]) => {
+            console.log(`Processing full state worker: ${workerId}`);
+            const worker = workerData as Record<string, unknown>;
+            const capabilities = (worker.capabilities as WorkerCapabilities) || {
+              gpu_count: 1,
+              gpu_memory_gb: 8,
+              gpu_model: 'Unknown',
+              cpu_cores: 4,
+              ram_gb: 16,
+              services: [],
+              models: [],
+              customer_access: 'none',
+              max_concurrent_jobs: 1
+            };
+            
+            addWorker({
+              id: workerId,
+              status: (worker.status as WorkerStatus) || 'idle',
+              capabilities,
+              current_job_id: worker.current_job_id as string,
+              connected_at: (worker.connected_at as string) || new Date().toISOString(),
+              last_activity: (worker.last_activity as string) || new Date().toISOString(),
+              jobs_completed: (worker.jobs_completed as number) || 0,
+              jobs_failed: (worker.jobs_failed as number) || 0,
+              total_processing_time: (worker.total_processing_time as number) || 0
+            });
+          });
+        }
       }
       
       // Process jobs
@@ -265,6 +305,7 @@ export const useMonitorStore = create<MonitorStore>()(
             };
             timestamp: number;
           };
+          console.log(`worker_connected event for ${workerEvent.worker_id}`);
           const workerData = workerEvent.worker_data;
           addWorker({
             id: workerEvent.worker_id,
@@ -299,11 +340,41 @@ export const useMonitorStore = create<MonitorStore>()(
             current_job_id?: string;
             timestamp: number;
           };
-          updateWorker(workerEvent.worker_id, {
-            status: workerEvent.new_status as WorkerStatus,
-            current_job_id: workerEvent.current_job_id,
-            last_activity: new Date().toISOString()
-          });
+          console.log(`changing card state to ${workerEvent.new_status} for worker ${workerEvent.worker_id}`);
+          
+          // Check if worker exists, if not create it
+          const { workers } = get();
+          const existingWorker = workers.find(w => w.id === workerEvent.worker_id);
+          
+          if (!existingWorker) {
+            console.log(`Creating new worker ${workerEvent.worker_id} from status change event`);
+            addWorker({
+              id: workerEvent.worker_id,
+              status: workerEvent.new_status as WorkerStatus,
+              capabilities: {
+                gpu_count: 1,
+                gpu_memory_gb: 8,
+                gpu_model: 'Unknown',
+                ram_gb: 16,
+                services: [],
+                models: [],
+                customer_access: 'none',
+                max_concurrent_jobs: 1
+              },
+              current_job_id: workerEvent.current_job_id,
+              connected_at: new Date().toISOString(),
+              last_activity: new Date().toISOString(),
+              jobs_completed: 0,
+              jobs_failed: 0,
+              total_processing_time: 0
+            });
+          } else {
+            updateWorker(workerEvent.worker_id, {
+              status: workerEvent.new_status as WorkerStatus,
+              current_job_id: workerEvent.current_job_id,
+              last_activity: new Date().toISOString()
+            });
+          }
           break;
         }
         

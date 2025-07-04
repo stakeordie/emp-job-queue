@@ -25,6 +25,7 @@ import {
 import { Progress } from "@/components/ui/progress"
 import { Play, Square, RefreshCw, X } from "lucide-react"
 import { JobSubmissionForm } from "@/components/job-submission-form"
+import { WorkerCard } from "@/components/WorkerCard"
 import { useMonitorStore } from "@/store"
 import { useState } from "react"
 
@@ -173,10 +174,12 @@ export default function Home() {
         </CardContent>
       </Card>
 
-      {/* Workers Carousel */}
-      <div className="space-y-3">
+      {/* Workers */}
+      <div className="space-y-4">
         <div className="flex items-center justify-between">
-          <h2 className="text-lg font-semibold">Workers ({workers.length})</h2>
+          <h2 className="text-lg font-semibold">
+            Workers ({workers.length})
+          </h2>
           <div className="flex items-center gap-4 text-sm text-muted-foreground">
             <span>Active Jobs: {activeJobs}</span>
             <span>Completed: {completedJobs}</span>
@@ -189,61 +192,9 @@ export default function Home() {
             <p className="text-muted-foreground text-center">No workers connected. Start some workers to see them here.</p>
           </Card>
         ) : (
-          <div className="flex gap-4 overflow-x-auto pb-4">
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
             {workers.map((worker) => (
-              <Card key={worker.id} className="flex-shrink-0 w-80 p-4 border-l-4" style={{
-                borderLeftColor: 
-                  worker.status === 'idle' ? '#22c55e' :
-                  worker.status === 'busy' ? '#f59e0b' :
-                  worker.status === 'error' ? '#ef4444' :
-                  '#6b7280'
-              }}>
-                <div className="space-y-3">
-                  <div className="flex items-center justify-between">
-                    <h3 className="font-medium truncate" title={worker.id}>{worker.id}</h3>
-                    <Badge variant={
-                      worker.status === 'idle' ? 'default' :
-                      worker.status === 'busy' ? 'secondary' :
-                      'destructive'
-                    }>
-                      {worker.status}
-                    </Badge>
-                  </div>
-                  
-                  <div className="space-y-2 text-sm">
-                    <div>
-                      <p className="text-muted-foreground">GPU: {worker.capabilities.gpu_model}</p>
-                      <p className="text-muted-foreground">Memory: {worker.capabilities.gpu_memory_gb}GB</p>
-                    </div>
-                    
-                    <div>
-                      <p className="text-muted-foreground">Services:</p>
-                      <div className="flex flex-wrap gap-1 mt-1">
-                        {(worker.capabilities?.services || []).map((service) => (
-                          <Badge key={service} variant="outline" className="text-xs">
-                            {service}
-                          </Badge>
-                        ))}
-                      </div>
-                    </div>
-                    
-                    {worker.current_job_id && (
-                      <div>
-                        <p className="text-muted-foreground">Current Job:</p>
-                        <p className="font-mono text-xs truncate" title={worker.current_job_id}>
-                          {worker.current_job_id}
-                        </p>
-                      </div>
-                    )}
-                    
-                    <div className="flex justify-between text-xs text-muted-foreground pt-2 border-t">
-                      <span>✓ {worker.jobs_completed}</span>
-                      <span>✗ {worker.jobs_failed}</span>
-                      <span>{worker.capabilities.cpu_cores} cores</span>
-                    </div>
-                  </div>
-                </div>
-              </Card>
+              <WorkerCard key={worker.id} worker={worker} />
             ))}
           </div>
         )}
