@@ -9,28 +9,8 @@
 # - NEVER set WORKER_MAX_CONCURRENT_JOBS > 1
 
 services:
-  # Redis database - central communication hub
-  redis:
-    image: redis:7-alpine
-    container_name: emp-redis
-    ports:
-      - "6379:6379"
-    volumes:
-      - redis_data:/data
-    command: redis-server --appendonly yes --notify-keyspace-events AKE
-    networks:
-      - emp-network
-    restart: unless-stopped
-    healthcheck:
-      test: ["CMD", "redis-cli", "ping"]
-      interval: 5s
-      timeout: 3s
-      retries: 5
-    profiles:
-      - one-worker
-      - all-workers
-
   # Lightweight API Server (replaces hub orchestration)
+  # Now connects to Railway Redis with Functions support
   api:
     container_name: emp-api
     build:
@@ -41,13 +21,11 @@ services:
     environment:
       - NODE_ENV=production
       - API_PORT=3001
-      - REDIS_URL=redis://redis:6379/0
+      - REDIS_URL=redis://default:JQSoNVpIPsuaDQYicNvocglialxPrTjj@ballast.proxy.rlwy.net:30645
       - CORS_ORIGINS=*
       - LOG_LEVEL=info
       - DISABLE_FILE_LOGGING=true
-    depends_on:
-      redis:
-        condition: service_healthy
+      - REDIS_FUNCTIONS_ENABLED=true
     networks:
       - emp-network
     restart: unless-stopped
@@ -70,7 +48,7 @@ services:
       - NODE_ENV=production
       - WORKER_MACHINE_ID:server-1
       - WORKER_ID=worker1-direct
-      - HUB_REDIS_URL=redis://redis:6379/0
+      - HUB_REDIS_URL=redis://default:JQSoNVpIPsuaDQYicNvocglialxPrTjj@ballast.proxy.rlwy.net:30645
       - WORKER_SERVICES=simulation
       - WORKER_CONNECTORS=simulation
       - WORKER_POLL_INTERVAL_MS=1000
@@ -87,9 +65,6 @@ services:
       - WORKER_RAM_GB=16
       - LOG_LEVEL=info
       - DISABLE_FILE_LOGGING=true
-    depends_on:
-      redis:
-        condition: service_healthy
     networks:
       - emp-network
     restart: unless-stopped
@@ -105,7 +80,7 @@ services:
       - NODE_ENV=production
       - WORKER_MACHINE_ID:server-1
       - WORKER_ID=worker2-direct
-      - HUB_REDIS_URL=redis://redis:6379/0
+      - HUB_REDIS_URL=redis://default:JQSoNVpIPsuaDQYicNvocglialxPrTjj@ballast.proxy.rlwy.net:30645
       - WORKER_SERVICES=simulation
       - WORKER_CONNECTORS=simulation
       - WORKER_POLL_INTERVAL_MS=1000
@@ -122,9 +97,6 @@ services:
       - WORKER_RAM_GB=16
       - LOG_LEVEL=info
       - DISABLE_FILE_LOGGING=true
-    depends_on:
-      redis:
-        condition: service_healthy
     networks:
       - emp-network
     profiles:
@@ -141,7 +113,7 @@ services:
       - NODE_ENV=production
       - WORKER_MACHINE_ID:server-1
       - WORKER_ID=worker3-comfyui
-      - HUB_REDIS_URL=redis://redis:6379/0
+      - HUB_REDIS_URL=redis://default:JQSoNVpIPsuaDQYicNvocglialxPrTjj@ballast.proxy.rlwy.net:30645
       - WORKER_SERVICES=comfyui,simulation
       - WORKER_CONNECTORS=comfyui,simulation
       - WORKER_POLL_INTERVAL_MS=1000
@@ -164,9 +136,6 @@ services:
       - WORKER_RAM_GB=64
       - LOG_LEVEL=info
       - DISABLE_FILE_LOGGING=true
-    depends_on:
-      redis:
-        condition: service_healthy
     networks:
       - emp-network
     restart: unless-stopped
@@ -182,7 +151,7 @@ services:
       - NODE_ENV=production
       - WORKER_MACHINE_ID:server-1
       - WORKER_ID=worker4-scale
-      - HUB_REDIS_URL=redis://redis:6379/0
+      - HUB_REDIS_URL=redis://default:JQSoNVpIPsuaDQYicNvocglialxPrTjj@ballast.proxy.rlwy.net:30645
       - WORKER_SERVICES=simulation
       - WORKER_CONNECTORS=simulation
       - WORKER_POLL_INTERVAL_MS=500  # Faster polling for scale test
@@ -197,9 +166,6 @@ services:
       - WORKER_RAM_GB=8
       - LOG_LEVEL=info
       - DISABLE_FILE_LOGGING=true
-    depends_on:
-      redis:
-        condition: service_healthy
     networks:
       - emp-network
     restart: unless-stopped
@@ -213,7 +179,7 @@ services:
     environment:
       - NODE_ENV=production
       - WORKER_ID=worker5-scale
-      - HUB_REDIS_URL=redis://redis:6379/0
+      - HUB_REDIS_URL=redis://default:JQSoNVpIPsuaDQYicNvocglialxPrTjj@ballast.proxy.rlwy.net:30645
       - WORKER_SERVICES=simulation
       - WORKER_CONNECTORS=simulation
       - WORKER_POLL_INTERVAL_MS=500  # Faster polling for scale test
@@ -228,9 +194,6 @@ services:
       - WORKER_RAM_GB=8
       - LOG_LEVEL=info
       - DISABLE_FILE_LOGGING=true
-    depends_on:
-      redis:
-        condition: service_healthy
     networks:
       - emp-network
     restart: unless-stopped
@@ -244,7 +207,7 @@ services:
     environment:
       - NODE_ENV=production
       - WORKER_ID=worker6-scale
-      - HUB_REDIS_URL=redis://redis:6379/0
+      - HUB_REDIS_URL=redis://default:JQSoNVpIPsuaDQYicNvocglialxPrTjj@ballast.proxy.rlwy.net:30645
       - WORKER_SERVICES=simulation
       - WORKER_CONNECTORS=simulation
       - WORKER_POLL_INTERVAL_MS=500  # Faster polling for scale test
@@ -259,9 +222,6 @@ services:
       - WORKER_RAM_GB=8
       - LOG_LEVEL=info
       - DISABLE_FILE_LOGGING=true
-    depends_on:
-      redis:
-        condition: service_healthy
     networks:
       - emp-network
     restart: unless-stopped
@@ -275,7 +235,7 @@ services:
     environment:
       - NODE_ENV=production
       - WORKER_ID=worker7-scale
-      - HUB_REDIS_URL=redis://redis:6379/0
+      - HUB_REDIS_URL=redis://default:JQSoNVpIPsuaDQYicNvocglialxPrTjj@ballast.proxy.rlwy.net:30645
       - WORKER_SERVICES=simulation
       - WORKER_CONNECTORS=simulation
       - WORKER_POLL_INTERVAL_MS=500  # Faster polling for scale test
@@ -290,9 +250,6 @@ services:
       - WORKER_RAM_GB=8
       - LOG_LEVEL=info
       - DISABLE_FILE_LOGGING=true
-    depends_on:
-      redis:
-        condition: service_healthy
     networks:
       - emp-network
     restart: unless-stopped
@@ -306,7 +263,7 @@ services:
     environment:
       - NODE_ENV=production
       - WORKER_ID=worker8-scale
-      - HUB_REDIS_URL=redis://redis:6379/0
+      - HUB_REDIS_URL=redis://default:JQSoNVpIPsuaDQYicNvocglialxPrTjj@ballast.proxy.rlwy.net:30645
       - WORKER_SERVICES=simulation
       - WORKER_CONNECTORS=simulation
       - WORKER_POLL_INTERVAL_MS=500  # Faster polling for scale test
@@ -321,9 +278,6 @@ services:
       - WORKER_RAM_GB=8
       - LOG_LEVEL=info
       - DISABLE_FILE_LOGGING=true
-    depends_on:
-      redis:
-        condition: service_healthy
     networks:
       - emp-network
     restart: unless-stopped
@@ -337,7 +291,7 @@ services:
     environment:
       - NODE_ENV=production
       - WORKER_ID=worker9-scale
-      - HUB_REDIS_URL=redis://redis:6379/0
+      - HUB_REDIS_URL=redis://default:JQSoNVpIPsuaDQYicNvocglialxPrTjj@ballast.proxy.rlwy.net:30645
       - WORKER_SERVICES=simulation
       - WORKER_CONNECTORS=simulation
       - WORKER_POLL_INTERVAL_MS=500  # Faster polling for scale test
@@ -352,9 +306,6 @@ services:
       - WORKER_RAM_GB=8
       - LOG_LEVEL=info
       - DISABLE_FILE_LOGGING=true
-    depends_on:
-      redis:
-        condition: service_healthy
     networks:
       - emp-network
     restart: unless-stopped
@@ -369,7 +320,7 @@ services:
     environment:
       - NODE_ENV=production
       - WORKER_ID=worker10-direct
-      - HUB_REDIS_URL=redis://redis:6379/0
+      - HUB_REDIS_URL=redis://default:JQSoNVpIPsuaDQYicNvocglialxPrTjj@ballast.proxy.rlwy.net:30645
       - WORKER_SERVICES=simulation
       - WORKER_CONNECTORS=simulation
       - WORKER_POLL_INTERVAL_MS=1000
@@ -386,9 +337,6 @@ services:
       - WORKER_RAM_GB=16
       - LOG_LEVEL=info
       - DISABLE_FILE_LOGGING=true
-    depends_on:
-      redis:
-        condition: service_healthy
     networks:
       - emp-network
     restart: unless-stopped
@@ -403,7 +351,7 @@ services:
     environment:
       - NODE_ENV=production
       - WORKER_ID=worker11-direct
-      - HUB_REDIS_URL=redis://redis:6379/0
+      - HUB_REDIS_URL=redis://default:JQSoNVpIPsuaDQYicNvocglialxPrTjj@ballast.proxy.rlwy.net:30645
       - WORKER_SERVICES=simulation
       - WORKER_CONNECTORS=simulation
       - WORKER_POLL_INTERVAL_MS=1000
@@ -420,9 +368,6 @@ services:
       - WORKER_RAM_GB=16
       - LOG_LEVEL=info
       - DISABLE_FILE_LOGGING=true
-    depends_on:
-      redis:
-        condition: service_healthy
     networks:
       - emp-network
     restart: unless-stopped
@@ -430,29 +375,11 @@ services:
       - all-workers
 
 
-  # Redis Commander - Web UI for Redis inspection
-  redis-commander:
-    container_name: emp-redis-commander
-    image: rediscommander/redis-commander:latest
-    ports:
-      - "8081:8081"
-    environment:
-      - REDIS_HOSTS=local:redis:6379
-    depends_on:
-      - redis
-    networks:
-      - emp-network
-    restart: unless-stopped
-    profiles:
-      - debug
-      - full
-      - all-workers
-      - one-worker
+  # Note: Redis is now hosted on Railway with Functions support
+  # Access Railway Redis dashboard for monitoring instead of local Redis Commander
 
 networks:
   emp-network:
     driver: bridge
 
-volumes:
-  redis_data:
-    driver: local
+# No volumes needed - Redis is hosted on Railway

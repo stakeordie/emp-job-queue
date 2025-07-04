@@ -116,8 +116,10 @@ export class RedisService implements RedisServiceInterface {
       max_retries: job.max_retries.toString(),
     });
 
-    // Add to priority queue - matches Python's score calculation
-    const score = job.priority * 1000 + Date.now();
+    // Add to priority queue with workflow-aware scoring
+    const effectivePriority = job.workflow_priority || job.priority;
+    const effectiveDateTime = job.workflow_datetime || Date.parse(job.created_at);
+    const score = effectivePriority * 1000000 + (Number.MAX_SAFE_INTEGER - effectiveDateTime);
     await this.redis.zadd('jobs:pending', score, jobId);
 
     logger.info(`Job ${jobId} submitted with priority ${job.priority}`);
@@ -281,8 +283,10 @@ export class RedisService implements RedisServiceInterface {
           last_failed_worker: workerId,
         });
 
-        // Re-add to pending queue
-        const score = job.priority * 1000 + Date.now();
+        // Re-add to pending queue with workflow-aware scoring
+        const effectivePriority = job.workflow_priority || job.priority;
+        const effectiveDateTime = job.workflow_datetime || Date.parse(job.created_at);
+        const score = effectivePriority * 1000000 + (Number.MAX_SAFE_INTEGER - effectiveDateTime);
         await this.redis.zadd('jobs:pending', score, jobId);
 
         // Remove from worker's active jobs
@@ -422,8 +426,10 @@ export class RedisService implements RedisServiceInterface {
       await this.redis.hdel(`jobs:active:${job.worker_id}`, jobId);
     }
 
-    // Return to pending queue
-    const score = job.priority * 1000 + Date.now();
+    // Return to pending queue with workflow-aware scoring
+    const effectivePriority = job.workflow_priority || job.priority;
+    const effectiveDateTime = job.workflow_datetime || Date.parse(job.created_at);
+    const score = effectivePriority * 1000000 + (Number.MAX_SAFE_INTEGER - effectiveDateTime);
     await this.redis.zadd('jobs:pending', score, jobId);
 
     // Clear worker assignment
@@ -781,8 +787,12 @@ export class RedisService implements RedisServiceInterface {
                 started_at: '',
               });
 
-              // Add back to pending queue with original priority
-              const score = resetJob.priority * 1000 + Date.now();
+              // Add back to pending queue with workflow-aware scoring
+              const effectivePriority = resetJob.workflow_priority || resetJob.priority;
+              const effectiveDateTime =
+                resetJob.workflow_datetime || Date.parse(resetJob.created_at);
+              const score =
+                effectivePriority * 1000000 + (Number.MAX_SAFE_INTEGER - effectiveDateTime);
               await this.redis.zadd('jobs:pending', score, jobId);
 
               // Remove from active jobs
@@ -1002,8 +1012,10 @@ export class RedisService implements RedisServiceInterface {
           last_failed_worker: workerId,
         });
 
-        // Re-add to pending queue
-        const score = job.priority * 1000 + Date.now();
+        // Re-add to pending queue with workflow-aware scoring
+        const effectivePriority = job.workflow_priority || job.priority;
+        const effectiveDateTime = job.workflow_datetime || Date.parse(job.created_at);
+        const score = effectivePriority * 1000000 + (Number.MAX_SAFE_INTEGER - effectiveDateTime);
         await this.redis.zadd('jobs:pending', score, job.id);
 
         // Remove from worker's active jobs

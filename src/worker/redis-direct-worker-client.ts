@@ -538,8 +538,10 @@ export class RedisDirectWorkerClient {
           failed_at: new Date().toISOString(),
         });
 
-        // Re-add to pending queue
-        const score = job.priority * 1000 + Date.now();
+        // Re-add to pending queue with workflow-aware scoring (FIFO within priority)
+        const effectivePriority = job.workflow_priority || job.priority;
+        const effectiveDateTime = job.workflow_datetime || Date.parse(job.created_at);
+        const score = effectivePriority * 1000000 + (Number.MAX_SAFE_INTEGER - effectiveDateTime);
         await this.redis.zadd('jobs:pending', score, jobId);
 
         logger.info(

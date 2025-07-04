@@ -18,7 +18,6 @@ import {
   JobCompletedEvent,
   JobFailedEvent,
   WorkerStatusChangedEvent,
-  FullStateSnapshotEvent,
 } from '../types/monitor-events.js';
 
 interface LightweightAPIConfig {
@@ -113,7 +112,7 @@ export class LightweightAPIServer {
 
   private setupHTTPRoutes(): void {
     // Health check
-    this.app.get('/health', (req: Request, res: Response) => {
+    this.app.get('/health', (_req: Request, res: Response) => {
       res.json({ status: 'ok', timestamp: new Date().toISOString() });
     });
 
@@ -630,11 +629,11 @@ export class LightweightAPIServer {
 
       for (const key of workerKeys) {
         const workerId = key.split(':')[1];
-        console.log(`Full state: Found worker key ${key} -> worker ID: ${workerId}`);
+        logger.debug(`Full state: Found worker key ${key} -> worker ID: ${workerId}`);
         const workerData = await this.redis.hgetall(`worker:${workerId}`);
         if (Object.keys(workerData).length > 0) {
           // Parse capabilities JSON from Redis
-          let capabilities;
+          let capabilities: Record<string, unknown>;
           try {
             capabilities = JSON.parse(workerData.capabilities || '{}');
           } catch {
@@ -646,15 +645,24 @@ export class LightweightAPIServer {
             id: workerId,
             status: (workerData.status as 'idle' | 'busy' | 'offline' | 'error') || 'idle',
             capabilities: {
-              gpu_count: capabilities.hardware?.gpu_count || 0,
-              gpu_memory_gb: capabilities.hardware?.gpu_memory_gb || 0,
-              gpu_model: capabilities.hardware?.gpu_model || 'Unknown',
-              cpu_cores: capabilities.hardware?.cpu_cores || 1,
-              ram_gb: capabilities.hardware?.ram_gb || 1,
-              services: capabilities.services || [],
-              models: Object.keys(capabilities.models || {}),
-              customer_access: capabilities.customer_access?.isolation || 'none',
-              max_concurrent_jobs: capabilities.performance?.concurrent_jobs || 1,
+              // eslint-disable-next-line @typescript-eslint/no-explicit-any
+              gpu_count: (capabilities as any)?.hardware?.gpu_count || 0,
+              // eslint-disable-next-line @typescript-eslint/no-explicit-any
+              gpu_memory_gb: (capabilities as any)?.hardware?.gpu_memory_gb || 0,
+              // eslint-disable-next-line @typescript-eslint/no-explicit-any
+              gpu_model: (capabilities as any)?.hardware?.gpu_model || 'Unknown',
+              // eslint-disable-next-line @typescript-eslint/no-explicit-any
+              cpu_cores: (capabilities as any)?.hardware?.cpu_cores || 1,
+              // eslint-disable-next-line @typescript-eslint/no-explicit-any
+              ram_gb: (capabilities as any)?.hardware?.ram_gb || 1,
+              // eslint-disable-next-line @typescript-eslint/no-explicit-any
+              services: (capabilities as any)?.services || [],
+              // eslint-disable-next-line @typescript-eslint/no-explicit-any
+              models: Object.keys((capabilities as any)?.models || {}),
+              // eslint-disable-next-line @typescript-eslint/no-explicit-any
+              customer_access: (capabilities as any)?.customer_access?.isolation || 'none',
+              // eslint-disable-next-line @typescript-eslint/no-explicit-any
+              max_concurrent_jobs: (capabilities as any)?.performance?.concurrent_jobs || 1,
             },
             current_job_id: workerData.current_job_id,
             connected_at: workerData.connected_at || new Date().toISOString(),
@@ -706,7 +714,7 @@ export class LightweightAPIServer {
   ): void {
     const eventJson = JSON.stringify(event);
 
-    for (const [monitorId, connection] of this.monitorConnections) {
+    for (const [_monitorId, connection] of this.monitorConnections) {
       if (connection.ws.readyState === WebSocket.OPEN) {
         // Check if monitor is subscribed to this event type
         const eventType = event.type as string;
@@ -839,14 +847,6 @@ export class LightweightAPIServer {
     logger.info(
       '✅ Started Redis pub/sub subscription for real-time progress and worker status updates'
     );
-  }
-
-  private parseStreamFields(fields: string[]): Record<string, string> {
-    const data: Record<string, string> = {};
-    for (let i = 0; i < fields.length; i += 2) {
-      data[fields[i]] = fields[i + 1];
-    }
-    return data;
   }
 
   private async handleJobStatusChange(jobId: string): Promise<void> {
@@ -1128,8 +1128,12 @@ export class LightweightAPIServer {
       max_retries: job.max_retries.toString(),
     });
 
-    // Add to pending queue with priority scoring
-    const score = job.priority * 1000 + Date.now();
+    // Add to pending queue with workflow-aware scoring
+    // Priority: workflow_priority > job.priority (x1,000,000)
+    // DateTime: FIFO - older jobs first (invert timestamp so older = higher score)
+    const effectivePriority = job.workflow_priority || job.priority;
+    const effectiveDateTime = job.workflow_datetime || Date.parse(job.created_at);
+    const score = effectivePriority * 1000000 + (Number.MAX_SAFE_INTEGER - effectiveDateTime);
     await this.redis.zadd('jobs:pending', score, jobId);
 
     // Broadcast job_submitted event to monitors
@@ -1216,6 +1220,10 @@ export class LightweightAPIServer {
       // Enable keyspace notifications for progress streaming
       // K = Keyspace events, $ = String commands, s = Stream commands, E = Keyevent, x = Expired
       await this.redis.config('SET', 'notify-keyspace-events', 'Ks$Ex');
+
+      // Redis functions are pre-installed on Railway Redis instance
+      // Use CLI command `pnpm redis:functions:install` to install them manually
+      logger.info('ℹ️ Using pre-installed Redis functions for orchestration');
 
       // Start HTTP server
       await new Promise<void>((resolve, reject) => {

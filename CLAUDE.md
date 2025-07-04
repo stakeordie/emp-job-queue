@@ -59,7 +59,8 @@ This is a complete rebuild of the Python-based emp-redis system into JavaScript/
 
 ### 2. Architecture Improvements
 - **Pull-based job selection**: Workers actively request jobs they can handle
-- **Dynamic capability matching**: Real-time filtering based on models, hardware, availability
+- **Redis Function-based orchestration**: Server-side atomic job matching based on capabilities
+- **Dynamic capability matching**: Unlimited extensible capability/requirement system
 - **Priority + FIFO**: Highest priority first, then oldest within priority level
 - **Multi-service support**: ComfyUI, A1111, and other AI service connectors
 - **Flexible worker deployment**: Easy GPU server setup with single download
@@ -117,22 +118,24 @@ This is a complete rebuild of the Python-based emp-redis system into JavaScript/
 
 ## Key Design Decisions
 
-### 1. Job Selection Model
-**Pull-based**: Workers query the job broker: "What's the highest priority job I can handle?"
-- Workers send capability queries to Redis-based job broker
-- Broker returns job ID + job data for best matching job
-- Worker processes job and reports progress/completion
-- True priority ordering with FIFO within priority
+### 1. Job Selection Model  
+**Redis Function-based Orchestration**: Atomic server-side job matching
+- Workers call `findMatchingJob` Redis function with their capabilities
+- Function iterates pending jobs in priority order
+- Atomically checks requirements and claims first matching job
+- Returns job details or null if no match found
+- Eliminates race conditions and reduces network overhead
 
 ### 2. Capability Matching
-**Multi-dimensional scoring** similar to existing emp-bullmq:
-- Service type (comfyui, a1111, etc.)
-- Hardware requirements (GPU memory, CPU, etc.)
+**Unlimited Dynamic Matching** - No predefined schema:
+- Service type (comfyui, a1111, custom services)
+- Hardware requirements (GPU memory, CPU, custom specs)
 - Model availability (specific models loaded on worker)
 - Customer isolation (strict/loose/none)
 - Geographic/compliance constraints
 - Cost efficiency
-- Current worker load
+- ANY custom requirements/capabilities via JSON
+- Forward-compatible with future needs
 
 ### 3. Redis Data Structures
 **Efficient job storage and retrieval**:
@@ -287,28 +290,35 @@ RAM_GB=32
 
 ## Implementation Phases
 
-### Phase 1: Core Infrastructure
-- [ ] Redis job broker implementation
-- [ ] Worker registry and capability matching
-- [ ] Basic message routing
-- [ ] TypeScript type definitions
+### Phase 1: Core Infrastructure ✅ COMPLETED
+- [x] Redis job broker implementation
+- [x] Worker registry and capability tracking
+- [x] Basic message routing
+- [x] TypeScript type definitions
 
-### Phase 2: Hub Service
-- [ ] Job submission API
-- [ ] WebSocket worker communication
-- [ ] Priority queue management
-- [ ] Basic monitoring dashboard
+### Phase 2: Redis-Direct Architecture ✅ COMPLETED  
+- [x] Lightweight API server (replaced hub orchestration)
+- [x] Direct Redis polling by workers
+- [x] Real-time progress via Redis pub/sub
+- [x] WebSocket monitoring connections
 
-### Phase 3: Worker System
-- [ ] Base worker implementation
-- [ ] Connector system
-- [ ] ComfyUI and A1111 connectors
-- [ ] Worker deployment packaging
+### Phase 3: Real-Time Updates ✅ COMPLETED
+- [x] Job progress streaming
+- [x] Worker status updates
+- [x] Monitor UI with live updates
+- [x] Event-driven architecture
 
-### Phase 4: Testing & Polish
-- [ ] Comprehensive test suite
+### Phase 4: Orchestration System 🚧 IN PROGRESS
+- [ ] Redis Function implementation
+- [ ] Capability-based job matching
+- [ ] Function installer/manager
+- [ ] Worker integration
+- [ ] Testing and optimization
+
+### Phase 5: Production Polish
 - [ ] Performance optimization
-- [ ] Documentation
+- [ ] Comprehensive test suite
+- [ ] Documentation updates
 - [ ] Release automation
 
 This rebuild will provide a modern, maintainable, and efficient job broker system that preserves all the benefits of the Python emp-redis while being much easier to develop, deploy, and maintain.

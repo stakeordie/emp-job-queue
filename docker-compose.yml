@@ -1,17 +1,8 @@
 # Docker Compose configuration for emp-redis JavaScript rebuild
 # Matches the Python version's environment setup
 services:
-  # Redis database - comment out when using external Redis
-  redis:
-    image: redis:7-alpine
-    container_name: redis
-    ports:
-      - "6379:6379"
-    volumes:
-      - redis_data:/data
-    networks:
-      - emp-redis-network
-    restart: unless-stopped
+  # Redis is now hosted on Railway with Functions support
+  # Local Redis commented out - uncomment if needed for development
 
   # Hub service
   hub:
@@ -25,14 +16,12 @@ services:
     environment:
       - NODE_ENV=production
       # Use external Redis for production, local Redis for development
-      - REDIS_URL=${REDIS_URL:-redis://redis:6379/0}
+      - REDIS_URL=${REDIS_URL:-redis://default:JQSoNVpIPsuaDQYicNvocglialxPrTjj@ballast.proxy.rlwy.net:30645}
       - HUB_PORT=3001
       - HUB_HOST=0.0.0.0
       - WS_PORT=3002
       - WS_HOST=0.0.0.0
       - LOG_LEVEL=info
-    depends_on:
-      - redis
     networks:
       - emp-redis-network
     restart: unless-stopped
@@ -46,7 +35,7 @@ services:
     environment:
       - NODE_ENV=production
       - WORKER_ID=worker1-js
-      - HUB_REDIS_URL=${REDIS_URL:-redis://redis:6379/0}
+      - HUB_REDIS_URL=${REDIS_URL:-redis://default:JQSoNVpIPsuaDQYicNvocglialxPrTjj@ballast.proxy.rlwy.net:30645}
       - HUB_WS_URL=ws://hub:3002
       - WORKER_CONNECTORS=simulation
       - WORKER_SIMULATION_PROCESSING_TIME=5
@@ -71,7 +60,7 @@ services:
     environment:
       - NODE_ENV=production
       - WORKER_ID=worker2-js
-      - HUB_REDIS_URL=${REDIS_URL:-redis://redis:6379/0}
+      - HUB_REDIS_URL=${REDIS_URL:-redis://default:JQSoNVpIPsuaDQYicNvocglialxPrTjj@ballast.proxy.rlwy.net:30645}
       - HUB_WS_URL=ws://hub:3002
       - WORKER_CONNECTORS=simulation
       - WORKER_SIMULATION_PROCESSING_TIME=3
@@ -96,7 +85,7 @@ services:
     environment:
       - NODE_ENV=production
       - WORKER_ID=worker3-comfyui
-      - HUB_REDIS_URL=${REDIS_URL:-redis://redis:6379/0}
+      - HUB_REDIS_URL=${REDIS_URL:-redis://default:JQSoNVpIPsuaDQYicNvocglialxPrTjj@ballast.proxy.rlwy.net:30645}
       - HUB_WS_URL=ws://hub:3002
       - WORKER_CONNECTORS=comfyui,simulation
       - WORKER_COMFYUI_HOST=108.53.57.130
@@ -134,7 +123,7 @@ services:
     environment:
       - NODE_ENV=production
       - WORKER_ID=worker4-js
-      - HUB_REDIS_URL=${REDIS_URL:-redis://redis:6379/0}
+      - HUB_REDIS_URL=${REDIS_URL:-redis://default:JQSoNVpIPsuaDQYicNvocglialxPrTjj@ballast.proxy.rlwy.net:30645}
       - HUB_WS_URL=ws://hub:3002
       - WORKER_CONNECTORS=simulation
       - WORKER_SIMULATION_PROCESSING_TIME=10
@@ -157,6 +146,4 @@ networks:
   emp-redis-network:
     driver: bridge
 
-volumes:
-  redis_data:
-    driver: local
+# No volumes needed - Redis is hosted on Railway

@@ -119,7 +119,7 @@ export class JobBroker implements JobBrokerInterface {
     // Critical: Use workflow-based scoring for proper priority inheritance
     // Score = priority * 1000000 + workflowDatetime
     // This ensures workflow steps stay grouped together
-    const score = workflowPriority * 1000000 + workflowDatetime;
+    const score = workflowPriority * 1000000 + (Number.MAX_SAFE_INTEGER - workflowDatetime);
     await this.redis['redis'].zadd('jobs:pending', score, jobId);
 
     logger.debug(
@@ -183,7 +183,7 @@ export class JobBroker implements JobBrokerInterface {
     // Use workflow-based scoring like other jobs
     const workflowPriority = job.workflow_priority || job.priority;
     const workflowDatetime = job.workflow_datetime || Date.now();
-    const score = workflowPriority * 1000000 + workflowDatetime;
+    const score = workflowPriority * 1000000 + (Number.MAX_SAFE_INTEGER - workflowDatetime);
 
     await this.redis['redis'].zadd('jobs:pending', score, jobId);
 
@@ -210,7 +210,8 @@ export class JobBroker implements JobBrokerInterface {
 
     // Preserve workflow-based scoring when releasing
     const score =
-      (job.workflow_priority || job.priority) * 1000000 + (job.workflow_datetime || Date.now());
+      (job.workflow_priority || job.priority) * 1000000 +
+      (Number.MAX_SAFE_INTEGER - (job.workflow_datetime || Date.now()));
 
     await this.redis['redis'].zadd('jobs:pending', score, jobId);
     await this.redis['redis'].hmset(`job:${jobId}`, {

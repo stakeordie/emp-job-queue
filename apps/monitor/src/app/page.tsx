@@ -228,6 +228,20 @@ export default function Home() {
                 <div className="space-y-2">
                   {jobs
                     .filter(job => job.status === 'pending' || job.status === 'active' || job.status === 'processing')
+                    .sort((a, b) => {
+                      // Sort by workflow-aware priority (same as Redis function)
+                      // Primary: workflow_priority > job.priority (higher first)
+                      const priorityA = a.workflow_priority || a.priority;
+                      const priorityB = b.workflow_priority || b.priority;
+                      if (priorityA !== priorityB) {
+                        return priorityB - priorityA;
+                      }
+                      
+                      // Secondary: workflow_datetime > created_at (older first = FIFO)
+                      const datetimeA = a.workflow_datetime ? new Date(a.workflow_datetime).getTime() : new Date(a.created_at).getTime();
+                      const datetimeB = b.workflow_datetime ? new Date(b.workflow_datetime).getTime() : new Date(b.created_at).getTime();
+                      return datetimeA - datetimeB;
+                    })
                     .slice(0, 20)
                     .map((job) => (
                     <div key={job.id} className="flex items-center justify-between p-3 border rounded">
@@ -320,6 +334,12 @@ export default function Home() {
                 <div className="space-y-2">
                   {jobs
                     .filter(job => job.status === 'completed' || job.status === 'failed')
+                    .sort((a, b) => {
+                      // Sort finished jobs by completion time (most recent first)
+                      const timeA = a.completed_at || a.failed_at || a.created_at;
+                      const timeB = b.completed_at || b.failed_at || b.created_at;
+                      return timeB - timeA;
+                    })
                     .slice(0, 15)
                     .map((job) => (
                     <div key={job.id} className="flex items-center justify-between p-2 border rounded text-sm">
