@@ -2,6 +2,39 @@
 
 ## 2025-07-04
 
+### 🚧 In Progress - Redis Function Worker Integration
+
+#### 🎯 **Capability-Based Job Matching**
+- **Goal**: Workers claim jobs they can actually process using Redis Function orchestration
+- **Implementation**: Updated `RedisDirectWorkerClient` to use `findMatchingJob` function
+- **Benefits**: 
+  - Atomic job matching based on worker capabilities
+  - Eliminates race conditions in job claiming
+  - Supports unlimited custom capability requirements
+  - Falls back to simple polling if function unavailable
+
+#### 🔧 **Technical Changes**
+- **Worker Client**: Modified `requestJob()` to call Redis Function via `FCALL`
+- **Capability Passing**: Workers send full capabilities JSON to function
+- **Result Parsing**: Handle function's `{jobId, job}` response format
+- **Status Updates**: Function handles worker status atomically
+- **Backward Compatible**: Automatic fallback to Phase 1B simple polling
+
+#### 📊 **Function Call Example**
+```javascript
+// Worker calls Redis Function
+await redis.call(
+  'FCALL',
+  'findMatchingJob',
+  '0', // No keys
+  workerId,
+  JSON.stringify(capabilities),
+  '100' // Check up to 100 jobs
+);
+```
+
+---
+
 ### ✅ Completed - Workflow-Aware Job Prioritization System
 
 #### 🎯 **Priority Logic Implementation**

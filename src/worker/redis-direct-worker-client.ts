@@ -199,9 +199,100 @@ export class RedisDirectWorkerClient {
   }
 
   /**
-   * Poll Redis for jobs directly using simple FIFO
+   * Request a job using Redis Function for capability-based matching
    */
-  async requestJob(_capabilities: WorkerCapabilities): Promise<Job | null> {
+  async requestJob(capabilities: WorkerCapabilities): Promise<Job | null> {
+    try {
+      // Phase 4: Use Redis Function for intelligent job matching
+      logger.debug(`Worker ${this.workerId} requesting job with capabilities:`, capabilities);
+
+      // Call the findMatchingJob Redis Function
+      // The function expects: worker_id, capabilities JSON, max_jobs_to_check
+      const result = (await this.redis.call(
+        'FCALL',
+        'findMatchingJob',
+        '0', // No keys
+        this.workerId,
+        JSON.stringify(capabilities),
+        '100' // Check up to 100 jobs for a match
+      )) as string | null;
+
+      if (!result) {
+        logger.debug(`Worker ${this.workerId} - No matching jobs available`);
+        return null;
+      }
+
+      // Parse the result returned by the function
+      const resultData = JSON.parse(result);
+      const jobData = resultData.job;
+
+      // Convert to our Job type
+      const job: Job = {
+        id: resultData.jobId,
+        service_required: jobData.service_required || jobData.job_type || 'unknown',
+        priority: parseInt(jobData.priority || '50'),
+        payload:
+          typeof jobData.payload === 'string' ? JSON.parse(jobData.payload) : jobData.payload || {},
+        requirements:
+          typeof jobData.requirements === 'string'
+            ? JSON.parse(jobData.requirements)
+            : jobData.requirements,
+        customer_id: jobData.customer_id,
+        created_at: jobData.created_at,
+        assigned_at: jobData.assigned_at || new Date().toISOString(),
+        started_at: jobData.started_at,
+        completed_at: jobData.completed_at,
+        failed_at: jobData.failed_at,
+        worker_id: this.workerId, // Function assigns it to us
+        status: JobStatus.ASSIGNED,
+        retry_count: parseInt(jobData.retry_count || '0'),
+        max_retries: parseInt(jobData.max_retries || '3'),
+        last_failed_worker: jobData.last_failed_worker,
+        processing_time: jobData.processing_time ? parseInt(jobData.processing_time) : undefined,
+        estimated_completion: jobData.estimated_completion,
+        workflow_id: jobData.workflow_id,
+        workflow_priority: jobData.workflow_priority
+          ? parseInt(jobData.workflow_priority)
+          : undefined,
+        workflow_datetime: jobData.workflow_datetime
+          ? parseInt(jobData.workflow_datetime)
+          : undefined,
+        step_number: jobData.step_number ? parseInt(jobData.step_number) : undefined,
+      };
+
+      // Worker status already updated by Redis Function, just publish the event
+      const statusEvent = {
+        worker_id: this.workerId,
+        old_status: 'idle',
+        new_status: 'busy',
+        current_job_id: job.id,
+        timestamp: Date.now(),
+      };
+      await this.redis.publish('worker_status', JSON.stringify(statusEvent));
+
+      logger.info(`Worker ${this.workerId} claimed job ${job.id} via Redis Function orchestration`);
+      logger.debug(
+        `Job details: service=${job.service_required}, priority=${job.priority}, workflow=${job.workflow_id || 'none'}`
+      );
+
+      return job;
+    } catch (error) {
+      logger.error(`Worker ${this.workerId} job request failed:`, error);
+
+      // Fall back to simple polling if function not available
+      if (error instanceof Error && error.message.includes('ERR unknown command')) {
+        logger.warn(`Redis Function not available, falling back to simple polling`);
+        return this.requestJobSimple(capabilities);
+      }
+
+      return null;
+    }
+  }
+
+  /**
+   * Fallback: Poll Redis for jobs directly using simple FIFO (Phase 1B)
+   */
+  private async requestJobSimple(_capabilities: WorkerCapabilities): Promise<Job | null> {
     try {
       // Phase 1B: Simple Redis polling - get highest priority job
       const jobIds = await this.redis.zrevrange('jobs:pending', 0, 0);
