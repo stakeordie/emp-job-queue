@@ -207,13 +207,17 @@ export class RedisDirectWorkerClient {
       logger.debug(`Worker ${this.workerId} requesting job with capabilities:`, capabilities);
 
       // Call the findMatchingJob Redis Function
-      // The function expects: worker_id, capabilities JSON, max_jobs_to_check
+      // The function expects: capabilities JSON (with worker_id inside), max_jobs_to_check
+      const capabilitiesWithId = {
+        ...capabilities,
+        worker_id: this.workerId,
+      };
+      
       const result = (await this.redis.call(
         'FCALL',
         'findMatchingJob',
         '0', // No keys
-        this.workerId,
-        JSON.stringify(capabilities),
+        JSON.stringify(capabilitiesWithId),
         '100' // Check up to 100 jobs for a match
       )) as string | null;
 
