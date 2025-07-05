@@ -406,23 +406,54 @@ export class JobBroker implements JobBrokerInterface {
         }
       }
 
-      // Get active jobs
-      const activeKeys = await this.redis['redis'].keys('jobs:active:*');
-      for (const key of activeKeys) {
-        const activeJobs = await this.redis['redis'].hgetall(key);
-        for (const [jobId, jobDataStr] of Object.entries(activeJobs)) {
-          try {
-            const jobData = JSON.parse(jobDataStr as string);
-            jobs.push(this.parseJobData(jobId, jobData, 'active'));
-          } catch (e) {
-            logger.error(`Error parsing active job ${jobId}:`, e);
+      // Get active jobs - use SCAN instead of KEYS to avoid blocking Redis
+      const activeKeys: string[] = [];
+      let cursor = '0';
+      do {
+        const result = await this.redis['redis'].scan(
+          cursor,
+          'MATCH',
+          'jobs:active:*',
+          'COUNT',
+          100
+        );
+        cursor = result[0];
+        activeKeys.push(...result[1]);
+      } while (cursor !== '0');
+
+      // Use pipeline for active jobs if any exist
+      if (activeKeys.length > 0) {
+        const pipeline = this.redis['redis'].pipeline();
+        for (const key of activeKeys) {
+          pipeline.hgetall(key);
+        }
+        const activeJobsData = await pipeline.exec();
+
+        if (activeJobsData) {
+          for (let i = 0; i < activeKeys.length; i++) {
+            const result = activeJobsData[i];
+            if (result && !result[0] && result[1]) {
+              const activeJobs = result[1] as Record<string, string>;
+              for (const [jobId, jobDataStr] of Object.entries(activeJobs)) {
+                try {
+                  const jobData = JSON.parse(jobDataStr);
+                  jobs.push(this.parseJobData(jobId, jobData, 'active'));
+                } catch (e) {
+                  logger.error(`Error parsing active job ${jobId}:`, e);
+                }
+              }
+            }
           }
         }
       }
 
-      // Get completed jobs
+      // Get completed jobs - limit to most recent 50 for performance
       const completedJobs = await this.redis['redis'].hgetall('jobs:completed');
-      for (const [jobId, jobDataStr] of Object.entries(completedJobs)) {
+      const completedEntries = Object.entries(completedJobs)
+        .slice(-50) // Only get last 50 completed jobs
+        .reverse(); // Most recent first
+
+      for (const [jobId, jobDataStr] of completedEntries) {
         try {
           const jobData = JSON.parse(jobDataStr as string);
           jobs.push(this.parseJobData(jobId, jobData, 'completed'));
@@ -431,9 +462,13 @@ export class JobBroker implements JobBrokerInterface {
         }
       }
 
-      // Get failed jobs
+      // Get failed jobs - limit to most recent 50 for performance
       const failedJobs = await this.redis['redis'].hgetall('jobs:failed');
-      for (const [jobId, jobDataStr] of Object.entries(failedJobs)) {
+      const failedEntries = Object.entries(failedJobs)
+        .slice(-50) // Only get last 50 failed jobs
+        .reverse(); // Most recent first
+
+      for (const [jobId, jobDataStr] of failedEntries) {
         try {
           const jobData = JSON.parse(jobDataStr as string);
           jobs.push(this.parseJobData(jobId, jobData, 'failed'));
