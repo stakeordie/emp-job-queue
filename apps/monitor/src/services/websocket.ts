@@ -94,8 +94,8 @@ export class WebSocketService {
     const monitorUrl = `${protocol}://${baseHost}/ws/monitor/${this.monitorId}${authQuery}`;
     const clientUrl = `${protocol}://${baseHost}/ws/client/${clientId}${authQuery}`;
     
-    console.log('[WebSocket] Connecting monitor to:', monitorUrl);
-    console.log('[WebSocket] Connecting client to:', clientUrl);
+    // console.log('[WebSocket] Connecting monitor to:', monitorUrl);
+    // console.log('[WebSocket] Connecting client to:', clientUrl);
     
     try {
       // Create monitor WebSocket connection
@@ -114,7 +114,7 @@ export class WebSocketService {
 
   private setupWebSocketHandlers(ws: WebSocket, type: 'monitor' | 'client') {
     ws.onopen = () => {
-      console.log(`[WebSocket] ${type} connected`);
+      // console.log(`[WebSocket] ${type} connected`);
       
       // If monitor connection, send initial setup messages
       if (type === 'monitor' && ws === this.monitorWs) {
@@ -158,7 +158,7 @@ export class WebSocketService {
     };
 
     ws.onclose = (event) => {
-      console.log(`[WebSocket] ${type} connection closed:`, event.code, event.reason);
+      // console.log(`[WebSocket] ${type} connection closed:`, event.code, event.reason);
       
       // If either connection closes, trigger disconnect
       if (this.monitorWs?.readyState !== WebSocket.OPEN || this.clientWs?.readyState !== WebSocket.OPEN) {
@@ -168,10 +168,10 @@ export class WebSocketService {
         // Auto-reconnect only if not manually disconnected
         if (!this.manuallyDisconnected && this.reconnectAttempts < this.maxReconnectAttempts) {
           this.reconnectAttempts++;
-          console.log(`[WebSocket] Reconnecting... (attempt ${this.reconnectAttempts}/${this.maxReconnectAttempts})`);
+          // console.log(`[WebSocket] Reconnecting... (attempt ${this.reconnectAttempts}/${this.maxReconnectAttempts})`);
           setTimeout(() => this.connect(), this.reconnectInterval);
         } else if (this.manuallyDisconnected) {
-          console.log(`[WebSocket] Skipping auto-reconnect due to manual disconnect`);
+          // console.log(`[WebSocket] Skipping auto-reconnect due to manual disconnect`);
         }
       }
     };
@@ -277,7 +277,7 @@ export class WebSocketService {
       timestamp: Date.now()
     };
     
-    console.log('[WebSocket] Sending monitor connect:', message);
+    // console.log('[WebSocket] Sending monitor connect:', message);
     this.monitorWs.send(JSON.stringify(message));
   }
 
@@ -296,7 +296,7 @@ export class WebSocketService {
       timestamp: Date.now()
     };
     
-    console.log('[WebSocket] Sending subscription:', message);
+    // console.log('[WebSocket] Sending subscription:', message);
     this.monitorWs.send(JSON.stringify(message));
   }
 
@@ -338,7 +338,7 @@ export class WebSocketService {
   private handleMonitorEvent(event: MonitorEvent) {
     // Skip logging job_progress events to reduce console spam
     if (event.type !== 'job_progress') {
-      console.log('[WebSocket] Received event:', event.type, event);
+      // console.log('[WebSocket] Received event:', event.type, event);
     }
     
     // Update last event timestamp for resync capability
@@ -373,7 +373,7 @@ export class WebSocketService {
     oldest_available_timestamp: number;
     timestamp: number;
   }) {
-    console.log(`[WebSocket] Received resync response: ${response.events.length} events, has_more: ${response.has_more}`);
+    // console.log(`[WebSocket] Received resync response: ${response.events.length} events, has_more: ${response.has_more}`);
     
     // Process all events in chronological order
     response.events
@@ -386,7 +386,7 @@ export class WebSocketService {
     // If there are more events available, we could automatically request them
     // For now, we leave it to the application to decide
     if (response.has_more) {
-      console.log('[WebSocket] More events available for resync - use requestResync() to get them');
+      // console.log('[WebSocket] More events available for resync - use requestResync() to get them');
     }
   }
 
@@ -410,7 +410,7 @@ export class WebSocketService {
       timestamp: Date.now()
     };
     
-    console.log('[WebSocket] Requesting resync since:', message.since_timestamp);
+    // console.log('[WebSocket] Requesting resync since:', message.since_timestamp);
     this.monitorWs.send(JSON.stringify(message));
   }
 

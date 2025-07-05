@@ -2,6 +2,8 @@
 // Implements the core job matching algorithm from emp-redis
 
 import { v4 as uuidv4 } from 'uuid';
+import { promises as fs } from 'fs';
+import path from 'path';
 import { RedisService } from './redis-service.js';
 import { JobBrokerInterface } from './interfaces/job-broker.js';
 import { Job, JobSubmissionRequest, JobStatus, WorkflowMetadata } from './types/job.js';
@@ -534,5 +536,226 @@ export class JobBroker implements JobBrokerInterface {
       error: jobData.error as string,
       failure_count: parseInt((jobData.failure_count as string) || '0'),
     };
+  }
+
+  /**
+   * Archive completed and failed jobs older than specified days
+   * Moves jobs from Redis to date-partitioned JSON files
+   */
+  async archiveCompletedJobs(
+    olderThanDays: number = 7,
+    archiveDir: string = './data/archived-jobs'
+  ): Promise<{ archived: number; errors: number }> {
+    const cutoffTime = Date.now() - olderThanDays * 24 * 60 * 60 * 1000;
+    let archivedCount = 0;
+    let errorCount = 0;
+
+    try {
+      // Ensure archive directory exists
+      await fs.mkdir(archiveDir, { recursive: true });
+
+      // Archive completed jobs
+      const completedResult = await this.archiveJobsByStatus('completed', cutoffTime, archiveDir);
+      archivedCount += completedResult.archived;
+      errorCount += completedResult.errors;
+
+      // Archive failed jobs
+      const failedResult = await this.archiveJobsByStatus('failed', cutoffTime, archiveDir);
+      archivedCount += failedResult.archived;
+      errorCount += failedResult.errors;
+
+      logger.info(`Job archival completed: ${archivedCount} jobs archived, ${errorCount} errors`);
+    } catch (error) {
+      logger.error('Error during job archival:', error);
+      errorCount++;
+    }
+
+    return { archived: archivedCount, errors: errorCount };
+  }
+
+  /**
+   * Archive jobs by status (completed or failed)
+   */
+  private async archiveJobsByStatus(
+    status: 'completed' | 'failed',
+    cutoffTime: number,
+    archiveDir: string
+  ): Promise<{ archived: number; errors: number }> {
+    const redisKey = `jobs:${status}`;
+    let archivedCount = 0;
+    let errorCount = 0;
+
+    try {
+      // Get all jobs of this status
+      const jobs = await this.redis['redis'].hgetall(redisKey);
+      const jobsToArchive: Record<string, unknown> = {};
+      const jobsToKeep: Record<string, string> = {};
+
+      // Separate old jobs (to archive) from recent jobs (to keep)
+      for (const [jobId, jobDataStr] of Object.entries(jobs)) {
+        try {
+          const jobData = JSON.parse(jobDataStr);
+          const completedAt = jobData.completed_at || jobData.created_at || Date.now();
+
+          if (completedAt < cutoffTime) {
+            // Job is old enough to archive
+            jobsToArchive[jobId] = jobData;
+          } else {
+            // Job is recent, keep in Redis
+            jobsToKeep[jobId] = jobDataStr;
+          }
+        } catch (e) {
+          logger.error(`Error parsing job ${jobId} for archival:`, e);
+          errorCount++;
+          // Keep unparseable jobs in Redis to avoid data loss
+          jobsToKeep[jobId] = jobDataStr;
+        }
+      }
+
+      // Archive old jobs to files
+      if (Object.keys(jobsToArchive).length > 0) {
+        await this.writeJobsToArchive(jobsToArchive, status, archiveDir);
+        archivedCount = Object.keys(jobsToArchive).length;
+
+        // Update Redis to only contain recent jobs
+        await this.redis['redis'].del(redisKey);
+        if (Object.keys(jobsToKeep).length > 0) {
+          await this.redis['redis'].hmset(redisKey, jobsToKeep);
+        }
+
+        logger.info(
+          `Archived ${archivedCount} ${status} jobs, kept ${Object.keys(jobsToKeep).length} recent jobs`
+        );
+      }
+    } catch (error) {
+      logger.error(`Error archiving ${status} jobs:`, error);
+      errorCount++;
+    }
+
+    return { archived: archivedCount, errors: errorCount };
+  }
+
+  /**
+   * Write jobs to date-partitioned archive files
+   */
+  private async writeJobsToArchive(
+    jobs: Record<string, unknown>,
+    status: string,
+    archiveDir: string
+  ): Promise<void> {
+    // Group jobs by date for partitioning
+    const jobsByDate: Record<string, Array<[string, unknown]>> = {};
+
+    for (const [jobId, jobData] of Object.entries(jobs)) {
+      const job = jobData as Record<string, unknown>;
+      const completedAt = (job.completed_at as number) || (job.created_at as number) || Date.now();
+      const date = new Date(completedAt).toISOString().split('T')[0]; // YYYY-MM-DD
+
+      if (!jobsByDate[date]) {
+        jobsByDate[date] = [];
+      }
+      jobsByDate[date].push([jobId, jobData]);
+    }
+
+    // Write each date partition to a separate file
+    for (const [date, jobEntries] of Object.entries(jobsByDate)) {
+      const filename = `${status}-${date}.jsonl`;
+      const filepath = path.join(archiveDir, filename);
+
+      // Convert to JSONL format (one JSON object per line)
+      const lines = jobEntries.map(([jobId, jobData]) =>
+        JSON.stringify({ id: jobId, ...(jobData as Record<string, unknown>) })
+      );
+
+      try {
+        // Append to existing file or create new one
+        await fs.appendFile(filepath, lines.join('\n') + '\n');
+      } catch (error) {
+        logger.error(`Error writing archive file ${filepath}:`, error);
+        throw error;
+      }
+    }
+  }
+
+  /**
+   * Get archived jobs for a specific date range
+   */
+  async getArchivedJobs(
+    status: 'completed' | 'failed',
+    startDate: string,
+    endDate: string,
+    archiveDir: string = './data/archived-jobs'
+  ): Promise<unknown[]> {
+    const jobs: unknown[] = [];
+
+    try {
+      const start = new Date(startDate);
+      const end = new Date(endDate);
+
+      // Iterate through date range
+      for (let date = new Date(start); date <= end; date.setDate(date.getDate() + 1)) {
+        const dateStr = date.toISOString().split('T')[0];
+        const filename = `${status}-${dateStr}.jsonl`;
+        const filepath = path.join(archiveDir, filename);
+
+        try {
+          const content = await fs.readFile(filepath, 'utf-8');
+          const lines = content.trim().split('\n');
+
+          for (const line of lines) {
+            if (line.trim()) {
+              jobs.push(JSON.parse(line));
+            }
+          }
+        } catch (error) {
+          // File doesn't exist for this date, continue
+          if ((error as NodeJS.ErrnoException).code !== 'ENOENT') {
+            logger.error(`Error reading archive file ${filepath}:`, error);
+          }
+        }
+      }
+    } catch (error) {
+      logger.error('Error retrieving archived jobs:', error);
+    }
+
+    return jobs;
+  }
+
+  /**
+   * Clean up archive files older than specified days
+   */
+  async cleanupArchives(
+    olderThanDays: number = 90,
+    archiveDir: string = './data/archived-jobs'
+  ): Promise<{ deleted: number; errors: number }> {
+    const cutoffTime = Date.now() - olderThanDays * 24 * 60 * 60 * 1000;
+    let deletedCount = 0;
+    let errorCount = 0;
+
+    try {
+      const files = await fs.readdir(archiveDir);
+
+      for (const file of files) {
+        if (file.endsWith('.jsonl')) {
+          const filepath = path.join(archiveDir, file);
+          try {
+            const stats = await fs.stat(filepath);
+            if (stats.mtime.getTime() < cutoffTime) {
+              await fs.unlink(filepath);
+              deletedCount++;
+              logger.info(`Deleted old archive file: ${file}`);
+            }
+          } catch (error) {
+            logger.error(`Error processing archive file ${file}:`, error);
+            errorCount++;
+          }
+        }
+      }
+    } catch (error) {
+      logger.error('Error during archive cleanup:', error);
+      errorCount++;
+    }
+
+    return { deleted: deletedCount, errors: errorCount };
   }
 }

@@ -25,9 +25,9 @@ import {
 import { Progress } from "@/components/ui/progress"
 import { Play, Square, RefreshCw, X } from "lucide-react"
 import { JobSubmissionForm } from "@/components/job-submission-form"
-import { WorkerCard } from "@/components/WorkerCard"
+import { SimpleWorkerCard } from "@/components/SimpleWorkerCard"
 import { useMonitorStore } from "@/store"
-import { useState } from "react"
+import { useState, useMemo } from "react"
 
 // Environment presets
 const CONNECTION_PRESETS = {
@@ -89,9 +89,51 @@ export default function Home() {
     }
   };
 
-  const activeJobs = jobs.filter(job => job.status === 'active' || job.status === 'processing').length;
-  const completedJobs = jobs.filter(job => job.status === 'completed').length;
-  const failedJobs = jobs.filter(job => job.status === 'failed').length;
+  // Memoize job counts to avoid recalculating on every render
+  const jobCounts = useMemo(() => ({
+    active: jobs.filter(job => job.status === 'active' || job.status === 'processing').length,
+    pending: jobs.filter(job => job.status === 'pending').length,
+    completed: jobs.filter(job => job.status === 'completed').length,
+    failed: jobs.filter(job => job.status === 'failed').length,
+  }), [jobs]);
+
+  // Memoize filtered and sorted job lists
+  const activeJobsList = useMemo(() => 
+    jobs.filter(job => job.status === 'active' || job.status === 'processing'),
+    [jobs]
+  );
+
+  const pendingJobsList = useMemo(() => 
+    jobs
+      .filter(job => job.status === 'pending')
+      .sort((a, b) => {
+        // Sort by workflow-aware priority (same as Redis function)
+        // Primary: workflow_priority > job.priority (higher first)
+        const priorityA = a.workflow_priority || a.priority;
+        const priorityB = b.workflow_priority || b.priority;
+        if (priorityA !== priorityB) {
+          return priorityB - priorityA;
+        }
+        
+        // Secondary: workflow_datetime > created_at (older first = FIFO)
+        const datetimeA = a.workflow_datetime ? new Date(a.workflow_datetime).getTime() : new Date(a.created_at).getTime();
+        const datetimeB = b.workflow_datetime ? new Date(b.workflow_datetime).getTime() : new Date(b.created_at).getTime();
+        return datetimeA - datetimeB;
+      }),
+    [jobs]
+  );
+
+  const finishedJobsList = useMemo(() => 
+    jobs
+      .filter(job => job.status === 'completed' || job.status === 'failed')
+      .sort((a, b) => {
+        // Sort finished jobs by completion time (most recent first)
+        const timeA = a.completed_at || a.failed_at || a.created_at;
+        const timeB = b.completed_at || b.failed_at || b.created_at;
+        return timeB - timeA;
+      }),
+    [jobs]
+  );
 
   return (
     <main className="container mx-auto p-6 space-y-6">
@@ -181,9 +223,9 @@ export default function Home() {
             Workers ({workers.length})
           </h2>
           <div className="flex items-center gap-4 text-sm text-muted-foreground">
-            <span>Active Jobs: {activeJobs}</span>
-            <span>Completed: {completedJobs}</span>
-            <span>Failed: {failedJobs}</span>
+            <span>Active Jobs: {jobCounts.active}</span>
+            <span>Completed: {jobCounts.completed}</span>
+            <span>Failed: {jobCounts.failed}</span>
           </div>
         </div>
         
@@ -192,9 +234,9 @@ export default function Home() {
             <p className="text-muted-foreground text-center">No workers connected. Start some workers to see them here.</p>
           </Card>
         ) : (
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+          <div className="flex flex-wrap gap-2">
             {workers.map((worker) => (
-              <WorkerCard key={worker.id} worker={worker} />
+              <SimpleWorkerCard key={worker.id} worker={worker} />
             ))}
           </div>
         )}
@@ -209,43 +251,24 @@ export default function Home() {
 
         {/* Right Side - Job Monitoring (3/4 width) */}
         <div className="lg:col-span-3 space-y-6">
-          {/* Active Job Queue */}
-          <Card>
-            <CardHeader>
-              <CardTitle className="flex items-center justify-between">
-                <span>Job Queue ({jobs.filter(job => job.status === 'pending' || job.status === 'active' || job.status === 'processing').length})</span>
-                <div className="flex items-center gap-4 text-sm text-muted-foreground">
-                  <span>Active: {activeJobs}</span>
-                  <span>Completed: {completedJobs}</span>
-                  <span>Failed: {failedJobs}</span>
-                </div>
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="max-h-80 overflow-y-auto">
-              {jobs.filter(job => job.status === 'pending' || job.status === 'active' || job.status === 'processing').length === 0 ? (
-                <p className="text-muted-foreground text-center py-8">No active jobs. Submit a job to get started.</p>
-              ) : (
-                <div className="space-y-2">
-                  {jobs
-                    .filter(job => job.status === 'pending' || job.status === 'active' || job.status === 'processing')
-                    .sort((a, b) => {
-                      // Sort by workflow-aware priority (same as Redis function)
-                      // Primary: workflow_priority > job.priority (higher first)
-                      const priorityA = a.workflow_priority || a.priority;
-                      const priorityB = b.workflow_priority || b.priority;
-                      if (priorityA !== priorityB) {
-                        return priorityB - priorityA;
-                      }
-                      
-                      // Secondary: workflow_datetime > created_at (older first = FIFO)
-                      const datetimeA = a.workflow_datetime ? new Date(a.workflow_datetime).getTime() : new Date(a.created_at).getTime();
-                      const datetimeB = b.workflow_datetime ? new Date(b.workflow_datetime).getTime() : new Date(b.created_at).getTime();
-                      return datetimeA - datetimeB;
-                    })
-                    .slice(0, 20)
-                    .map((job) => (
+          {/* Job Queues - Two Column Layout */}
+          <div className="grid grid-cols-2 gap-4">
+            {/* Active Jobs (Left) */}
+            <Card>
+              <CardHeader>
+                <CardTitle className="text-base">
+                  Active Jobs ({jobCounts.active})
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="max-h-96 overflow-y-auto">
+                {activeJobsList.length === 0 ? (
+                  <p className="text-muted-foreground text-center py-8 text-sm">No active jobs</p>
+                ) : (
+                  <div className="space-y-2">
+                    {activeJobsList.map((job, index) => (
                     <div key={job.id} className="flex items-center justify-between p-3 border rounded">
                       <div className="flex items-center gap-3 flex-1">
+                        <span className="text-lg font-bold text-muted-foreground w-8">{index + 1}</span>
                         <Badge variant={
                           job.status === 'processing' || job.status === 'active' ? 'secondary' : 'outline'
                         }>
@@ -322,28 +345,70 @@ export default function Home() {
             </CardContent>
           </Card>
 
+            {/* Pending Jobs (Right) */}
+            <Card>
+              <CardHeader>
+                <CardTitle className="text-base">
+                  Pending Jobs ({jobCounts.pending})
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="max-h-96 overflow-y-auto">
+                {pendingJobsList.length === 0 ? (
+                  <p className="text-muted-foreground text-center py-8 text-sm">No pending jobs</p>
+                ) : (
+                  <div className="space-y-2">
+                    {pendingJobsList.map((job, index) => (
+                      <div key={job.id} className="flex items-center justify-between p-3 border rounded">
+                        <div className="flex items-center gap-3 flex-1">
+                          <span className="text-lg font-bold text-muted-foreground w-8">{index + 1}</span>
+                          <Badge variant="outline">
+                            {job.status}
+                          </Badge>
+                          <div className="flex-1">
+                            <p className="font-medium text-sm">{job.id}</p>
+                            <p className="text-xs text-muted-foreground">
+                              {job.job_type} | Priority: {job.priority}
+                              {job.workflow_id && ` | Workflow: ${job.workflow_id}`}
+                              {job.workflow_priority !== undefined && ` | W.Priority: ${job.workflow_priority}`}
+                              {job.workflow_datetime && ` | ${new Date(job.workflow_datetime).toLocaleTimeString()}`}
+                              {job.step_number !== undefined && ` | Step: ${job.step_number}`}
+                            </p>
+                          </div>
+                        </div>
+                        
+                        {/* Action Buttons */}
+                        <div className="flex gap-1">
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => setCancelJobId(job.id)}
+                            title="Cancel job"
+                          >
+                            <X className="h-3 w-3" />
+                          </Button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+          </div>
+
           {/* Finished Jobs */}
           <Card>
             <CardHeader>
-              <CardTitle>Finished Jobs ({jobs.filter(job => job.status === 'completed' || job.status === 'failed').length})</CardTitle>
+              <CardTitle>Finished Jobs ({jobCounts.completed + jobCounts.failed})</CardTitle>
             </CardHeader>
             <CardContent className="max-h-64 overflow-y-auto">
-              {jobs.filter(job => job.status === 'completed' || job.status === 'failed').length === 0 ? (
+              {finishedJobsList.length === 0 ? (
                 <p className="text-muted-foreground text-center py-4">No finished jobs yet.</p>
               ) : (
                 <div className="space-y-2">
-                  {jobs
-                    .filter(job => job.status === 'completed' || job.status === 'failed')
-                    .sort((a, b) => {
-                      // Sort finished jobs by completion time (most recent first)
-                      const timeA = a.completed_at || a.failed_at || a.created_at;
-                      const timeB = b.completed_at || b.failed_at || b.created_at;
-                      return timeB - timeA;
-                    })
-                    .slice(0, 15)
-                    .map((job) => (
+                  {finishedJobsList.map((job, index) => (
                     <div key={job.id} className="flex items-center justify-between p-2 border rounded text-sm">
                       <div className="flex items-center gap-3">
+                        <span className="text-base font-bold text-muted-foreground w-6">{index + 1}</span>
                         <Badge variant={
                           job.status === 'completed' ? 'default' : 'destructive'
                         }>

@@ -4,6 +4,7 @@ import { Job, Worker, WorkerCapabilities, WorkerStatus, JobStatus, JobRequiremen
 import { SyncJobStateMessage, CancelJobMessage } from '@/types/message';
 import { websocketService } from '@/services/websocket';
 import type { MonitorEvent } from 'emp-redis-js/src/types/monitor-events';
+import { throttle, batchUpdates } from '@/utils/throttle';
 
 interface MonitorStore {
   // Connection state
@@ -110,14 +111,14 @@ export const useMonitorStore = create<MonitorStore>()(
     
     updateWorker: (workerId, updates) =>
       set((state) => {
-        console.log(`updateWorker called for ${workerId} with updates:`, updates);
+        // console.log(`updateWorker called for ${workerId} with updates:`, updates);
         const targetWorker = state.workers.find(w => w.id === workerId);
-        console.log(`Target worker ${workerId}:`, targetWorker ? { id: targetWorker.id, status: targetWorker.status } : 'NOT FOUND');
+        // console.log(`Target worker ${workerId}:`, targetWorker ? { id: targetWorker.id, status: targetWorker.status } : 'NOT FOUND');
         const newWorkers = state.workers.map((worker) =>
           worker.id === workerId ? { ...worker, ...updates } : worker
         );
         const updatedWorker = newWorkers.find(w => w.id === workerId);
-        console.log(`Updated worker ${workerId}:`, updatedWorker ? { id: updatedWorker.id, status: updatedWorker.status } : 'NOT FOUND');
+        // console.log(`Updated worker ${workerId}:`, updatedWorker ? { id: updatedWorker.id, status: updatedWorker.status } : 'NOT FOUND');
         return { workers: newWorkers };
       }),
     
@@ -175,10 +176,10 @@ export const useMonitorStore = create<MonitorStore>()(
       // Process workers
       if (stateData.workers) {
         if (Array.isArray(stateData.workers)) {
-          console.log('Full state workers received (array):', stateData.workers.map(w => (w as any).id));
+          // console.log('Full state workers received (array):', stateData.workers.map(w => (w as any).id));
           stateData.workers.forEach((workerData) => {
             const worker = workerData as Record<string, unknown>;
-            console.log(`Processing full state worker: ${worker.id}`);
+            // console.log(`Processing full state worker: ${worker.id}`);
             const capabilities = (worker.capabilities as WorkerCapabilities) || {
               gpu_count: 1,
               gpu_memory_gb: 8,
@@ -204,9 +205,9 @@ export const useMonitorStore = create<MonitorStore>()(
             });
           });
         } else if (typeof stateData.workers === 'object') {
-          console.log('Full state workers received (object):', Object.keys(stateData.workers));
+          // console.log('Full state workers received (object):', Object.keys(stateData.workers));
           Object.entries(stateData.workers).forEach(([workerId, workerData]) => {
-            console.log(`Processing full state worker: ${workerId}`);
+            // console.log(`Processing full state worker: ${workerId}`);
             const worker = workerData as Record<string, unknown>;
             const capabilities = (worker.capabilities as WorkerCapabilities) || {
               gpu_count: 1,
@@ -305,7 +306,7 @@ export const useMonitorStore = create<MonitorStore>()(
             };
             timestamp: number;
           };
-          console.log(`worker_connected event for ${workerEvent.worker_id}`);
+          // console.log(`worker_connected event for ${workerEvent.worker_id}`);
           const workerData = workerEvent.worker_data;
           addWorker({
             id: workerEvent.worker_id,
@@ -340,14 +341,14 @@ export const useMonitorStore = create<MonitorStore>()(
             current_job_id?: string;
             timestamp: number;
           };
-          console.log(`changing card state to ${workerEvent.new_status} for worker ${workerEvent.worker_id}`);
+          // console.log(`changing card state to ${workerEvent.new_status} for worker ${workerEvent.worker_id}`);
           
           // Check if worker exists, if not create it
           const { workers } = get();
           const existingWorker = workers.find(w => w.id === workerEvent.worker_id);
           
           if (!existingWorker) {
-            console.log(`Creating new worker ${workerEvent.worker_id} from status change event`);
+            // console.log(`Creating new worker ${workerEvent.worker_id} from status change event`);
             addWorker({
               id: workerEvent.worker_id,
               status: workerEvent.new_status as WorkerStatus,
@@ -475,7 +476,8 @@ export const useMonitorStore = create<MonitorStore>()(
             estimated_completion?: string;
             timestamp: number;
           };
-          updateJob(jobEvent.job_id, {
+          // Use throttled update for progress events
+          throttledJobProgressUpdate(jobEvent.job_id, {
             status: (jobEvent.status as JobStatus) || 'processing',
             progress: jobEvent.progress,
             worker_id: jobEvent.worker_id,
@@ -671,6 +673,25 @@ export const useMonitorStore = create<MonitorStore>()(
       });
     },
   }))
+);
+
+// Create throttled update functions for high-frequency events
+const throttledJobProgressUpdate = throttle(
+  (jobId: string, updates: Partial<Job>) => {
+    useMonitorStore.getState().updateJob(jobId, updates);
+  },
+  100 // Update at most every 100ms
+);
+
+// Batch worker status updates
+const batchedWorkerUpdates = batchUpdates<{ workerId: string; updates: Partial<Worker> }>(
+  (updates) => {
+    const store = useMonitorStore.getState();
+    updates.forEach(({ workerId, updates }) => {
+      store.updateWorker(workerId, updates);
+    });
+  },
+  50 // Process batches every 50ms
 );
 
 // Note: Auto-connect removed - user must manually connect

@@ -197,8 +197,8 @@ export class MonitorWebSocketHandler {
               (job.status as string) === 'assigned' ||
               (job.status as string) === 'processing'
           ),
-          completed: jobs.filter(job => (job.status as string) === 'completed').slice(-100), // Last 100
-          failed: jobs.filter(job => (job.status as string) === 'failed').slice(-100), // Last 100
+          completed: jobs.filter(job => (job.status as string) === 'completed'),
+          failed: jobs.filter(job => (job.status as string) === 'failed'),
         },
         system_stats: systemStats,
       };

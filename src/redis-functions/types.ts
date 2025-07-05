@@ -62,7 +62,10 @@ export interface FindMatchingJobArgs {
 
 // Type-safe wrapper for Redis Function calls
 export interface RedisJobMatchingFunction {
-  findMatchingJob(capabilities: WorkerCapabilities, maxScan?: number): Promise<MatchingResult | null>;
+  findMatchingJob(
+    capabilities: WorkerCapabilities,
+    maxScan?: number
+  ): Promise<MatchingResult | null>;
 }
 
 // Redis Function management

@@ -207,12 +207,9 @@ export class RedisDirectWorkerClient {
       id: jobId,
       service_required: redisData.service_required || redisData.job_type || 'unknown',
       priority: parseInt(redisData.priority || '50'),
-      payload:
-        typeof redisData.payload === 'string' ? JSON.parse(redisData.payload) : {},
+      payload: typeof redisData.payload === 'string' ? JSON.parse(redisData.payload) : {},
       requirements:
-        typeof redisData.requirements === 'string'
-          ? JSON.parse(redisData.requirements)
-          : undefined,
+        typeof redisData.requirements === 'string' ? JSON.parse(redisData.requirements) : undefined,
       customer_id: redisData.customer_id,
       created_at: redisData.created_at || new Date().toISOString(),
       assigned_at: redisData.assigned_at || new Date().toISOString(),
@@ -227,8 +224,12 @@ export class RedisDirectWorkerClient {
       processing_time: redisData.processing_time ? parseInt(redisData.processing_time) : undefined,
       estimated_completion: redisData.estimated_completion,
       workflow_id: redisData.workflow_id,
-      workflow_priority: redisData.workflow_priority ? parseInt(redisData.workflow_priority) : undefined,
-      workflow_datetime: redisData.workflow_datetime ? parseInt(redisData.workflow_datetime) : undefined,
+      workflow_priority: redisData.workflow_priority
+        ? parseInt(redisData.workflow_priority)
+        : undefined,
+      workflow_datetime: redisData.workflow_datetime
+        ? parseInt(redisData.workflow_datetime)
+        : undefined,
       step_number: redisData.step_number ? parseInt(redisData.step_number) : undefined,
     };
   }
@@ -236,7 +237,10 @@ export class RedisDirectWorkerClient {
   /**
    * Type-safe Redis Function wrapper for job matching
    */
-  private async callFindMatchingJob(capabilities: WorkerCapabilities, maxScan = 100): Promise<MatchingResult | null> {
+  private async callFindMatchingJob(
+    capabilities: WorkerCapabilities,
+    maxScan = 100
+  ): Promise<MatchingResult | null> {
     const result = (await this.redis.call(
       'FCALL',
       'findMatchingJob',
@@ -250,7 +254,7 @@ export class RedisDirectWorkerClient {
     }
 
     const parsedResult = JSON.parse(result);
-    
+
     // Runtime type validation
     if (!parsedResult.jobId || !parsedResult.job) {
       logger.error(`Invalid Redis Function result format:`, parsedResult);
@@ -273,7 +277,7 @@ export class RedisDirectWorkerClient {
         ...capabilities,
         worker_id: this.workerId,
       };
-      
+
       const matchResult = await this.callFindMatchingJob(capabilitiesWithId, 100);
 
       if (!matchResult) {
