@@ -539,14 +539,14 @@ export class JobBroker implements JobBrokerInterface {
   }
 
   /**
-   * Archive completed and failed jobs older than specified days
+   * Archive completed and failed jobs older than specified time
    * Moves jobs from Redis to date-partitioned JSON files
    */
   async archiveCompletedJobs(
-    olderThanDays: number = 7,
+    olderThanMinutes: number = 5,
     archiveDir: string = './data/archived-jobs'
   ): Promise<{ archived: number; errors: number }> {
-    const cutoffTime = Date.now() - olderThanDays * 24 * 60 * 60 * 1000;
+    const cutoffTime = Date.now() - olderThanMinutes * 60 * 1000;
     let archivedCount = 0;
     let errorCount = 0;
 

@@ -12,6 +12,7 @@ import { JobBroker } from '../core/job-broker.js';
 import { logger } from '../core/utils/logger.js';
 
 interface ArchiveOptions {
+  olderThanMinutes?: number;
   olderThanDays?: number;
   archiveDir?: string;
   cleanup?: boolean;
@@ -21,12 +22,16 @@ interface ArchiveOptions {
 
 async function archiveJobs(options: ArchiveOptions = {}) {
   const {
+    olderThanMinutes,
     olderThanDays = 7,
     archiveDir = './data/archived-jobs',
     cleanup = false,
     cleanupDays = 90,
     dryRun = false,
   } = options;
+
+  // Use minutes if specified, otherwise convert days to minutes
+  const archiveMinutes = olderThanMinutes || olderThanDays * 24 * 60;
 
   let redisService: RedisService | null = null;
 
@@ -44,11 +49,15 @@ async function archiveJobs(options: ArchiveOptions = {}) {
 
     logger.info(`Starting job archival process...`);
     logger.info(`- Archive directory: ${archiveDir}`);
-    logger.info(`- Archive jobs older than: ${olderThanDays} days`);
+    if (olderThanMinutes) {
+      logger.info(`- Archive jobs older than: ${olderThanMinutes} minutes`);
+    } else {
+      logger.info(`- Archive jobs older than: ${olderThanDays} days`);
+    }
 
     if (!dryRun) {
       // Archive old jobs
-      const result = await jobBroker.archiveCompletedJobs(olderThanDays, archiveDir);
+      const result = await jobBroker.archiveCompletedJobs(archiveMinutes, archiveDir);
       logger.info(`Archival completed: ${result.archived} jobs archived, ${result.errors} errors`);
 
       // Cleanup old archive files if requested
@@ -63,7 +72,7 @@ async function archiveJobs(options: ArchiveOptions = {}) {
       // Dry run - just count what would be archived
       const completedJobs = await redisService['redis'].hgetall('jobs:completed');
       const failedJobs = await redisService['redis'].hgetall('jobs:failed');
-      const cutoffTime = Date.now() - olderThanDays * 24 * 60 * 60 * 1000;
+      const cutoffTime = Date.now() - archiveMinutes * 60 * 1000;
 
       let wouldArchive = 0;
 
@@ -111,6 +120,10 @@ function parseArgs(): ArchiveOptions {
     const arg = args[i];
 
     switch (arg) {
+      case '--minutes':
+      case '-m':
+        options.olderThanMinutes = parseInt(args[++i]);
+        break;
       case '--days':
       case '-d':
         options.olderThanDays = parseInt(args[++i]);
@@ -138,6 +151,7 @@ Job Archival Tool
 Usage: node archive-jobs.js [options]
 
 Options:
+  -m, --minutes <number>        Archive jobs older than N minutes
   -d, --days <number>           Archive jobs older than N days (default: 7)
   -a, --archive-dir <path>      Archive directory path (default: ./data/archived-jobs)
   -c, --cleanup                 Also cleanup old archive files
