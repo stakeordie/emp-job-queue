@@ -4,6 +4,7 @@
 import Redis from 'ioredis';
 import { WorkerCapabilities } from '../core/types/worker.js';
 import { Job, JobProgress, JobStatus } from '../core/types/job.js';
+import { MatchingResult, RedisJobData } from '../redis-functions/types.js';
 import { logger } from '../core/utils/logger.js';
 
 export class RedisDirectWorkerClient {
@@ -199,6 +200,67 @@ export class RedisDirectWorkerClient {
   }
 
   /**
+   * Convert Redis job data (strings) to typed Job object
+   */
+  private convertRedisJobData(jobId: string, redisData: RedisJobData): Job {
+    return {
+      id: jobId,
+      service_required: redisData.service_required || redisData.job_type || 'unknown',
+      priority: parseInt(redisData.priority || '50'),
+      payload:
+        typeof redisData.payload === 'string' ? JSON.parse(redisData.payload) : {},
+      requirements:
+        typeof redisData.requirements === 'string'
+          ? JSON.parse(redisData.requirements)
+          : undefined,
+      customer_id: redisData.customer_id,
+      created_at: redisData.created_at || new Date().toISOString(),
+      assigned_at: redisData.assigned_at || new Date().toISOString(),
+      started_at: redisData.started_at,
+      completed_at: redisData.completed_at,
+      failed_at: redisData.failed_at,
+      worker_id: this.workerId, // Function assigns it to us
+      status: JobStatus.ASSIGNED,
+      retry_count: parseInt(redisData.retry_count || '0'),
+      max_retries: parseInt(redisData.max_retries || '3'),
+      last_failed_worker: redisData.last_failed_worker,
+      processing_time: redisData.processing_time ? parseInt(redisData.processing_time) : undefined,
+      estimated_completion: redisData.estimated_completion,
+      workflow_id: redisData.workflow_id,
+      workflow_priority: redisData.workflow_priority ? parseInt(redisData.workflow_priority) : undefined,
+      workflow_datetime: redisData.workflow_datetime ? parseInt(redisData.workflow_datetime) : undefined,
+      step_number: redisData.step_number ? parseInt(redisData.step_number) : undefined,
+    };
+  }
+
+  /**
+   * Type-safe Redis Function wrapper for job matching
+   */
+  private async callFindMatchingJob(capabilities: WorkerCapabilities, maxScan = 100): Promise<MatchingResult | null> {
+    const result = (await this.redis.call(
+      'FCALL',
+      'findMatchingJob',
+      '0', // No keys
+      JSON.stringify(capabilities),
+      maxScan.toString()
+    )) as string | null;
+
+    if (!result) {
+      return null;
+    }
+
+    const parsedResult = JSON.parse(result);
+    
+    // Runtime type validation
+    if (!parsedResult.jobId || !parsedResult.job) {
+      logger.error(`Invalid Redis Function result format:`, parsedResult);
+      throw new Error('Redis Function returned invalid result format');
+    }
+
+    return parsedResult as MatchingResult;
+  }
+
+  /**
    * Request a job using Redis Function for capability-based matching
    */
   async requestJob(capabilities: WorkerCapabilities): Promise<Job | null> {
@@ -206,63 +268,21 @@ export class RedisDirectWorkerClient {
       // Phase 4: Use Redis Function for intelligent job matching
       logger.debug(`Worker ${this.workerId} requesting job with capabilities:`, capabilities);
 
-      // Call the findMatchingJob Redis Function
-      // The function expects: capabilities JSON (with worker_id inside), max_jobs_to_check
-      const capabilitiesWithId = {
+      // Ensure worker_id is included in capabilities
+      const capabilitiesWithId: WorkerCapabilities = {
         ...capabilities,
         worker_id: this.workerId,
       };
       
-      const result = (await this.redis.call(
-        'FCALL',
-        'findMatchingJob',
-        '0', // No keys
-        JSON.stringify(capabilitiesWithId),
-        '100' // Check up to 100 jobs for a match
-      )) as string | null;
+      const matchResult = await this.callFindMatchingJob(capabilitiesWithId, 100);
 
-      if (!result) {
+      if (!matchResult) {
         logger.debug(`Worker ${this.workerId} - No matching jobs available`);
         return null;
       }
 
-      // Parse the result returned by the function
-      const resultData = JSON.parse(result);
-      const jobData = resultData.job;
-
-      // Convert to our Job type
-      const job: Job = {
-        id: resultData.jobId,
-        service_required: jobData.service_required || jobData.job_type || 'unknown',
-        priority: parseInt(jobData.priority || '50'),
-        payload:
-          typeof jobData.payload === 'string' ? JSON.parse(jobData.payload) : jobData.payload || {},
-        requirements:
-          typeof jobData.requirements === 'string'
-            ? JSON.parse(jobData.requirements)
-            : jobData.requirements,
-        customer_id: jobData.customer_id,
-        created_at: jobData.created_at,
-        assigned_at: jobData.assigned_at || new Date().toISOString(),
-        started_at: jobData.started_at,
-        completed_at: jobData.completed_at,
-        failed_at: jobData.failed_at,
-        worker_id: this.workerId, // Function assigns it to us
-        status: JobStatus.ASSIGNED,
-        retry_count: parseInt(jobData.retry_count || '0'),
-        max_retries: parseInt(jobData.max_retries || '3'),
-        last_failed_worker: jobData.last_failed_worker,
-        processing_time: jobData.processing_time ? parseInt(jobData.processing_time) : undefined,
-        estimated_completion: jobData.estimated_completion,
-        workflow_id: jobData.workflow_id,
-        workflow_priority: jobData.workflow_priority
-          ? parseInt(jobData.workflow_priority)
-          : undefined,
-        workflow_datetime: jobData.workflow_datetime
-          ? parseInt(jobData.workflow_datetime)
-          : undefined,
-        step_number: jobData.step_number ? parseInt(jobData.step_number) : undefined,
-      };
+      // Convert Redis job data to typed Job object
+      const job = this.convertRedisJobData(matchResult.jobId, matchResult.job);
 
       // Worker status already updated by Redis Function, just publish the event
       const statusEvent = {
