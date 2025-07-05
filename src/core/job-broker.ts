@@ -385,10 +385,24 @@ export class JobBroker implements JobBrokerInterface {
 
       // Get pending jobs from sorted set
       const pendingJobs = await this.redis['redis'].zrange('jobs:pending', 0, -1);
-      for (const jobId of pendingJobs) {
-        const jobData = await this.redis['redis'].hgetall(`job:${jobId}`);
-        if (jobData && Object.keys(jobData).length > 0) {
-          jobs.push(this.parseJobData(jobId, jobData, 'pending'));
+
+      // Use pipeline for batch operations on pending jobs
+      if (pendingJobs.length > 0) {
+        const pipeline = this.redis['redis'].pipeline();
+        for (const jobId of pendingJobs) {
+          pipeline.hgetall(`job:${jobId}`);
+        }
+        const pendingJobsData = await pipeline.exec();
+
+        if (pendingJobsData) {
+          for (let i = 0; i < pendingJobs.length; i++) {
+            const result = pendingJobsData[i];
+            if (result && !result[0] && result[1] && Object.keys(result[1]).length > 0) {
+              jobs.push(
+                this.parseJobData(pendingJobs[i], result[1] as Record<string, unknown>, 'pending')
+              );
+            }
+          }
         }
       }
 
@@ -406,10 +420,9 @@ export class JobBroker implements JobBrokerInterface {
         }
       }
 
-      // Get completed jobs (limit to last 100)
+      // Get completed jobs
       const completedJobs = await this.redis['redis'].hgetall('jobs:completed');
-      const completedEntries = Object.entries(completedJobs).slice(-100);
-      for (const [jobId, jobDataStr] of completedEntries) {
+      for (const [jobId, jobDataStr] of Object.entries(completedJobs)) {
         try {
           const jobData = JSON.parse(jobDataStr as string);
           jobs.push(this.parseJobData(jobId, jobData, 'completed'));
@@ -418,10 +431,9 @@ export class JobBroker implements JobBrokerInterface {
         }
       }
 
-      // Get failed jobs (limit to last 100)
+      // Get failed jobs
       const failedJobs = await this.redis['redis'].hgetall('jobs:failed');
-      const failedEntries = Object.entries(failedJobs).slice(-100);
-      for (const [jobId, jobDataStr] of failedEntries) {
+      for (const [jobId, jobDataStr] of Object.entries(failedJobs)) {
         try {
           const jobData = JSON.parse(jobDataStr as string);
           jobs.push(this.parseJobData(jobId, jobData, 'failed'));
