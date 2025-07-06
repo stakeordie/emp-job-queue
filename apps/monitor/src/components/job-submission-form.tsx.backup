@@ -205,7 +205,6 @@ interface RequirementPair {
   id: string;
   key: string;
   value: string;
-  type: 'must_have' | 'must_not_have';
 }
 
 export function JobSubmissionForm() {
@@ -214,7 +213,7 @@ export function JobSubmissionForm() {
   const [useSimulation, setUseSimulation] = useState(false);
   const [showRequirements, setShowRequirements] = useState(false);
   const [requirementPairs, setRequirementPairs] = useState<RequirementPair[]>([
-    { id: '1', key: '', value: '', type: 'must_have' }
+    { id: '1', key: '', value: '' }
   ]);
   const { submitJob, connection } = useMonitorStore();
 
@@ -231,10 +230,9 @@ export function JobSubmissionForm() {
 
   const { register, handleSubmit, reset, setValue, watch } = form;
 
-  // Convert requirement pairs to object with positive and negative requirements
+  // Convert requirement pairs to object
   const buildRequirementsObject = () => {
-    const positiveRequirements: Record<string, unknown> = {};
-    const negativeRequirements: Record<string, unknown> = {};
+    const requirements: Record<string, unknown> = {};
     
     requirementPairs.forEach(pair => {
       if (pair.key.trim() && pair.value.trim()) {
@@ -248,12 +246,9 @@ export function JobSubmissionForm() {
           parsedValue = pair.value;
         }
         
-        // Choose the target object based on requirement type
-        const targetRequirements = pair.type === 'must_have' ? positiveRequirements : negativeRequirements;
-        
         // Handle nested keys like "hardware.gpu_memory_gb"
         const keys = pair.key.split('.');
-        let current: Record<string, unknown> = targetRequirements;
+        let current: Record<string, unknown> = requirements;
         
         for (let i = 0; i < keys.length - 1; i++) {
           const key = keys[i];
@@ -267,22 +262,7 @@ export function JobSubmissionForm() {
       }
     });
     
-    const hasPositive = Object.keys(positiveRequirements).length > 0;
-    const hasNegative = Object.keys(negativeRequirements).length > 0;
-    
-    if (!hasPositive && !hasNegative) {
-      return undefined;
-    }
-    
-    const result: Record<string, unknown> = {};
-    if (hasPositive) {
-      result.positive_requirements = positiveRequirements;
-    }
-    if (hasNegative) {
-      result.negative_requirements = negativeRequirements;
-    }
-    
-    return result;
+    return Object.keys(requirements).length > 0 ? requirements : undefined;
   };
 
   // Helper functions for managing requirement pairs
@@ -290,23 +270,18 @@ export function JobSubmissionForm() {
     const newPair: RequirementPair = {
       id: Date.now().toString(),
       key: '',
-      value: '',
-      type: 'must_have'
+      value: ''
     };
     setRequirementPairs([...requirementPairs, newPair]);
   };
 
   const removeRequirementPair = (id: string) => {
     if (requirementPairs.length > 1) {
-      // Remove the pair if there are multiple pairs
       setRequirementPairs(requirementPairs.filter(pair => pair.id !== id));
-    } else {
-      // If it's the last pair, just clear the values instead of removing
-      setRequirementPairs([{ id: '1', key: '', value: '', type: 'must_have' }]);
     }
   };
 
-  const updateRequirementPair = (id: string, field: 'key' | 'value' | 'type', value: string) => {
+  const updateRequirementPair = (id: string, field: 'key' | 'value', value: string) => {
     setRequirementPairs(requirementPairs.map(pair => 
       pair.id === id ? { ...pair, [field]: value } : pair
     ));
@@ -472,32 +447,12 @@ export function JobSubmissionForm() {
             {showRequirements && (
               <div className="space-y-3 p-3 border rounded-md bg-muted/50">
                 <div className="text-xs text-muted-foreground">
-                  Specify job requirements for capability matching. Choose "Must have" for required capabilities or "Must not have" for capabilities that should be absent. Use dot notation for nested keys (e.g., "hardware.gpu_memory_gb").
+                  Specify job requirements for capability matching. Use dot notation for nested keys (e.g., "hardware.gpu_memory_gb").
                 </div>
                 
                 <div className="space-y-2">
                   {requirementPairs.map((pair) => (
                     <div key={pair.id} className="flex gap-2 items-center">
-                      <div className="w-28">
-                        <Select 
-                          value={pair.type} 
-                          onValueChange={(value: 'must_have' | 'must_not_have') => 
-                            updateRequirementPair(pair.id, 'type', value)
-                          }
-                        >
-                          <SelectTrigger className="h-8 text-xs">
-                            <SelectValue />
-                          </SelectTrigger>
-                          <SelectContent>
-                            <SelectItem value="must_have">
-                              <span className="text-green-600">Must have</span>
-                            </SelectItem>
-                            <SelectItem value="must_not_have">
-                              <span className="text-red-600">Must not have</span>
-                            </SelectItem>
-                          </SelectContent>
-                        </Select>
-                      </div>
                       <div className="flex-1">
                         <Input
                           placeholder="Key (e.g., hardware.gpu_memory_gb)"
@@ -508,7 +463,7 @@ export function JobSubmissionForm() {
                       </div>
                       <div className="flex-1">
                         <Input
-                          placeholder="Value (e.g., 16, true, ['model1', 'model2'])"
+                          placeholder="Value (e.g., 16, true, [\"model1\", \"model2\"])"
                           value={pair.value}
                           onChange={(e) => updateRequirementPair(pair.id, 'value', e.target.value)}
                           className="h-8 text-xs"
@@ -518,9 +473,9 @@ export function JobSubmissionForm() {
                         type="button"
                         variant="ghost"
                         size="sm"
-                        className="h-8 w-8 p-0 hover:bg-red-100 hover:text-red-600"
+                        className="h-8 w-8 p-0"
                         onClick={() => removeRequirementPair(pair.id)}
-                        title={requirementPairs.length === 1 ? "Clear values" : "Remove requirement"}
+                        disabled={requirementPairs.length === 1}
                       >
                         <X className="h-3 w-3" />
                       </Button>
@@ -556,16 +511,11 @@ export function JobSubmissionForm() {
                 <div className="text-xs text-muted-foreground">
                   <div className="font-medium mb-1">Common examples:</div>
                   <div className="space-y-1 text-xs">
-                    <div className="text-green-600">✅ <strong>Must have:</strong></div>
-                    <div className="ml-4"><code>hardware.gpu_memory_gb</code> → <code>16</code> (min 16GB GPU)</div>
-                    <div className="ml-4"><code>asset_type</code> → <code>&quot;video&quot;</code> (single item from worker's array)</div>
-                    <div className="ml-4"><code>models</code> → <code>[&quot;sdxl&quot;, &quot;sd15&quot;]</code> (worker must have ALL these models)</div>
-                    <div className="ml-4"><code>services</code> → <code>&quot;comfyui&quot;</code> (worker's services array contains this)</div>
-                    
-                    <div className="text-red-600 mt-2">❌ <strong>Must not have:</strong></div>
-                    <div className="ml-4"><code>customer_isolation</code> → <code>&quot;strict&quot;</code> (not strict isolation)</div>
-                    <div className="ml-4"><code>debugging_enabled</code> → <code>true</code> (not in debug mode)</div>
-                    <div className="ml-4"><code>asset_type</code> → <code>&quot;audio&quot;</code> (worker's array must NOT contain this)</div>
+                    <div><code>hardware.gpu_memory_gb</code> → <code>16</code></div>
+                    <div><code>hardware.gpu_model</code> → <code>&quot;RTX 4090&quot;</code></div>
+                    <div><code>models</code> → <code>[&quot;sdxl&quot;, &quot;sd15&quot;]</code></div>
+                    <div><code>customer_isolation</code> → <code>&quot;strict&quot;</code></div>
+                    <div><code>performance.concurrent_jobs</code> → <code>2</code></div>
                   </div>
                 </div>
               </div>

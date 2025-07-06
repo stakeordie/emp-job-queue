@@ -53,7 +53,13 @@
       "Bash(git add:*)",
       "Bash(pnpm add:*)",
       "Bash(git reset:*)",
-      "Bash(rm:*)"
+      "Bash(rm:*)",
+      "Bash(node:*)",
+      "Bash(cp:*)",
+      "Bash(npx eslint:*)",
+      "Bash(pnpm redis-functions:install:*)",
+      "Bash(REDIS_URL=redis://default:JQSoNVpIPsuaDQYicNvocglialxPrTjj@ballast.proxy.rlwy.net:30645 pnpm redis:functions:install)",
+      "Bash(docker-compose:*)"
     ],
     "deny": []
   }

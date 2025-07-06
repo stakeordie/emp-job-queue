@@ -13,6 +13,8 @@ import { RedisDirectWorkerClient } from './redis-direct-worker-client.js';
 import {
   WorkerCapabilities,
   WorkerStatus,
+  LocationConfig,
+  CostConfig,
   HardwareSpecs,
   CustomerAccessConfig,
   PerformanceConfig,
@@ -70,7 +72,10 @@ export class RedisDirectBaseWorker {
 
     // Customer access configuration
     const customerAccess: CustomerAccessConfig = {
-      isolation: (process.env.CUSTOMER_ISOLATION as 'strict' | 'loose' | 'none') || 'loose',
+      isolation:
+        (process.env.WORKER_CUSTOMER_ISOLATION as 'strict' | 'loose' | 'none') ||
+        (process.env.CUSTOMER_ISOLATION as 'strict' | 'loose' | 'none') ||
+        'loose',
       allowed_customers: process.env.ALLOWED_CUSTOMERS?.split(',').map(s => s.trim()),
       denied_customers: process.env.DENIED_CUSTOMERS?.split(',').map(s => s.trim()),
       max_concurrent_customers: parseInt(process.env.MAX_CONCURRENT_CUSTOMERS || '10'),
@@ -85,7 +90,55 @@ export class RedisDirectBaseWorker {
       max_processing_time_minutes: parseInt(process.env.MAX_PROCESSING_TIME_MINUTES || '60'),
     };
 
-    return {
+    // Location configuration for geographic and compliance requirements
+    const location: LocationConfig | undefined = process.env.WORKER_REGION
+      ? {
+          region: process.env.WORKER_REGION,
+          country: process.env.WORKER_COUNTRY,
+          compliance_zones: process.env.WORKER_COMPLIANCE?.split(',').map(s => s.trim()) || [],
+          data_residency_requirements: process.env.WORKER_DATA_RESIDENCY?.split(',').map(s =>
+            s.trim()
+          ),
+        }
+      : undefined;
+
+    // Cost configuration for pricing tiers
+    const cost: CostConfig | undefined = process.env.WORKER_COST_TIER
+      ? {
+          tier: process.env.WORKER_COST_TIER as 'economy' | 'standard' | 'premium',
+          rate_per_hour: process.env.WORKER_RATE_PER_HOUR
+            ? parseFloat(process.env.WORKER_RATE_PER_HOUR)
+            : undefined,
+          rate_per_job: process.env.WORKER_RATE_PER_JOB
+            ? parseFloat(process.env.WORKER_RATE_PER_JOB)
+            : undefined,
+          minimum_charge: process.env.WORKER_MINIMUM_CHARGE
+            ? parseFloat(process.env.WORKER_MINIMUM_CHARGE)
+            : undefined,
+        }
+      : undefined;
+
+    // Parse array environment variables safely
+    const parseJsonArray = (envVar: string | undefined): string[] => {
+      if (!envVar) return [];
+      try {
+        // Handle both JSON arrays ["item1","item2"] and comma-separated strings "item1,item2"
+        if (envVar.startsWith('[') && envVar.endsWith(']')) {
+          return JSON.parse(envVar);
+        } else {
+          return envVar
+            .split(',')
+            .map(s => s.trim())
+            .filter(s => s.length > 0);
+        }
+      } catch (error) {
+        console.warn(`Failed to parse array from ${envVar}:`, error);
+        return [];
+      }
+    };
+
+    // Build base capabilities
+    const capabilities: WorkerCapabilities = {
       worker_id: this.workerId,
       machine_id: process.env.WORKER_MACHINE_ID || os.hostname(),
       services,
@@ -93,6 +146,8 @@ export class RedisDirectBaseWorker {
       models: {}, // Will be populated by connectors
       customer_access: customerAccess,
       performance,
+      location,
+      cost,
       metadata: {
         version: process.env.npm_package_version || '1.0.0',
         node_version: process.version,
@@ -100,6 +155,73 @@ export class RedisDirectBaseWorker {
         arch: os.arch(),
       },
     };
+
+    // Add custom capability fields from environment variables
+    if (process.env.WORKER_ASSET_TYPE) {
+      capabilities.asset_type = parseJsonArray(process.env.WORKER_ASSET_TYPE);
+    }
+
+    if (process.env.WORKER_MODELS) {
+      capabilities.available_models = parseJsonArray(process.env.WORKER_MODELS);
+    }
+
+    if (process.env.WORKER_PERFORMANCE_TIER) {
+      capabilities.performance_tier = process.env.WORKER_PERFORMANCE_TIER;
+    }
+
+    if (process.env.WORKER_FEATURES) {
+      capabilities.features = parseJsonArray(process.env.WORKER_FEATURES);
+    }
+
+    if (process.env.WORKER_SPECIALIZATION) {
+      capabilities.specialization = process.env.WORKER_SPECIALIZATION;
+    }
+
+    if (process.env.WORKER_SLA_TIER) {
+      capabilities.sla_tier = process.env.WORKER_SLA_TIER;
+    }
+
+    if (process.env.WORKER_LIMITATIONS) {
+      capabilities.limitations = parseJsonArray(process.env.WORKER_LIMITATIONS);
+    }
+
+    if (process.env.WORKER_AVAILABILITY) {
+      capabilities.availability = process.env.WORKER_AVAILABILITY;
+    }
+
+    if (process.env.WORKER_DEBUGGING_ENABLED) {
+      capabilities.debugging_enabled = process.env.WORKER_DEBUGGING_ENABLED === 'true';
+    }
+
+    if (process.env.WORKER_EXPERIMENTAL_MODE) {
+      capabilities.experimental_mode = process.env.WORKER_EXPERIMENTAL_MODE === 'true';
+    }
+
+    if (process.env.WORKER_DEVELOPMENT_MODE) {
+      capabilities.development_mode = process.env.WORKER_DEVELOPMENT_MODE === 'true';
+    }
+
+    if (process.env.WORKER_MEMORY_CONSTRAINED) {
+      capabilities.memory_constrained = process.env.WORKER_MEMORY_CONSTRAINED === 'true';
+    }
+
+    if (process.env.WORKER_MAX_BATCH_SIZE) {
+      capabilities.max_batch_size = parseInt(process.env.WORKER_MAX_BATCH_SIZE);
+    }
+
+    if (process.env.WORKER_MULTI_SERVICE) {
+      capabilities.multi_service = process.env.WORKER_MULTI_SERVICE === 'true';
+    }
+
+    if (process.env.WORKER_COMFYUI_VERSION) {
+      capabilities.comfyui_version = process.env.WORKER_COMFYUI_VERSION;
+    }
+
+    if (process.env.WORKER_A1111_VERSION) {
+      capabilities.a1111_version = process.env.WORKER_A1111_VERSION;
+    }
+
+    return capabilities;
   }
 
   async start(): Promise<void> {

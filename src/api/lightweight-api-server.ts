@@ -498,7 +498,10 @@ export class LightweightAPIServer {
 
     switch (message.type) {
       case 'monitor_connect':
-        logger.info(`Monitor ${monitorId} requesting connection`);
+        const connectTime = Date.now();
+        logger.info(
+          `Monitor ${monitorId} requesting connection at ${new Date(connectTime).toISOString()}`
+        );
 
         // Send acknowledgment
         ws.send(
@@ -511,16 +514,25 @@ export class LightweightAPIServer {
 
         // Send full state if requested
         if (message.request_full_state) {
+          logger.info(`Monitor ${monitorId} requested full state, sending...`);
+          const beforeSnapshot = Date.now();
           await this.sendFullStateSnapshot(connection);
+          logger.info(
+            `Full state snapshot for ${monitorId} completed in ${Date.now() - beforeSnapshot}ms (${Date.now() - connectTime}ms since connect)`
+          );
         }
         break;
 
       case 'subscribe':
+        const subscribeTime = Date.now();
         const topics = (message.topics as string[]) || [];
         connection.subscribedTopics.clear();
         topics.forEach(topic => connection.subscribedTopics.add(topic));
 
-        logger.info(`Monitor ${monitorId} subscribed to topics:`, topics);
+        logger.info(
+          `Monitor ${monitorId} subscribed to topics at ${new Date(subscribeTime).toISOString()}:`,
+          topics
+        );
 
         ws.send(
           JSON.stringify({
@@ -623,61 +635,124 @@ export class LightweightAPIServer {
 
   private async sendFullStateSnapshot(connection: MonitorConnection): Promise<void> {
     try {
-      // Get current workers (from Redis heartbeats)
-      const workerKeys = await this.redis.keys('worker:*:heartbeat');
+      const startTime = Date.now();
+
+      // Get current workers using SCAN for heartbeat keys
+      const workerKeys: string[] = [];
+      let cursor = '0';
+      do {
+        const [newCursor, keys] = await this.redis.scan(
+          cursor,
+          'MATCH',
+          'worker:*:heartbeat',
+          'COUNT',
+          100
+        );
+        cursor = newCursor;
+        workerKeys.push(...keys);
+      } while (cursor !== '0');
+
+      logger.debug(
+        `SCAN found ${workerKeys.length} worker heartbeat keys in ${Date.now() - startTime}ms`
+      );
+
       const workers = [];
 
-      for (const key of workerKeys) {
-        const workerId = key.split(':')[1];
-        logger.debug(`Full state: Found worker key ${key} -> worker ID: ${workerId}`);
-        const workerData = await this.redis.hgetall(`worker:${workerId}`);
-        if (Object.keys(workerData).length > 0) {
-          // Parse capabilities JSON from Redis
-          let capabilities: Record<string, unknown>;
-          try {
-            capabilities = JSON.parse(workerData.capabilities || '{}');
-          } catch {
-            capabilities = {};
-          }
+      if (workerKeys.length > 0) {
+        // Extract worker IDs and prepare pipeline
+        const workerIds = workerKeys.map(key => key.split(':')[1]);
+        const pipeline = this.redis.pipeline();
 
-          // Transform Redis worker data to monitor format
-          const worker = {
-            id: workerId,
-            status: (workerData.status as 'idle' | 'busy' | 'offline' | 'error') || 'idle',
-            capabilities: {
-              // eslint-disable-next-line @typescript-eslint/no-explicit-any
-              gpu_count: (capabilities as any)?.hardware?.gpu_count || 0,
-              // eslint-disable-next-line @typescript-eslint/no-explicit-any
-              gpu_memory_gb: (capabilities as any)?.hardware?.gpu_memory_gb || 0,
-              // eslint-disable-next-line @typescript-eslint/no-explicit-any
-              gpu_model: (capabilities as any)?.hardware?.gpu_model || 'Unknown',
-              // eslint-disable-next-line @typescript-eslint/no-explicit-any
-              cpu_cores: (capabilities as any)?.hardware?.cpu_cores || 1,
-              // eslint-disable-next-line @typescript-eslint/no-explicit-any
-              ram_gb: (capabilities as any)?.hardware?.ram_gb || 1,
-              // eslint-disable-next-line @typescript-eslint/no-explicit-any
-              services: (capabilities as any)?.services || [],
-              // eslint-disable-next-line @typescript-eslint/no-explicit-any
-              models: Object.keys((capabilities as any)?.models || {}),
-              // eslint-disable-next-line @typescript-eslint/no-explicit-any
-              customer_access: (capabilities as any)?.customer_access?.isolation || 'none',
-              // eslint-disable-next-line @typescript-eslint/no-explicit-any
-              max_concurrent_jobs: (capabilities as any)?.performance?.concurrent_jobs || 1,
-            },
-            current_job_id: workerData.current_job_id,
-            connected_at: workerData.connected_at || new Date().toISOString(),
-            last_activity: workerData.last_heartbeat || new Date().toISOString(),
-            jobs_completed: parseInt(workerData.total_jobs_completed || '0'),
-            jobs_failed: parseInt(workerData.total_jobs_failed || '0'),
-            total_processing_time: 0, // Could be calculated from job history
-            last_heartbeat: await this.redis.ttl(key),
-          };
-          workers.push(worker);
+        // Batch fetch worker data and TTLs
+        for (const workerId of workerIds) {
+          pipeline.hgetall(`worker:${workerId}`);
+        }
+        for (const key of workerKeys) {
+          pipeline.ttl(key);
+        }
+
+        const pipelineStart = Date.now();
+        const results = await pipeline.exec();
+        logger.debug(
+          `Pipeline fetched ${workerIds.length} workers data in ${Date.now() - pipelineStart}ms`
+        );
+
+        if (results) {
+          const workerDataResults = results.slice(0, workerIds.length);
+          const ttlResults = results.slice(workerIds.length);
+
+          for (let i = 0; i < workerIds.length; i++) {
+            const [workerErr, workerData] = workerDataResults[i];
+            const [ttlErr, ttl] = ttlResults[i];
+
+            if (
+              !workerErr &&
+              workerData &&
+              Object.keys(workerData as Record<string, unknown>).length > 0
+            ) {
+              const workerId = workerIds[i];
+              const data = workerData as Record<string, string>;
+
+              // Parse capabilities JSON from Redis
+              let capabilities: Record<string, unknown>;
+              try {
+                capabilities = JSON.parse(data.capabilities || '{}');
+              } catch {
+                capabilities = {};
+              }
+
+              // Transform Redis worker data to monitor format
+              interface CapabilitiesData {
+                hardware?: {
+                  gpu_count?: number;
+                  gpu_memory_gb?: number;
+                  gpu_model?: string;
+                  cpu_cores?: number;
+                  ram_gb?: number;
+                };
+                services?: string[];
+                models?: Record<string, unknown>;
+                customer_access?: {
+                  isolation?: string;
+                };
+                performance?: {
+                  concurrent_jobs?: number;
+                };
+              }
+
+              const caps = capabilities as CapabilitiesData;
+              const worker = {
+                id: workerId,
+                status: (data.status as 'idle' | 'busy' | 'offline' | 'error') || 'idle',
+                capabilities: {
+                  gpu_count: caps?.hardware?.gpu_count || 0,
+                  gpu_memory_gb: caps?.hardware?.gpu_memory_gb || 0,
+                  gpu_model: caps?.hardware?.gpu_model || 'Unknown',
+                  cpu_cores: caps?.hardware?.cpu_cores || 1,
+                  ram_gb: caps?.hardware?.ram_gb || 1,
+                  services: caps?.services || [],
+                  models: Object.keys(caps?.models || {}),
+                  customer_access: caps?.customer_access?.isolation || 'none',
+                  max_concurrent_jobs: caps?.performance?.concurrent_jobs || 1,
+                },
+                current_job_id: data.current_job_id,
+                connected_at: data.connected_at || new Date().toISOString(),
+                last_activity: data.last_heartbeat || new Date().toISOString(),
+                jobs_completed: parseInt(data.total_jobs_completed || '0'),
+                jobs_failed: parseInt(data.total_jobs_failed || '0'),
+                total_processing_time: 0, // Could be calculated from job history
+                last_heartbeat: !ttlErr ? (ttl as number) : -1,
+              };
+              workers.push(worker);
+            }
+          }
         }
       }
 
       // Get current jobs
+      const jobsStart = Date.now();
       const jobs = await this.getAllJobs();
+      logger.debug(`Fetched ${jobs.length} jobs in ${Date.now() - jobsStart}ms`);
 
       const snapshot = {
         workers,
@@ -695,7 +770,7 @@ export class LightweightAPIServer {
       );
 
       logger.info(
-        `Sent full state snapshot to monitor ${connection.monitorId}: ${workers.length} workers, ${jobs.length} jobs`
+        `Sent full state snapshot to monitor ${connection.monitorId}: ${workers.length} workers, ${jobs.length} jobs (total time: ${Date.now() - startTime}ms)`
       );
     } catch (error) {
       logger.error(`Failed to send full state snapshot to monitor ${connection.monitorId}:`, error);
@@ -1110,6 +1185,10 @@ export class LightweightAPIServer {
       status: JobStatus.PENDING,
       retry_count: 0,
       max_retries: (jobData.max_retries as number) || 3,
+      workflow_id: jobData.workflow_id as string | undefined,
+      workflow_priority: jobData.workflow_priority as number | undefined,
+      workflow_datetime: jobData.workflow_datetime as number | undefined,
+      step_number: jobData.step_number as number | undefined,
     };
 
     logger.info(`Job:`, JSON.stringify(job, null, 2));
@@ -1126,14 +1205,33 @@ export class LightweightAPIServer {
       status: job.status,
       retry_count: job.retry_count.toString(),
       max_retries: job.max_retries.toString(),
+      workflow_id: job.workflow_id || '',
+      workflow_priority: job.workflow_priority?.toString() || '',
+      workflow_datetime: job.workflow_datetime?.toString() || '',
+      step_number: job.step_number?.toString() || '',
     });
 
     // Add to pending queue with workflow-aware scoring
-    // Priority: workflow_priority > job.priority (x1,000,000)
-    // DateTime: FIFO - older jobs first (invert timestamp so older = higher score)
+    // In Redis sorted sets, HIGHER scores come FIRST (ZREVRANGE)
+    // Requirements:
+    // 1. Higher priority jobs ALWAYS come before lower priority jobs
+    // 2. Within same priority, older jobs come first (FIFO)
+
     const effectivePriority = job.workflow_priority || job.priority;
     const effectiveDateTime = job.workflow_datetime || Date.parse(job.created_at);
-    const score = effectivePriority * 1000000 + (Number.MAX_SAFE_INTEGER - effectiveDateTime);
+
+    // Score formula: (priority * 10^15) - (timestamp / 1000)
+    // - Priority is multiplied by 10^15 to ensure it always dominates
+    // - Timestamp is divided by 1000 (convert ms to seconds) to prevent overflow
+    // - Subtracting timestamp means older jobs (smaller timestamps) get higher scores
+    const priorityComponent = effectivePriority * 1e15;
+    const timeComponent = Math.floor(effectiveDateTime / 1000);
+    const score = priorityComponent - timeComponent;
+
+    logger.info(
+      `Job ${jobId} scoring: priority=${job.priority}, workflow_priority=${job.workflow_priority}, effective_priority=${effectivePriority}, timestamp=${new Date(effectiveDateTime).toISOString()}, score=${score.toExponential(2)} (${priorityComponent.toExponential(2)} - ${timeComponent})`
+    );
+
     await this.redis.zadd('jobs:pending', score, jobId);
 
     // Broadcast job_submitted event to monitors
@@ -1192,23 +1290,94 @@ export class LightweightAPIServer {
     limit: number;
     offset: number;
   }): Promise<Job[]> {
-    // Simple implementation - in production might need pagination optimization
-    const allJobIds = await this.redis.keys('job:*');
+    const startTime = Date.now();
     const jobs: Job[] = [];
+    const jobKeys: string[] = [];
 
-    for (const key of allJobIds.slice(options.offset, options.offset + options.limit)) {
-      const jobId = key.replace('job:', '');
-      const job = await this.getJobStatus(jobId);
-      if (job && (!options.status || job.status === options.status)) {
-        jobs.push(job);
+    // Use SCAN instead of KEYS to avoid blocking
+    let cursor = '0';
+    do {
+      const [newCursor, keys] = await this.redis.scan(cursor, 'MATCH', 'job:*', 'COUNT', 100);
+      cursor = newCursor;
+      jobKeys.push(...keys);
+    } while (cursor !== '0');
+
+    logger.debug(`SCAN found ${jobKeys.length} job keys in ${Date.now() - startTime}ms`);
+
+    // Apply pagination on the keys
+    const paginatedKeys = jobKeys.slice(options.offset, options.offset + options.limit);
+
+    if (paginatedKeys.length === 0) {
+      return jobs;
+    }
+
+    // Use pipeline to batch fetch all job data
+    const pipeline = this.redis.pipeline();
+    for (const key of paginatedKeys) {
+      pipeline.hgetall(key);
+    }
+
+    const pipelineStart = Date.now();
+    const results = await pipeline.exec();
+    logger.debug(
+      `Pipeline fetched ${paginatedKeys.length} jobs in ${Date.now() - pipelineStart}ms`
+    );
+
+    // Process results
+    if (results) {
+      for (let i = 0; i < results.length; i++) {
+        const [err, jobData] = results[i];
+        if (!err && jobData && (jobData as Record<string, string>).id) {
+          const job = this.parseJobData(jobData as Record<string, string>);
+          if (job && (!options.status || job.status === options.status)) {
+            jobs.push(job);
+          }
+        }
       }
     }
 
-    return jobs.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
+    const sortedJobs = jobs.sort(
+      (a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
+    );
+    logger.debug(
+      `Total getJobs execution time: ${Date.now() - startTime}ms for ${sortedJobs.length} jobs`
+    );
+
+    return sortedJobs;
+  }
+
+  private parseJobData(jobData: Record<string, string>): Job | null {
+    if (!jobData.id) return null;
+
+    return {
+      id: jobData.id,
+      service_required: jobData.service_required,
+      priority: parseInt(jobData.priority || '50'),
+      payload: JSON.parse(jobData.payload || '{}'),
+      requirements: jobData.requirements ? JSON.parse(jobData.requirements) : undefined,
+      customer_id: jobData.customer_id || undefined,
+      created_at: jobData.created_at,
+      assigned_at: jobData.assigned_at || undefined,
+      started_at: jobData.started_at || undefined,
+      completed_at: jobData.completed_at || undefined,
+      failed_at: jobData.failed_at || undefined,
+      worker_id: jobData.worker_id || undefined,
+      status: jobData.status as JobStatus,
+      retry_count: parseInt(jobData.retry_count || '0'),
+      max_retries: parseInt(jobData.max_retries || '3'),
+      last_failed_worker: jobData.last_failed_worker || undefined,
+      processing_time: jobData.processing_time ? parseInt(jobData.processing_time) : undefined,
+      estimated_completion: jobData.estimated_completion || undefined,
+    };
   }
 
   private async getAllJobs(): Promise<Job[]> {
-    return this.getJobs({ limit: 1000, offset: 0 });
+    const startTime = Date.now();
+    const result = await this.getJobs({ limit: 1000, offset: 0 });
+    logger.info(
+      `getAllJobs completed in ${Date.now() - startTime}ms, returning ${result.length} jobs`
+    );
+    return result;
   }
 
   async start(): Promise<void> {

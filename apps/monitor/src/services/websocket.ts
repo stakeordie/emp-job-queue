@@ -277,7 +277,7 @@ export class WebSocketService {
       timestamp: Date.now()
     };
     
-    // console.log('[WebSocket] Sending monitor connect:', message);
+    console.log('[WebSocket] Sending monitor connect:', message, 'at', new Date().toISOString());
     this.monitorWs.send(JSON.stringify(message));
   }
 
@@ -296,7 +296,7 @@ export class WebSocketService {
       timestamp: Date.now()
     };
     
-    // console.log('[WebSocket] Sending subscription:', message);
+    console.log('[WebSocket] Sending subscription:', message, 'at', new Date().toISOString());
     this.monitorWs.send(JSON.stringify(message));
   }
 

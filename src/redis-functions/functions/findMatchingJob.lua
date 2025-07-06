@@ -66,6 +66,7 @@ local function compare_values(worker_value, required_value)
     return false
   end
   
+  -- Case 1: Required value is an array - worker must have ALL items
   if type(required_value) == 'table' and is_array(required_value) then
     if type(worker_value) ~= 'table' or not is_array(worker_value) then
       return false
@@ -86,6 +87,17 @@ local function compare_values(worker_value, required_value)
     return true
   end
   
+  -- Case 2: Worker value is an array, required is single value - check if array contains the value
+  if type(worker_value) == 'table' and is_array(worker_value) then
+    for _, worker_item in ipairs(worker_value) do
+      if worker_item == required_value then
+        return true
+      end
+    end
+    return false
+  end
+  
+  -- Case 3: Numeric comparison - worker must have at least the required amount
   if type(required_value) == 'number' then
     if type(worker_value) ~= 'number' then
       return false
@@ -93,6 +105,7 @@ local function compare_values(worker_value, required_value)
     return worker_value >= required_value
   end
   
+  -- Case 4: Exact string/boolean match
   return worker_value == required_value
 end
 
@@ -233,29 +246,58 @@ local function matches_requirements(worker, job)
     end
   end
   
-  if requirements.hardware then
-    if not check_hardware_requirements(worker.hardware or {}, requirements.hardware) then
-      return false
-    end
-  end
-  
-  if requirements.customer_isolation then
-    if not check_customer_isolation(worker.customer_access or {}, requirements.customer_isolation, job.customer_id) then
-      return false
-    end
-  end
-  
-  if requirements.models and requirements.models ~= 'all' then
-    if not check_model_requirements(worker.models or {}, requirements.models, job.service_required) then
-      return false
-    end
-  end
-  
-  for key, required_value in pairs(requirements) do
-    if key ~= 'service_type' and key ~= 'hardware' and key ~= 'customer_isolation' and key ~= 'models' then
-      if not check_custom_capability(worker, key, required_value) then
-        redis.log(redis.LOG_DEBUG, 'Custom capability mismatch: ' .. key)
+  -- Handle positive requirements (must have)
+  local positive_requirements = requirements.positive_requirements or requirements
+  if positive_requirements then
+    if positive_requirements.hardware then
+      if not check_hardware_requirements(worker.hardware or {}, positive_requirements.hardware) then
         return false
+      end
+    end
+    
+    if positive_requirements.customer_isolation then
+      if not check_customer_isolation(worker.customer_access or {}, positive_requirements.customer_isolation, job.customer_id) then
+        return false
+      end
+    end
+    
+    if positive_requirements.models and positive_requirements.models ~= 'all' then
+      if not check_model_requirements(worker.models or {}, positive_requirements.models, job.service_required) then
+        return false
+      end
+    end
+    
+    for key, required_value in pairs(positive_requirements) do
+      if key ~= 'service_type' and key ~= 'hardware' and key ~= 'customer_isolation' and key ~= 'models' then
+        if not check_custom_capability(worker, key, required_value) then
+          redis.log(redis.LOG_DEBUG, 'Positive requirement failed: ' .. key)
+          return false
+        end
+      end
+    end
+  end
+  
+  -- Handle negative requirements (must not have)
+  local negative_requirements = requirements.negative_requirements
+  if negative_requirements then
+    for key, required_value in pairs(negative_requirements) do
+      if key == 'hardware' then
+        -- For hardware, check if worker has the unwanted specs
+        if worker.hardware then
+          for hw_key, hw_value in pairs(required_value) do
+            local worker_hw_value = worker.hardware[hw_key]
+            if worker_hw_value and compare_values(worker_hw_value, hw_value) then
+              redis.log(redis.LOG_DEBUG, 'Negative hardware requirement failed: worker has unwanted ' .. hw_key)
+              return false
+            end
+          end
+        end
+      else
+        -- For other capabilities, check if worker has the unwanted capability
+        if check_custom_capability(worker, key, required_value) then
+          redis.log(redis.LOG_DEBUG, 'Negative requirement failed: worker has unwanted ' .. key)
+          return false
+        end
       end
     end
   end
