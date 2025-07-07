@@ -1,0 +1,149 @@
+# Docker Compose configuration for emp-redis JavaScript rebuild
+# Matches the Python version's environment setup
+services:
+  # Redis is now hosted on Railway with Functions support
+  # Local Redis commented out - uncomment if needed for development
+
+  # Hub service
+  hub:
+    container_name: hub
+    build:
+      context: .
+      dockerfile: Dockerfile.hub
+    ports:
+      - "3001:3001"  # HTTP API
+      - "3002:3002"  # WebSocket
+    environment:
+      - NODE_ENV=production
+      # Use external Redis for production, local Redis for development
+      - REDIS_URL=${REDIS_URL:-redis://default:JQSoNVpIPsuaDQYicNvocglialxPrTjj@ballast.proxy.rlwy.net:30645}
+      - HUB_PORT=3001
+      - HUB_HOST=0.0.0.0
+      - WS_PORT=3002
+      - WS_HOST=0.0.0.0
+      - LOG_LEVEL=info
+    networks:
+      - emp-redis-network
+    restart: unless-stopped
+
+  # Worker 1 - Simulation only
+  worker1:
+    container_name: worker1
+    build:
+      context: .
+      dockerfile: Dockerfile.worker
+    environment:
+      - NODE_ENV=production
+      - WORKER_ID=worker1-js
+      - HUB_REDIS_URL=${REDIS_URL:-redis://default:JQSoNVpIPsuaDQYicNvocglialxPrTjj@ballast.proxy.rlwy.net:30645}
+      - HUB_WS_URL=ws://hub:3002
+      - WORKER_CONNECTORS=simulation
+      - WORKER_SIMULATION_PROCESSING_TIME=5
+      - WORKER_SIMULATION_STEPS=25
+      - WORKER_HEARTBEAT_INTERVAL=20
+      - WORKER_DASHBOARD_PORT=1511
+      - LOG_LEVEL=info
+    ports:
+      - "1511:1511"  # Worker 1 dashboard
+    depends_on:
+      - hub
+    networks:
+      - emp-redis-network
+    restart: unless-stopped
+
+  # Worker 2 - Simulation only
+  worker2:
+    container_name: worker2
+    build:
+      context: .
+      dockerfile: Dockerfile.worker
+    environment:
+      - NODE_ENV=production
+      - WORKER_ID=worker2-js
+      - HUB_REDIS_URL=${REDIS_URL:-redis://default:JQSoNVpIPsuaDQYicNvocglialxPrTjj@ballast.proxy.rlwy.net:30645}
+      - HUB_WS_URL=ws://hub:3002
+      - WORKER_CONNECTORS=simulation
+      - WORKER_SIMULATION_PROCESSING_TIME=3
+      - WORKER_SIMULATION_STEPS=30
+      - WORKER_HEARTBEAT_INTERVAL=20
+      - WORKER_DASHBOARD_PORT=1512
+      - LOG_LEVEL=info
+    ports:
+      - "1512:1512"  # Worker 2 dashboard
+    depends_on:
+      - hub
+    networks:
+      - emp-redis-network
+    restart: unless-stopped
+
+  # Worker 3 - ComfyUI connector with external ComfyUI server
+  worker3:
+    container_name: worker3
+    build:
+      context: .
+      dockerfile: Dockerfile.worker
+    environment:
+      - NODE_ENV=production
+      - WORKER_ID=worker3-comfyui
+      - HUB_REDIS_URL=${REDIS_URL:-redis://default:JQSoNVpIPsuaDQYicNvocglialxPrTjj@ballast.proxy.rlwy.net:30645}
+      - HUB_WS_URL=ws://hub:3002
+      - WORKER_CONNECTORS=comfyui,simulation
+      - WORKER_COMFYUI_HOST=108.53.57.130
+      - WORKER_COMFYUI_PORT=53647
+      - WORKER_COMFYUI_USERNAME=sd
+      - WORKER_COMFYUI_PASSWORD=UbjpkE6kwM
+      - WORKER_COMFYUI_USE_BASIC_AUTH=true
+      - WORKER_SIMULATION_PROCESSING_TIME=10
+      - WORKER_SIMULATION_STEPS=2
+      - WORKER_HEARTBEAT_INTERVAL=20
+      - WORKER_DASHBOARD_PORT=1513
+      - WORKER_GPU_COUNT=2
+      - WORKER_GPU_MEMORY_GB=24
+      - WORKER_GPU_MODEL=RTX 4090
+      - WORKER_CPU_CORES=16
+      - WORKER_RAM_GB=64
+      - LOG_LEVEL=info
+    ports:
+      - "1513:1513"  # Worker 3 dashboard
+    depends_on:
+      - hub
+    networks:
+      - emp-redis-network
+    restart: unless-stopped
+    profiles:
+      - local
+      - full
+
+  # Worker 4 - Simulation only (full profile)
+  worker4:
+    container_name: worker4
+    build:
+      context: .
+      dockerfile: Dockerfile.worker
+    environment:
+      - NODE_ENV=production
+      - WORKER_ID=worker4-js
+      - HUB_REDIS_URL=${REDIS_URL:-redis://default:JQSoNVpIPsuaDQYicNvocglialxPrTjj@ballast.proxy.rlwy.net:30645}
+      - HUB_WS_URL=ws://hub:3002
+      - WORKER_CONNECTORS=simulation
+      - WORKER_SIMULATION_PROCESSING_TIME=10
+      - WORKER_SIMULATION_STEPS=2
+      - WORKER_HEARTBEAT_INTERVAL=20
+      - WORKER_DASHBOARD_PORT=1514
+      - LOG_LEVEL=info
+    ports:
+      - "1514:1514"  # Worker 4 dashboard
+    depends_on:
+      - hub
+    networks:
+      - emp-redis-network
+    restart: unless-stopped
+    profiles:
+      - local
+      - full
+
+networks:
+  emp-redis-network:
+    driver: bridge
+
+# No volumes needed - Redis is hosted on Railway

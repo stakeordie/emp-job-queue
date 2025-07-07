@@ -8,6 +8,7 @@ import { Job, JobStatus, JobProgress, JobResult, JobFilter, JobSearchResult } fr
 import { WorkerCapabilities, WorkerInfo, WorkerFilter, WorkerStatus } from './types/worker.js';
 import { EventBroadcaster } from '../services/event-broadcaster.js';
 import { logger } from './utils/logger.js';
+import { RedisOperations } from './utils/redis-operations.js';
 
 export class RedisService implements RedisServiceInterface {
   private redis: Redis;
@@ -589,14 +590,9 @@ export class RedisService implements RedisServiceInterface {
       return Object.values(jobData).map(data => JSON.parse(data));
     }
 
-    // Get all active jobs across all workers
-    const workerKeys = await this.redis.keys('jobs:active:*');
-    const allJobs: Job[] = [];
-
-    for (const key of workerKeys) {
-      const jobData = await this.redis.hgetall(key);
-      allJobs.push(...Object.values(jobData).map(data => JSON.parse(data)));
-    }
+    // Get all active jobs across all workers using SCAN
+    const workerKeys = await RedisOperations.scanKeys(this.redis, 'jobs:active:*');
+    const allJobs = await RedisOperations.getJobsFromKeys(this.redis, workerKeys);
 
     return allJobs;
   }
@@ -752,8 +748,8 @@ export class RedisService implements RedisServiceInterface {
       const activeWorkers = await this.getAllWorkers();
       const activeWorkerIds = new Set(activeWorkers.map(w => w.worker_id));
 
-      // Get all active job keys
-      const activeJobKeys = await this.redis.keys('jobs:active:*');
+      // Get all active job keys using SCAN
+      const activeJobKeys = await RedisOperations.scanKeys(this.redis, 'jobs:active:*');
 
       for (const key of activeJobKeys) {
         const workerId = key.replace('jobs:active:', '');
