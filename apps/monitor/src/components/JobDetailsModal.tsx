@@ -144,68 +144,87 @@ export function JobDetailsModal({ job, workers, isOpen, onClose }: JobDetailsMod
             {/* Requirements */}
             <div className="space-y-2">
               <h3 className="text-sm font-semibold text-muted-foreground">Requirements</h3>
-              {job.requirements ? (
-                <div className="grid grid-cols-2 gap-3">
-                  {job.requirements.gpu_memory_gb && (
-                    <div className="flex items-center gap-2">
-                      <span className="text-sm font-medium">GPU Memory:</span>
-                      <span className="text-sm text-muted-foreground">{job.requirements.gpu_memory_gb}GB</span>
-                    </div>
-                  )}
-                  {job.requirements.cpu_cores && (
-                    <div className="flex items-center gap-2">
-                      <span className="text-sm font-medium">CPU Cores:</span>
-                      <span className="text-sm text-muted-foreground">{job.requirements.cpu_cores}</span>
-                    </div>
-                  )}
-                  {job.requirements.ram_gb && (
-                    <div className="flex items-center gap-2">
-                      <span className="text-sm font-medium">RAM:</span>
-                      <span className="text-sm text-muted-foreground">{job.requirements.ram_gb}GB</span>
-                    </div>
-                  )}
-                  {job.requirements.gpu_model && (
-                    <div className="flex items-center gap-2">
-                      <span className="text-sm font-medium">GPU Model:</span>
-                      <span className="text-sm text-muted-foreground">{job.requirements.gpu_model}</span>
-                    </div>
-                  )}
-                  {job.requirements.customer_access && (
-                    <div className="flex items-center gap-2">
-                      <span className="text-sm font-medium">Customer Access:</span>
-                      <Badge variant="outline" className="text-xs">
-                        {job.requirements.customer_access}
-                      </Badge>
-                    </div>
-                  )}
-                  {job.requirements.service_types && job.requirements.service_types.length > 0 && (
-                    <div className="col-span-2">
-                      <span className="text-sm font-medium">Services:</span>
-                      <div className="flex gap-1 mt-1 flex-wrap">
-                        {job.requirements.service_types.map(service => (
-                          <Badge key={service} variant="secondary" className="text-xs">
-                            {service}
-                          </Badge>
-                        ))}
-                      </div>
-                    </div>
-                  )}
-                  {job.requirements.models && job.requirements.models.length > 0 && (
-                    <div className="col-span-2">
-                      <span className="text-sm font-medium">Models:</span>
-                      <div className="flex gap-1 mt-1 flex-wrap">
-                        {job.requirements.models.map(model => (
-                          <Badge key={model} variant="secondary" className="text-xs">
-                            {model}
-                          </Badge>
-                        ))}
-                      </div>
-                    </div>
-                  )}
+              <div className="grid grid-cols-2 gap-3">
+                {/* Primary Service Requirement - Always present */}
+                <div className="col-span-2">
+                  <span className="text-sm font-medium">Service Type:</span>
+                  <div className="flex gap-1 mt-1">
+                    <Badge variant="default" className="text-xs">
+                      {job.job_type}
+                    </Badge>
+                  </div>
                 </div>
-              ) : (
-                <p className="text-sm text-muted-foreground">No specific requirements</p>
-              )}
+
+                {/* Hardware Requirements */}
+                {job.requirements?.gpu_memory_gb && (
+                  <div className="flex items-center gap-2">
+                    <span className="text-sm font-medium">GPU Memory:</span>
+                    <span className="text-sm text-muted-foreground">{job.requirements.gpu_memory_gb}GB</span>
+                  </div>
+                )}
+                {job.requirements?.cpu_cores && (
+                  <div className="flex items-center gap-2">
+                    <span className="text-sm font-medium">CPU Cores:</span>
+                    <span className="text-sm text-muted-foreground">{job.requirements.cpu_cores}</span>
+                  </div>
+                )}
+                {job.requirements?.ram_gb && (
+                  <div className="flex items-center gap-2">
+                    <span className="text-sm font-medium">RAM:</span>
+                    <span className="text-sm text-muted-foreground">{job.requirements.ram_gb}GB</span>
+                  </div>
+                )}
+                {job.requirements?.gpu_model && (
+                  <div className="flex items-center gap-2">
+                    <span className="text-sm font-medium">GPU Model:</span>
+                    <span className="text-sm text-muted-foreground">{job.requirements.gpu_model}</span>
+                  </div>
+                )}
+                {job.requirements?.customer_access && (
+                  <div className="flex items-center gap-2">
+                    <span className="text-sm font-medium">Customer Access:</span>
+                    <Badge variant="outline" className="text-xs">
+                      {job.requirements.customer_access}
+                    </Badge>
+                  </div>
+                )}
+
+                {/* Additional Service Types */}
+                {job.requirements?.service_types && job.requirements.service_types.length > 0 && (
+                  <div className="col-span-2">
+                    <span className="text-sm font-medium">Additional Services:</span>
+                    <div className="flex gap-1 mt-1 flex-wrap">
+                      {job.requirements.service_types.map(service => (
+                        <Badge key={service} variant="secondary" className="text-xs">
+                          {service}
+                        </Badge>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {/* Required Models */}
+                {job.requirements?.models && job.requirements.models.length > 0 && (
+                  <div className="col-span-2">
+                    <span className="text-sm font-medium">Required Models:</span>
+                    <div className="flex gap-1 mt-1 flex-wrap">
+                      {job.requirements.models.map(model => (
+                        <Badge key={model} variant="secondary" className="text-xs">
+                          {model}
+                        </Badge>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {/* Show message if only primary service requirement exists */}
+                {!job.requirements && (
+                  <div className="col-span-2">
+                    <p className="text-sm text-muted-foreground">Only requires a worker that supports {job.job_type}</p>
+                  </div>
+                )}
+              </div>
+            </div>
             </div>
 
             <Separator />
