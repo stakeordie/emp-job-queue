@@ -189,6 +189,30 @@ local function check_customer_isolation(worker_access, required_isolation, custo
   return true
 end
 
+local function check_workflow_id_restriction(worker_workflow_id, job_workflow_id)
+  -- Worker has workflow_id restriction
+  if worker_workflow_id and worker_workflow_id ~= '' then
+    -- Worker is restricted to specific workflow_id
+    if not job_workflow_id or job_workflow_id == '' then
+      -- Job has no workflow_id, restricted worker cannot take it
+      redis.log(redis.LOG_DEBUG, 'Worker restricted to workflow ' .. worker_workflow_id .. ' cannot take job without workflow_id')
+      return false
+    end
+    
+    if job_workflow_id ~= worker_workflow_id then
+      -- Job has different workflow_id than worker restriction
+      redis.log(redis.LOG_DEBUG, 'Worker restricted to workflow ' .. worker_workflow_id .. ' cannot take job with workflow_id ' .. job_workflow_id)
+      return false
+    end
+    
+    -- Job has matching workflow_id
+    return true
+  end
+  
+  -- Worker has no workflow_id restriction, can take any job
+  return true
+end
+
 local function check_hardware_requirements(worker_hw, required_hw)
   if required_hw.gpu_memory_gb and required_hw.gpu_memory_gb ~= 'all' then
     if not worker_hw.gpu_memory_gb or worker_hw.gpu_memory_gb < required_hw.gpu_memory_gb then
@@ -224,6 +248,11 @@ local function matches_requirements(worker, job)
       redis.log(redis.LOG_WARNING, 'Failed to parse job requirements: ' .. (job.requirements or 'nil'))
       requirements = {}
     end
+  end
+  
+  -- Check workflow_id restriction first
+  if not check_workflow_id_restriction(worker.workflow_id, job.workflow_id) then
+    return false
   end
   
   if job.service_required then

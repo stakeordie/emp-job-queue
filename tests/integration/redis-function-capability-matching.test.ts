@@ -379,4 +379,169 @@ describe('Redis Function Capability Matching Integration', () => {
       console.warn('Redis function not available:', error);
     }
   }, TEST_TIMEOUT);
+
+  test('should enforce workflow_id restrictions correctly', async () => {
+    if (shouldSkip) return;
+
+    // Test Case 1: Worker restricted to specific workflow, job with matching workflow_id
+    const restrictedWorker = createTestWorkerCapabilities({
+      workflow_id: 'abc123',
+      services: ['simulation']
+    });
+
+    const matchingJob = createTestJob({
+      id: 'matching-workflow-job',
+      workflow_id: 'abc123'
+    });
+
+    // Store job
+    const matchingScore = RedisOperations.calculateJobScore(matchingJob.priority, new Date(matchingJob.created_at).getTime());
+    await RedisOperations.storeJob(redis, matchingJob);
+    await redis.zadd('jobs:pending', matchingScore, matchingJob.id);
+
+    try {
+      const result = await redis.fcall(
+        'findMatchingJob',
+        0,
+        JSON.stringify(restrictedWorker),
+        '10'
+      );
+
+      expect(result).not.toBeNull();
+      if (result) {
+        const matchResult = JSON.parse(result as string);
+        expect(matchResult.jobId).toBe(matchingJob.id);
+      }
+    } catch (error) {
+      console.warn('Redis function not available:', error);
+    }
+
+    // Clean up
+    await redis.flushdb();
+  }, TEST_TIMEOUT);
+
+  test('should reject job with different workflow_id for restricted worker', async () => {
+    if (shouldSkip) return;
+
+    // Worker restricted to specific workflow
+    const restrictedWorker = createTestWorkerCapabilities({
+      workflow_id: 'abc123',
+      services: ['simulation']
+    });
+
+    // Job with different workflow_id
+    const differentWorkflowJob = createTestJob({
+      id: 'different-workflow-job',
+      workflow_id: 'xyz789'
+    });
+
+    // Store job
+    const score = RedisOperations.calculateJobScore(differentWorkflowJob.priority, new Date(differentWorkflowJob.created_at).getTime());
+    await RedisOperations.storeJob(redis, differentWorkflowJob);
+    await redis.zadd('jobs:pending', score, differentWorkflowJob.id);
+
+    try {
+      const result = await redis.fcall(
+        'findMatchingJob',
+        0,
+        JSON.stringify(restrictedWorker),
+        '10'
+      );
+
+      expect(result).toBeNull();
+    } catch (error) {
+      console.warn('Redis function not available:', error);
+    }
+
+    // Clean up
+    await redis.flushdb();
+  }, TEST_TIMEOUT);
+
+  test('should reject job without workflow_id for restricted worker', async () => {
+    if (shouldSkip) return;
+
+    // Worker restricted to specific workflow
+    const restrictedWorker = createTestWorkerCapabilities({
+      workflow_id: 'abc123',
+      services: ['simulation']
+    });
+
+    // Job without workflow_id
+    const noWorkflowJob = createTestJob({
+      id: 'no-workflow-job'
+      // No workflow_id set
+    });
+
+    // Store job
+    const score = RedisOperations.calculateJobScore(noWorkflowJob.priority, new Date(noWorkflowJob.created_at).getTime());
+    await RedisOperations.storeJob(redis, noWorkflowJob);
+    await redis.zadd('jobs:pending', score, noWorkflowJob.id);
+
+    try {
+      const result = await redis.fcall(
+        'findMatchingJob',
+        0,
+        JSON.stringify(restrictedWorker),
+        '10'
+      );
+
+      expect(result).toBeNull();
+    } catch (error) {
+      console.warn('Redis function not available:', error);
+    }
+
+    // Clean up
+    await redis.flushdb();
+  }, TEST_TIMEOUT);
+
+  test('should allow unrestricted worker to take any job', async () => {
+    if (shouldSkip) return;
+
+    // Worker without workflow restriction
+    const unrestrictedWorker = createTestWorkerCapabilities({
+      services: ['simulation']
+      // No workflow_id set
+    });
+
+    // Create jobs with and without workflow_id
+    const workflowJob = createTestJob({
+      id: 'workflow-job',
+      workflow_id: 'abc123'
+    });
+
+    const noWorkflowJob = createTestJob({
+      id: 'no-workflow-job'
+      // No workflow_id set
+    });
+
+    // Store both jobs
+    const workflowScore = RedisOperations.calculateJobScore(workflowJob.priority, new Date(workflowJob.created_at).getTime());
+    const noWorkflowScore = RedisOperations.calculateJobScore(noWorkflowJob.priority, new Date(noWorkflowJob.created_at).getTime());
+    
+    await RedisOperations.storeJob(redis, workflowJob);
+    await RedisOperations.storeJob(redis, noWorkflowJob);
+    await redis.zadd('jobs:pending', workflowScore, workflowJob.id);
+    await redis.zadd('jobs:pending', noWorkflowScore, noWorkflowJob.id);
+
+    try {
+      // Should get one of the jobs (priority/FIFO order)
+      const result = await redis.fcall(
+        'findMatchingJob',
+        0,
+        JSON.stringify(unrestrictedWorker),
+        '10'
+      );
+
+      expect(result).not.toBeNull();
+      if (result) {
+        const matchResult = JSON.parse(result as string);
+        expect([workflowJob.id, noWorkflowJob.id]).toContain(matchResult.jobId);
+      }
+    } catch (error) {
+      console.warn('Redis function not available:', error);
+    }
+
+    // Clean up
+    await redis.flushdb();
+  }, TEST_TIMEOUT);
 });

@@ -13,6 +13,7 @@ export interface WorkerCapabilities {
   performance?: PerformanceConfig;
   location?: LocationConfig;
   cost?: CostConfig;
+  workflow_id?: string; // Workflow restriction: only accept jobs with this workflow_id
   metadata?: Record<string, unknown>;
   [key: string]: unknown; // Allow assignment to Record<string, unknown>
 }

@@ -13,7 +13,7 @@ const express = require('express');
 const { createServer } = require('http');
 
 const SERVER_ID = process.env.SERVER_ID || 'gpu-server-unknown';
-const GPU_COUNT = parseInt(process.env.GPU_COUNT || '1');
+const GPU_COUNT = parseInt(process.env.WORKER_MACHINE_GPU_COUNT || '1');
 const WORKERS_CONFIG = JSON.parse(process.env.WORKERS_CONFIG || '[]');
 
 console.log(`🚀 Starting GPU Server: ${SERVER_ID} with ${GPU_COUNT} GPUs`);

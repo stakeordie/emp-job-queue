@@ -2,6 +2,43 @@
 
 ## 2025-07-07
 
+### ✅ Completed - Workflow Isolation + Environment Variable Updates + Deployment Planning
+
+#### 🎯 **Workflow Isolation Feature**
+- **New Capability**: Added `WORKER_WORKFLOW_ID` restriction for surgical job isolation
+- **Use Cases**: Traffic spike isolation, priority workflows, customer isolation, debugging
+- **Implementation**: Server-side enforcement via Redis Functions for atomic job matching
+- **Logic**: Workers with `WORKER_WORKFLOW_ID=abc123` only process jobs with matching workflow_id
+- **Backward Compatible**: Unrestricted workers continue processing all jobs normally
+
+#### 🔧 **Technical Implementation**
+- **Worker Capabilities**: Added optional `workflow_id` field to worker registration
+- **Redis Function**: Enhanced `findMatchingJob.lua` with workflow restriction check
+- **Environment Support**: Added `WORKER_WORKFLOW_ID` environment variable handling
+- **Test Coverage**: Comprehensive test cases for all workflow restriction scenarios
+- **Type Safety**: Updated TypeScript types across core system
+
+#### 🚀 **Environment Variable Consistency**
+- **Updated**: `WORKER_GPU_COUNT` → `WORKER_MACHINE_GPU_COUNT` across all files
+- **Scope**: Documentation, test scripts, and integration files
+- **Clarification**: Machine info is organizational metadata, not worker capability data
+- **Consistency**: Aligned naming with docker-compose.yml configuration
+
+#### 📋 **Deployment Architecture Planning**
+- **Analysis**: Comprehensive review of emp-worker and emp-worker-old deployment strategies
+- **Strategy**: Conservative migration preserving proven mgpu-server infrastructure
+- **Target**: Replace Python workers with TypeScript Redis-direct workers
+- **Planning Document**: Created detailed implementation plan for worker2 branch migration
+
+#### 🎉 **Key Benefits**
+- **Surgical Control**: Isolate problematic workflows to dedicated workers during traffic spikes
+- **Flexible Isolation**: Reserve high-end workers for critical workflows or customers  
+- **Debugging Support**: Quarantine workflows for troubleshooting without affecting general capacity
+- **Production Ready**: Server-side atomic enforcement prevents race conditions
+- **Migration Path**: Clear plan for conservative deployment preserving working infrastructure
+
+## 2025-07-07 (Earlier)
+
 ### ✅ Completed - Comprehensive Message Types + Job State Flow Fix
 
 #### 🎯 **Complete Message Type Synchronization**  

@@ -221,6 +221,10 @@ export class RedisDirectBaseWorker {
       capabilities.a1111_version = process.env.WORKER_A1111_VERSION;
     }
 
+    if (process.env.WORKER_WORKFLOW_ID) {
+      capabilities.workflow_id = process.env.WORKER_WORKFLOW_ID;
+    }
+
     return capabilities;
   }
 

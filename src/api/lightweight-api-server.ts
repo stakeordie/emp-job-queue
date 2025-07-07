@@ -1499,7 +1499,7 @@ export class LightweightAPIServer {
       }
 
       const currentStatus = jobData.status;
-      
+
       // Only allow cancellation of pending, assigned, or in-progress jobs
       if (currentStatus === 'completed' || currentStatus === 'failed') {
         throw new Error(`Cannot cancel job ${jobId} - already ${currentStatus}`);
@@ -1515,15 +1515,18 @@ export class LightweightAPIServer {
       // If job was assigned to a worker, remove it from worker's active jobs
       if (jobData.worker_id) {
         await this.redis.hdel(`jobs:active:${jobData.worker_id}`, jobId);
-        
+
         // Send cancellation message to worker (if they support it)
         try {
-          await this.redis.publish('cancel_job', JSON.stringify({
-            job_id: jobId,
-            worker_id: jobData.worker_id,
-            reason: 'Job cancelled by user',
-            timestamp: Date.now(),
-          }));
+          await this.redis.publish(
+            'cancel_job',
+            JSON.stringify({
+              job_id: jobId,
+              worker_id: jobData.worker_id,
+              reason: 'Job cancelled by user',
+              timestamp: Date.now(),
+            })
+          );
         } catch (error) {
           logger.warn(`Failed to send cancellation message to worker ${jobData.worker_id}:`, error);
         }

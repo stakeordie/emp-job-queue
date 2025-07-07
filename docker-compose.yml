@@ -48,7 +48,8 @@ services:
       dockerfile: Dockerfile.worker-direct
     environment:
       - NODE_ENV=production
-      - WORKER_MACHINE_ID:server-1
+      - WORKER_MACHINE_ID=gpu-machine-1
+      - WORKER_MACHINE_GPU_COUNT=4
       - WORKER_ID=worker1-direct
       - HUB_REDIS_URL=redis://default:JQSoNVpIPsuaDQYicNvocglialxPrTjj@ballast.proxy.rlwy.net:30645
       - WORKER_SERVICES=simulation
@@ -60,11 +61,9 @@ services:
       - WORKER_SIMULATION_PROCESSING_TIME=5
       - WORKER_SIMULATION_STEPS=25
       # Hardware specs
-      - WORKER_GPU_COUNT=1
       - WORKER_GPU_MEMORY_GB=8
       - WORKER_GPU_MODEL=Simulation
       - WORKER_MACHINE_ID=dev-machine-1
-      - WORKER_RAM_GB=16
       # Test capabilities for worker1
       - WORKER_ASSET_TYPE=["image"]
       - WORKER_MODELS=["basic_sim","fast_sim"]
@@ -85,7 +84,7 @@ services:
       dockerfile: Dockerfile.worker-direct
     environment:
       - NODE_ENV=production
-      - WORKER_MACHINE_ID:server-1
+
       - WORKER_ID=worker2-direct
       - HUB_REDIS_URL=redis://default:JQSoNVpIPsuaDQYicNvocglialxPrTjj@ballast.proxy.rlwy.net:30645
       - WORKER_SERVICES=simulation
@@ -97,11 +96,10 @@ services:
       - WORKER_SIMULATION_PROCESSING_TIME=3
       - WORKER_SIMULATION_STEPS=15
       # Hardware specs
-      - WORKER_GPU_COUNT=1
       - WORKER_GPU_MEMORY_GB=8
       - WORKER_GPU_MODEL=Simulation
-      - WORKER_MACHINE_ID=dev-machine-2
-      - WORKER_RAM_GB=16
+      - WORKER_MACHINE_ID=gpu-machine-1
+      - WORKER_MACHINE_GPU_COUNT=4
       # Test capabilities for worker2 (faster)
       - WORKER_ASSET_TYPE=["image","video"]
       - WORKER_MODELS=["basic_sim","fast_sim","advanced_sim"]
@@ -143,11 +141,10 @@ services:
       - WORKER_SIMULATION_PROCESSING_TIME=10
       - WORKER_SIMULATION_STEPS=5
       # Hardware specs (GPU worker)
-      - WORKER_GPU_COUNT=1
       - WORKER_GPU_MEMORY_GB=24
       - WORKER_GPU_MODEL=RTX 4090
       - WORKER_MACHINE_ID=gpu-machine-1
-      - WORKER_RAM_GB=64
+      - WORKER_MACHINE_GPU_COUNT=4
       # Test capabilities for worker3 (ComfyUI+Sim)
       - WORKER_ASSET_TYPE=["image","video","3d"]
       - WORKER_MODELS=["sdxl","sd15","flux","basic_sim"]
@@ -183,8 +180,8 @@ services:
       - WORKER_SIMULATION_PROCESSING_TIME=1
       - WORKER_SIMULATION_STEPS=10
       # Hardware specs
-      - WORKER_GPU_COUNT=0
-      - WORKER_MACHINE_ID=scale-machine
+      - WORKER_MACHINE_ID=gpu-machine-1
+      - WORKER_MACHINE_GPU_COUNT=4
       - WORKER_RAM_GB=8
       # Test capabilities for worker4 (CPU-only scale test)
       - WORKER_ASSET_TYPE=["text","data"]
@@ -219,8 +216,8 @@ services:
       - WORKER_SIMULATION_PROCESSING_TIME=1
       - WORKER_SIMULATION_STEPS=10
       # Hardware specs
-      - WORKER_GPU_COUNT=0
       - WORKER_MACHINE_ID=scale-machine
+      - WORKER_MACHINE_GPU_COUNT=2
       - WORKER_RAM_GB=8
       # Test capabilities for worker5 (Europe region, audio specialist)
       - WORKER_ASSET_TYPE=["audio","text"]
@@ -256,8 +253,8 @@ services:
       - WORKER_SIMULATION_PROCESSING_TIME=1
       - WORKER_SIMULATION_STEPS=10
       # Hardware specs
-      - WORKER_GPU_COUNT=0
       - WORKER_MACHINE_ID=scale-machine
+      - WORKER_MACHINE_GPU_COUNT=2
       - WORKER_RAM_GB=8
       # Test capabilities for worker6 (Asia region, data processing)
       - WORKER_ASSET_TYPE=["data","image"]
@@ -293,8 +290,8 @@ services:
       - WORKER_SIMULATION_PROCESSING_TIME=1
       - WORKER_SIMULATION_STEPS=10
       # Hardware specs
-      - WORKER_GPU_COUNT=0
-      - WORKER_MACHINE_ID=scale-machine
+      - WORKER_MACHINE_ID=x-machine
+      - WORKER_MACHINE_GPU_COUNT=1
       - WORKER_RAM_GB=8
       # Test capabilities for worker7 (Canada region, video specialist)
       - WORKER_ASSET_TYPE=["video","image"]
@@ -331,8 +328,8 @@ services:
       - WORKER_SIMULATION_PROCESSING_TIME=1
       - WORKER_SIMULATION_STEPS=10
       # Hardware specs
-      - WORKER_GPU_COUNT=0
-      - WORKER_MACHINE_ID=scale-machine
+      - WORKER_MACHINE_ID=y-machine
+      - WORKER_MACHINE_GPU_COUNT=1
       - WORKER_RAM_GB=8
       # Test capabilities for worker8 (Multi-region, general purpose)
       - WORKER_ASSET_TYPE=["image","text","data"]
@@ -369,8 +366,8 @@ services:
       - WORKER_SIMULATION_PROCESSING_TIME=1
       - WORKER_SIMULATION_STEPS=10
       # Hardware specs
-      - WORKER_GPU_COUNT=0
-      - WORKER_MACHINE_ID=scale-machine
+      - WORKER_MACHINE_ID=z-machine
+      - WORKER_MACHINE_GPU_COUNT=1
       - WORKER_RAM_GB=8
       # Test capabilities for worker9 (Australia region, 3D specialist)
       - WORKER_ASSET_TYPE=["3d","image"]
@@ -408,10 +405,10 @@ services:
       - WORKER_SIMULATION_PROCESSING_TIME=5
       - WORKER_SIMULATION_STEPS=25
       # Hardware specs
-      - WORKER_GPU_COUNT=1
       - WORKER_GPU_MEMORY_GB=8
       - WORKER_GPU_MODEL=Simulation
       - WORKER_MACHINE_ID=dev-machine-3
+      - WORKER_MACHINE_GPU_COUNT=1
       - WORKER_RAM_GB=16
       # Test capabilities for worker10 (UK region, AI model specialist)
       - WORKER_ASSET_TYPE=["image","text","video"]
@@ -450,10 +447,10 @@ services:
       - WORKER_SIMULATION_PROCESSING_TIME=3
       - WORKER_SIMULATION_STEPS=15
       # Hardware specs
-      - WORKER_GPU_COUNT=1
       - WORKER_GPU_MEMORY_GB=8
       - WORKER_GPU_MODEL=Simulation
       - WORKER_MACHINE_ID=dev-machine-4
+      - WORKER_MACHINE_GPU_COUNT=1
       - WORKER_RAM_GB=16
       # Test capabilities for worker11 (Brazil region, enterprise grade)
       - WORKER_ASSET_TYPE=["image","video","audio"]
@@ -502,10 +499,9 @@ services:
       - WORKER_SIMULATION_PROCESSING_TIME=5
       - WORKER_SIMULATION_STEPS=3
       # Hardware specs (low-end)
-      - WORKER_GPU_COUNT=0
       - WORKER_GPU_MEMORY_GB=0
-      - WORKER_RAM_GB=8
       - WORKER_MACHINE_ID=cpu-only-machine
+      - WORKER_MACHINE_GPU_COUNT=0
       # Test capabilities for worker-sim-only (Basic CPU worker)
       - WORKER_ASSET_TYPE=["text","data"]
       - WORKER_MODELS=["basic_sim","text_basic"]
@@ -542,11 +538,10 @@ services:
       - WORKER_SIMULATION_PROCESSING_TIME=15
       - WORKER_SIMULATION_STEPS=5
       # Hardware specs (GPU enabled)
-      - WORKER_GPU_COUNT=1
       - WORKER_GPU_MEMORY_GB=16
       - WORKER_GPU_MODEL=RTX 3080
-      - WORKER_RAM_GB=32
       - WORKER_MACHINE_ID=gpu-machine-2
+      - WORKER_MACHINE_GPU_COUNT=1
       # Test capabilities for worker-comfy-sim (ComfyUI specialist)
       - WORKER_ASSET_TYPE=["image","video"]
       - WORKER_MODELS=["sdxl","sd15","comfy_models"]
@@ -584,11 +579,10 @@ services:
       - WORKER_SIMULATION_PROCESSING_TIME=8
       - WORKER_SIMULATION_STEPS=4
       # Hardware specs (GPU enabled)
-      - WORKER_GPU_COUNT=1
       - WORKER_GPU_MEMORY_GB=24
       - WORKER_GPU_MODEL=RTX 4090
-      - WORKER_RAM_GB=64
       - WORKER_MACHINE_ID=gpu-machine-3
+      - WORKER_MACHINE_GPU_COUNT=1
       # Test capabilities for worker-a1111-sim (A1111 specialist)
       - WORKER_ASSET_TYPE=["image"]
       - WORKER_MODELS=["sd_models","controlnet","lora"]
@@ -626,11 +620,10 @@ services:
       - WORKER_SIMULATION_PROCESSING_TIME=10
       - WORKER_SIMULATION_STEPS=4
       # Hardware specs (high-end GPU)
-      - WORKER_GPU_COUNT=2
       - WORKER_GPU_MEMORY_GB=48
       - WORKER_GPU_MODEL=RTX A6000
-      - WORKER_RAM_GB=128
       - WORKER_MACHINE_ID=gpu-machine-4
+      - WORKER_MACHINE_GPU_COUNT=1
       # Test capabilities for worker-multi-sim (Multi-service powerhouse)
       - WORKER_ASSET_TYPE=["image","video","3d","text"]
       - WORKER_MODELS=["sdxl","flux","sd_models","comfy_models","llm_models"]
@@ -670,11 +663,10 @@ services:
       - WORKER_SIMULATION_PROCESSING_TIME=20
       - WORKER_SIMULATION_STEPS=3
       # Hardware specs (low GPU memory)
-      - WORKER_GPU_COUNT=1
       - WORKER_GPU_MEMORY_GB=8
       - WORKER_GPU_MODEL=RTX 3060
-      - WORKER_RAM_GB=16
       - WORKER_MACHINE_ID=gpu-machine-5
+      - WORKER_MACHINE_GPU_COUNT=1
       # Test capabilities for worker-low-gpu (Budget GPU worker)
       - WORKER_ASSET_TYPE=["image"]
       - WORKER_MODELS=["sd15","basic_models"]
