@@ -26,8 +26,10 @@ import { Progress } from "@/components/ui/progress"
 import { Play, Square, RefreshCw, X } from "lucide-react"
 import { JobSubmissionForm } from "@/components/job-submission-form"
 import { SimpleWorkerCard } from "@/components/SimpleWorkerCard"
+import { JobDetailsModal } from "@/components/JobDetailsModal"
 import { useMonitorStore } from "@/store"
 import { useState, useMemo } from "react"
+import type { Job } from "@/types/job"
 
 // Environment presets
 const CONNECTION_PRESETS = {
@@ -59,6 +61,7 @@ export default function Home() {
   const [authToken, setAuthToken] = useState(CONNECTION_PRESETS.local.auth);
   const [selectedPreset, setSelectedPreset] = useState('local');
   const [cancelJobId, setCancelJobId] = useState<string | null>(null);
+  const [selectedJob, setSelectedJob] = useState<Job | null>(null);
 
   const handlePresetChange = (preset: string) => {
     setSelectedPreset(preset);
@@ -358,7 +361,11 @@ export default function Home() {
                 ) : (
                   <div className="space-y-2">
                     {pendingJobsList.map((job, index) => (
-                      <div key={job.id} className="flex items-center justify-between p-3 border rounded">
+                      <div 
+                        key={job.id} 
+                        className="flex items-center justify-between p-3 border rounded cursor-pointer hover:bg-accent/50 transition-colors"
+                        onClick={() => setSelectedJob(job)}
+                      >
                         <div className="flex items-center gap-3 flex-1">
                           <span className="text-lg font-bold text-muted-foreground w-8">{index + 1}</span>
                           <Badge variant="outline">
@@ -381,7 +388,10 @@ export default function Home() {
                           <Button
                             variant="outline"
                             size="sm"
-                            onClick={() => setCancelJobId(job.id)}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setCancelJobId(job.id);
+                            }}
                             title="Cancel job"
                           >
                             <X className="h-3 w-3" />
@@ -464,6 +474,14 @@ export default function Home() {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      {/* Job Details Modal */}
+      <JobDetailsModal
+        job={selectedJob}
+        workers={workers}
+        isOpen={!!selectedJob}
+        onClose={() => setSelectedJob(null)}
+      />
     </main>
   )
 }

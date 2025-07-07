@@ -1,5 +1,27 @@
 # EmProps Job Queue Development Changelog
 
+## 2025-07-07
+
+### ✅ Completed - Job Details Modal with Capability Matching
+
+#### 🎯 **Interactive Job Details View**
+- **Goal**: Add modal to display job details and matching workers when clicking pending jobs
+- **Problem**: No way to see which workers can handle a specific job or view job requirements
+- **Solution**: Created JobDetailsModal component with real-time capability matching
+
+#### 🔧 **Implementation Details**
+- **JobDetailsModal Component**: Display job info, requirements, and matching workers
+- **Client-Side Matching**: Independent capability matching logic to verify Redis matching
+- **Worker Categorization**: Shows idle, busy, and incompatible workers with visual indicators
+- **Click Handler**: Added interactive rows to pending jobs table with hover effects
+
+#### 🎉 **Key Features**
+- **Comprehensive Job View**: Shows ID, type, status, priority, workflow info, timestamps
+- **Requirements Display**: Visual representation of GPU, CPU, RAM, models, services requirements
+- **Matching Workers List**: Color-coded worker cards showing compatibility status
+- **Payload Inspection**: Collapsible payload section for debugging
+- **Verification System**: If Redis says a job matches but worker doesn't claim it, we can identify issues
+
 ## 2025-07-06
 
 ### ✅ Completed - Comprehensive Capability Matching System
