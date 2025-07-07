@@ -3,7 +3,7 @@ import { Badge } from "@/components/ui/badge"
 import { Separator } from "@/components/ui/separator"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { CheckCircle2, XCircle, AlertCircle, Clock } from "lucide-react"
-import { Job, JobRequirements } from "@/types/job"
+import { Job } from "@/types/job"
 import { Worker } from "@/types/worker"
 
 interface JobDetailsModalProps {
@@ -224,7 +224,6 @@ export function JobDetailsModal({ job, workers, isOpen, onClose }: JobDetailsMod
                   </div>
                 )}
               </div>
-            </div>
             </div>
 
             <Separator />

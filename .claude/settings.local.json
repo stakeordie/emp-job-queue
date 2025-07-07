@@ -60,7 +60,8 @@
       "Bash(pnpm redis-functions:install:*)",
       "Bash(REDIS_URL=redis://default:JQSoNVpIPsuaDQYicNvocglialxPrTjj@ballast.proxy.rlwy.net:30645 pnpm redis:functions:install)",
       "Bash(docker-compose:*)",
-      "Bash(npx tsc:*)"
+      "Bash(npx tsc:*)",
+      "Bash(npx next lint:*)"
     ],
     "deny": []
   }
