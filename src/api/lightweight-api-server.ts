@@ -510,6 +510,33 @@ export class LightweightAPIServer {
         }
         break;
 
+      case 'cancel_job':
+        try {
+          const cancelJobId = message.job_id as string;
+          if (cancelJobId) {
+            await this.cancelJob(cancelJobId);
+            ws.send(
+              JSON.stringify({
+                type: 'job_cancelled',
+                job_id: cancelJobId,
+                message_id: message.id,
+                timestamp: new Date().toISOString(),
+              })
+            );
+            logger.info(`Client ${clientId} cancelled job ${cancelJobId}`);
+          }
+        } catch (error) {
+          ws.send(
+            JSON.stringify({
+              type: 'error',
+              message_id: message.id,
+              error: error instanceof Error ? error.message : 'Failed to cancel job',
+              timestamp: new Date().toISOString(),
+            })
+          );
+        }
+        break;
+
       default:
         ws.send(
           JSON.stringify({
@@ -650,6 +677,33 @@ export class LightweightAPIServer {
             })
           );
           logger.debug(`Client ${clientId} subscribed to job ${jobId} progress`);
+        }
+        break;
+
+      case 'cancel_job':
+        try {
+          const cancelJobId = message.job_id as string;
+          if (cancelJobId) {
+            await this.cancelJob(cancelJobId);
+            ws.send(
+              JSON.stringify({
+                type: 'job_cancelled',
+                job_id: cancelJobId,
+                message_id: message.id,
+                timestamp: new Date().toISOString(),
+              })
+            );
+            logger.info(`Client ${clientId} cancelled job ${cancelJobId}`);
+          }
+        } catch (error) {
+          ws.send(
+            JSON.stringify({
+              type: 'error',
+              message_id: message.id,
+              error: error instanceof Error ? error.message : 'Failed to cancel job',
+              timestamp: new Date().toISOString(),
+            })
+          );
         }
         break;
 
@@ -1457,6 +1511,79 @@ export class LightweightAPIServer {
       processing_time: jobData.processing_time ? parseInt(jobData.processing_time) : undefined,
       estimated_completion: jobData.estimated_completion || undefined,
     };
+  }
+
+  private async cancelJob(jobId: string): Promise<void> {
+    try {
+      // Get current job status
+      const jobData = await this.redis.hgetall(`job:${jobId}`);
+      if (!jobData.id) {
+        throw new Error(`Job ${jobId} not found`);
+      }
+
+      const currentStatus = jobData.status;
+      
+      // Only allow cancellation of pending, assigned, or in-progress jobs
+      if (currentStatus === 'completed' || currentStatus === 'failed') {
+        throw new Error(`Cannot cancel job ${jobId} - already ${currentStatus}`);
+      }
+
+      // Update job status to failed with cancellation message
+      await this.redis.hmset(`job:${jobId}`, {
+        status: JobStatus.FAILED,
+        failed_at: new Date().toISOString(),
+        error: 'Job cancelled by user',
+      });
+
+      // If job was assigned to a worker, remove it from worker's active jobs
+      if (jobData.worker_id) {
+        await this.redis.hdel(`jobs:active:${jobData.worker_id}`, jobId);
+        
+        // Send cancellation message to worker (if they support it)
+        try {
+          await this.redis.publish('cancel_job', JSON.stringify({
+            job_id: jobId,
+            worker_id: jobData.worker_id,
+            reason: 'Job cancelled by user',
+            timestamp: Date.now(),
+          }));
+        } catch (error) {
+          logger.warn(`Failed to send cancellation message to worker ${jobData.worker_id}:`, error);
+        }
+      }
+
+      // Remove from pending queue if it was still pending
+      if (currentStatus === 'pending') {
+        await this.redis.zrem('jobs:pending', jobId);
+      }
+
+      // Store in failed jobs for tracking
+      await this.redis.hset(
+        'jobs:failed',
+        jobId,
+        JSON.stringify({
+          error: 'Job cancelled by user',
+          failed_at: new Date().toISOString(),
+          cancelled: true,
+        })
+      );
+
+      // Broadcast job failure event
+      const jobFailedEvent: JobFailedEvent = {
+        type: 'job_failed',
+        job_id: jobId,
+        worker_id: jobData.worker_id || undefined,
+        error: 'Job cancelled by user',
+        failed_at: Date.now(),
+        timestamp: Date.now(),
+      };
+      this.broadcastToMonitors(jobFailedEvent);
+
+      logger.info(`Job ${jobId} cancelled successfully (was ${currentStatus})`);
+    } catch (error) {
+      logger.error(`Failed to cancel job ${jobId}:`, error);
+      throw error;
+    }
   }
 
   private async getJobs(options: {
