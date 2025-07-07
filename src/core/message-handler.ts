@@ -100,9 +100,6 @@ export class MessageHandler implements MessageHandlerInterface {
         case MessageType.UPDATE_JOB_PROGRESS:
           await this.handleJobProgress(message as JobProgressMessage);
           break;
-        case MessageType.JOB_COMPLETED:
-          await this.handleJobComplete(message as JobCompletedMessage);
-          break;
         case MessageType.FAIL_JOB:
           await this.handleJobFailed(message as JobFailedMessage);
           break;
@@ -296,7 +293,7 @@ export class MessageHandler implements MessageHandlerInterface {
     // This is sent by workers to complete a job
     await this.handleJobComplete({
       id: uuidv4(),
-      type: MessageType.JOB_COMPLETED,
+      type: MessageType.COMPLETE_JOB,
       timestamp: TimestampUtil.now(),
       job_id: message.job_id,
       worker_id: message.worker_id, // Use the required worker_id field

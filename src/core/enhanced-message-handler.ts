@@ -88,7 +88,7 @@ export class EnhancedMessageHandler implements MessageHandlerInterface {
     this.registerHandler(MessageType.FAIL_JOB, this.handleFailJob.bind(this));
     this.registerHandler(MessageType.CANCEL_JOB, this.handleCancelJob.bind(this));
     this.registerHandler(MessageType.SYNC_JOB_STATE, this.handleSyncJobState.bind(this));
-    this.registerHandler(MessageType.JOB_COMPLETED, this.handleJobComplete.bind(this));
+    this.registerHandler(MessageType.COMPLETE_JOB, this.handleJobComplete.bind(this));
 
     // Worker lifecycle handlers
     this.registerHandler(MessageType.REGISTER_WORKER, this.handleWorkerRegistration.bind(this));
@@ -300,7 +300,7 @@ export class EnhancedMessageHandler implements MessageHandlerInterface {
     // This is sent by workers to complete a job
     await this.handleJobComplete({
       id: uuidv4(),
-      type: MessageType.JOB_COMPLETED,
+      type: MessageType.COMPLETE_JOB,
       timestamp: TimestampUtil.now(),
       job_id: message.job_id,
       worker_id: message.worker_id, // Use the required worker_id field

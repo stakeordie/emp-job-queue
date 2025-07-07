@@ -366,7 +366,7 @@ export class ConnectionManager implements ConnectionManagerInterface {
   async forwardJobCompletion(jobId: string, result: unknown): Promise<void> {
     const completionMessage: BaseMessage = {
       id: uuidv4(),
-      type: MessageType.JOB_COMPLETED,
+      type: MessageType.COMPLETE_JOB,
       timestamp: TimestampUtil.now(),
       job_id: jobId,
       result,

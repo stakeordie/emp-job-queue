@@ -61,7 +61,8 @@ export enum MessageType {
 
   // Legacy compatibility - these are used in some places
   JOB_UPDATE = 'job_update',
-  JOB_COMPLETED = 'job_completed',
+  // JOB_PROGRESS = 'job_progress', // REMOVED - use UPDATE_JOB_PROGRESS instead
+  // JOB_COMPLETED = 'complete_job', // REMOVED - use COMPLETE_JOB instead
 
   // Additional message types
   SYSTEM_STATUS = 'system_status',
@@ -310,7 +311,7 @@ export interface JobAvailableMessage extends BaseMessage {
  * Message indicating a job has been completed - MUST MATCH PYTHON JobCompletedMessage
  */
 export interface JobCompletedMessage extends BaseMessage {
-  type: MessageType.JOB_COMPLETED;
+  type: MessageType.COMPLETE_JOB;
   job_id: string;
   worker_id?: string;
   status: string;

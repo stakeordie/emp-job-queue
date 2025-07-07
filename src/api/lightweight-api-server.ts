@@ -960,6 +960,8 @@ export class LightweightAPIServer {
     this.progressSubscriber.subscribe('update_job_progress');
     // Subscribe to real-time worker status changes
     this.progressSubscriber.subscribe('worker_status');
+    // Subscribe to job completion events
+    this.progressSubscriber.subscribe('complete_job');
 
     this.progressSubscriber.on('message', async (channel, message) => {
       if (channel === 'update_job_progress') {
@@ -997,6 +999,30 @@ export class LightweightAPIServer {
           );
         } catch (error) {
           logger.error('Error processing worker status message:', error);
+        }
+      } else if (channel === 'complete_job') {
+        try {
+          const completionData = JSON.parse(message);
+          logger.info(
+            `🎉 Received job completion: job ${completionData.job_id} completed by worker ${completionData.worker_id}`
+          );
+
+          // Create and broadcast job completion event
+          const jobCompletedEvent: JobCompletedEvent = {
+            type: 'complete_job',
+            job_id: completionData.job_id,
+            worker_id: completionData.worker_id,
+            result: completionData.result,
+            completed_at: completionData.timestamp,
+            timestamp: completionData.timestamp,
+          };
+          this.broadcastToMonitors(jobCompletedEvent);
+
+          logger.info(
+            `📢 Broadcasted job completion event: ${completionData.job_id}`
+          );
+        } catch (error) {
+          logger.error('Error processing job completion message:', error);
         }
       }
     });
