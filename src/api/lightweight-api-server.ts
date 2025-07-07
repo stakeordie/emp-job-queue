@@ -1007,19 +1007,11 @@ export class LightweightAPIServer {
             `🎉 Received job completion: job ${completionData.job_id} completed by worker ${completionData.worker_id}`
           );
 
-          // Create and broadcast job completion event
-          const jobCompletedEvent: JobCompletedEvent = {
-            type: 'complete_job',
-            job_id: completionData.job_id,
-            worker_id: completionData.worker_id,
-            result: completionData.result,
-            completed_at: completionData.timestamp,
-            timestamp: completionData.timestamp,
-          };
-          this.broadcastToMonitors(jobCompletedEvent);
+          // Broadcast the completion event to both clients and monitors
+          await this.broadcastCompletion(completionData.job_id, completionData);
 
           logger.info(
-            `📢 Broadcasted job completion event: ${completionData.job_id}`
+            `📢 Broadcasted job completion event to clients and monitors: ${completionData.job_id}`
           );
         } catch (error) {
           logger.error('Error processing job completion message:', error);
@@ -1269,6 +1261,79 @@ export class LightweightAPIServer {
       };
       this.broadcastToMonitors(jobProgressEvent);
       this.broadcastJobEventToClient(jobId, jobProgressEvent);
+    }
+  }
+
+  private async broadcastCompletion(
+    jobId: string,
+    completionData: Record<string, unknown>
+  ): Promise<void> {
+    const completionMessage = {
+      type: 'completion',
+      job_id: jobId,
+      data: completionData,
+      timestamp: new Date().toISOString(),
+    };
+
+    // Broadcast to monitors as JobCompletedEvent
+    const jobCompletedEvent: JobCompletedEvent = {
+      type: 'complete_job',
+      job_id: jobId,
+      worker_id: completionData.worker_id as string,
+      result: completionData.result,
+      completed_at: completionData.timestamp as number,
+      timestamp: completionData.timestamp as number,
+    };
+    this.broadcastToMonitors(jobCompletedEvent);
+
+    // Broadcast to SSE connections (clients waiting for this specific job)
+    for (const [_clientId, connection] of this.sseConnections) {
+      if (connection.jobId === jobId) {
+        try {
+          connection.response.write(`data: ${JSON.stringify(completionMessage)}\n\n`);
+          // Close SSE connection after sending completion
+          connection.response.end();
+          this.sseConnections.delete(connection.clientId);
+        } catch (error) {
+          logger.error(`Failed to send SSE completion to client ${connection.clientId}:`, error);
+          this.sseConnections.delete(connection.clientId);
+        }
+      }
+    }
+
+    // Broadcast to WebSocket connections (clients subscribed to this job)
+    for (const [_clientId, connection] of this.wsConnections) {
+      if (connection.subscribedJobs.has(jobId)) {
+        try {
+          connection.ws.send(JSON.stringify(completionMessage));
+        } catch (error) {
+          logger.error(
+            `Failed to send WebSocket completion to client ${connection.clientId}:`,
+            error
+          );
+          this.wsConnections.delete(connection.clientId);
+        }
+      }
+    }
+
+    // Also broadcast to the client that submitted this job
+    const submittingClientId = this.jobToClientMap.get(jobId);
+    if (submittingClientId) {
+      const clientConnection = this.clientConnections.get(submittingClientId);
+      if (clientConnection && clientConnection.ws.readyState === clientConnection.ws.OPEN) {
+        try {
+          clientConnection.ws.send(JSON.stringify(completionMessage));
+          logger.debug(`Sent completion update to job submitter client ${submittingClientId}`);
+        } catch (error) {
+          logger.error(
+            `Failed to send completion to submitting client ${submittingClientId}:`,
+            error
+          );
+          this.clientConnections.delete(submittingClientId);
+        }
+      }
+      // Clean up job-to-client mapping for completed jobs
+      this.jobToClientMap.delete(jobId);
     }
   }
 
