@@ -207,9 +207,8 @@ export class RedisDirectWorkerClient {
       id: jobId,
       service_required: redisData.service_required || redisData.job_type || 'unknown',
       priority: parseInt(redisData.priority || '50'),
-      payload: typeof redisData.payload === 'string' ? JSON.parse(redisData.payload) : {},
-      requirements:
-        typeof redisData.requirements === 'string' ? JSON.parse(redisData.requirements) : undefined,
+      payload: this.safeJsonParse(redisData.payload, {}),
+      requirements: this.safeJsonParse(redisData.requirements, undefined),
       customer_id: redisData.customer_id,
       created_at: redisData.created_at || new Date().toISOString(),
       assigned_at: redisData.assigned_at || new Date().toISOString(),
@@ -253,7 +252,11 @@ export class RedisDirectWorkerClient {
       return null;
     }
 
-    const parsedResult = JSON.parse(result);
+    const parsedResult = this.safeJsonParse(result, null);
+    if (!parsedResult) {
+      logger.error(`Failed to parse Redis Function result:`, result);
+      throw new Error('Redis Function returned unparseable result');
+    }
 
     // Runtime type validation
     if (!parsedResult.jobId || !parsedResult.job) {
@@ -418,8 +421,8 @@ export class RedisDirectWorkerClient {
         id: jobData.id,
         service_required: jobData.service_required || 'unknown',
         priority: parseInt(jobData.priority || '50'),
-        payload: JSON.parse(jobData.payload || '{}'),
-        requirements: jobData.requirements ? JSON.parse(jobData.requirements) : undefined,
+        payload: this.safeJsonParse(jobData.payload, {}),
+        requirements: this.safeJsonParse(jobData.requirements, undefined),
         customer_id: jobData.customer_id || undefined,
         created_at: jobData.created_at,
         assigned_at: jobData.assigned_at || undefined,
@@ -769,6 +772,27 @@ export class RedisDirectWorkerClient {
       clearTimeout(this.pollTimeout);
       this.pollTimeout = undefined;
       logger.info(`Worker ${this.workerId} stopped job polling`);
+    }
+  }
+
+  /**
+   * Safely parse JSON, handling empty strings and malformed JSON
+   */
+  private safeJsonParse<T>(jsonString: unknown, defaultValue: T): T {
+    if (typeof jsonString !== 'string') {
+      return defaultValue;
+    }
+
+    const trimmed = jsonString.trim();
+    if (trimmed === '') {
+      return defaultValue;
+    }
+
+    try {
+      return JSON.parse(trimmed);
+    } catch (error) {
+      logger.warn(`Failed to parse JSON: ${trimmed}`, error);
+      return defaultValue;
     }
   }
 }
