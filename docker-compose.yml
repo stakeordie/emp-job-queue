@@ -36,8 +36,9 @@ services:
       retries: 3
     profiles:
       - one-worker
-      - all-workers
+      - multi-sim
       - capability-test
+      - all-workers
 
   # Redis-Direct Worker 1 - Simulation connector
   worker1:
@@ -112,6 +113,7 @@ services:
     networks:
       - emp-network
     profiles:
+      - multi-sim
       - all-workers
 
 
@@ -159,6 +161,7 @@ services:
       - emp-network
     restart: unless-stopped
     profiles:
+      - multi-sim
       - all-workers
   # Redis-Direct Worker 4 - Multiple instances (scale test)
   worker4:
@@ -196,6 +199,7 @@ services:
       - emp-network
     restart: unless-stopped
     profiles:
+      - multi-sim
       - all-workers
   worker5:
     container_name: emp-worker5
@@ -232,6 +236,7 @@ services:
       - emp-network
     restart: unless-stopped
     profiles:
+      - multi-sim
       - all-workers
   worker6:
     container_name: emp-worker6
@@ -268,6 +273,7 @@ services:
       - emp-network
     restart: unless-stopped
     profiles:
+      - multi-sim
       - all-workers
   worker7:
     container_name: emp-worker7
@@ -305,6 +311,7 @@ services:
       - emp-network
     restart: unless-stopped
     profiles:
+      - multi-sim
       - all-workers
   worker8:
     container_name: emp-worker8
@@ -342,6 +349,7 @@ services:
       - emp-network
     restart: unless-stopped
     profiles:
+      - multi-sim
       - all-workers
   worker9:
     container_name: emp-worker9
@@ -379,6 +387,7 @@ services:
       - emp-network
     restart: unless-stopped
     profiles:
+      - multi-sim
       - all-workers
 
   worker10:
@@ -420,6 +429,7 @@ services:
       - emp-network
     restart: unless-stopped
     profiles:
+      - multi-sim
       - all-workers
     # Redis-Direct Worker 2 - Simulation connector (faster)
   worker11:
@@ -462,6 +472,7 @@ services:
       - emp-network
     restart: unless-stopped
     profiles:
+      - multi-sim
       - all-workers
 
 
@@ -510,6 +521,7 @@ services:
     restart: unless-stopped
     profiles:
       - capability-test
+      - all-workers
 
   # Worker with ComfyUI simulation capability  
   worker-comfy-sim:
@@ -551,6 +563,7 @@ services:
     restart: unless-stopped
     profiles:
       - capability-test
+      - all-workers
 
   # Worker with A1111 simulation capability
   worker-a1111-sim:
@@ -592,6 +605,7 @@ services:
     restart: unless-stopped
     profiles:
       - capability-test
+      - all-workers
 
   # Worker with multiple capabilities (ComfyUI + A1111 sim)
   worker-multi-sim:
@@ -635,6 +649,7 @@ services:
     restart: unless-stopped
     profiles:
       - capability-test
+      - all-workers
 
   # Worker with low GPU memory (can't handle large models)
   worker-low-gpu:
@@ -676,6 +691,7 @@ services:
     restart: unless-stopped
     profiles:
       - capability-test
+      - all-workers
 
 networks:
   emp-network:

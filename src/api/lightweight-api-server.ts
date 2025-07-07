@@ -907,12 +907,12 @@ export class LightweightAPIServer {
 
   private async startProgressStreamPolling(): Promise<void> {
     // Subscribe to real-time progress events from all workers
-    this.progressSubscriber.subscribe('job_progress');
+    this.progressSubscriber.subscribe('update_job_progress');
     // Subscribe to real-time worker status changes
     this.progressSubscriber.subscribe('worker_status');
 
     this.progressSubscriber.on('message', async (channel, message) => {
-      if (channel === 'job_progress') {
+      if (channel === 'update_job_progress') {
         try {
           const progressData = JSON.parse(message);
           logger.info(
@@ -988,7 +988,7 @@ export class LightweightAPIServer {
         this.broadcastToMonitors(jobStatusEvent);
       } else if (status === JobStatus.COMPLETED) {
         const jobCompletedEvent: JobCompletedEvent = {
-          type: 'job_completed',
+          type: 'complete_job',
           job_id: jobId,
           worker_id: workerId,
           result: jobData.result ? JSON.parse(jobData.result) : undefined,
@@ -1061,7 +1061,7 @@ export class LightweightAPIServer {
     // Also broadcast to monitors as JobProgressEvent
     if (progressData.worker_id && progressData.progress) {
       const jobProgressEvent: JobProgressEvent = {
-        type: 'job_progress',
+        type: 'update_job_progress',
         job_id: jobId,
         worker_id: progressData.worker_id,
         progress: parseInt(progressData.progress) || 0,
@@ -1145,7 +1145,7 @@ export class LightweightAPIServer {
     } else if (status === 'completed') {
       // First ensure we broadcast 100% progress
       const jobProgressEvent: JobProgressEvent = {
-        type: 'job_progress',
+        type: 'update_job_progress',
         job_id: jobId,
         worker_id: progressData.worker_id || 'unknown',
         progress: 100,
@@ -1155,7 +1155,7 @@ export class LightweightAPIServer {
 
       // Then broadcast job completion
       const jobCompletedEvent: JobCompletedEvent = {
-        type: 'job_completed',
+        type: 'complete_job',
         job_id: jobId,
         worker_id: progressData.worker_id || 'unknown',
         result: progressData.result || null,
@@ -1185,7 +1185,7 @@ export class LightweightAPIServer {
     } else {
       // Broadcast progress update
       const jobProgressEvent: JobProgressEvent = {
-        type: 'job_progress',
+        type: 'update_job_progress',
         job_id: jobId,
         worker_id: progressData.worker_id || 'unknown',
         progress: parseInt(progressData.progress || '0'),

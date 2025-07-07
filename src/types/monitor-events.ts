@@ -103,14 +103,14 @@ export interface JobStatusChangedEvent extends BaseMonitorEvent {
 }
 
 export interface JobProgressEvent extends BaseMonitorEvent {
-  type: 'job_progress';
+  type: 'update_job_progress';
   job_id: string;
   worker_id: string;
   progress: number;
 }
 
 export interface JobCompletedEvent extends BaseMonitorEvent {
-  type: 'job_completed';
+  type: 'complete_job';
   job_id: string;
   worker_id: string;
   result?: unknown;

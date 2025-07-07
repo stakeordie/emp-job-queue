@@ -315,7 +315,7 @@ export class EventBroadcaster {
 
   broadcastJobProgress(jobId: string, workerId: string, progress: number): void {
     const event: JobProgressEvent = {
-      type: 'job_progress',
+      type: 'update_job_progress',
       job_id: jobId,
       worker_id: workerId,
       progress: progress,
@@ -331,7 +331,7 @@ export class EventBroadcaster {
     completedAt?: number
   ): void {
     const event: JobCompletedEvent = {
-      type: 'job_completed',
+      type: 'complete_job',
       job_id: jobId,
       worker_id: workerId,
       result: result,
@@ -382,14 +382,14 @@ export class EventBroadcaster {
 
       case 'job_submitted':
       case 'job_assigned':
-      case 'job_completed':
+      case 'complete_job':
       case 'job_failed':
         return ['jobs', 'jobs:status'];
 
       case 'job_status_changed':
         return ['jobs', 'jobs:status'];
 
-      case 'job_progress':
+      case 'update_job_progress':
         return ['jobs', 'jobs:progress'];
 
       case 'system_stats':

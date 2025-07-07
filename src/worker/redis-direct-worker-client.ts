@@ -503,7 +503,7 @@ export class RedisDirectWorkerClient {
         timestamp: Date.now(),
       };
 
-      await this.redis.publish('job_progress', JSON.stringify(progressEvent));
+      await this.redis.publish('update_job_progress', JSON.stringify(progressEvent));
       logger.info(
         `📢 Worker ${this.workerId} published real-time progress for job ${jobId}: ${progress.progress}%`
       );
@@ -622,7 +622,7 @@ export class RedisDirectWorkerClient {
         timestamp: Date.now(),
       };
 
-      await this.redis.publish('job_progress', JSON.stringify(completionEvent));
+      await this.redis.publish('complete_job', JSON.stringify(completionEvent));
       logger.info(`📢 Worker ${this.workerId} published completion event for job ${jobId}`);
 
       // Update worker status back to idle

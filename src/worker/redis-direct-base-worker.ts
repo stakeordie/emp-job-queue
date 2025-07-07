@@ -376,11 +376,18 @@ export class RedisDirectBaseWorker {
       await this.redisClient.sendJobProgress(job.id, progress);
     };
 
+    // Transform payload for simulation mode when needed
+    let transformedPayload = job.payload;
+    if (connector.service_type === 'simulation' && job.service_required !== 'simulation') {
+      transformedPayload = this.transformPayloadForSimulation(job.service_required, job.payload);
+      logger.info(`Transformed ${job.service_required} payload for simulation mode`);
+    }
+
     // Process the job (convert to connector interface)
     const jobData = {
       id: job.id,
       type: job.service_required,
-      payload: job.payload,
+      payload: transformedPayload,
       requirements: job.requirements,
     };
     const result = await connector.processJob(jobData, onProgress);
@@ -480,5 +487,128 @@ export class RedisDirectBaseWorker {
 
   isConnected(): boolean {
     return this.redisClient.isConnected();
+  }
+
+  /**
+   * Transform complex service payloads into simple simulation payloads
+   */
+  private transformPayloadForSimulation(
+    serviceType: string,
+    originalPayload: unknown
+  ): Record<string, unknown> {
+    const basePayload = {
+      simulation_type: serviceType,
+      original_payload_preserved: true,
+      timestamp: new Date().toISOString(),
+    };
+
+    try {
+      // Handle ComfyUI workflow payloads
+      if (
+        serviceType.includes('comfyui') &&
+        typeof originalPayload === 'object' &&
+        originalPayload !== null
+      ) {
+        const payload = originalPayload as Record<string, unknown>;
+
+        if (payload.workflow && typeof payload.workflow === 'object') {
+          const workflow = payload.workflow as Record<string, unknown>;
+          const nodeCount = Object.keys(workflow).length;
+
+          // Extract meaningful parameters from ComfyUI workflow
+          let steps = 20; // default
+          let seed = Math.floor(Math.random() * 1000000);
+          let cfg = 7; // default
+
+          // Look for KSampler node to extract parameters
+          for (const nodeData of Object.values(workflow)) {
+            if (typeof nodeData === 'object' && nodeData !== null) {
+              const node = nodeData as Record<string, unknown>;
+              if (
+                node.class_type === 'KSampler' &&
+                node.inputs &&
+                typeof node.inputs === 'object'
+              ) {
+                const inputs = node.inputs as Record<string, unknown>;
+                if (typeof inputs.steps === 'number') steps = inputs.steps;
+                if (typeof inputs.seed === 'number') seed = inputs.seed;
+                if (typeof inputs.cfg === 'number') cfg = inputs.cfg;
+                break;
+              }
+            }
+          }
+
+          return {
+            ...basePayload,
+            workflow_nodes: nodeCount,
+            steps: Math.min(steps, 25), // Cap steps for simulation
+            seed: seed,
+            cfg: cfg,
+            simulation_message: `Simulating ComfyUI workflow with ${nodeCount} nodes`,
+          };
+        }
+      }
+
+      // Handle A1111 payloads
+      if (
+        serviceType.includes('a1111') &&
+        typeof originalPayload === 'object' &&
+        originalPayload !== null
+      ) {
+        const payload = originalPayload as Record<string, unknown>;
+
+        return {
+          ...basePayload,
+          steps: typeof payload.steps === 'number' ? Math.min(payload.steps, 25) : 20,
+          seed:
+            typeof payload.seed === 'number' ? payload.seed : Math.floor(Math.random() * 1000000),
+          cfg_scale: typeof payload.cfg_scale === 'number' ? payload.cfg_scale : 7,
+          width: typeof payload.width === 'number' ? payload.width : 512,
+          height: typeof payload.height === 'number' ? payload.height : 512,
+          simulation_message: 'Simulating A1111 text-to-image generation',
+        };
+      }
+
+      // Generic simulation payload for other service types
+      return {
+        ...basePayload,
+        steps: 15,
+        seed: Math.floor(Math.random() * 1000000),
+        simulation_message: `Simulating ${serviceType} processing`,
+        original_payload_summary: this.summarizePayload(originalPayload),
+      };
+    } catch (error) {
+      logger.warn(`Failed to transform payload for ${serviceType}, using basic simulation:`, error);
+      return {
+        ...basePayload,
+        steps: 10,
+        seed: Math.floor(Math.random() * 1000000),
+        simulation_message: `Basic simulation for ${serviceType} (payload transformation failed)`,
+        error: 'payload_transformation_failed',
+      };
+    }
+  }
+
+  /**
+   * Create a summary of the original payload for debugging
+   */
+  private summarizePayload(payload: unknown): Record<string, unknown> {
+    if (typeof payload !== 'object' || payload === null) {
+      return { type: typeof payload, value: payload };
+    }
+
+    const obj = payload as Record<string, unknown>;
+    const summary: Record<string, unknown> = {
+      type: 'object',
+      keys: Object.keys(obj).length,
+    };
+
+    // Add a few sample keys for debugging
+    const keys = Object.keys(obj).slice(0, 3);
+    if (keys.length > 0) {
+      summary.sample_keys = keys;
+    }
+
+    return summary;
   }
 }

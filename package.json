@@ -45,7 +45,7 @@
     "docker:build": "docker compose build",
     "docker:up": "docker compose up",
     "docker:up:build": "docker compose up --build",
-    "docker:down": "docker compose down",
+    "docker:down": "docker compose --profile all-workers down",
     "docker:logs": "docker compose logs -f",
     "docker:all-workers": "docker compose --profile all-workers down && docker compose --profile all-workers up",
     "docker:all-workers:build": "docker compose --profile all-workers down && docker compose --profile all-workers up --build",

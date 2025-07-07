@@ -33,7 +33,7 @@ export enum MessageType {
   FAIL_JOB = 'fail_job',
   CANCEL_JOB = 'cancel_job',
   FORCE_RETRY_JOB = 'force_retry_job',
-  JOB_COMPLETED_ACK = 'job_completed_ack',
+  JOB_COMPLETED_ACK = 'complete_job_ack',
   JOB_FAILED_ACK = 'job_failed_ack',
 
   // Status Messages

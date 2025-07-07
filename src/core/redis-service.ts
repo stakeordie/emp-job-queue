@@ -210,7 +210,7 @@ export class RedisService implements RedisServiceInterface {
     }
 
     // Publish progress update
-    await this.publishMessage('job_progress', progress);
+    await this.publishMessage('update_job_progress', progress);
   }
 
   async completeJob(jobId: string, result: JobResult): Promise<void> {
@@ -243,7 +243,7 @@ export class RedisService implements RedisServiceInterface {
       }
 
       // Publish completion
-      await this.publishMessage('job_completed', {
+      await this.publishMessage('complete_job', {
         job_id: jobId,
         result,
         completed_at: new Date().toISOString(),
