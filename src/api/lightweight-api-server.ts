@@ -1173,14 +1173,7 @@ export class LightweightAPIServer {
     jobId: string,
     progressData: Record<string, string>
   ): Promise<void> {
-    const progressMessage = {
-      type: 'progress',
-      job_id: jobId,
-      data: progressData,
-      timestamp: new Date().toISOString(),
-    };
-
-    // Also broadcast to monitors as JobProgressEvent
+    // Create standardized progress event for both monitors and clients
     if (progressData.worker_id && progressData.progress) {
       const jobProgressEvent: JobProgressEvent = {
         type: 'update_job_progress',
@@ -1189,50 +1182,52 @@ export class LightweightAPIServer {
         progress: parseInt(progressData.progress) || 0,
         timestamp: Date.now(),
       };
+
+      // Broadcast to monitors
       this.broadcastToMonitors(jobProgressEvent);
-    }
 
-    // Broadcast to SSE connections
-    for (const [_clientId, connection] of this.sseConnections) {
-      if (connection.jobId === jobId) {
-        try {
-          connection.response.write(`data: ${JSON.stringify(progressMessage)}\n\n`);
-        } catch (error) {
-          logger.error(`Failed to send SSE progress to client ${connection.clientId}:`, error);
-          this.sseConnections.delete(connection.clientId);
+      // Broadcast to SSE connections (clients)
+      for (const [_clientId, connection] of this.sseConnections) {
+        if (connection.jobId === jobId) {
+          try {
+            connection.response.write(`data: ${JSON.stringify(jobProgressEvent)}\n\n`);
+          } catch (error) {
+            logger.error(`Failed to send SSE progress to client ${connection.clientId}:`, error);
+            this.sseConnections.delete(connection.clientId);
+          }
         }
       }
-    }
 
-    // Broadcast to WebSocket connections
-    for (const [_clientId, connection] of this.wsConnections) {
-      if (connection.subscribedJobs.has(jobId)) {
-        try {
-          connection.ws.send(JSON.stringify(progressMessage));
-        } catch (error) {
-          logger.error(
-            `Failed to send WebSocket progress to client ${connection.clientId}:`,
-            error
-          );
-          this.wsConnections.delete(connection.clientId);
+      // Broadcast to WebSocket connections (clients)
+      for (const [_clientId, connection] of this.wsConnections) {
+        if (connection.subscribedJobs.has(jobId)) {
+          try {
+            connection.ws.send(JSON.stringify(jobProgressEvent));
+          } catch (error) {
+            logger.error(
+              `Failed to send WebSocket progress to client ${connection.clientId}:`,
+              error
+            );
+            this.wsConnections.delete(connection.clientId);
+          }
         }
       }
-    }
 
-    // Broadcast to the client that submitted this job
-    const submittingClientId = this.jobToClientMap.get(jobId);
-    if (submittingClientId) {
-      const clientConnection = this.clientConnections.get(submittingClientId);
-      if (clientConnection && clientConnection.ws.readyState === WebSocket.OPEN) {
-        try {
-          clientConnection.ws.send(JSON.stringify(progressMessage));
-          logger.debug(`Sent progress update to job submitter client ${submittingClientId}`);
-        } catch (error) {
-          logger.error(
-            `Failed to send progress to submitting client ${submittingClientId}:`,
-            error
-          );
-          this.clientConnections.delete(submittingClientId);
+      // Also broadcast to the client that submitted this job
+      const submittingClientId = this.jobToClientMap.get(jobId);
+      if (submittingClientId) {
+        const clientConnection = this.clientConnections.get(submittingClientId);
+        if (clientConnection && clientConnection.ws.readyState === WebSocket.OPEN) {
+          try {
+            clientConnection.ws.send(JSON.stringify(jobProgressEvent));
+            logger.debug(`Sent progress update to job submitter client ${submittingClientId}`);
+          } catch (error) {
+            logger.error(
+              `Failed to send progress to submitting client ${submittingClientId}:`,
+              error
+            );
+            this.clientConnections.delete(submittingClientId);
+          }
         }
       }
     }
@@ -1265,17 +1260,7 @@ export class LightweightAPIServer {
       this.broadcastToMonitors(jobStatusEvent);
       this.broadcastJobEventToClient(jobId, jobStatusEvent);
     } else if (status === 'completed') {
-      // First ensure we broadcast 100% progress
-      const jobProgressEvent: JobProgressEvent = {
-        type: 'update_job_progress',
-        job_id: jobId,
-        worker_id: progressData.worker_id || 'unknown',
-        progress: 100,
-        timestamp: Date.now(),
-      };
-      this.broadcastToMonitors(jobProgressEvent);
-
-      // Then broadcast job completion
+      // Broadcast job completion
       const jobCompletedEvent: JobCompletedEvent = {
         type: 'complete_job',
         job_id: jobId,
@@ -1304,18 +1289,8 @@ export class LightweightAPIServer {
 
       // Clean up job-to-client mapping for failed jobs
       this.jobToClientMap.delete(jobId);
-    } else {
-      // Broadcast progress update
-      const jobProgressEvent: JobProgressEvent = {
-        type: 'update_job_progress',
-        job_id: jobId,
-        worker_id: progressData.worker_id || 'unknown',
-        progress: parseInt(progressData.progress || '0'),
-        timestamp: Date.now(),
-      };
-      this.broadcastToMonitors(jobProgressEvent);
-      this.broadcastJobEventToClient(jobId, jobProgressEvent);
     }
+    // Note: Regular progress updates are already handled at the top of this method
   }
 
   private async broadcastCompletion(
