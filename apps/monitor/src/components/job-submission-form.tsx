@@ -584,6 +584,31 @@ export function JobSubmissionForm() {
             </div>
 
             <div className="space-y-1">
+              <Label htmlFor="workflow_datetime" className="text-xs">Datetime Override</Label>
+              <div className="flex gap-1">
+                <Input
+                  id="workflow_datetime"
+                  type="number"
+                  className="h-8 flex-1"
+                  {...register('workflow_datetime')}
+                  placeholder="unix timestamp (optional)"
+                />
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  className="h-8 px-2 text-xs"
+                  onClick={() => setValue('workflow_datetime', Date.now())}
+                  title="Set to current time"
+                >
+                  Now
+                </Button>
+              </div>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-2 gap-3">
+            <div className="space-y-1">
               <Label htmlFor="workflow_priority" className="text-xs">W. Priority</Label>
               <Input
                 id="workflow_priority"
@@ -593,6 +618,18 @@ export function JobSubmissionForm() {
                 className="h-8"
                 {...register('workflow_priority')}
                 placeholder="0-100"
+              />
+            </div>
+
+            <div className="space-y-1">
+              <Label htmlFor="step_number" className="text-xs">Step Number</Label>
+              <Input
+                id="step_number"
+                type="number"
+                min="0"
+                className="h-8"
+                {...register('step_number')}
+                placeholder="optional"
               />
             </div>
           </div>
