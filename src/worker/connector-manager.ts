@@ -142,8 +142,23 @@ export class ConnectorManager implements ConnectorRegistry, ConnectorFactory {
   }
 
   getConnectorByServiceType(serviceType: string): ConnectorInterface | undefined {
+    // First try direct match
     const connectors = this.getConnectorsByServiceType(serviceType);
-    return connectors.length > 0 ? connectors[0] : undefined;
+    if (connectors.length > 0) {
+      return connectors[0];
+    }
+
+    // Handle service type mapping for simulation variants
+    // e.g., "comfyui-sim", "a1111-sim" should map to "simulation" connector
+    if (serviceType.endsWith('-sim') || serviceType.includes('sim')) {
+      const simulationConnectors = this.getConnectorsByServiceType('simulation');
+      if (simulationConnectors.length > 0) {
+        logger.debug(`Mapping service type ${serviceType} to simulation connector`);
+        return simulationConnectors[0];
+      }
+    }
+
+    return undefined;
   }
 
   getAllConnectors(): ConnectorInterface[] {

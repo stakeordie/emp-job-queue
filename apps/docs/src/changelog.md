@@ -2,6 +2,31 @@
 
 ## 2025-07-07
 
+### ✅ Completed - Connector Service Type Mapping Fix
+
+#### 🎯 **Service Type to Connector Mapping**
+- **Problem**: Workers with `services: ["comfyui-sim"]` couldn't find simulation connector with `service_type: "simulation"`
+- **Error**: "No connector available for service: comfyui-sim" causing job failures
+- **Solution**: Added service type mapping in ConnectorManager.getConnectorByServiceType()
+
+#### 🔧 **Implementation Details**
+- **Mapping Logic**: Handle simulation variants (-sim suffix) mapping to simulation connector
+- **Examples**: `comfyui-sim`, `a1111-sim` → `simulation` connector
+- **Backward Compatible**: Direct matches still work first, fallback to mapping
+- **Debug Logging**: Added logging when mapping occurs for troubleshooting
+
+#### 🎉 **Key Benefits**
+- **Service Flexibility**: Workers can advertise specialized service types (comfyui-sim) while using generic connectors
+- **Connector Reuse**: Single simulation connector handles multiple specialized service types
+- **Easy Extension**: Pattern supports future service type mappings
+
+#### 🧪 **Testing Results**
+- Worker now correctly registers with `Services: comfyui-sim`
+- Connector lookup successfully maps `comfyui-sim` → `simulation` connector
+- Jobs are now being claimed and handed to connectors (progress from previous session)
+
+## 2025-07-07
+
 ### ✅ Completed - Job Details Modal with Capability Matching
 
 #### 🎯 **Interactive Job Details View**

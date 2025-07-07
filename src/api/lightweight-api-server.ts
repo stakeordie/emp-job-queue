@@ -233,6 +233,38 @@ export class LightweightAPIServer {
         });
       }
     });
+
+    // Worker and job cleanup endpoint
+    this.app.post('/api/cleanup', async (req: Request, res: Response) => {
+      try {
+        const {
+          reset_workers = false,
+          cleanup_orphaned_jobs = false,
+          reset_specific_worker = null,
+          max_job_age_minutes = 60,
+        } = req.body;
+
+        const results = await this.performCleanup({
+          reset_workers,
+          cleanup_orphaned_jobs,
+          reset_specific_worker,
+          max_job_age_minutes: parseInt(max_job_age_minutes),
+        });
+
+        res.json({
+          success: true,
+          results,
+          timestamp: new Date().toISOString(),
+        });
+      } catch (error) {
+        logger.error('Failed to perform cleanup:', error);
+        res.status(500).json({
+          success: false,
+          error: error instanceof Error ? error.message : 'Unknown error',
+          timestamp: new Date().toISOString(),
+        });
+      }
+    });
   }
 
   private setupWebSocketHandling(): void {
@@ -1379,6 +1411,195 @@ export class LightweightAPIServer {
       `getAllJobs completed in ${Date.now() - startTime}ms, returning ${result.length} jobs`
     );
     return result;
+  }
+
+  private async performCleanup(options: {
+    reset_workers: boolean;
+    cleanup_orphaned_jobs: boolean;
+    reset_specific_worker: string | null;
+    max_job_age_minutes: number;
+  }): Promise<{
+    workers_reset: number;
+    jobs_cleaned: number;
+    workers_found: string[];
+    details: string[];
+  }> {
+    const results = {
+      workers_reset: 0,
+      jobs_cleaned: 0,
+      workers_found: [] as string[],
+      details: [] as string[],
+    };
+
+    logger.info('Starting cleanup operation:', options);
+
+    // Find all workers
+    const workerKeys: string[] = [];
+    let cursor = '0';
+    do {
+      const [newCursor, keys] = await this.redis.scan(
+        cursor,
+        'MATCH',
+        'worker:*:heartbeat',
+        'COUNT',
+        100
+      );
+      cursor = newCursor;
+      workerKeys.push(...keys);
+    } while (cursor !== '0');
+
+    const workerIds = workerKeys.map(key => key.split(':')[1]);
+    results.workers_found = workerIds;
+    results.details.push(`Found ${workerIds.length} workers: ${workerIds.join(', ')}`);
+
+    // Reset specific worker
+    if (options.reset_specific_worker) {
+      if (workerIds.includes(options.reset_specific_worker)) {
+        await this.resetWorker(options.reset_specific_worker);
+        results.workers_reset = 1;
+        results.details.push(`Reset specific worker: ${options.reset_specific_worker}`);
+      } else {
+        results.details.push(`Worker not found: ${options.reset_specific_worker}`);
+      }
+    }
+
+    // Reset all workers
+    else if (options.reset_workers) {
+      for (const workerId of workerIds) {
+        await this.resetWorker(workerId);
+        results.workers_reset++;
+      }
+      results.details.push(`Reset ${results.workers_reset} workers to idle state`);
+    }
+
+    // Cleanup orphaned jobs
+    if (options.cleanup_orphaned_jobs) {
+      const cleanedCount = await this.cleanupOrphanedJobs(options.max_job_age_minutes);
+      results.jobs_cleaned = cleanedCount;
+      results.details.push(
+        `Cleaned up ${cleanedCount} orphaned jobs older than ${options.max_job_age_minutes} minutes`
+      );
+    }
+
+    logger.info('Cleanup operation completed:', results);
+    return results;
+  }
+
+  private async resetWorker(workerId: string): Promise<void> {
+    try {
+      // Get current worker data
+      const workerData = await this.redis.hgetall(`worker:${workerId}`);
+      if (!workerData || Object.keys(workerData).length === 0) {
+        logger.warn(`Worker ${workerId} not found for reset`);
+        return;
+      }
+
+      // Reset worker to idle status
+      await this.redis.hset(`worker:${workerId}`, {
+        ...workerData,
+        status: 'idle',
+        current_job_id: '',
+        last_activity: new Date().toISOString(),
+      });
+
+      // Remove any active job assignments
+      const activeJobs = await this.redis.hgetall(`worker:${workerId}:jobs`);
+      for (const jobId of Object.keys(activeJobs)) {
+        // Release job back to pending queue
+        const jobData = await this.redis.hgetall(`job:${jobId}`);
+        if (jobData.id) {
+          await this.redis.hset(`job:${jobId}`, {
+            ...jobData,
+            status: 'pending',
+            worker_id: '',
+            assigned_at: '',
+            started_at: '',
+          });
+
+          // Re-add to pending queue with original priority
+          const priority = parseInt(jobData.priority || '50');
+          const timestamp = parseInt(jobData.created_at) || Date.now();
+          const score = priority * Math.pow(10, 15) - timestamp / 1000;
+          await this.redis.zadd('jobs:pending', score, jobId);
+
+          logger.info(`Released job ${jobId} from worker ${workerId} back to pending queue`);
+        }
+      }
+
+      // Clear worker's active jobs
+      await this.redis.del(`worker:${workerId}:jobs`);
+
+      logger.info(`Reset worker ${workerId} to idle state`);
+    } catch (error) {
+      logger.error(`Failed to reset worker ${workerId}:`, error);
+      throw error;
+    }
+  }
+
+  private async cleanupOrphanedJobs(maxAgeMinutes: number): Promise<number> {
+    try {
+      const cutoffTime = Date.now() - maxAgeMinutes * 60 * 1000;
+      let cleanedCount = 0;
+
+      // Find all active jobs
+      const jobKeys: string[] = [];
+      let cursor = '0';
+      do {
+        const [newCursor, keys] = await this.redis.scan(cursor, 'MATCH', 'job:*', 'COUNT', 100);
+        cursor = newCursor;
+        jobKeys.push(...keys);
+      } while (cursor !== '0');
+
+      for (const jobKey of jobKeys) {
+        const jobData = await this.redis.hgetall(jobKey);
+        if (!jobData.id) continue;
+
+        const isActive = jobData.status === 'active' || jobData.status === 'processing';
+        const startedAt = parseInt(jobData.started_at || '0');
+        const assignedAt = parseInt(jobData.assigned_at || '0');
+        const jobAge = Math.max(startedAt, assignedAt);
+
+        // Check if job is old and potentially orphaned
+        if (isActive && jobAge > 0 && jobAge < cutoffTime) {
+          const workerId = jobData.worker_id;
+
+          // Check if worker still exists and is active
+          let workerExists = false;
+          if (workerId) {
+            const workerHeartbeat = await this.redis.ttl(`worker:${workerId}:heartbeat`);
+            workerExists = workerHeartbeat > 0;
+          }
+
+          // If worker doesn't exist or hasn't sent heartbeat, consider job orphaned
+          if (!workerExists) {
+            // Move job back to pending
+            await this.redis.hset(`job:${jobData.id}`, {
+              ...jobData,
+              status: 'pending',
+              worker_id: '',
+              assigned_at: '',
+              started_at: '',
+            });
+
+            // Re-add to pending queue
+            const priority = parseInt(jobData.priority || '50');
+            const timestamp = parseInt(jobData.created_at) || Date.now();
+            const score = priority * Math.pow(10, 15) - timestamp / 1000;
+            await this.redis.zadd('jobs:pending', score, jobData.id);
+
+            cleanedCount++;
+            logger.info(
+              `Cleaned up orphaned job ${jobData.id} (worker ${workerId} not responding)`
+            );
+          }
+        }
+      }
+
+      return cleanedCount;
+    } catch (error) {
+      logger.error('Failed to cleanup orphaned jobs:', error);
+      throw error;
+    }
   }
 
   async start(): Promise<void> {

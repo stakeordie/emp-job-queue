@@ -252,7 +252,8 @@ export class RedisDirectBaseWorker {
         }
       }
       this.capabilities.models = models;
-      this.capabilities.services = connectors.map(c => c.service_type);
+      // Keep the services from buildCapabilities() - don't override with connector service types
+      // Workers can handle multiple service types using different connectors
 
       this.status = WorkerStatus.IDLE;
       this.running = true;
