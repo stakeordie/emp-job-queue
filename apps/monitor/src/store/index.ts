@@ -240,7 +240,7 @@ export const useMonitorStore = create<MonitorStore>()(
       if (stateData.jobs) {
         const jobArrays = [
           { jobs: stateData.jobs.pending || [], status: 'pending' as JobStatus },
-          { jobs: stateData.jobs.active || [], status: 'processing' as JobStatus },
+          { jobs: stateData.jobs.active || [], status: 'active' as JobStatus },
           { jobs: stateData.jobs.completed || [], status: 'completed' as JobStatus },
           { jobs: stateData.jobs.failed || [], status: 'failed' as JobStatus }
         ];
@@ -285,7 +285,7 @@ export const useMonitorStore = create<MonitorStore>()(
       const { addLog, addWorker, updateWorker, removeWorker, addJob, updateJob } = get();
       
       // Only log important events, skip progress spam
-      if (event.type !== 'job_progress' && event.type !== 'heartbeat_ack' && event.type !== 'heartbeat') {
+      if (event.type !== 'update_job_progress' && event.type !== 'heartbeat_ack' && event.type !== 'heartbeat') {
         addLog({
           level: 'debug',
           category: 'event',
@@ -468,9 +468,9 @@ export const useMonitorStore = create<MonitorStore>()(
           break;
         }
         
-        case 'job_progress': {
+        case 'update_job_progress': {
           const jobEvent = event as {
-            type: 'job_progress';
+            type: 'update_job_progress';
             job_id: string;
             worker_id: string;
             progress: number;
@@ -494,9 +494,9 @@ export const useMonitorStore = create<MonitorStore>()(
           break;
         }
         
-        case 'job_completed': {
+        case 'complete_job': {
           const jobEvent = event as {
-            type: 'job_completed';
+            type: 'complete_job';
             job_id: string;
             worker_id: string;
             result?: unknown;

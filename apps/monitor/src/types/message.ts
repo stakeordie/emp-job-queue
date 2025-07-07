@@ -1,8 +1,8 @@
 export type MessageType = 
   | 'submit_job'
   | 'job_assigned' 
-  | 'job_progress'
-  | 'job_completed'
+  | 'update_job_progress'
+  | 'complete_job'
   | 'job_failed'
   | 'worker_registration'
   | 'worker_status'
@@ -33,7 +33,7 @@ export interface SubmitJobMessage extends BaseMessage {
 }
 
 export interface JobProgressMessage extends BaseMessage {
-  type: 'job_progress';
+  type: 'update_job_progress';
   job_id: string;
   progress: number;
   status?: string;
@@ -41,7 +41,7 @@ export interface JobProgressMessage extends BaseMessage {
 }
 
 export interface JobCompletedMessage extends BaseMessage {
-  type: 'job_completed';
+  type: 'complete_job';
   job_id: string;
   result?: unknown;
   worker_id: string;

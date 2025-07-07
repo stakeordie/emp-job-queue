@@ -781,15 +781,65 @@ export class LightweightAPIServer {
         }
       }
 
-      // Get current jobs
+      // Get current jobs and organize by status
       const jobsStart = Date.now();
-      const jobs = await this.getAllJobs();
-      logger.debug(`Fetched ${jobs.length} jobs in ${Date.now() - jobsStart}ms`);
+      const allJobs = await this.getAllJobs();
+      logger.debug(`Fetched ${allJobs.length} jobs in ${Date.now() - jobsStart}ms`);
+
+      // Organize jobs by status for monitor compatibility
+      const jobsByStatus = {
+        pending: [] as unknown[],
+        active: [] as unknown[],
+        completed: [] as unknown[],
+        failed: [] as unknown[],
+      };
+
+      for (const job of allJobs) {
+        // Convert job for monitor compatibility
+        const monitorJob = {
+          ...job,
+          job_type: job.service_required, // Map service_required to job_type for monitor
+        };
+
+        // Categorize by status
+        switch (job.status) {
+          case 'pending':
+          case 'queued':
+            jobsByStatus.pending.push(monitorJob);
+            break;
+          case 'assigned':
+          case 'accepted':
+          case 'in_progress':
+            jobsByStatus.active.push(monitorJob);
+            break;
+          case 'completed':
+            jobsByStatus.completed.push(monitorJob);
+            break;
+          case 'failed':
+          case 'cancelled':
+          case 'timeout':
+          case 'unworkable':
+            jobsByStatus.failed.push(monitorJob);
+            break;
+          default:
+            // Default to pending for unknown status
+            jobsByStatus.pending.push(monitorJob);
+        }
+      }
 
       const snapshot = {
         workers,
-        jobs,
+        jobs: jobsByStatus,
         timestamp: Date.now(),
+        system_stats: {
+          total_jobs: allJobs.length,
+          pending_jobs: jobsByStatus.pending.length,
+          active_jobs: jobsByStatus.active.length,
+          completed_jobs: jobsByStatus.completed.length,
+          failed_jobs: jobsByStatus.failed.length,
+          total_workers: workers.length,
+          active_workers: workers.filter(w => w.status === 'active' || w.status === 'busy').length,
+        },
       };
 
       connection.ws.send(
@@ -802,7 +852,7 @@ export class LightweightAPIServer {
       );
 
       logger.info(
-        `Sent full state snapshot to monitor ${connection.monitorId}: ${workers.length} workers, ${jobs.length} jobs (total time: ${Date.now() - startTime}ms)`
+        `Sent full state snapshot to monitor ${connection.monitorId}: ${workers.length} workers, ${allJobs.length} jobs (total time: ${Date.now() - startTime}ms)`
       );
     } catch (error) {
       logger.error(`Failed to send full state snapshot to monitor ${connection.monitorId}:`, error);

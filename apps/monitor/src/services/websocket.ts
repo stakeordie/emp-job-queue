@@ -325,8 +325,8 @@ export class WebSocketService {
   private isMonitorEvent(data: unknown): boolean {
     const eventTypes = [
       'worker_connected', 'worker_disconnected', 'worker_status_changed',
-      'job_submitted', 'job_assigned', 'job_status_changed', 'job_progress',
-      'job_completed', 'job_failed', 'full_state_snapshot', 'heartbeat_ack',
+      'job_submitted', 'job_assigned', 'job_status_changed', 'update_job_progress',
+      'complete_job', 'job_failed', 'full_state_snapshot', 'heartbeat_ack',
       'resync_response', 'system_stats'
     ];
     
@@ -337,7 +337,7 @@ export class WebSocketService {
 
   private handleMonitorEvent(event: MonitorEvent) {
     // Skip logging job_progress events to reduce console spam
-    if (event.type !== 'job_progress') {
+    if (event.type !== 'update_job_progress') {
       // console.log('[WebSocket] Received event:', event.type, event);
     }
     
