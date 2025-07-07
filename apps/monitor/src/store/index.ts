@@ -251,17 +251,21 @@ export const useMonitorStore = create<MonitorStore>()(
               const job = jobData as Record<string, unknown>;
               addJob({
                 id: (job.id as string) || (job.job_id as string),
-                job_type: (job.job_type as string) || (job.type as string) || 'unknown',
+                job_type: (job.job_type as string) || (job.service_required as string) || (job.type as string) || 'unknown',
                 status: (job.status as JobStatus) || status,
                 priority: (job.priority as number) || 50,
-                payload: (job.payload as Record<string, unknown>) || {},
+                payload: typeof job.payload === 'string' 
+                  ? (() => { try { return JSON.parse(job.payload as string); } catch { return {}; } })()
+                  : (job.payload as Record<string, unknown>) || {},
                 customer_id: job.customer_id as string,
-                requirements: job.requirements as JobRequirements,
+                requirements: typeof job.requirements === 'string' 
+                  ? (() => { try { return JSON.parse(job.requirements as string); } catch { return undefined; } })()
+                  : job.requirements as JobRequirements,
                 workflow_id: job.workflow_id as string,
                 workflow_priority: job.workflow_priority as number,
                 workflow_datetime: job.workflow_datetime as number,
                 step_number: job.step_number as number,
-                created_at: (job.created_at as number) || Date.now(),
+                created_at: (job.created_at as number) || new Date(job.created_at as string).getTime() || Date.now(),
                 assigned_at: job.assigned_at as number,
                 started_at: job.started_at as number,
                 completed_at: job.completed_at as number,

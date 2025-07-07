@@ -25,6 +25,8 @@
 #### 🐛 **Bug Fixes**
 - **Fixed Empty Payload**: Added missing payload field to job submission broadcast events
 - **Fixed Service Type Matching**: Client-side matching now properly checks job_type against worker services
+- **Fixed Field Mapping**: Store now properly maps service_required field to job_type for backward compatibility
+- **Fixed JSON Parsing**: Payload and requirements are now properly parsed from JSON strings in full state snapshots
 - **Backward Compatibility**: Maintained job_type field in monitor interface while supporting service_required internally
 
 ## 2025-07-06
