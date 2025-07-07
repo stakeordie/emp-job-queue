@@ -1323,10 +1323,12 @@ export class LightweightAPIServer {
     completionData: Record<string, unknown>
   ): Promise<void> {
     const completionMessage = {
-      type: 'completion',
+      type: 'complete_job',
       job_id: jobId,
-      data: completionData,
-      timestamp: new Date().toISOString(),
+      worker_id: completionData.worker_id,
+      result: completionData.result,
+      completed_at: completionData.timestamp,
+      timestamp: completionData.timestamp,
     };
 
     // Broadcast to monitors as JobCompletedEvent
