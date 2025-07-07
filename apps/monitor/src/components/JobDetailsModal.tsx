@@ -158,7 +158,7 @@ export function JobDetailsModal({ job, workers, isOpen, onClose }: JobDetailsMod
                 {/* Hardware Requirements */}
                 {job.requirements?.gpu_memory_gb && (
                   <div className="flex items-center gap-2">
-                    <span className="text-sm font-medium">GPU Memory:</span>
+                    <span className="text-sm font-medium">VRAM Required:</span>
                     <span className="text-sm text-muted-foreground">{job.requirements.gpu_memory_gb}GB</span>
                   </div>
                 )}

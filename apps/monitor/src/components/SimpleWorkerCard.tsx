@@ -60,7 +60,7 @@ export const SimpleWorkerCard = memo(function SimpleWorkerCard({ worker }: Simpl
               <p className="text-sm font-medium mb-1">Capabilities</p>
               <div className="space-y-1 text-sm text-muted-foreground">
                 <p>GPU: {worker.capabilities.gpu_model}</p>
-                <p>Memory: {worker.capabilities.gpu_memory_gb}GB</p>
+                <p>VRAM: {worker.capabilities.gpu_memory_gb}GB</p>
                 {worker.capabilities.cpu_cores && <p>CPU Cores: {worker.capabilities.cpu_cores}</p>}
                 {worker.capabilities.ram_gb && <p>RAM: {worker.capabilities.ram_gb}GB</p>}
               </div>

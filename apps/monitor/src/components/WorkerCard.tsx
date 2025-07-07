@@ -60,7 +60,7 @@ export function WorkerCard({ worker }: WorkerCardProps) {
         <div className="space-y-1 text-xs">
           <div>
             <p className="text-muted-foreground text-xs">GPU: {worker.capabilities.gpu_model}</p>
-            <p className="text-muted-foreground text-xs">Memory: {worker.capabilities.gpu_memory_gb}GB</p>
+            <p className="text-muted-foreground text-xs">VRAM: {worker.capabilities.gpu_memory_gb}GB</p>
           </div>
           
           {(worker.capabilities?.services || []).length > 0 && (

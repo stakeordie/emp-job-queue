@@ -557,7 +557,7 @@ export function JobSubmissionForm() {
                   <div className="font-medium mb-1">Common examples:</div>
                   <div className="space-y-1 text-xs">
                     <div className="text-green-600">✅ <strong>Must have:</strong></div>
-                    <div className="ml-4"><code>hardware.gpu_memory_gb</code> → <code>16</code> (min 16GB GPU)</div>
+                    <div className="ml-4"><code>hardware.gpu_memory_gb</code> → <code>16</code> (min 16GB VRAM)</div>
                     <div className="ml-4"><code>asset_type</code> → <code>&quot;video&quot;</code> (single item from worker's array)</div>
                     <div className="ml-4"><code>models</code> → <code>[&quot;sdxl&quot;, &quot;sd15&quot;]</code> (worker must have ALL these models)</div>
                     <div className="ml-4"><code>services</code> → <code>&quot;comfyui&quot;</code> (worker's services array contains this)</div>
