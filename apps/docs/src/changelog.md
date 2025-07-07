@@ -22,6 +22,11 @@
 - **Payload Inspection**: Collapsible payload section for debugging
 - **Verification System**: If Redis says a job matches but worker doesn't claim it, we can identify issues
 
+#### 🐛 **Bug Fixes**
+- **Fixed Empty Payload**: Added missing payload field to job submission broadcast events
+- **Fixed Service Type Matching**: Client-side matching now properly checks job_type against worker services
+- **Backward Compatibility**: Maintained job_type field in monitor interface while supporting service_required internally
+
 ## 2025-07-06
 
 ### ✅ Completed - Comprehensive Capability Matching System

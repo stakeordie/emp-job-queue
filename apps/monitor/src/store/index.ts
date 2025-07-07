@@ -387,6 +387,7 @@ export const useMonitorStore = create<MonitorStore>()(
               id: string;
               job_type: string;
               priority: number;
+              payload?: Record<string, unknown>;
               customer_id?: string;
               requirements?: JobRequirements;
               workflow_id?: string;
@@ -403,7 +404,7 @@ export const useMonitorStore = create<MonitorStore>()(
             job_type: jobData.job_type,
             status: 'pending' as JobStatus,
             priority: jobData.priority,
-            payload: {},
+            payload: jobData.payload || {},
             customer_id: jobData.customer_id,
             requirements: jobData.requirements,
             workflow_id: jobData.workflow_id,

@@ -74,6 +74,7 @@ export interface JobSubmittedEvent extends BaseMonitorEvent {
     job_type: string;
     status: 'pending';
     priority: number;
+    payload?: Record<string, unknown>;
     workflow_id?: string;
     workflow_priority?: number;
     workflow_datetime?: number;

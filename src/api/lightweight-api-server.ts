@@ -1243,6 +1243,7 @@ export class LightweightAPIServer {
         job_type: job.service_required,
         status: 'pending',
         priority: job.priority,
+        payload: job.payload,
         workflow_id: jobData.workflow_id as string,
         workflow_priority: jobData.workflow_priority as number,
         workflow_datetime: jobData.workflow_datetime as number,

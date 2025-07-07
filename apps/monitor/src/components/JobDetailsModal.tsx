@@ -16,8 +16,15 @@ interface JobDetailsModalProps {
 export function JobDetailsModal({ job, workers, isOpen, onClose }: JobDetailsModalProps) {
   if (!job) return null;
 
-  const checkWorkerMatch = (worker: Worker, requirements: JobRequirements): boolean => {
+  const checkWorkerMatch = (worker: Worker, job: Job): boolean => {
     const capabilities = worker.capabilities;
+    const requirements = job.requirements || {};
+    
+    // Primary service check - worker must support the job type
+    const workerServices = new Set(capabilities.services || []);
+    if (!workerServices.has(job.job_type)) {
+      return false;
+    }
     
     // GPU Memory check
     if (requirements.gpu_memory_gb && capabilities.gpu_memory_gb < requirements.gpu_memory_gb) {
@@ -59,9 +66,8 @@ export function JobDetailsModal({ job, workers, isOpen, onClose }: JobDetailsMod
       }
     }
     
-    // Service types check - worker must support at least one required service
+    // Additional service types check - worker must support at least one required service
     if (requirements.service_types && requirements.service_types.length > 0) {
-      const workerServices = new Set(capabilities.services || []);
       if (!requirements.service_types.some(service => workerServices.has(service))) {
         return false;
       }
@@ -70,9 +76,7 @@ export function JobDetailsModal({ job, workers, isOpen, onClose }: JobDetailsMod
     return true;
   };
 
-  const matchingWorkers = job.requirements 
-    ? workers.filter(worker => checkWorkerMatch(worker, job.requirements!))
-    : workers;
+  const matchingWorkers = workers.filter(worker => checkWorkerMatch(worker, job));
 
   const idleMatchingWorkers = matchingWorkers.filter(w => w.status === 'idle');
   const busyMatchingWorkers = matchingWorkers.filter(w => w.status === 'busy');
