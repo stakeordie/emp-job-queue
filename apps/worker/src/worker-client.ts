@@ -2,10 +2,10 @@
 // Direct port from Python worker WebSocket client functionality
 
 import { WebSocket } from 'ws';
-import { RedisService } from '../core/redis-service.js';
-import { JobBroker } from '../core/job-broker.js';
-import { TimestampUtil } from '../core/utils/timestamp.js';
 import {
+  RedisService,
+  JobBroker,
+  TimestampUtil,
   BaseMessage,
   MessageType,
   WorkerRegistrationMessage,
@@ -14,11 +14,12 @@ import {
   CompleteJobMessage,
   FailJobMessage,
   WorkerStatus,
-  SystemInfo,
-} from '../core/types/messages.js';
-import { WorkerCapabilities } from '../core/types/worker.js';
-import { Job, JobProgress } from '../core/types/job.js';
-import { logger } from '../core/utils/logger.js';
+  MessageSystemInfo,
+  WorkerCapabilities,
+  Job,
+  JobProgress,
+  logger,
+} from '@emp/core';
 import { v4 as uuidv4 } from 'uuid';
 
 export class WorkerClient {
@@ -372,7 +373,7 @@ export class WorkerClient {
   }
 
   // Worker status
-  async sendHeartbeat(status: WorkerStatus, systemInfo: SystemInfo): Promise<void> {
+  async sendHeartbeat(status: WorkerStatus, systemInfo: MessageSystemInfo): Promise<void> {
     const message: WorkerHeartbeatMessage = {
       id: uuidv4(),
       type: MessageType.WORKER_HEARTBEAT,

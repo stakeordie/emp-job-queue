@@ -3,8 +3,9 @@ import { subscribeWithSelector } from 'zustand/middleware';
 import { Job, Worker, WorkerCapabilities, WorkerStatus, JobStatus, JobRequirements, ConnectionState, UIState, LogEntry } from '@/types';
 import { SyncJobStateMessage, CancelJobMessage } from '@/types/message';
 import { websocketService } from '@/services/websocket';
-import type { MonitorEvent } from 'emp-redis-js/src/types/monitor-events';
-import { throttle, batchUpdates } from '@/utils/throttle';
+import type { MonitorEvent } from '@emp/core/dist/types/monitor-events.js';
+import { throttle } from '@/utils/throttle';
+// import { batchUpdates } from '@/utils/throttle'; // Unused but kept for future use
 
 interface MonitorStore {
   // Connection state
@@ -104,7 +105,7 @@ export const useMonitorStore = create<MonitorStore>()(
     addWorker: (worker) =>
       set((state) => ({
         workers: [
-          ...state.workers.filter((w) => w.id !== worker.id),
+          ...state.workers.filter((w) => w.worker_id !== worker.worker_id),
           worker,
         ],
       })),
@@ -112,19 +113,19 @@ export const useMonitorStore = create<MonitorStore>()(
     updateWorker: (workerId, updates) =>
       set((state) => {
         // console.log(`updateWorker called for ${workerId} with updates:`, updates);
-        const targetWorker = state.workers.find(w => w.id === workerId);
+        // const targetWorker = state.workers.find(w => w.id === workerId);
         // console.log(`Target worker ${workerId}:`, targetWorker ? { id: targetWorker.id, status: targetWorker.status } : 'NOT FOUND');
         const newWorkers = state.workers.map((worker) =>
-          worker.id === workerId ? { ...worker, ...updates } : worker
+          worker.worker_id === workerId ? { ...worker, ...updates } : worker
         );
-        const updatedWorker = newWorkers.find(w => w.id === workerId);
+        // const updatedWorker = newWorkers.find(w => w.id === workerId);
         // console.log(`Updated worker ${workerId}:`, updatedWorker ? { id: updatedWorker.id, status: updatedWorker.status } : 'NOT FOUND');
         return { workers: newWorkers };
       }),
     
     removeWorker: (workerId) =>
       set((state) => ({
-        workers: state.workers.filter((worker) => worker.id !== workerId),
+        workers: state.workers.filter((worker) => worker.worker_id !== workerId),
       })),
     
     // Log actions
@@ -181,27 +182,33 @@ export const useMonitorStore = create<MonitorStore>()(
             const worker = workerData as Record<string, unknown>;
             // console.log(`Processing full state worker: ${worker.id}`);
             const capabilities = (worker.capabilities as WorkerCapabilities) || {
-              gpu_count: 1,
-              gpu_memory_gb: 8,
-              gpu_model: 'Unknown',
-              cpu_cores: 4,
-              ram_gb: 16,
+              worker_id: worker.worker_id as string || worker.id as string,
               services: [],
-              models: [],
-              customer_access: 'none',
-              max_concurrent_jobs: 1
+              hardware: {
+                gpu_memory_gb: 8,
+                gpu_model: 'Unknown',
+                ram_gb: 16
+              },
+              performance: {
+                concurrent_jobs: 1,
+                quality_levels: ['balanced']
+              },
+              customer_access: {
+                isolation: 'none'
+              }
             };
             
             addWorker({
-              id: worker.id as string,
+              worker_id: worker.worker_id as string || worker.id as string,
               status: (worker.status as WorkerStatus) || 'idle',
               capabilities,
-              current_job_id: worker.current_job_id as string,
+              current_jobs: Array.isArray(worker.current_jobs) ? worker.current_jobs as string[] : (worker.current_job_id ? [worker.current_job_id as string] : []),
               connected_at: (worker.connected_at as string) || new Date().toISOString(),
-              last_activity: (worker.last_activity as string) || new Date().toISOString(),
-              jobs_completed: (worker.jobs_completed as number) || 0,
-              jobs_failed: (worker.jobs_failed as number) || 0,
-              total_processing_time: (worker.total_processing_time as number) || 0
+              last_heartbeat: (worker.last_activity as string) || new Date().toISOString(),
+              total_jobs_completed: (worker.total_jobs_completed as number) || (worker.jobs_completed as number) || 0,
+              total_jobs_failed: (worker.total_jobs_failed as number) || (worker.jobs_failed as number) || 0,
+              average_processing_time: (worker.average_processing_time as number) || (worker.total_processing_time as number) || 0,
+              uptime: 0
             });
           });
         } else if (typeof stateData.workers === 'object') {
@@ -210,27 +217,33 @@ export const useMonitorStore = create<MonitorStore>()(
             // console.log(`Processing full state worker: ${workerId}`);
             const worker = workerData as Record<string, unknown>;
             const capabilities = (worker.capabilities as WorkerCapabilities) || {
-              gpu_count: 1,
-              gpu_memory_gb: 8,
-              gpu_model: 'Unknown',
-              cpu_cores: 4,
-              ram_gb: 16,
+              worker_id: workerId,
               services: [],
-              models: [],
-              customer_access: 'none',
-              max_concurrent_jobs: 1
+              hardware: {
+                gpu_memory_gb: 8,
+                gpu_model: 'Unknown',
+                ram_gb: 16
+              },
+              performance: {
+                concurrent_jobs: 1,
+                quality_levels: ['balanced']
+              },
+              customer_access: {
+                isolation: 'none'
+              }
             };
             
             addWorker({
-              id: workerId,
+              worker_id: workerId,
               status: (worker.status as WorkerStatus) || 'idle',
               capabilities,
-              current_job_id: worker.current_job_id as string,
+              current_jobs: Array.isArray(worker.current_jobs) ? worker.current_jobs as string[] : (worker.current_job_id ? [worker.current_job_id as string] : []),
               connected_at: (worker.connected_at as string) || new Date().toISOString(),
-              last_activity: (worker.last_activity as string) || new Date().toISOString(),
-              jobs_completed: (worker.jobs_completed as number) || 0,
-              jobs_failed: (worker.jobs_failed as number) || 0,
-              total_processing_time: (worker.total_processing_time as number) || 0
+              last_heartbeat: (worker.last_activity as string) || new Date().toISOString(),
+              total_jobs_completed: (worker.total_jobs_completed as number) || (worker.jobs_completed as number) || 0,
+              total_jobs_failed: (worker.total_jobs_failed as number) || (worker.jobs_failed as number) || 0,
+              average_processing_time: (worker.average_processing_time as number) || (worker.total_processing_time as number) || 0,
+              uptime: 0
             });
           });
         }
@@ -303,7 +316,17 @@ export const useMonitorStore = create<MonitorStore>()(
             worker_data: {
               id: string;
               status: string;
-              capabilities: WorkerCapabilities;
+              capabilities: {
+                gpu_count: number;
+                gpu_memory_gb: number;
+                gpu_model: string;
+                cpu_cores: number;
+                ram_gb: number;
+                services: string[];
+                models: string[];
+                customer_access: string;
+                max_concurrent_jobs: number;
+              };
               connected_at: string;
               jobs_completed: number;
               jobs_failed: number;
@@ -312,16 +335,37 @@ export const useMonitorStore = create<MonitorStore>()(
           };
           // console.log(`worker_connected event for ${workerEvent.worker_id}`);
           const workerData = workerEvent.worker_data;
+          
+          // Convert old capabilities format to new WorkerCapabilities format
+          const capabilities: WorkerCapabilities = {
+            worker_id: workerEvent.worker_id,
+            services: workerData.capabilities.services || [],
+            hardware: {
+              gpu_memory_gb: workerData.capabilities.gpu_memory_gb,
+              gpu_model: workerData.capabilities.gpu_model,
+              ram_gb: workerData.capabilities.ram_gb,
+            },
+            performance: {
+              concurrent_jobs: workerData.capabilities.max_concurrent_jobs || 1,
+              quality_levels: ['balanced']
+            },
+            customer_access: {
+              isolation: workerData.capabilities.customer_access === 'strict' ? 'strict' : 
+                        workerData.capabilities.customer_access === 'loose' ? 'loose' : 'none'
+            }
+          };
+          
           addWorker({
-            id: workerEvent.worker_id,
+            worker_id: workerEvent.worker_id,
             status: workerData.status as WorkerStatus,
-            capabilities: workerData.capabilities,
-            current_job_id: undefined,
+            capabilities,
+            current_jobs: [],
             connected_at: workerData.connected_at,
-            last_activity: new Date().toISOString(),
-            jobs_completed: workerData.jobs_completed || 0,
-            jobs_failed: workerData.jobs_failed || 0,
-            total_processing_time: 0
+            last_heartbeat: new Date().toISOString(),
+            total_jobs_completed: workerData.jobs_completed || 0,
+            total_jobs_failed: workerData.jobs_failed || 0,
+            average_processing_time: 0,
+            uptime: 0
           });
           break;
         }
@@ -349,35 +393,42 @@ export const useMonitorStore = create<MonitorStore>()(
           
           // Check if worker exists, if not create it
           const { workers } = get();
-          const existingWorker = workers.find(w => w.id === workerEvent.worker_id);
+          const existingWorker = workers.find(w => w.worker_id === workerEvent.worker_id);
           
           if (!existingWorker) {
             // console.log(`Creating new worker ${workerEvent.worker_id} from status change event`);
             addWorker({
-              id: workerEvent.worker_id,
+              worker_id: workerEvent.worker_id,
               status: workerEvent.new_status as WorkerStatus,
               capabilities: {
-                gpu_count: 1,
-                gpu_memory_gb: 8,
-                gpu_model: 'Unknown',
-                ram_gb: 16,
+                worker_id: workerEvent.worker_id,
                 services: [],
-                models: [],
-                customer_access: 'none',
-                max_concurrent_jobs: 1
+                hardware: {
+                  gpu_memory_gb: 8,
+                  gpu_model: 'Unknown',
+                  ram_gb: 16
+                },
+                performance: {
+                  concurrent_jobs: 1,
+                  quality_levels: ['balanced']
+                },
+                customer_access: {
+                  isolation: 'none'
+                }
               },
-              current_job_id: workerEvent.current_job_id,
+              current_jobs: workerEvent.current_job_id ? [workerEvent.current_job_id] : [],
               connected_at: new Date().toISOString(),
-              last_activity: new Date().toISOString(),
-              jobs_completed: 0,
-              jobs_failed: 0,
-              total_processing_time: 0
+              last_heartbeat: new Date().toISOString(),
+              total_jobs_completed: 0,
+              total_jobs_failed: 0,
+              average_processing_time: 0,
+              uptime: 0
             });
           } else {
             updateWorker(workerEvent.worker_id, {
               status: workerEvent.new_status as WorkerStatus,
-              current_job_id: workerEvent.current_job_id,
-              last_activity: new Date().toISOString()
+              current_jobs: workerEvent.current_job_id ? [workerEvent.current_job_id] : [],
+              last_heartbeat: new Date().toISOString()
             });
           }
           break;
@@ -688,15 +739,15 @@ const throttledJobProgressUpdate = throttle(
   100 // Update at most every 100ms
 );
 
-// Batch worker status updates
-const batchedWorkerUpdates = batchUpdates<{ workerId: string; updates: Partial<Worker> }>(
-  (updates) => {
-    const store = useMonitorStore.getState();
-    updates.forEach(({ workerId, updates }) => {
-      store.updateWorker(workerId, updates);
-    });
-  },
-  50 // Process batches every 50ms
-);
+// Batch worker status updates (unused but kept for future use)
+// const batchedWorkerUpdates = batchUpdates<{ workerId: string; updates: Partial<Worker> }>(
+//   (updates) => {
+//     const store = useMonitorStore.getState();
+//     updates.forEach(({ workerId, updates }) => {
+//       store.updateWorker(workerId, updates);
+//     });
+//   },
+//   50 // Process batches every 50ms
+// );
 
 // Note: Auto-connect removed - user must manually connect

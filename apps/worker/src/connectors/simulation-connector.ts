@@ -8,8 +8,8 @@ import {
   ProgressCallback,
   ConnectorConfig,
   ServiceInfo,
-} from '../../core/types/connector.js';
-import { logger } from '../../core/utils/logger.js';
+  logger,
+} from '@emp/core';
 
 export class SimulationConnector implements ConnectorInterface {
   connector_id: string;

@@ -7,7 +7,6 @@
     "esModuleInterop": true,
     "allowJs": true,
     "outDir": "./dist",
-    "rootDir": "./src",
     "strict": false,
     "noUnusedLocals": false,
     "noUnusedParameters": false,
@@ -22,12 +21,10 @@
     "forceConsistentCasingInFileNames": true,
     "resolveJsonModule": true,
     "skipLibCheck": true,
-    "baseUrl": "./src",
+    "baseUrl": ".",
     "paths": {
-      "@core/*": ["core/*"],
-      "@hub/*": ["hub/*"],
-      "@worker/*": ["worker/*"],
-      "@shared/*": ["shared/*"]
+      "@emp/core": ["packages/core/src"],
+      "@emp/core/*": ["packages/core/src/*"]
     }
   },
   "include": [

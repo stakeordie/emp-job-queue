@@ -9,16 +9,15 @@ import {
   HardwareSpecs,
   CustomerAccessConfig,
   PerformanceConfig,
-} from '../core/types/worker.js';
-import { Job, JobProgress } from '../core/types/job.js';
-import {
+  Job,
+  JobProgress,
   BaseMessage,
   MessageType,
   JobAssignedMessage,
-  SystemInfo,
+  MessageSystemInfo,
   WorkerStatus as MessageWorkerStatus,
-} from '../core/types/messages.js';
-import { logger } from '../core/utils/logger.js';
+  logger,
+} from '@emp/core';
 import { WorkerDashboard } from './worker-dashboard.js';
 import os from 'os';
 
@@ -566,7 +565,7 @@ export class BaseWorker {
     }
   }
 
-  private getSystemInfo(): SystemInfo {
+  private getSystemInfo(): MessageSystemInfo {
     const _memUsage = process.memoryUsage();
     const totalMem = os.totalmem();
     const freeMem = os.freemem();
@@ -575,9 +574,11 @@ export class BaseWorker {
     return {
       cpu_usage: 0, // TODO: Implement CPU usage calculation
       memory_usage: (usedMem / totalMem) * 100,
+      gpu_usage: undefined, // Optional field
+      gpu_memory_usage: undefined, // Optional field
       disk_usage: 0, // TODO: Implement disk usage calculation
       uptime: process.uptime(),
-    };
+    } as MessageSystemInfo;
   }
 
   private async handleMessage(message: BaseMessage): Promise<void> {

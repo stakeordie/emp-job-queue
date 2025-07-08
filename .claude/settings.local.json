@@ -65,7 +65,16 @@
       "Bash(pnpm redis:functions:test:*)",
       "Bash(pnpm docker:capability-test:build:*)",
       "Bash(tar:*)",
-      "Bash(git --git-dir=/Users/the_dusky/code/emprops/ai_infra/emp-worker-old/.git branch)"
+      "Bash(git --git-dir=/Users/the_dusky/code/emprops/ai_infra/emp-worker-old/.git branch)",
+      "Bash(npx turbo gen:*)",
+      "Bash(git mv:*)",
+      "Bash(turbo:*)",
+      "Bash(npx turbo:*)",
+      "Bash(pnpm list:*)",
+      "Bash(pnpm type-check:*)",
+      "Bash(pnpm docker:down:*)",
+      "Bash(pnpm --filter=@emp/core build)",
+      "Bash(docker run:*)"
     ],
     "deny": []
   }

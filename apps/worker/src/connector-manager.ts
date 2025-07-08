@@ -1,12 +1,7 @@
 // Connector Manager - dynamic loading and management of service connectors
 // Direct port from Python worker/connector_loader.py functionality
 
-import {
-  ConnectorInterface,
-  ConnectorRegistry,
-  ConnectorFactory,
-} from '../core/types/connector.js';
-import { logger } from '../core/utils/logger.js';
+import { ConnectorInterface, ConnectorRegistry, ConnectorFactory, logger } from '@emp/core';
 
 export class ConnectorManager implements ConnectorRegistry, ConnectorFactory {
   private connectors = new Map<string, ConnectorInterface>();

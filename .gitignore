@@ -16,8 +16,10 @@ build/
 .env.development.local
 .env.test.local
 .env.production.local
-.env.hub
-.env.worker
+
+# Keep example files but ignore actual local configs
+!.env.example
+!**/.env.example
 
 # Runtime data
 pids/

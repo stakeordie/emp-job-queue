@@ -38,9 +38,9 @@ export function MachineCard({ machineId, workers }: MachineCardProps) {
   };
 
   const machineStatus = getMachineStatus();
-  const totalJobs = workers.reduce((sum, w) => sum + w.jobs_completed, 0);
-  const totalFailures = workers.reduce((sum, w) => sum + w.jobs_failed, 0);
-  const activeJobs = workers.filter(w => w.current_job_id).length;
+  const totalJobs = workers.reduce((sum, w) => sum + w.total_jobs_completed, 0);
+  const totalFailures = workers.reduce((sum, w) => sum + w.total_jobs_failed, 0);
+  const activeJobs = workers.filter(w => w.current_jobs.length > 0).length;
 
   return (
     <Card 
@@ -72,7 +72,7 @@ export function MachineCard({ machineId, workers }: MachineCardProps) {
       <CardContent className="pt-0 pb-3">
         <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3">
           {workers.map((worker) => (
-            <div key={worker.id} className="min-w-0">
+            <div key={worker.worker_id} className="min-w-0">
               <WorkerCard worker={worker} />
             </div>
           ))}

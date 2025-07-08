@@ -3,7 +3,7 @@ import type {
   MonitorEvent,
   SubscriptionTopic,
   SubscriptionFilters 
-} from 'emp-redis-js/src/types/monitor-events';
+} from '@emp/core/dist/types/monitor-events.js';
 
 // Monitor-specific message types
 export interface MonitorConnectMessage {
@@ -157,7 +157,7 @@ export class WebSocketService {
       }
     };
 
-    ws.onclose = (event) => {
+    ws.onclose = () => {
       // console.log(`[WebSocket] ${type} connection closed:`, event.code, event.reason);
       
       // If either connection closes, trigger disconnect

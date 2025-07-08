@@ -6,7 +6,7 @@ import { v4 as uuidv4 } from 'uuid';
 import { RedisServiceInterface } from './interfaces/redis-service.js';
 import { Job, JobStatus, JobProgress, JobResult, JobFilter, JobSearchResult } from './types/job.js';
 import { WorkerCapabilities, WorkerInfo, WorkerFilter, WorkerStatus } from './types/worker.js';
-import { EventBroadcaster } from '../services/event-broadcaster.js';
+import { EventBroadcaster } from './services/event-broadcaster.js';
 import { logger } from './utils/logger.js';
 import { RedisOperations } from './utils/redis-operations.js';
 
@@ -161,7 +161,7 @@ export class RedisService implements RedisServiceInterface {
       const jobData = await this.redis.hgetall(`job:${jobId}`);
       oldStatus = jobData.status || 'unknown';
       workerId = jobData.worker_id || undefined;
-    } catch (error) {
+    } catch (_error) {
       // Job might not exist yet, that's ok
     }
 
@@ -1080,7 +1080,7 @@ export class RedisService implements RedisServiceInterface {
     try {
       const workerData = await this.redis.hgetall(`worker:${workerId}`);
       oldStatus = workerData.status || 'unknown';
-    } catch (error) {
+    } catch (_error) {
       // Worker might not exist yet, that's ok
     }
 

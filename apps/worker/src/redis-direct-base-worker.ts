@@ -18,9 +18,10 @@ import {
   HardwareSpecs,
   CustomerAccessConfig,
   PerformanceConfig,
-} from '../core/types/worker.js';
-import { Job, JobProgress } from '../core/types/job.js';
-import { logger } from '../core/utils/logger.js';
+  Job,
+  JobProgress,
+  logger,
+} from '@emp/core';
 import { WorkerDashboard } from './worker-dashboard.js';
 import os from 'os';
 

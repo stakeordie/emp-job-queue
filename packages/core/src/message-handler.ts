@@ -4,7 +4,7 @@
 import { MessageHandlerInterface } from './interfaces/message-handler.js';
 import { RedisServiceInterface } from './interfaces/redis-service.js';
 import { ConnectionManagerInterface } from './interfaces/connection-manager.js';
-import { EventBroadcaster } from '../services/event-broadcaster.js';
+import { EventBroadcaster } from './services/event-broadcaster.js';
 import { TimestampUtil } from './utils/timestamp.js';
 import {
   BaseMessage,
@@ -624,6 +624,7 @@ export class MessageHandler implements MessageHandlerInterface {
         // Broadcast job state updates to monitors
         if (this.eventBroadcaster) {
           allJobs.forEach(job => {
+            // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
             this.eventBroadcaster!.broadcastJobStatusChanged(
               job.id,
               job.status,

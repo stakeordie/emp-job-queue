@@ -1,37 +1,9 @@
-export type WorkerStatus = 'idle' | 'busy' | 'offline' | 'error';
+// Re-export core worker types for consistency
+export type {
+  WorkerCapabilities,
+  WorkerInfo as Worker,
+  WorkerInfo,
+} from '@emp/core/dist/types/worker.js';
 
-export interface WorkerCapabilities {
-  gpu_count: number;
-  gpu_memory_gb: number;
-  gpu_model: string;
-  ram_gb: number;
-  services: string[];
-  models: string[];
-  customer_access: 'strict' | 'loose' | 'none';
-  max_concurrent_jobs: number;
-  machine_id?: string;
-}
-
-export interface Worker {
-  id: string;
-  status: WorkerStatus;
-  capabilities: WorkerCapabilities;
-  current_job_id?: string;
-  connected_at: string;
-  last_activity: string;
-  machine_id?: string;
-  
-  // Stats
-  jobs_completed: number;
-  jobs_failed: number;
-  total_processing_time: number;
-  
-  // Health
-  cpu_usage?: number;
-  memory_usage?: number;
-  gpu_usage?: number;
-  
-  // Version info
-  version?: string;
-  build?: string;
-}
+// Re-export enum as value for runtime use
+export { WorkerStatus } from '@emp/core/dist/types/worker.js';

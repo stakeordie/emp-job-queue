@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 /**
  * Throttle function that limits how often a function can be called
  * @param func Function to throttle

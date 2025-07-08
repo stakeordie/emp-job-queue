@@ -4,7 +4,7 @@
 
 import { RedisDirectBaseWorker } from './redis-direct-base-worker.js';
 import { ConnectorManager } from './connector-manager.js';
-import { logger } from '../core/utils/logger.js';
+import { logger } from '@emp/core';
 import os from 'os';
 
 // Worker configuration from environment

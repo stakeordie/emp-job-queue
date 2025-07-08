@@ -9,8 +9,8 @@ import {
   ProgressCallback,
   A1111ConnectorConfig,
   ServiceInfo,
-} from '../../core/types/connector.js';
-import { logger } from '../../core/utils/logger.js';
+  logger,
+} from '@emp/core';
 
 export class A1111Connector implements ConnectorInterface {
   connector_id: string;

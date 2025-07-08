@@ -9,9 +9,7 @@
 import express, { Request, Response } from 'express';
 import { Server } from 'http';
 import { BaseWorker } from './base-worker.js';
-import { Job } from '../core/types/job.js';
-import { WorkerStatus } from '../core/types/worker.js';
-import { logger } from '../core/utils/logger.js';
+import { Job, WorkerStatus, logger } from '@emp/core';
 
 interface JobHistoryEntry {
   job: Job;

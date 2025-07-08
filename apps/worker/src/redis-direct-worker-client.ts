@@ -2,10 +2,15 @@
 // Workers poll Redis directly, no WebSocket to hub required
 
 import Redis from 'ioredis';
-import { WorkerCapabilities } from '../core/types/worker.js';
-import { Job, JobProgress, JobStatus } from '../core/types/job.js';
-import { MatchingResult, RedisJobData } from '../redis-functions/types.js';
-import { logger } from '../core/utils/logger.js';
+import {
+  WorkerCapabilities,
+  Job,
+  JobProgress,
+  JobStatus,
+  MatchingResult,
+  RedisJobData,
+  logger,
+} from '@emp/core';
 
 export class RedisDirectWorkerClient {
   private redis: Redis;

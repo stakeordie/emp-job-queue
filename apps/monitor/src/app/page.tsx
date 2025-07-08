@@ -239,7 +239,7 @@ export default function Home() {
         ) : (
           <div className="flex flex-wrap gap-2">
             {workers.map((worker) => (
-              <SimpleWorkerCard key={worker.id} worker={worker} />
+              <SimpleWorkerCard key={worker.worker_id} worker={worker} />
             ))}
           </div>
         )}

@@ -4,7 +4,7 @@ import { Separator } from "@/components/ui/separator"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { CheckCircle2, XCircle, AlertCircle, Clock } from "lucide-react"
 import { Job } from "@/types/job"
-import { Worker } from "@/types/worker"
+import { Worker, WorkerStatus } from "@/types/worker"
 
 interface JobDetailsModalProps {
   job: Job | null;
@@ -27,41 +27,41 @@ export function JobDetailsModal({ job, workers, isOpen, onClose }: JobDetailsMod
     }
     
     // GPU Memory check
-    if (requirements.gpu_memory_gb && capabilities.gpu_memory_gb < requirements.gpu_memory_gb) {
+    if (requirements.gpu_memory_gb && capabilities.hardware?.gpu_memory_gb && capabilities.hardware.gpu_memory_gb < requirements.gpu_memory_gb) {
       return false;
     }
     
     // CPU cores check
-    if (requirements.cpu_cores && capabilities.ram_gb < requirements.cpu_cores) {
+    if (requirements.cpu_cores && capabilities.hardware?.ram_gb && capabilities.hardware.ram_gb < requirements.cpu_cores) {
       return false;
     }
     
     // RAM check
-    if (requirements.ram_gb && capabilities.ram_gb < requirements.ram_gb) {
+    if (requirements.ram_gb && capabilities.hardware?.ram_gb && capabilities.hardware.ram_gb < requirements.ram_gb) {
       return false;
     }
     
     // GPU model check
     if (requirements.gpu_model && requirements.gpu_model !== 'all') {
-      if (capabilities.gpu_model.toLowerCase() !== requirements.gpu_model.toLowerCase()) {
+      if (capabilities.hardware?.gpu_model && capabilities.hardware.gpu_model.toLowerCase() !== requirements.gpu_model.toLowerCase()) {
         return false;
       }
     }
     
     // Customer access check
     if (requirements.customer_access) {
-      if (requirements.customer_access === 'strict' && capabilities.customer_access !== 'strict') {
+      if (requirements.customer_access === 'strict' && capabilities.customer_access?.isolation !== 'strict') {
         return false;
       }
-      if (requirements.customer_access === 'loose' && capabilities.customer_access === 'none') {
+      if (requirements.customer_access === 'loose' && capabilities.customer_access?.isolation === 'none') {
         return false;
       }
     }
     
     // Models check - worker must have all required models
     if (requirements.models && requirements.models.length > 0) {
-      const workerModels = new Set(capabilities.models || []);
-      if (!requirements.models.every(model => workerModels.has(model))) {
+      const workerModels = capabilities.models === 'all' ? new Set() : new Set(Object.values(capabilities.models || {}).flat());
+      if (capabilities.models !== 'all' && !requirements.models.every(model => workerModels.has(model))) {
         return false;
       }
     }
@@ -78,8 +78,8 @@ export function JobDetailsModal({ job, workers, isOpen, onClose }: JobDetailsMod
 
   const matchingWorkers = workers.filter(worker => checkWorkerMatch(worker, job));
 
-  const idleMatchingWorkers = matchingWorkers.filter(w => w.status === 'idle');
-  const busyMatchingWorkers = matchingWorkers.filter(w => w.status === 'busy');
+  const idleMatchingWorkers = matchingWorkers.filter(w => w.status === WorkerStatus.IDLE);
+  const busyMatchingWorkers = matchingWorkers.filter(w => w.status === WorkerStatus.BUSY);
 
   return (
     <Dialog open={isOpen} onOpenChange={() => onClose()}>
@@ -261,34 +261,34 @@ export function JobDetailsModal({ job, workers, isOpen, onClose }: JobDetailsMod
                 <div className="space-y-2">
                   {matchingWorkers.map(worker => (
                     <div 
-                      key={worker.id} 
+                      key={worker.worker_id} 
                       className={`p-3 border rounded-lg ${
-                        worker.status === 'idle' 
+                        worker.status === WorkerStatus.IDLE 
                           ? 'bg-green-50 dark:bg-green-950 border-green-200 dark:border-green-800' 
                           : 'bg-yellow-50 dark:bg-yellow-950 border-yellow-200 dark:border-yellow-800'
                       }`}
                     >
                       <div className="flex items-center justify-between">
                         <div className="flex items-center gap-3">
-                          <Badge variant={worker.status === 'idle' ? 'default' : 'secondary'}>
+                          <Badge variant={worker.status === WorkerStatus.IDLE ? 'default' : 'secondary'}>
                             {worker.status}
                           </Badge>
-                          <p className="text-sm font-medium">{worker.id}</p>
-                          {worker.machine_id && (
-                            <p className="text-xs text-muted-foreground">({worker.machine_id})</p>
+                          <p className="text-sm font-medium">{worker.worker_id}</p>
+                          {worker.capabilities.machine_id && (
+                            <p className="text-xs text-muted-foreground">({worker.capabilities.machine_id})</p>
                           )}
                         </div>
                         <div className="flex items-center gap-2 text-xs text-muted-foreground">
-                          <span>{worker.capabilities.gpu_memory_gb}GB</span>
+                          <span>{worker.capabilities.hardware?.gpu_memory_gb || 'N/A'}GB</span>
                           <span>•</span>
-                          <span>{worker.capabilities.gpu_model}</span>
+                          <span>{worker.capabilities.hardware?.gpu_model || 'N/A'}</span>
                           <span>•</span>
-                          <span>{worker.capabilities.services.join(', ')}</span>
+                          <span>{worker.capabilities.services?.join(', ') || 'N/A'}</span>
                         </div>
                       </div>
-                      {worker.current_job_id && (
+                      {worker.current_jobs.length > 0 && (
                         <p className="text-xs text-muted-foreground mt-1">
-                          Currently processing: {worker.current_job_id}
+                          Currently processing: {worker.current_jobs.join(', ')}
                         </p>
                       )}
                     </div>
@@ -303,16 +303,16 @@ export function JobDetailsModal({ job, workers, isOpen, onClose }: JobDetailsMod
                   </summary>
                   <div className="mt-2 space-y-2">
                     {workers.filter(w => !matchingWorkers.includes(w)).map(worker => (
-                      <div key={worker.id} className="p-3 border rounded-lg bg-gray-50 dark:bg-gray-950">
+                      <div key={worker.worker_id} className="p-3 border rounded-lg bg-gray-50 dark:bg-gray-950">
                         <div className="flex items-center justify-between">
                           <div className="flex items-center gap-3">
                             <Badge variant="outline">{worker.status}</Badge>
-                            <p className="text-sm font-medium">{worker.id}</p>
+                            <p className="text-sm font-medium">{worker.worker_id}</p>
                           </div>
                           <div className="flex items-center gap-2 text-xs text-muted-foreground">
-                            <span>{worker.capabilities.gpu_memory_gb}GB</span>
+                            <span>{worker.capabilities.hardware?.gpu_memory_gb || 'N/A'}GB</span>
                             <span>•</span>
-                            <span>{worker.capabilities.gpu_model}</span>
+                            <span>{worker.capabilities.hardware?.gpu_model || 'N/A'}</span>
                           </div>
                         </div>
                       </div>

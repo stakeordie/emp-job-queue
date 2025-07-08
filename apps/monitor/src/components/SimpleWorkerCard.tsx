@@ -17,7 +17,7 @@ interface SimpleWorkerCardProps {
 export const SimpleWorkerCard = memo(function SimpleWorkerCard({ worker }: SimpleWorkerCardProps) {
   const [showDetails, setShowDetails] = useState(false);
 
-  const isProcessing = worker.status === 'processing' || worker.status === 'busy';
+  const isProcessing = worker.status === 'busy';
   
   return (
     <>
@@ -34,21 +34,21 @@ export const SimpleWorkerCard = memo(function SimpleWorkerCard({ worker }: Simpl
         `}
       >
         <span className="text-sm font-medium truncate">
-          {worker.id}
+          {worker.worker_id}
         </span>
       </div>
 
       <Dialog open={showDetails} onOpenChange={setShowDetails}>
         <DialogContent className="sm:max-w-[425px]">
           <DialogHeader>
-            <DialogTitle>{worker.id}</DialogTitle>
+            <DialogTitle>{worker.worker_id}</DialogTitle>
           </DialogHeader>
           <div className="space-y-4">
             <div>
               <p className="text-sm font-medium mb-1">Status</p>
               <Badge variant={
                 worker.status === 'idle' ? 'default' : 
-                worker.status === 'processing' || worker.status === 'busy' ? 'secondary' :
+                worker.status === 'busy' ? 'secondary' :
                 worker.status === 'error' || worker.status === 'offline' ? 'destructive' : 
                 'outline'
               }>
@@ -59,10 +59,9 @@ export const SimpleWorkerCard = memo(function SimpleWorkerCard({ worker }: Simpl
             <div>
               <p className="text-sm font-medium mb-1">Capabilities</p>
               <div className="space-y-1 text-sm text-muted-foreground">
-                <p>GPU: {worker.capabilities.gpu_model}</p>
-                <p>VRAM: {worker.capabilities.gpu_memory_gb}GB</p>
-                {worker.capabilities.cpu_cores && <p>CPU Cores: {worker.capabilities.cpu_cores}</p>}
-                {worker.capabilities.ram_gb && <p>RAM: {worker.capabilities.ram_gb}GB</p>}
+                <p>GPU: {worker.capabilities?.hardware?.gpu_model || 'Unknown'}</p>
+                <p>VRAM: {(worker.capabilities?.hardware?.gpu_memory_gb || 'Unknown')}GB</p>
+                {worker.capabilities?.hardware?.ram_gb && <p>RAM: {worker.capabilities.hardware.ram_gb}GB</p>}
               </div>
             </div>
 
@@ -70,7 +69,7 @@ export const SimpleWorkerCard = memo(function SimpleWorkerCard({ worker }: Simpl
               <div>
                 <p className="text-sm font-medium mb-1">Services</p>
                 <div className="flex flex-wrap gap-1">
-                  {worker.capabilities.services.map((service) => (
+                  {worker.capabilities?.services?.map((service: string) => (
                     <Badge key={service} variant="outline" className="text-xs">
                       {service}
                     </Badge>
@@ -79,27 +78,31 @@ export const SimpleWorkerCard = memo(function SimpleWorkerCard({ worker }: Simpl
               </div>
             )}
 
-            {worker.current_job_id && (
+            {worker.current_jobs && worker.current_jobs.length > 0 && (
               <div>
-                <p className="text-sm font-medium mb-1">Current Job</p>
-                <p className="text-sm font-mono text-muted-foreground">
-                  {worker.current_job_id}
-                </p>
+                <p className="text-sm font-medium mb-1">Current Jobs</p>
+                <div className="space-y-1">
+                  {worker.current_jobs.map((jobId: string) => (
+                    <p key={jobId} className="text-sm font-mono text-muted-foreground">
+                      {jobId}
+                    </p>
+                  ))}
+                </div>
               </div>
             )}
 
             <div>
               <p className="text-sm font-medium mb-1">Statistics</p>
               <div className="flex gap-4 text-sm text-muted-foreground">
-                <span>Completed: {worker.jobs_completed}</span>
-                <span>Failed: {worker.jobs_failed}</span>
+                <span>Completed: {worker.total_jobs_completed}</span>
+                <span>Failed: {worker.total_jobs_failed}</span>
               </div>
             </div>
 
-            {worker.machine_id && (
+            {worker.capabilities?.machine_id && (
               <div>
                 <p className="text-sm font-medium mb-1">Machine ID</p>
-                <p className="text-sm text-muted-foreground">{worker.machine_id}</p>
+                <p className="text-sm text-muted-foreground">{worker.capabilities?.machine_id}</p>
               </div>
             )}
           </div>

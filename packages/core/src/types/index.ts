@@ -6,14 +6,18 @@ export { Timestamp } from './timestamp.js';
 
 // Export messages first, then override with more specific types
 export * from './messages.js';
+export { SystemInfo as MessageSystemInfo } from './messages.js';
 
 // Job types - export canonical types
 export { Job, JobRequirements, JobProgress, JobStatus } from './job.js';
 
 // Worker types (may override some message types)
 export {
+  WorkerCapabilities,
   WorkerCapabilities as WorkerCapabilitiesDetailed,
+  WorkerStatus,
   WorkerStatus as WorkerStatusDetailed,
+  SystemInfo,
   SystemInfo as SystemInfoDetailed,
   WorkerInfo,
   WorkerRegistration,
@@ -40,4 +44,12 @@ export {
   A1111ConnectorConfig,
   ComfyUIConnectorConfig,
   WebSocketConnectorConfig,
+  ConnectorRegistry,
+  ConnectorFactory,
+  ServiceInfo,
+  JobData,
+  JobResult,
 } from './connector.js';
+
+// Monitor event types
+export * from './monitor-events.js';

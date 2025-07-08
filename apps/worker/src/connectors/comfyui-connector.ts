@@ -11,8 +11,8 @@ import {
   ProgressCallback,
   ComfyUIConnectorConfig,
   ServiceInfo,
-} from '../../core/types/connector.js';
-import { logger } from '../../core/utils/logger.js';
+  logger,
+} from '@emp/core';
 
 export class ComfyUIConnector implements ConnectorInterface {
   connector_id: string;

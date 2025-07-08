@@ -1,5 +1,42 @@
 # EmProps Job Queue Development Changelog
 
+## 2025-07-08
+
+### ✅ Completed - Monorepo Migration + Docker Infrastructure + Machine Images Integration
+
+#### 🏗️ **Monorepo Structure & Docker Integration**
+- **Turborepo Migration**: Successfully migrated from emp-redis-js to full monorepo architecture
+- **Fixed TypeScript Errors**: Resolved all import paths, module resolution, and dependency issues
+- **Docker Setup**: Restored and configured Docker Compose for API and worker containers
+- **API Container**: Fixed entry point and build process for lightweight API server
+- **Worker Containers**: Corrected build output paths and execution commands
+
+#### 🔧 **Technical Fixes**
+- **Module Resolution**: Fixed ES module imports with proper `.js` extensions for TypeScript builds
+- **Build Output**: Corrected API build structure from `dist/index.js` to `dist/src/index.js`
+- **Worker Structure**: Maintained worker build output at `dist/redis-direct-worker.js`
+- **Container Startup**: Fixed API server entry point to actually start server instead of just exporting components
+- **Docker Contexts**: Updated all Docker Compose context paths for monorepo structure
+
+#### 🚀 **Machine Images Infrastructure**
+- **Integration**: Successfully copied emp-worker-old → `apps/machines/base_machine/`
+- **Clean Architecture**: Archived full compose file, created streamlined development version
+- **Service Focus**: Configured single `base_machine` service (PyTorch 2.7.0 + CUDA 12.8)
+- **Package Scripts**: Added comprehensive machine management commands at root level
+- **Build Ready**: `pnpm machines:base:build`, `pnpm machines:base:up:build` working
+
+#### 📋 **System Analysis & Planning**
+- **Worker Architecture**: Analyzed complete emp-worker-old system (start.sh, wgpu, worker, watchdog)
+- **Download Source**: Identified Python worker download from stakeordie/emp-redis releases
+- **Execution Point**: Located exact worker execution in scripts/worker line 152
+- **Integration Strategy**: Clear plan to replace Python worker with TypeScript worker
+- **Migration Path**: Two-step process - update download source + update execution command
+
+#### 🎯 **Next Steps Identified**
+- **Download Source**: Change start.sh to pull from this monorepo instead of emp-redis
+- **Worker Command**: Replace `python worker_main.py` with `node redis-direct-worker.js`
+- **Safe Migration**: Both changes maintain existing GPU management and service architecture
+
 ## 2025-07-07
 
 ### ✅ Completed - Workflow Isolation + Environment Variable Updates + Deployment Planning
