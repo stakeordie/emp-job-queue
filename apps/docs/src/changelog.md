@@ -32,9 +32,14 @@
 - **Watch Patterns**: Configured to rebuild on API and core package changes
 - **Dependencies**: Handles `@emp/core` workspace dependency correctly
 
+#### 🚧 **In Progress - Docker-Based Railway Deployment**
+- **Docker Strategy**: Switching from Nixpacks to pre-built Docker images
+- **CI/CD Pipeline**: Building and pushing API images to Docker Hub
+- **Railway Config**: Using Docker image deployment instead of source builds
+- **Benefits**: Eliminates monorepo workspace resolution issues
+
 #### 📋 **Next Steps**
 - **Test Integration**: Verify TypeScript worker works with existing GPU management infrastructure
-- **Railway Deployment**: Deploy API to Railway using monorepo root configuration
 - **Update Documentation**: Reflect new TypeScript-based worker system
 
 ### ✅ Completed - Monorepo Migration + Docker Infrastructure + Machine Images Integration

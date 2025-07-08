@@ -1,0 +1,9 @@
+[build]
+builder = "dockerfile"
+dockerfilePath = "apps/api/Dockerfile.railway"
+
+[deploy]
+restartPolicyType = "always"
+
+[env]
+NODE_ENV = "production"

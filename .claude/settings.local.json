@@ -77,7 +77,8 @@
       "Bash(docker run:*)",
       "Bash(pnpm railway:start:*)",
       "Bash(pnpm start:*)",
-      "Bash(pnpm railway:build:*)"
+      "Bash(pnpm railway:build:*)",
+      "Bash(docker build:*)"
     ],
     "deny": []
   }

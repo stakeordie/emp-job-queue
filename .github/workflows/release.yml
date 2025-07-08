@@ -35,6 +35,21 @@ jobs:
     - name: Build monorepo
       run: pnpm build
       
+    - name: Log in to Docker Hub
+      uses: docker/login-action@v3
+      with:
+        username: ${{ secrets.DOCKERHUB_USERNAME }}
+        password: ${{ secrets.DOCKERHUB_TOKEN }}
+        
+    - name: Build and push API Docker image
+      run: |
+        # Build API Docker image
+        docker build -f apps/api/Dockerfile.railway -t emprops/emp-job-queue-api:latest -t emprops/emp-job-queue-api:${{ steps.get_tag.outputs.tag }} .
+        
+        # Push both tags
+        docker push emprops/emp-job-queue-api:latest
+        docker push emprops/emp-job-queue-api:${{ steps.get_tag.outputs.tag }}
+        
     - name: Create worker release package
       run: |
         # Create temporary directory for packaging
