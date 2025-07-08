@@ -17,6 +17,11 @@
 - Fixed TypeScript compilation errors in redis-direct-worker-client.ts and worker-client.ts
 - CI/CD now uses correct pnpm version consistently across monorepo
 
+### 🐛 Fixed Git Submodule Warning
+- Removed submodule reference for `apps/machines/base_machine`
+- Added directory as regular files to fix CI/CD warning
+- Resolves "No url found for submodule path" error in builds
+
 ## 2025-07-08 (Part 5)
 
 ### ✅ Completed - Redis Worker Startup Notification System
