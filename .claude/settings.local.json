@@ -80,7 +80,8 @@
       "Bash(pnpm railway:build:*)",
       "Bash(docker build:*)",
       "Bash(git push:*)",
-      "Bash(git tag:*)"
+      "Bash(git tag:*)",
+      "Bash(git ls-tree:*)"
     ],
     "deny": []
   }
