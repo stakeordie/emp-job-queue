@@ -20,6 +20,7 @@
     "redis:functions:test": "tsx src/cli/redis-functions.ts test",
     "railway:build": "pnpm install --frozen-lockfile && pnpm build && pnpm --filter=api build",
     "railway:start": "pnpm --filter=api start",
+    "start": "pnpm railway:start",
     "redis:functions:delete": "tsx src/cli/redis-functions.ts delete",
     "redis:deploy:railway": "./scripts/deploy-redis-railway.sh",
     "archive:jobs": "tsx src/cli/archive-jobs.ts",

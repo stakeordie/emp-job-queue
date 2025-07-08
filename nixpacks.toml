@@ -6,11 +6,10 @@ NIXPACKS_NPM_VERSION = "10"
 nixPkgs = ["nodejs", "pnpm"]
 
 [phases.install]
-cmds = ["pnpm railway:build"]
+cmds = ["pnpm install --frozen-lockfile"]
 
 [phases.build]
-# Build is handled in install phase
-cmds = []
+cmds = ["pnpm build", "pnpm --filter=api build"]
 
 [start]
-cmd = "pnpm railway:start"
+cmd = "pnpm start"
