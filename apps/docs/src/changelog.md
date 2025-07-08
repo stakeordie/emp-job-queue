@@ -25,8 +25,16 @@
 - **Triggers**: Automated on git tags (`v*`) + manual workflow dispatch
 - **Package Structure**: `redis-direct-worker.js`, `dist/`, `package.json`, `README.md`
 
+#### ✅ **Railway Deployment Configuration**
+- **Monorepo Support**: Added `railway:build` and `railway:start` scripts to root package.json
+- **Configuration**: Created `railway.toml` with proper monorepo build settings
+- **Nixpacks**: Added `nixpacks.toml` for Node.js 20 and pnpm support
+- **Watch Patterns**: Configured to rebuild on API and core package changes
+- **Dependencies**: Handles `@emp/core` workspace dependency correctly
+
 #### 📋 **Next Steps**
 - **Test Integration**: Verify TypeScript worker works with existing GPU management infrastructure
+- **Railway Deployment**: Deploy API to Railway using monorepo root configuration
 - **Update Documentation**: Reflect new TypeScript-based worker system
 
 ### ✅ Completed - Monorepo Migration + Docker Infrastructure + Machine Images Integration

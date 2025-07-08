@@ -1,0 +1,16 @@
+[variables]
+NIXPACKS_NODE_VERSION = "20"
+NIXPACKS_NPM_VERSION = "10"
+
+[phases.setup]
+nixPkgs = ["nodejs", "pnpm"]
+
+[phases.install]
+cmds = ["pnpm railway:build"]
+
+[phases.build]
+# Build is handled in install phase
+cmds = []
+
+[start]
+cmd = "pnpm railway:start"
