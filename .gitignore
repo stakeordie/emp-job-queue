@@ -95,7 +95,6 @@ dump.rdb
 
 # Package files
 *.tar.gz
-packages/
 
 # IDE files
 .idea/
