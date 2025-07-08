@@ -1,5 +1,19 @@
 # EmProps Job Queue Development Changelog
 
+## 2025-07-08 (Part 2)
+
+### ✅ Fixed Multi-GPU Worker Support in basic_machine
+- Added TEST_MODE environment variable to use NUM_GPUS instead of detecting GPUs
+- Fixed multi-GPU worker startup - now correctly starts one worker per GPU
+- Added detailed startup logging to show which services are starting for each GPU
+- Confirmed orchestrator correctly loops through GPU count and starts workers
+
+### ✅ Fixed CI/CD Worker Bundle (v0.0.13)
+- Fixed sed command to properly remove duplicate shebang lines
+- Simplified sed syntax from `'1{/^#!/d;}'` to `/^#!/d` for better compatibility
+- Worker bundle should now execute without syntax errors
+- Restored missing root package.json for monorepo structure
+
 ## 2025-07-08
 
 ### 🚧 In Progress - TypeScript Worker Integration with Machine Infrastructure

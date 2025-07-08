@@ -117,6 +117,7 @@ export default class RedisWorkerService extends BaseService {
       
       // Download with retry using wget for better reliability
       await pRetry(async () => {
+        this.logger.info(`Downloading worker from: ${this.downloadUrl}`);
         this.logger.debug(`Downloading to: ${tempFile}`);
         
         const { stdout, stderr } = await execa('wget', [

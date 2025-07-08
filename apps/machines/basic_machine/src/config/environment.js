@@ -12,6 +12,7 @@ const schema = Joi.object({
   // Machine configuration
   machine: Joi.object({
     id: Joi.string().default('basic-machine-001'),
+    testMode: Joi.boolean().default(false),
     gpu: Joi.object({
       count: Joi.number().integer().min(0).default(1),
       memoryGB: Joi.number().integer().min(0).default(16),
@@ -93,6 +94,7 @@ function buildConfig() {
   const config = {
     machine: {
       id: process.env.MACHINE_ID,
+      testMode: process.env.TEST_MODE === 'true',
       gpu: {
         count: parseInt(process.env.NUM_GPUS || '1'),
         memoryGB: parseInt(process.env.GPU_MEMORY_GB || '16'),

@@ -33,17 +33,26 @@ export class ServiceOrchestrator extends EventEmitter {
       }
 
       // Phase 2: AI Services (parallel per GPU)
-      logger.info('Phase 2: Starting AI services');
+      logger.info(`Phase 2: Starting AI services for ${config.machine.gpu.count} GPUs`);
+      if (config.machine.testMode) {
+        logger.info('TEST MODE: Using NUM_GPUS from environment instead of detecting GPUs');
+      }
+      
       const aiServices = [];
       
       for (let gpu = 0; gpu < config.machine.gpu.count; gpu++) {
+        logger.info(`Starting services for GPU ${gpu}`);
+        
         if (config.services.comfyui.enabled) {
+          logger.info(`  - ComfyUI for GPU ${gpu}`);
           aiServices.push(this.startService('comfyui', { gpu }));
         }
         if (config.services.automatic1111.enabled) {
+          logger.info(`  - Automatic1111 for GPU ${gpu}`);
           aiServices.push(this.startService('automatic1111', { gpu }));
         }
         if (config.services.redisWorker.enabled) {
+          logger.info(`  - Redis Worker for GPU ${gpu}`);
           aiServices.push(this.startService('redis-worker', { gpu }));
         }
       }
