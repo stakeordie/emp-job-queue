@@ -11,7 +11,7 @@ export default class ComfyUIService extends BaseService {
     this.config = config;
     this.gpu = options.gpu || 0;
     this.port = config.services.comfyui.basePort + this.gpu;
-    this.workDir = `/workspace/comfyui_gpu${this.gpu}`;
+    this.workDir = process.env.WORKSPACE_DIR ? `${process.env.WORKSPACE_DIR}/comfyui_gpu${this.gpu}` : `/workspace/comfyui_gpu${this.gpu}`;
     this.process = null;
     this.pidFile = path.join(this.workDir, 'comfyui.pid');
     this.mockFile = path.join(this.workDir, 'comfyui.mock');
@@ -174,10 +174,19 @@ export default class ComfyUIService extends BaseService {
       this.emit('error', error);
     });
 
-    // Redirect output to log file
-    const logStream = await fs.createWriteStream(this.logFile, { flags: 'a' });
+    // Redirect output to log file and console
+    const logStream = fs.createWriteStream(this.logFile, { flags: 'a' });
     this.process.stdout.pipe(logStream);
     this.process.stderr.pipe(logStream);
+    
+    // Also log to console for debugging
+    this.process.stdout.on('data', (data) => {
+      this.logger.debug(`ComfyUI stdout: ${data.toString().trim()}`);
+    });
+    
+    this.process.stderr.on('data', (data) => {
+      this.logger.debug(`ComfyUI stderr: ${data.toString().trim()}`);
+    });
 
     // Save PID and metadata
     await this.savePidFile(this.process.pid);
@@ -189,11 +198,11 @@ export default class ComfyUIService extends BaseService {
       'python',
       'main.py',
       '--listen',
-      '127.0.0.1',
+      '0.0.0.0',
       '--port',
       this.port.toString(),
       '--extra-model-paths-config',
-      '/workspace/shared/comfy_dir_config.yaml'
+      process.env.WORKSPACE_DIR ? `${process.env.WORKSPACE_DIR}/shared/comfy_dir_config.yaml` : '/workspace/shared/comfy_dir_config.yaml'
     ];
 
     // Add mode-specific args
@@ -354,7 +363,7 @@ export default class ComfyUIService extends BaseService {
   async makeHealthRequest() {
     return new Promise((resolve, reject) => {
       const req = http.request({
-        hostname: '127.0.0.1',
+        hostname: 'localhost',
         port: this.port,
         path: '/',
         method: 'GET',

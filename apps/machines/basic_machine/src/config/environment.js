@@ -112,7 +112,7 @@ function buildConfig() {
     },
     services: {
       nginx: {
-        enabled: process.env.ENABLE_NGINX !== 'false',
+        enabled: process.env.ENABLE_NGINX === 'true',
         port: parseInt(process.env.NGINX_PORT || '80')
       },
       comfyui: {
@@ -120,14 +120,14 @@ function buildConfig() {
         basePort: parseInt(process.env.COMFYUI_BASE_PORT || '8188')
       },
       automatic1111: {
-        enabled: process.env.ENABLE_A1111 !== 'false',
+        enabled: process.env.ENABLE_A1111 === 'true',
         basePort: parseInt(process.env.A1111_BASE_PORT || '3001')
       },
       redisWorker: {
         enabled: process.env.ENABLE_REDIS_WORKERS !== 'false'
       },
       ollama: {
-        enabled: process.env.ENABLE_OLLAMA !== 'false',
+        enabled: process.env.ENABLE_OLLAMA === 'true',
         port: parseInt(process.env.OLLAMA_PORT || '11434'),
         models: process.env.OLLAMA_MODELS?.split(',').map(s => s.trim())
       }

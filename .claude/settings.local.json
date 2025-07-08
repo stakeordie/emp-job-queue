@@ -128,7 +128,17 @@
       "Bash(--external:sqlite3 )",
       "Bash(--outfile=test-worker-release/redis-direct-worker.cjs)",
       "Bash(git rm:*)",
-      "Bash(true)"
+      "Bash(true)",
+      "Bash(npm run build:*)",
+      "Bash(npm run:*)",
+      "Bash(HUB_REDIS_URL=redis://localhost:6379 TEST_MODE=true NUM_GPUS=1 ENABLE_NGINX=false ENABLE_A1111=false ENABLE_OLLAMA=false node -e \"\nimport(''./src/config/environment.js'').then(config => {\n  console.log(''Configuration loaded successfully:'');\n  console.log(''GPU Count:'', config.default.machine.gpu.count);\n  console.log(''Test Mode:'', config.default.machine.testMode);\n  console.log(''Services enabled:'', Object.entries(config.default.services).filter(([_,s]) => s.enabled).map(([name]) => name));\n  console.log(''ComfyUI base port:'', config.default.services.comfyui.basePort);\n}).catch(console.error);\n\")",
+      "Bash(HUB_REDIS_URL=redis://localhost:6379 TEST_MODE=true NUM_GPUS=1 ENABLE_NGINX=false ENABLE_A1111=false ENABLE_OLLAMA=false node test-comfyui.js)",
+      "Bash(WORKSPACE_DIR=/tmp/workspace HUB_REDIS_URL=redis://localhost:6379 TEST_MODE=true NUM_GPUS=1 ENABLE_NGINX=false ENABLE_A1111=false ENABLE_OLLAMA=false node test-comfyui.js)",
+      "Bash(WORKSPACE_DIR=/tmp/workspace HUB_REDIS_URL=redis://localhost:6379 TEST_MODE=true NUM_GPUS=1 ENABLE_NGINX=false ENABLE_A1111=false ENABLE_OLLAMA=false node test-comfyui-start.js)",
+      "Bash(WORKSPACE_DIR=/tmp/workspace HUB_REDIS_URL=redis://localhost:6379 TEST_MODE=true NUM_GPUS=1 ENABLE_NGINX=false ENABLE_A1111=false ENABLE_OLLAMA=false COMFYUI_BASE_PORT=8200 node test-comfyui-start.js)",
+      "Bash(cat:*)",
+      "Bash(WORKSPACE_DIR=/tmp/workspace HUB_REDIS_URL=redis://localhost:6379 TEST_MODE=true NUM_GPUS=1 ENABLE_NGINX=false ENABLE_A1111=false ENABLE_OLLAMA=false COMFYUI_BASE_PORT=8200 LOG_LEVEL=debug node test-comfyui-start.js)",
+      "Bash(WORKSPACE_DIR=/tmp/workspace LOG_LEVEL=debug node test-comfyui-simple.js)"
     ],
     "deny": []
   }
