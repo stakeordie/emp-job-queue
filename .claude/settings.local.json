@@ -78,7 +78,8 @@
       "Bash(pnpm railway:start:*)",
       "Bash(pnpm start:*)",
       "Bash(pnpm railway:build:*)",
-      "Bash(docker build:*)"
+      "Bash(docker build:*)",
+      "Bash(git push:*)"
     ],
     "deny": []
   }
