@@ -42,6 +42,15 @@ jobs:
           echo "tag=${GITHUB_REF#refs/tags/}" >> $GITHUB_OUTPUT
         fi
         
+    - name: Debug repository structure
+      run: |
+        echo "Repository structure:"
+        ls -la
+        echo "Packages directory:"
+        ls -la packages/ || echo "packages directory not found"
+        echo "Apps directory:"
+        ls -la apps/
+        
     - name: Build and push API Docker image
       run: |
         # Build API Docker image (Docker handles the monorepo dependencies)
