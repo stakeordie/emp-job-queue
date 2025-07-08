@@ -22,6 +22,12 @@
 - Added directory as regular files to fix CI/CD warning
 - Resolves "No url found for submodule path" error in builds
 
+### 🐛 Fixed Railway WebSocket Connection
+- Updated monitor environment to use `https://` and `wss://` for Railway
+- Fixed API CORS origins to include Railway domain
+- Removed incorrect WS_PORT configuration (WebSocket uses same port as HTTP)
+- WebSocket connections now properly support secure connections for Railway deployment
+
 ## 2025-07-08 (Part 5)
 
 ### ✅ Completed - Redis Worker Startup Notification System
