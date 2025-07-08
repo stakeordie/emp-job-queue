@@ -1,5 +1,25 @@
 # EmProps Job Queue Development Changelog
 
+## 2025-07-08 (Part 5)
+
+### ✅ Completed - Redis Worker Startup Notification System
+- **Real-time Startup Monitoring**: Implemented comprehensive worker startup event system with Redis pub/sub
+- **Basic Machine Integration**: Added RedisStartupNotifier service that publishes detailed startup progress to Redis
+- **API Server Relay**: Enhanced lightweight API server to subscribe to worker startup events and relay to monitors
+- **Event Types**: startup_begin, startup_step, service_started_*, service_failed_*, startup_complete, startup_failed
+- **Monitor Integration**: WebSocket broadcast system with topic-based filtering (workers, worker:startup)
+- **End-to-End Flow**: basic_machine → Redis pub/sub → API server → WebSocket → Monitor
+- **Testing Ready**: System ready for complete end-to-end testing of startup event monitoring
+
+## 2025-07-08 (Part 4)
+
+### ✅ Completed - Enhanced Documentation with Interactive Mermaid Diagrams
+- **Interactive Diagrams**: Added FullscreenDiagram component wrappers to startup sequence and service lifecycle diagrams
+- **Vue Template Fix**: Resolved Vue template syntax error in FullscreenDiagram.vue component (removed extra backtick)
+- **HTML Entity Escaping**: Fixed HTML entity escaping issues in worker-selection.md to prevent Vue compiler warnings
+- **Expandable Flow Charts**: Users can now expand, zoom, and pan the complex startup sequence diagrams
+- **Documentation Enhancement**: basic-machine-logs.md now provides interactive visual flow for debugging and monitoring
+
 ## 2025-07-08 (Part 3)
 
 ### ✅ Completed - ComfyUI Service Implementation for basic_machine

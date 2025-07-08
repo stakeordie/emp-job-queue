@@ -1,13 +1,13 @@
 {
-  "name": "emp-job-queue-docs",
+  "name": "docs",
   "version": "1.0.0",
   "description": "EmProps Job Queue Documentation using VitePress",
   "type": "module",
   "packageManager": "pnpm@10.4.0",
   "scripts": {
-    "docs:dev": "vitepress dev src",
-    "docs:build": "vitepress build src",
-    "docs:preview": "vitepress preview src"
+    "dev": "vitepress dev src",
+    "build": "vitepress build src",
+    "preview": "vitepress preview src"
   },
   "dependencies": {
     "@braintree/sanitize-url": "^6.0.2",

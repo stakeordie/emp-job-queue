@@ -15,6 +15,7 @@
     "dev:hub": "turbo run dev --filter=hub",
     "dev:worker": "turbo run dev --filter=worker",
     "dev:monitor": "turbo run dev --filter=monitor",
+    "dev:docs": "turbo run dev --filter=docs",
     "build:hub": "turbo run build --filter=hub",
     "build:worker": "turbo run build --filter=worker",
     "build:monitor": "turbo run build --filter=monitor",
@@ -22,6 +23,10 @@
     "machines:basic:up": "pnpm machines:basic:down && docker compose -f apps/machines/basic_machine/docker-compose.yml up",
     "machines:basic:up:build": "pnpm machines:basic:down && docker compose -f apps/machines/basic_machine/docker-compose.yml up --build",
     "machines:basic:down": "docker compose -f apps/machines/basic_machine/docker-compose.yml down",
+    "machines:basic:logs": "docker compose -f apps/machines/basic_machine/docker-compose.yml logs -f",
+    "machines:basic:status": "echo '🔍 Basic Machine Status Check' && curl -s http://localhost:9090/health | jq || echo '❌ Health check failed'",
+    "machines:basic:comfyui": "echo '🎨 ComfyUI Status Check' && curl -s http://localhost:8188/ | head -n 5 || echo '❌ ComfyUI not responding'",
+    "machines:basic:ports": "echo '🌐 Checking Basic Machine Ports:' && echo '  Health (9090):' && nc -z localhost 9090 && echo '    ✅ Open' || echo '    ❌ Closed' && echo '  ComfyUI (8188):' && nc -z localhost 8188 && echo '    ✅ Open' || echo '    ❌ Closed'",
     "machines:base:up": "docker compose -f apps/machines/base_machine/docker-compose.yml up",
     "machines:base:up:build": "docker compose -f apps/machines/base_machine/docker-compose.yml up --build",
     "machines:base:down": "docker compose -f apps/machines/base_machine/docker-compose.yml down"
