@@ -3,6 +3,7 @@
   "version": "1.0.0",
   "description": "Core types, Redis functions, and utilities for emp-job-queue",
   "type": "module",
+  "packageManager": "pnpm@10.12.4",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
   "scripts": {

@@ -9,6 +9,14 @@
 - Resolved TypeScript compilation errors in hybrid-client.ts and lightweight-api-server.ts
 - Build now passes successfully in CI/CD pipeline
 
+### 🐛 Fixed Worker Build & Package Manager
+- Added missing dependencies to `apps/worker/package.json`:
+  - Runtime: `ioredis`, `uuid`, `express`
+  - Dev: `@types/express`, `@types/uuid`
+- Updated `packageManager` field to `pnpm@10.12.4` in all package.json files (8 files)
+- Fixed TypeScript compilation errors in redis-direct-worker-client.ts and worker-client.ts
+- CI/CD now uses correct pnpm version consistently across monorepo
+
 ## 2025-07-08 (Part 5)
 
 ### ✅ Completed - Redis Worker Startup Notification System

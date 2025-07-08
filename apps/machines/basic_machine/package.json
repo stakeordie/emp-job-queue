@@ -4,6 +4,7 @@
   "description": "Modern GPU infrastructure machine with Node.js service orchestration",
   "main": "src/index.js",
   "type": "module",
+  "packageManager": "pnpm@10.12.4",
   "scripts": {
     "start": "node src/index.js",
     "dev": "node --watch src/index.js",

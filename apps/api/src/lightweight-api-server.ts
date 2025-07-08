@@ -943,6 +943,7 @@ export class LightweightAPIServer {
     }
   }
 
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   private broadcastWorkerStartupEvent(startupData: any): void {
     const workerStartupEvent = {
       type: 'worker_startup',
@@ -956,7 +957,7 @@ export class LightweightAPIServer {
       startup_steps: startupData.startup_steps,
       machine_config: startupData.machine_config,
       error: startupData.error,
-      stack: startupData.stack
+      stack: startupData.stack,
     };
 
     const eventJson = JSON.stringify(workerStartupEvent);
