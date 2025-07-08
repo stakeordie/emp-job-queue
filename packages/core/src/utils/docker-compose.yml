@@ -1,0 +1,692 @@
+# Docker Compose configuration for Redis-Direct Architecture
+# Phase 1C - Lightweight API with direct Redis polling workers
+#
+# CRITICAL WORKER ARCHITECTURE:
+# - Each worker processes EXACTLY ONE job at a time (single-threaded)
+# - Multi-GPU machines run MULTIPLE workers (one per GPU)
+# - Each worker connects to its own service port (worker0→8188, worker1→8189, etc.)
+# - A 4x GPU machine = 4 separate workers = 4 separate service instances
+# - NEVER set WORKER_MAX_CONCURRENT_JOBS > 1
+
+services:
+  # Lightweight API Server (replaces hub orchestration)
+  # Now connects to Railway Redis with Functions support
+  api:
+    container_name: emp-api
+    build:
+      context: ../../../../
+      dockerfile: apps/api/Dockerfile
+    ports:
+      - "3001:3001"  # HTTP + WebSocket API
+    environment:
+      - NODE_ENV=production
+      - API_PORT=3001
+      - REDIS_URL=redis://default:JQSoNVpIPsuaDQYicNvocglialxPrTjj@ballast.proxy.rlwy.net:30645
+      - CORS_ORIGINS=*
+      - LOG_LEVEL=info
+      - DISABLE_FILE_LOGGING=true
+      - REDIS_FUNCTIONS_ENABLED=true
+    networks:
+      - emp-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://localhost:3001/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+    profiles:
+      - one-worker
+      - multi-sim
+      - capability-test
+      - all-workers
+
+  # Redis-Direct Worker 1 - Simulation connector
+  worker1:
+    container_name: emp-worker1
+    build:
+      context: ../../../../
+      dockerfile: apps/worker/Dockerfile
+    environment:
+      - NODE_ENV=production
+      - WORKER_MACHINE_ID=gpu-machine-1
+      - WORKER_MACHINE_GPU_COUNT=4
+      - WORKER_ID=worker1-direct
+      - HUB_REDIS_URL=redis://default:JQSoNVpIPsuaDQYicNvocglialxPrTjj@ballast.proxy.rlwy.net:30645
+      - WORKER_SERVICES=simulation
+      - WORKER_CONNECTORS=simulation
+      - WORKER_POLL_INTERVAL_MS=1000
+      - WORKER_HEARTBEAT_INTERVAL_MS=30000
+      - WORKER_JOB_TIMEOUT_MINUTES=30
+      # Simulation connector config
+      - WORKER_SIMULATION_PROCESSING_TIME=5
+      - WORKER_SIMULATION_STEPS=25
+      # Hardware specs
+      - WORKER_GPU_MEMORY_GB=8
+      - WORKER_GPU_MODEL=Simulation
+      - WORKER_MACHINE_ID=dev-machine-1
+      # Test capabilities for worker1
+      - WORKER_ASSET_TYPE=["image"]
+      - WORKER_MODELS=["basic_sim","fast_sim"]
+      - WORKER_CUSTOMER_ISOLATION=none
+      - WORKER_REGION=us-east
+      - LOG_LEVEL=info
+      - DISABLE_FILE_LOGGING=true
+    networks:
+      - emp-network
+    restart: unless-stopped
+    profiles:
+      - one-worker
+
+  worker2:
+    container_name: emp-worker2
+    build:
+      context: ../../../../
+      dockerfile: apps/worker/Dockerfile
+    environment:
+      - NODE_ENV=production
+
+      - WORKER_ID=worker2-direct
+      - HUB_REDIS_URL=redis://default:JQSoNVpIPsuaDQYicNvocglialxPrTjj@ballast.proxy.rlwy.net:30645
+      - WORKER_SERVICES=simulation
+      - WORKER_CONNECTORS=simulation
+      - WORKER_POLL_INTERVAL_MS=1000
+      - WORKER_HEARTBEAT_INTERVAL_MS=30000
+      - WORKER_JOB_TIMEOUT_MINUTES=30
+      # Simulation connector config (faster)
+      - WORKER_SIMULATION_PROCESSING_TIME=3
+      - WORKER_SIMULATION_STEPS=15
+      # Hardware specs
+      - WORKER_GPU_MEMORY_GB=8
+      - WORKER_GPU_MODEL=Simulation
+      - WORKER_MACHINE_ID=gpu-machine-1
+      - WORKER_MACHINE_GPU_COUNT=4
+      # Test capabilities for worker2 (faster)
+      - WORKER_ASSET_TYPE=["image","video"]
+      - WORKER_MODELS=["basic_sim","fast_sim","advanced_sim"]
+      - WORKER_CUSTOMER_ISOLATION=loose
+      - WORKER_REGION=us-west
+      - WORKER_PERFORMANCE_TIER=fast
+      - LOG_LEVEL=info
+      - DISABLE_FILE_LOGGING=true
+    networks:
+      - emp-network
+    profiles:
+      - multi-sim
+      - all-workers
+
+
+  # Redis-Direct Worker 3 - ComfyUI + Simulation
+  worker3:
+    container_name: emp-worker3
+    build:
+      context: ../../../../
+      dockerfile: apps/worker/Dockerfile
+    environment:
+      - NODE_ENV=production
+      - WORKER_MACHINE_ID:server-1
+      - WORKER_ID=worker3-comfyui
+      - HUB_REDIS_URL=redis://default:JQSoNVpIPsuaDQYicNvocglialxPrTjj@ballast.proxy.rlwy.net:30645
+      - WORKER_SERVICES=comfyui,simulation
+      - WORKER_CONNECTORS=comfyui,simulation
+      - WORKER_POLL_INTERVAL_MS=1000
+      - WORKER_HEARTBEAT_INTERVAL_MS=30000
+      - WORKER_JOB_TIMEOUT_MINUTES=60
+      # ComfyUI connector config
+      - WORKER_COMFYUI_HOST=${COMFYUI_HOST:-host.docker.internal}
+      - WORKER_COMFYUI_PORT=${COMFYUI_PORT:-8188}
+      - WORKER_COMFYUI_USERNAME=${COMFYUI_USERNAME:-}
+      - WORKER_COMFYUI_PASSWORD=${COMFYUI_PASSWORD:-}
+      - WORKER_COMFYUI_USE_BASIC_AUTH=${COMFYUI_USE_BASIC_AUTH:-false}
+      # Simulation connector config
+      - WORKER_SIMULATION_PROCESSING_TIME=10
+      - WORKER_SIMULATION_STEPS=5
+      # Hardware specs (GPU worker)
+      - WORKER_GPU_MEMORY_GB=24
+      - WORKER_GPU_MODEL=RTX 4090
+      - WORKER_MACHINE_ID=gpu-machine-1
+      - WORKER_MACHINE_GPU_COUNT=4
+      # Test capabilities for worker3 (ComfyUI+Sim)
+      - WORKER_ASSET_TYPE=["image","video","3d"]
+      - WORKER_MODELS=["sdxl","sd15","flux","basic_sim"]
+      - WORKER_CUSTOMER_ISOLATION=strict
+      - WORKER_REGION=us-east
+      - WORKER_PERFORMANCE_TIER=premium
+      - WORKER_FEATURES=["upscaling","inpainting","controlnet"]
+      - LOG_LEVEL=info
+      - DISABLE_FILE_LOGGING=true
+    networks:
+      - emp-network
+    restart: unless-stopped
+    profiles:
+      - multi-sim
+      - all-workers
+  # Redis-Direct Worker 4 - Multiple instances (scale test)
+  worker4:
+    container_name: emp-worker4
+    build:
+      context: ../../../../
+      dockerfile: apps/worker/Dockerfile
+    environment:
+      - NODE_ENV=production
+      - WORKER_MACHINE_ID:server-1
+      - WORKER_ID=worker4-scale
+      - HUB_REDIS_URL=redis://default:JQSoNVpIPsuaDQYicNvocglialxPrTjj@ballast.proxy.rlwy.net:30645
+      - WORKER_SERVICES=simulation
+      - WORKER_CONNECTORS=simulation
+      - WORKER_POLL_INTERVAL_MS=500  # Faster polling for scale test
+      - WORKER_HEARTBEAT_INTERVAL_MS=30000
+      - WORKER_JOB_TIMEOUT_MINUTES=15
+      # Simulation connector config (very fast)
+      - WORKER_SIMULATION_PROCESSING_TIME=1
+      - WORKER_SIMULATION_STEPS=10
+      # Hardware specs
+      - WORKER_MACHINE_ID=gpu-machine-1
+      - WORKER_MACHINE_GPU_COUNT=4
+      - WORKER_RAM_GB=8
+      # Test capabilities for worker4 (CPU-only scale test)
+      - WORKER_ASSET_TYPE=["text","data"]
+      - WORKER_MODELS=["basic_sim","text_proc"]
+      - WORKER_CUSTOMER_ISOLATION=none
+      - WORKER_REGION=us-central
+      - WORKER_PERFORMANCE_TIER=basic
+      - WORKER_COST_TIER=economy
+      - LOG_LEVEL=info
+      - DISABLE_FILE_LOGGING=true
+    networks:
+      - emp-network
+    restart: unless-stopped
+    profiles:
+      - multi-sim
+      - all-workers
+  worker5:
+    container_name: emp-worker5
+    build:
+      context: ../../../../
+      dockerfile: apps/worker/Dockerfile
+    environment:
+      - NODE_ENV=production
+      - WORKER_ID=worker5-scale
+      - HUB_REDIS_URL=redis://default:JQSoNVpIPsuaDQYicNvocglialxPrTjj@ballast.proxy.rlwy.net:30645
+      - WORKER_SERVICES=simulation
+      - WORKER_CONNECTORS=simulation
+      - WORKER_POLL_INTERVAL_MS=500  # Faster polling for scale test
+      - WORKER_HEARTBEAT_INTERVAL_MS=30000
+      - WORKER_JOB_TIMEOUT_MINUTES=15
+      # Simulation connector config (very fast)
+      - WORKER_SIMULATION_PROCESSING_TIME=1
+      - WORKER_SIMULATION_STEPS=10
+      # Hardware specs
+      - WORKER_MACHINE_ID=scale-machine
+      - WORKER_MACHINE_GPU_COUNT=2
+      - WORKER_RAM_GB=8
+      # Test capabilities for worker5 (Europe region, audio specialist)
+      - WORKER_ASSET_TYPE=["audio","text"]
+      - WORKER_MODELS=["whisper","tts","basic_sim"]
+      - WORKER_CUSTOMER_ISOLATION=loose
+      - WORKER_REGION=eu-west
+      - WORKER_PERFORMANCE_TIER=standard
+      - WORKER_FEATURES=["speech_to_text","text_to_speech"]
+      - WORKER_COST_TIER=economy
+      - LOG_LEVEL=info
+      - DISABLE_FILE_LOGGING=true
+    networks:
+      - emp-network
+    restart: unless-stopped
+    profiles:
+      - multi-sim
+      - all-workers
+  worker6:
+    container_name: emp-worker6
+    build:
+      context: ../../../../
+      dockerfile: apps/worker/Dockerfile
+    environment:
+      - NODE_ENV=production
+      - WORKER_ID=worker6-scale
+      - HUB_REDIS_URL=redis://default:JQSoNVpIPsuaDQYicNvocglialxPrTjj@ballast.proxy.rlwy.net:30645
+      - WORKER_SERVICES=simulation
+      - WORKER_CONNECTORS=simulation
+      - WORKER_POLL_INTERVAL_MS=500  # Faster polling for scale test
+      - WORKER_HEARTBEAT_INTERVAL_MS=30000
+      - WORKER_JOB_TIMEOUT_MINUTES=15
+      # Simulation connector config (very fast)
+      - WORKER_SIMULATION_PROCESSING_TIME=1
+      - WORKER_SIMULATION_STEPS=10
+      # Hardware specs
+      - WORKER_MACHINE_ID=scale-machine
+      - WORKER_MACHINE_GPU_COUNT=2
+      - WORKER_RAM_GB=8
+      # Test capabilities for worker6 (Asia region, data processing)
+      - WORKER_ASSET_TYPE=["data","image"]
+      - WORKER_MODELS=["bert","resnet","basic_sim"]
+      - WORKER_CUSTOMER_ISOLATION=strict
+      - WORKER_REGION=ap-southeast
+      - WORKER_PERFORMANCE_TIER=premium
+      - WORKER_FEATURES=["batch_processing","data_analysis"]
+      - WORKER_SPECIALIZATION=analytics
+      - LOG_LEVEL=info
+      - DISABLE_FILE_LOGGING=true
+    networks:
+      - emp-network
+    restart: unless-stopped
+    profiles:
+      - multi-sim
+      - all-workers
+  worker7:
+    container_name: emp-worker7
+    build:
+      context: ../../../../
+      dockerfile: apps/worker/Dockerfile
+    environment:
+      - NODE_ENV=production
+      - WORKER_ID=worker7-scale
+      - HUB_REDIS_URL=redis://default:JQSoNVpIPsuaDQYicNvocglialxPrTjj@ballast.proxy.rlwy.net:30645
+      - WORKER_SERVICES=simulation
+      - WORKER_CONNECTORS=simulation
+      - WORKER_POLL_INTERVAL_MS=500  # Faster polling for scale test
+      - WORKER_HEARTBEAT_INTERVAL_MS=30000
+      - WORKER_JOB_TIMEOUT_MINUTES=15
+      # Simulation connector config (very fast)
+      - WORKER_SIMULATION_PROCESSING_TIME=1
+      - WORKER_SIMULATION_STEPS=10
+      # Hardware specs
+      - WORKER_MACHINE_ID=x-machine
+      - WORKER_MACHINE_GPU_COUNT=1
+      - WORKER_RAM_GB=8
+      # Test capabilities for worker7 (Canada region, video specialist)
+      - WORKER_ASSET_TYPE=["video","image"]
+      - WORKER_MODELS=["ffmpeg","opencv","basic_sim"]
+      - WORKER_CUSTOMER_ISOLATION=none
+      - WORKER_REGION=ca-central
+      - WORKER_PERFORMANCE_TIER=standard
+      - WORKER_FEATURES=["video_processing","frame_extraction"]
+      - WORKER_SPECIALIZATION=video
+      - WORKER_COST_TIER=standard
+      - LOG_LEVEL=info
+      - DISABLE_FILE_LOGGING=true
+    networks:
+      - emp-network
+    restart: unless-stopped
+    profiles:
+      - multi-sim
+      - all-workers
+  worker8:
+    container_name: emp-worker8
+    build:
+      context: ../../../../
+      dockerfile: apps/worker/Dockerfile
+    environment:
+      - NODE_ENV=production
+      - WORKER_ID=worker8-scale
+      - HUB_REDIS_URL=redis://default:JQSoNVpIPsuaDQYicNvocglialxPrTjj@ballast.proxy.rlwy.net:30645
+      - WORKER_SERVICES=simulation
+      - WORKER_CONNECTORS=simulation
+      - WORKER_POLL_INTERVAL_MS=500  # Faster polling for scale test
+      - WORKER_HEARTBEAT_INTERVAL_MS=30000
+      - WORKER_JOB_TIMEOUT_MINUTES=15
+      # Simulation connector config (very fast)
+      - WORKER_SIMULATION_PROCESSING_TIME=1
+      - WORKER_SIMULATION_STEPS=10
+      # Hardware specs
+      - WORKER_MACHINE_ID=y-machine
+      - WORKER_MACHINE_GPU_COUNT=1
+      - WORKER_RAM_GB=8
+      # Test capabilities for worker8 (Multi-region, general purpose)
+      - WORKER_ASSET_TYPE=["image","text","data"]
+      - WORKER_MODELS=["gpt-3.5","basic_sim","utility"]
+      - WORKER_CUSTOMER_ISOLATION=loose
+      - WORKER_REGION=multi
+      - WORKER_PERFORMANCE_TIER=basic
+      - WORKER_FEATURES=["general_purpose","multi_modal"]
+      - WORKER_COST_TIER=budget
+      - WORKER_AVAILABILITY=24x7
+      - LOG_LEVEL=info
+      - DISABLE_FILE_LOGGING=true
+    networks:
+      - emp-network
+    restart: unless-stopped
+    profiles:
+      - multi-sim
+      - all-workers
+  worker9:
+    container_name: emp-worker9
+    build:
+      context: ../../../../
+      dockerfile: apps/worker/Dockerfile
+    environment:
+      - NODE_ENV=production
+      - WORKER_ID=worker9-scale
+      - HUB_REDIS_URL=redis://default:JQSoNVpIPsuaDQYicNvocglialxPrTjj@ballast.proxy.rlwy.net:30645
+      - WORKER_SERVICES=simulation
+      - WORKER_CONNECTORS=simulation
+      - WORKER_POLL_INTERVAL_MS=500  # Faster polling for scale test
+      - WORKER_HEARTBEAT_INTERVAL_MS=30000
+      - WORKER_JOB_TIMEOUT_MINUTES=15
+      # Simulation connector config (very fast)
+      - WORKER_SIMULATION_PROCESSING_TIME=1
+      - WORKER_SIMULATION_STEPS=10
+      # Hardware specs
+      - WORKER_MACHINE_ID=z-machine
+      - WORKER_MACHINE_GPU_COUNT=1
+      - WORKER_RAM_GB=8
+      # Test capabilities for worker9 (Australia region, 3D specialist)
+      - WORKER_ASSET_TYPE=["3d","image"]
+      - WORKER_MODELS=["blender","three_js","basic_sim"]
+      - WORKER_CUSTOMER_ISOLATION=strict
+      - WORKER_REGION=ap-south
+      - WORKER_PERFORMANCE_TIER=enterprise
+      - WORKER_FEATURES=["3d_rendering","mesh_processing"]
+      - WORKER_SPECIALIZATION=3d_graphics
+      - WORKER_COST_TIER=premium
+      - LOG_LEVEL=info
+      - DISABLE_FILE_LOGGING=true
+    networks:
+      - emp-network
+    restart: unless-stopped
+    profiles:
+      - multi-sim
+      - all-workers
+
+  worker10:
+    container_name: emp-worker10
+    build:
+      context: ../../../../
+      dockerfile: apps/worker/Dockerfile
+    environment:
+      - NODE_ENV=production
+      - WORKER_ID=worker10-direct
+      - HUB_REDIS_URL=redis://default:JQSoNVpIPsuaDQYicNvocglialxPrTjj@ballast.proxy.rlwy.net:30645
+      - WORKER_SERVICES=simulation
+      - WORKER_CONNECTORS=simulation
+      - WORKER_POLL_INTERVAL_MS=1000
+      - WORKER_HEARTBEAT_INTERVAL_MS=30000
+      - WORKER_JOB_TIMEOUT_MINUTES=30
+      # Simulation connector config
+      - WORKER_SIMULATION_PROCESSING_TIME=5
+      - WORKER_SIMULATION_STEPS=25
+      # Hardware specs
+      - WORKER_GPU_MEMORY_GB=8
+      - WORKER_GPU_MODEL=Simulation
+      - WORKER_MACHINE_ID=dev-machine-3
+      - WORKER_MACHINE_GPU_COUNT=1
+      - WORKER_RAM_GB=16
+      # Test capabilities for worker10 (UK region, AI model specialist)
+      - WORKER_ASSET_TYPE=["image","text","video"]
+      - WORKER_MODELS=["stable-diffusion","llama","basic_sim"]
+      - WORKER_CUSTOMER_ISOLATION=strict
+      - WORKER_REGION=eu-west
+      - WORKER_PERFORMANCE_TIER=premium
+      - WORKER_FEATURES=["ai_inference","model_fine_tuning"]
+      - WORKER_SPECIALIZATION=ai_models
+      - WORKER_COST_TIER=premium
+      - WORKER_COMPLIANCE=["gdpr","soc2"]
+      - LOG_LEVEL=info
+      - DISABLE_FILE_LOGGING=true
+    networks:
+      - emp-network
+    restart: unless-stopped
+    profiles:
+      - multi-sim
+      - all-workers
+    # Redis-Direct Worker 2 - Simulation connector (faster)
+  worker11:
+    container_name: emp-worker11
+    build:
+      context: ../../../../
+      dockerfile: apps/worker/Dockerfile
+    environment:
+      - NODE_ENV=production
+      - WORKER_ID=worker11-direct
+      - HUB_REDIS_URL=redis://default:JQSoNVpIPsuaDQYicNvocglialxPrTjj@ballast.proxy.rlwy.net:30645
+      - WORKER_SERVICES=simulation
+      - WORKER_CONNECTORS=simulation
+      - WORKER_POLL_INTERVAL_MS=1000
+      - WORKER_HEARTBEAT_INTERVAL_MS=30000
+      - WORKER_JOB_TIMEOUT_MINUTES=30
+      # Simulation connector config (faster)
+      - WORKER_SIMULATION_PROCESSING_TIME=3
+      - WORKER_SIMULATION_STEPS=15
+      # Hardware specs
+      - WORKER_GPU_MEMORY_GB=8
+      - WORKER_GPU_MODEL=Simulation
+      - WORKER_MACHINE_ID=dev-machine-4
+      - WORKER_MACHINE_GPU_COUNT=1
+      - WORKER_RAM_GB=16
+      # Test capabilities for worker11 (Brazil region, enterprise grade)
+      - WORKER_ASSET_TYPE=["image","video","audio"]
+      - WORKER_MODELS=["enterprise_sim","pro_models","basic_sim"]
+      - WORKER_CUSTOMER_ISOLATION=strict
+      - WORKER_REGION=sa-east
+      - WORKER_PERFORMANCE_TIER=enterprise
+      - WORKER_FEATURES=["high_availability","enterprise_sla"]
+      - WORKER_SPECIALIZATION=enterprise
+      - WORKER_COST_TIER=enterprise
+      - WORKER_COMPLIANCE=["iso27001","pci_dss"]
+      - WORKER_SLA_TIER=gold
+      - LOG_LEVEL=info
+      - DISABLE_FILE_LOGGING=true
+    networks:
+      - emp-network
+    restart: unless-stopped
+    profiles:
+      - multi-sim
+      - all-workers
+
+
+  # Note: Redis is now hosted on Railway with Functions support
+  # Access Railway Redis dashboard for monitoring instead of local Redis Commander
+
+  # ===============================
+  # CAPABILITY TEST WORKERS PROFILE
+  # ===============================
+  
+  # Worker with only simulation capability
+  worker-sim-only:
+    container_name: emp-worker-sim-only
+    build:
+      context: ../../../../
+      dockerfile: apps/worker/Dockerfile
+    environment:
+      - NODE_ENV=production
+      - WORKER_ID=worker-sim-only
+      - HUB_REDIS_URL=redis://default:JQSoNVpIPsuaDQYicNvocglialxPrTjj@ballast.proxy.rlwy.net:30645
+      - WORKER_SERVICES=simulation
+      - WORKER_CONNECTORS=simulation
+      - WORKER_POLL_INTERVAL_MS=1000
+      - WORKER_HEARTBEAT_INTERVAL_MS=30000
+      - WORKER_JOB_TIMEOUT_MINUTES=60
+      # Simulation config
+      - WORKER_SIMULATION_PROCESSING_TIME=5
+      - WORKER_SIMULATION_STEPS=3
+      # Hardware specs (low-end)
+      - WORKER_GPU_MEMORY_GB=0
+      - WORKER_MACHINE_ID=cpu-only-machine
+      - WORKER_MACHINE_GPU_COUNT=0
+      # Test capabilities for worker-sim-only (Basic CPU worker)
+      - WORKER_ASSET_TYPE=["text","data"]
+      - WORKER_MODELS=["basic_sim","text_basic"]
+      - WORKER_CUSTOMER_ISOLATION=none
+      - WORKER_REGION=us-central
+      - WORKER_PERFORMANCE_TIER=basic
+      - WORKER_FEATURES=["basic_processing"]
+      - WORKER_COST_TIER=economy
+      - LOG_LEVEL=info
+      - DISABLE_FILE_LOGGING=true
+    networks:
+      - emp-network
+    restart: unless-stopped
+    profiles:
+      - capability-test
+      - all-workers
+
+  # Worker with ComfyUI simulation capability  
+  worker-comfy-sim:
+    container_name: emp-worker-comfy-sim
+    build:
+      context: ../../../../
+      dockerfile: apps/worker/Dockerfile
+    environment:
+      - NODE_ENV=production
+      - WORKER_ID=worker-comfy-sim
+      - HUB_REDIS_URL=redis://default:JQSoNVpIPsuaDQYicNvocglialxPrTjj@ballast.proxy.rlwy.net:30645
+      - WORKER_SERVICES=comfyui-sim
+      - WORKER_CONNECTORS=simulation
+      - WORKER_POLL_INTERVAL_MS=1000
+      - WORKER_HEARTBEAT_INTERVAL_MS=30000
+      - WORKER_JOB_TIMEOUT_MINUTES=60
+      # Simulation config (slower for ComfyUI)
+      - WORKER_SIMULATION_PROCESSING_TIME=15
+      - WORKER_SIMULATION_STEPS=5
+      # Hardware specs (GPU enabled)
+      - WORKER_GPU_MEMORY_GB=16
+      - WORKER_GPU_MODEL=RTX 3080
+      - WORKER_MACHINE_ID=gpu-machine-2
+      - WORKER_MACHINE_GPU_COUNT=1
+      # Test capabilities for worker-comfy-sim (ComfyUI specialist)
+      - WORKER_ASSET_TYPE=["image","video"]
+      - WORKER_MODELS=["sdxl","sd15","comfy_models"]
+      - WORKER_CUSTOMER_ISOLATION=loose
+      - WORKER_REGION=us-west
+      - WORKER_PERFORMANCE_TIER=standard
+      - WORKER_FEATURES=["image_generation","workflow_processing"]
+      - WORKER_SPECIALIZATION=comfyui
+      - WORKER_COST_TIER=standard
+      - LOG_LEVEL=info
+      - DISABLE_FILE_LOGGING=true
+    networks:
+      - emp-network
+    restart: unless-stopped
+    profiles:
+      - capability-test
+      - all-workers
+
+  # Worker with A1111 simulation capability
+  worker-a1111-sim:
+    container_name: emp-worker-a1111-sim
+    build:
+      context: ../../../../
+      dockerfile: apps/worker/Dockerfile
+    environment:
+      - NODE_ENV=production
+      - WORKER_ID=worker-a1111-sim
+      - HUB_REDIS_URL=redis://default:JQSoNVpIPsuaDQYicNvocglialxPrTjj@ballast.proxy.rlwy.net:30645
+      - WORKER_SERVICES=a1111-sim
+      - WORKER_CONNECTORS=simulation
+      - WORKER_POLL_INTERVAL_MS=1000
+      - WORKER_HEARTBEAT_INTERVAL_MS=30000
+      - WORKER_JOB_TIMEOUT_MINUTES=60
+      # Simulation config (faster for A1111)
+      - WORKER_SIMULATION_PROCESSING_TIME=8
+      - WORKER_SIMULATION_STEPS=4
+      # Hardware specs (GPU enabled)
+      - WORKER_GPU_MEMORY_GB=24
+      - WORKER_GPU_MODEL=RTX 4090
+      - WORKER_MACHINE_ID=gpu-machine-3
+      - WORKER_MACHINE_GPU_COUNT=1
+      # Test capabilities for worker-a1111-sim (A1111 specialist)
+      - WORKER_ASSET_TYPE=["image"]
+      - WORKER_MODELS=["sd_models","controlnet","lora"]
+      - WORKER_CUSTOMER_ISOLATION=strict
+      - WORKER_REGION=eu-central
+      - WORKER_PERFORMANCE_TIER=premium
+      - WORKER_FEATURES=["txt2img","img2img","controlnet"]
+      - WORKER_SPECIALIZATION=a1111
+      - WORKER_COST_TIER=premium
+      - LOG_LEVEL=info
+      - DISABLE_FILE_LOGGING=true
+    networks:
+      - emp-network
+    restart: unless-stopped
+    profiles:
+      - capability-test
+      - all-workers
+
+  # Worker with multiple capabilities (ComfyUI + A1111 sim)
+  worker-multi-sim:
+    container_name: emp-worker-multi-sim
+    build:
+      context: ../../../../
+      dockerfile: apps/worker/Dockerfile
+    environment:
+      - NODE_ENV=production
+      - WORKER_ID=worker-multi-sim
+      - HUB_REDIS_URL=redis://default:JQSoNVpIPsuaDQYicNvocglialxPrTjj@ballast.proxy.rlwy.net:30645
+      - WORKER_SERVICES=comfyui-sim,a1111-sim,simulation
+      - WORKER_CONNECTORS=simulation
+      - WORKER_POLL_INTERVAL_MS=1000
+      - WORKER_HEARTBEAT_INTERVAL_MS=30000
+      - WORKER_JOB_TIMEOUT_MINUTES=60
+      # Simulation config (balanced)
+      - WORKER_SIMULATION_PROCESSING_TIME=10
+      - WORKER_SIMULATION_STEPS=4
+      # Hardware specs (high-end GPU)
+      - WORKER_GPU_MEMORY_GB=48
+      - WORKER_GPU_MODEL=RTX A6000
+      - WORKER_MACHINE_ID=gpu-machine-4
+      - WORKER_MACHINE_GPU_COUNT=1
+      # Test capabilities for worker-multi-sim (Multi-service powerhouse)
+      - WORKER_ASSET_TYPE=["image","video","3d","text"]
+      - WORKER_MODELS=["sdxl","flux","sd_models","comfy_models","llm_models"]
+      - WORKER_CUSTOMER_ISOLATION=strict
+      - WORKER_REGION=us-east
+      - WORKER_PERFORMANCE_TIER=enterprise
+      - WORKER_FEATURES=["multi_service","high_memory","parallel_processing"]
+      - WORKER_SPECIALIZATION=multi_service
+      - WORKER_COST_TIER=enterprise
+      - WORKER_COMPLIANCE=["hipaa","gdpr"]
+      - WORKER_SLA_TIER=platinum
+      - LOG_LEVEL=info
+      - DISABLE_FILE_LOGGING=true
+    networks:
+      - emp-network
+    restart: unless-stopped
+    profiles:
+      - capability-test
+      - all-workers
+
+  # Worker with low GPU memory (can't handle large models)
+  worker-low-gpu:
+    container_name: emp-worker-low-gpu
+    build:
+      context: ../../../../
+      dockerfile: apps/worker/Dockerfile
+    environment:
+      - NODE_ENV=production
+      - WORKER_ID=worker-low-gpu
+      - HUB_REDIS_URL=redis://default:JQSoNVpIPsuaDQYicNvocglialxPrTjj@ballast.proxy.rlwy.net:30645
+      - WORKER_SERVICES=comfyui-sim,a1111-sim
+      - WORKER_CONNECTORS=simulation
+      - WORKER_POLL_INTERVAL_MS=1000
+      - WORKER_HEARTBEAT_INTERVAL_MS=30000
+      - WORKER_JOB_TIMEOUT_MINUTES=60
+      # Simulation config
+      - WORKER_SIMULATION_PROCESSING_TIME=20
+      - WORKER_SIMULATION_STEPS=3
+      # Hardware specs (low GPU memory)
+      - WORKER_GPU_MEMORY_GB=8
+      - WORKER_GPU_MODEL=RTX 3060
+      - WORKER_MACHINE_ID=gpu-machine-5
+      - WORKER_MACHINE_GPU_COUNT=1
+      # Test capabilities for worker-low-gpu (Budget GPU worker)
+      - WORKER_ASSET_TYPE=["image"]
+      - WORKER_MODELS=["sd15","basic_models"]
+      - WORKER_CUSTOMER_ISOLATION=none
+      - WORKER_REGION=us-south
+      - WORKER_PERFORMANCE_TIER=basic
+      - WORKER_FEATURES=["low_memory","budget_friendly"]
+      - WORKER_COST_TIER=budget
+      - WORKER_LIMITATIONS=["no_large_models","limited_batch_size"]
+      - LOG_LEVEL=info
+      - DISABLE_FILE_LOGGING=true
+    networks:
+      - emp-network
+    restart: unless-stopped
+    profiles:
+      - capability-test
+      - all-workers
+
+networks:
+  emp-network:
+    driver: bridge
+
+# No volumes needed - Redis is hosted on Railway

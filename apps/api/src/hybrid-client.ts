@@ -5,8 +5,7 @@ import { EventEmitter } from 'events';
 import { WebSocket } from 'ws';
 import fetch from 'node-fetch';
 import { EventSource } from 'eventsource';
-import { Job } from '../core/types/job.js';
-import { logger } from '../core/utils/logger.js';
+import { Job, logger } from '@emp/core';
 
 export interface HybridClientConfig {
   baseUrl: string; // http://localhost:3001
@@ -419,7 +418,7 @@ export class HybridClient extends EventEmitter {
 
   async disconnect(): Promise<void> {
     // Close all SSE connections
-    for (const [jobId, eventSource] of this.eventSources) {
+    for (const [_jobId, eventSource] of this.eventSources) {
       eventSource.close();
     }
     this.eventSources.clear();

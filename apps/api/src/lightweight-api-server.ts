@@ -7,10 +7,12 @@ import { createServer, Server as HTTPServer } from 'http';
 import { WebSocketServer, WebSocket } from 'ws';
 import Redis from 'ioredis';
 import { v4 as uuidv4 } from 'uuid';
-import { Job, JobStatus, JobRequirements } from '../core/types/job.js';
-import { logger } from '../core/utils/logger.js';
-import { RedisService } from '../core/redis-service.js';
 import {
+  Job,
+  JobStatus,
+  JobRequirements,
+  logger,
+  RedisService,
   JobSubmittedEvent,
   JobAssignedEvent,
   JobStatusChangedEvent,
@@ -18,7 +20,7 @@ import {
   JobCompletedEvent,
   JobFailedEvent,
   WorkerStatusChangedEvent,
-} from '../types/monitor-events.js';
+} from '@emp/core';
 
 interface LightweightAPIConfig {
   port: number;
