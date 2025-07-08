@@ -1,5 +1,5 @@
 // Base Worker Implementation - direct port from Python worker/base_worker.py
-// Core worker logic with job processing loop and connector management 
+// Core worker logic with job processing loop and connector management
 
 import { ConnectorManager } from './connector-manager.js';
 import { WorkerClient } from './worker-client.js';
