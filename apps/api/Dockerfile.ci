@@ -1,0 +1,31 @@
+# Simplified Dockerfile for CI that builds everything in one stage
+FROM node:20-alpine
+
+# Enable corepack for pnpm
+RUN corepack enable
+
+# Set working directory
+WORKDIR /app
+
+# Copy entire repository
+COPY . .
+
+# Install dependencies and build
+RUN pnpm install --no-frozen-lockfile && \
+    pnpm --filter @emp/core build && \
+    pnpm --filter api build
+
+# Create non-root user
+RUN addgroup -g 1001 -S nodejs && \
+    adduser -S api -u 1001
+
+# Change ownership of the app directory
+RUN chown -R api:nodejs /app
+
+USER api
+
+# Expose port
+EXPOSE 3001
+
+# Start command
+CMD ["pnpm", "--filter=api", "start"]
