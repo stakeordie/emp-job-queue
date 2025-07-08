@@ -76,7 +76,8 @@
       "Bash(pnpm --filter=@emp/core build)",
       "Bash(docker run:*)",
       "Bash(pnpm railway:start:*)",
-      "Bash(pnpm start:*)"
+      "Bash(pnpm start:*)",
+      "Bash(pnpm railway:build:*)"
     ],
     "deny": []
   }
