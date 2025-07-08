@@ -30,7 +30,13 @@ jobs:
         version: 8
         
     - name: Install dependencies
-      run: pnpm install --no-frozen-lockfile
+      run: |
+        # Clean any existing node_modules and lock files
+        rm -rf node_modules packages/*/node_modules apps/*/node_modules
+        rm -f pnpm-lock.yaml
+        
+        # Install dependencies
+        pnpm install
       
     - name: Build monorepo
       run: pnpm build
