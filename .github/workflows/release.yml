@@ -94,7 +94,7 @@ jobs:
         
         # Add shebang to bundled worker and make executable
         # First remove any existing shebang from the bundled file, then add our own
-        sed '1{/^#!/d;}' worker-release/redis-direct-worker.cjs > worker-release/redis-direct-worker-clean.cjs
+        sed '/^#!/d' worker-release/redis-direct-worker.cjs > worker-release/redis-direct-worker-clean.cjs
         echo '#!/usr/bin/env node' > worker-release/redis-direct-worker.js
         cat worker-release/redis-direct-worker-clean.cjs >> worker-release/redis-direct-worker.js
         chmod +x worker-release/redis-direct-worker.js
