@@ -1,5 +1,14 @@
 # EmProps Job Queue Development Changelog
 
+## 2025-01-08
+
+### 🐛 Fixed CI/CD Build Errors
+- Added missing dependencies to `apps/api/package.json`:
+  - Runtime: `ws`, `node-fetch`, `eventsource`, `ioredis`, `uuid`
+  - Dev: `@types/ws`, `@types/uuid`
+- Resolved TypeScript compilation errors in hybrid-client.ts and lightweight-api-server.ts
+- Build now passes successfully in CI/CD pipeline
+
 ## 2025-07-08 (Part 5)
 
 ### ✅ Completed - Redis Worker Startup Notification System
