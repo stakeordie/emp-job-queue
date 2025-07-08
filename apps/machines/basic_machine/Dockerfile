@@ -48,9 +48,11 @@ RUN mkdir -p \
 # Stage 3: Final image
 FROM ai-base
 
-# Copy Node.js application
-COPY --from=node-deps /app/node_modules /service-manager/node_modules
+# Copy Node.js application files first
 COPY . /service-manager/
+
+# Then copy the pre-built node_modules from the previous stage
+COPY --from=node-deps /app/node_modules /service-manager/node_modules
 
 # Set up environment
 ENV NODE_ENV=production \
