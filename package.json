@@ -1,0 +1,38 @@
+{
+  "name": "emp-job-queue",
+  "version": "1.0.0",
+  "description": "EmProps Job Queue System - TypeScript rebuild of emp-redis",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "turbo run build",
+    "dev": "turbo run dev",
+    "lint": "turbo run lint",
+    "typecheck": "turbo run typecheck",
+    "test": "turbo run test",
+    "clean": "turbo run clean && rm -rf node_modules",
+    "install:clean": "rm -rf node_modules pnpm-lock.yaml && pnpm install",
+    "dev:hub": "turbo run dev --filter=hub",
+    "dev:worker": "turbo run dev --filter=worker",
+    "dev:monitor": "turbo run dev --filter=monitor",
+    "build:hub": "turbo run build --filter=hub",
+    "build:worker": "turbo run build --filter=worker",
+    "build:monitor": "turbo run build --filter=monitor",
+    "build:core": "turbo run build --filter=@emp/core",
+    "machines:basic:up": "docker compose -f apps/machines/basic_machine/docker-compose.yml up",
+    "machines:basic:up:build": "docker compose -f apps/machines/basic_machine/docker-compose.yml up --build",
+    "machines:basic:down": "docker compose -f apps/machines/basic_machine/docker-compose.yml down",
+    "machines:base:up": "docker compose -f apps/machines/base_machine/docker-compose.yml up",
+    "machines:base:up:build": "docker compose -f apps/machines/base_machine/docker-compose.yml up --build",
+    "machines:base:down": "docker compose -f apps/machines/base_machine/docker-compose.yml down"
+  },
+  "devDependencies": {
+    "turbo": "^2.0.0",
+    "typescript": "^5.0.0"
+  },
+  "engines": {
+    "node": ">=18.0.0",
+    "pnpm": ">=8.0.0"
+  },
+  "packageManager": "pnpm@8.15.4"
+}
