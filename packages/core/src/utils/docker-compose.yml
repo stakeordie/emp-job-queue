@@ -37,7 +37,6 @@ services:
     profiles:
       - one-worker
       - multi-sim
-      - capability-test
       - all-workers
 
   # Redis-Direct Worker 1 - Simulation connector
