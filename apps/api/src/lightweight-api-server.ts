@@ -86,6 +86,12 @@ export class LightweightAPIServer {
     this.setupProgressStreaming();
   }
 
+  private isValidToken(token: string): boolean {
+    // Use environment variable for token validation, fallback to hardcoded for dev
+    const validToken = process.env.WS_AUTH_TOKEN || '3u8sdj5389fj3kljsf90u';
+    return token === validToken;
+  }
+
   private setupMiddleware(): void {
     // CORS support
     this.app.use((req, res, next) => {
@@ -293,6 +299,17 @@ export class LightweightAPIServer {
       return;
     }
 
+    // Parse query parameters for authentication
+    const urlParams = new URLSearchParams(url.split('?')[1]);
+    const token = urlParams.get('token');
+    
+    // Validate token if provided
+    if (token && !this.isValidToken(token)) {
+      logger.warn(`Invalid token provided for monitor ${monitorId}: ${token}`);
+      ws.close(1008, 'Invalid authentication token');
+      return;
+    }
+
     const connection: MonitorConnection = {
       ws,
       monitorId,
@@ -334,6 +351,17 @@ export class LightweightAPIServer {
     const clientId = url.split('/ws/client/')[1]?.split('?')[0];
     if (!clientId) {
       ws.close(1008, 'Invalid client ID');
+      return;
+    }
+
+    // Parse query parameters for authentication
+    const urlParams = new URLSearchParams(url.split('?')[1]);
+    const token = urlParams.get('token');
+    
+    // Validate token if provided
+    if (token && !this.isValidToken(token)) {
+      logger.warn(`Invalid token provided for client ${clientId}: ${token}`);
+      ws.close(1008, 'Invalid authentication token');
       return;
     }
 
