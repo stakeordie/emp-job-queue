@@ -24,22 +24,8 @@ jobs:
       with:
         node-version: '20'
         
-    - name: Setup pnpm
-      uses: pnpm/action-setup@v2
-      with:
-        version: 8
-        
-    - name: Install dependencies
-      run: |
-        # Clean any existing node_modules and lock files
-        rm -rf node_modules packages/*/node_modules apps/*/node_modules
-        rm -f pnpm-lock.yaml
-        
-        # Install dependencies
-        pnpm install
-      
-    - name: Build monorepo
-      run: pnpm build
+    - name: Enable Corepack for pnpm
+      run: corepack enable
       
     - name: Log in to Docker Hub
       uses: docker/login-action@v3
@@ -58,15 +44,23 @@ jobs:
         
     - name: Build and push API Docker image
       run: |
-        # Build API Docker image
+        # Build API Docker image (Docker handles the monorepo dependencies)
         docker build -f apps/api/Dockerfile.railway -t emprops/emp-job-queue-api:latest -t emprops/emp-job-queue-api:${{ steps.get_tag.outputs.tag }} .
         
         # Push both tags
         docker push emprops/emp-job-queue-api:latest
         docker push emprops/emp-job-queue-api:${{ steps.get_tag.outputs.tag }}
         
-    - name: Create worker release package
+    - name: Build and package worker
       run: |
+        # Enable corepack and install dependencies
+        corepack enable
+        pnpm install --no-frozen-lockfile
+        
+        # Build only the necessary packages
+        pnpm --filter @emp/core build
+        pnpm --filter worker build
+        
         # Create temporary directory for packaging
         mkdir -p worker-release/dist
         
