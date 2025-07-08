@@ -1,4 +1,4 @@
-`<template>
+<template>
   <div class="diagram-container">
     <div class="diagram" ref="diagramRef">
       <slot></slot>

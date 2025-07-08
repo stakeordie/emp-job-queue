@@ -45,6 +45,8 @@ docker logs -f basic-machine
 
 ## 🚀 Complete Startup Sequence
 
+<FullscreenDiagram>
+
 ```mermaid
 flowchart TD
     A[🚀 Container Start] --> B[📋 Load Environment Config]
@@ -133,7 +135,11 @@ flowchart TD
     R5D -->|✅ Yes| Z3
 ```
 
+</FullscreenDiagram>
+
 ## 🔄 Service Lifecycle Detail
+
+<FullscreenDiagram>
 
 ```mermaid
 flowchart TD
@@ -171,6 +177,8 @@ flowchart TD
     Y --> Z[📊 Status: STOPPED]
     Z --> AA[🎉 Emit 'stopped' Event]
 ```
+
+</FullscreenDiagram>
 
 ## 📊 Log Output Timeline
 
