@@ -1,0 +1,44 @@
+# See https://help.github.com/articles/ignoring-files/ for more about ignoring files.
+
+# dependencies
+/node_modules
+/.pnp
+.pnp.js
+
+# production
+/dist
+
+# misc
+.DS_Store
+*.pem
+
+# debug
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# local env files
+.env
+.env*.local
+.env.local*
+
+# typescript
+*.tsbuildinfo
+
+# vscode
+.vscode
+*.code-workspace
+
+# Sentry Config File
+.sentryclirc
+
+# API tokens
+.hf_token
+HF_TOKEN=*
+
+package-lock.json
+
+stake-or-die-e419d53af34a.json
+emprops-fd0a56881fd1.jsonconfig/emprops.json\nconfig/stake-or-die.json
+ 
+*.code-workspace

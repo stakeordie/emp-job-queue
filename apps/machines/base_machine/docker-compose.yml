@@ -1,0 +1,55 @@
+# Streamlined Docker Compose for base_machine development
+# Using only emprops-27128-devel service for active development
+# Full service archive available in docker-compose.archive.yml
+
+x-base-service: &base-service
+  env_file:
+    - .env.local
+  build:
+    context: .
+    dockerfile: Dockerfile
+    platforms:
+      - linux/amd64
+    args:
+      # Updated: 2025-05-14T18:42:32-04:00 - Added CUDA version selection
+      CUDA_VERSION: 0
+      START_BUST: 0
+      MIDDLE_BUST: 0
+      SHARED_BUST: 0
+      LANGFLOW_BUST: 0
+      A1111_A_BUST: 0
+      A1111_B_BUST: 0
+      A1111_C_BUST: 0
+      END_BUST: 0
+  ports:
+    - "2001:2001"
+    - "2002:2002"
+    - "2003:2003"
+    - "2004:2004"
+    - "2005:2005"
+    - "2006:2006"
+    - "2007:2007"
+    - "2008:2008"
+    - "2860:2860"
+    - "3188:3188"
+    - "3189:3189"
+    - "3190:3190"
+    - "3191:3191"
+    - "3192:3192"
+    - "3193:3193"
+    - "3194:3194"
+    - "3195:3195"
+  restart: unless-stopped
+  platform: linux/amd64
+
+services:
+  # Primary development service - PyTorch 2.7.0 with CUDA 12.8 development tools
+  base_machine:
+    <<: *base-service
+    container_name: base-machine
+    image: emprops/base-machine:latest
+    build:
+      args:
+        # Updated: 2025-05-14T18:42:32-04:00 - Using CUDA 12.8 for this service
+        BASE_IMAGE: pytorch/pytorch:2.7.0-cuda12.8-cudnn9-devel
+        COMFY_REPO_URL: https://github.com/stakeordie/ComfyUI.git

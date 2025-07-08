@@ -1,0 +1,156 @@
+#!/bin/bash
+### BEGIN INIT INFO
+# Provides:          worker-watchdog
+# Required-Start:    $network $remote_fs
+# Required-Stop:     $network $remote_fs
+# Default-Start:     2 3 4 5
+# Default-Stop:      0 1 6
+# Short-Description: EmProps Worker Watchdog
+# Description:       Monitors worker processes and automatically restarts them if they crash
+### END INIT INFO
+
+# Worker Watchdog Init Script for the EmProps MGPU System
+# Created: 2025-04-07T16:17:00-04:00
+# Updated: 2025-04-07T17:08:00-04:00 - Fixed Docker environment compatibility
+# This script provides init.d compatibility for the worker watchdog
+
+# Set Docker environment paths
+ROOT="/workspace"
+DOCKER_ENV=true
+
+# Configuration
+NAME="worker-watchdog"
+DAEMON="/usr/local/bin/worker_watchdog.sh"
+PIDFILE="/var/run/${NAME}.pid"
+LOGFILE="${ROOT}/logs/watchdog.log"
+
+# Logging function
+log() {
+    local timestamp
+    timestamp=$(date +"%Y-%m-%d %H:%M:%S")
+    echo "[$timestamp] $1" | tee -a "$LOGFILE"
+}
+
+# Make sure the log directory exists
+mkdir -p "${ROOT}/logs"
+
+# Function to check if the watchdog is running
+is_running() {
+    if [ -f "$PIDFILE" ]; then
+        local pid
+        pid=$(cat "$PIDFILE")
+        if kill -0 "$pid" 2>/dev/null; then
+            return 0  # Running
+        fi
+    fi
+    return 1  # Not running
+}
+
+# Function to start the watchdog
+# Updated: 2025-04-07T17:09:00-04:00 - Improved startup process
+do_start() {
+    if is_running; then
+        log "Watchdog is already running with PID $(cat $PIDFILE)"
+        return 0
+    fi
+    
+    log "Starting worker watchdog"
+    
+    # Make sure the log directory exists
+    mkdir -p "${ROOT}/logs"
+    
+    # Set environment variables for the watchdog
+    export ROOT="$ROOT"
+    export DOCKER_ENV="$DOCKER_ENV"
+    export DEBUG=true
+    
+    # Start the watchdog in the background
+    nohup "$DAEMON" > "$LOGFILE" 2>&1 &
+    
+    # Save PID
+    echo $! > "$PIDFILE"
+    
+    # Check if it started successfully
+    sleep 2
+    if is_running; then
+        log "Watchdog started with PID $(cat $PIDFILE)"
+        return 0
+    else
+        log "Failed to start watchdog"
+        return 1
+    fi
+}
+
+# Function to stop the watchdog
+do_stop() {
+    if ! is_running; then
+        log "Watchdog is not running"
+        return 0
+    fi
+    
+    local pid
+    pid=$(cat "$PIDFILE")
+    log "Stopping watchdog with PID $pid"
+    
+    # Try graceful shutdown first
+    kill -TERM "$pid"
+    
+    # Wait for process to terminate
+    local count=0
+    while kill -0 "$pid" 2>/dev/null && [ "$count" -lt 10 ]; do
+        sleep 1
+        count=$((count + 1))
+    done
+    
+    # If still running, force kill
+    if kill -0 "$pid" 2>/dev/null; then
+        log "Process did not terminate gracefully, forcing kill"
+        kill -9 "$pid"
+        sleep 1
+    fi
+    
+    # Remove PID file
+    rm -f "$PIDFILE"
+    log "Watchdog stopped"
+    return 0
+}
+
+# Function to get watchdog status
+do_status() {
+    if is_running; then
+        log "Watchdog is running with PID $(cat $PIDFILE)"
+        return 0
+    else
+        log "Watchdog is not running"
+        return 1
+    fi
+}
+
+# Function to restart the watchdog
+do_restart() {
+    do_stop
+    sleep 1
+    do_start
+}
+
+# Main case statement to handle commands
+case "$1" in
+    start)
+        do_start
+        ;;
+    stop)
+        do_stop
+        ;;
+    restart|force-reload)
+        do_restart
+        ;;
+    status)
+        do_status
+        ;;
+    *)
+        echo "Usage: $0 {start|stop|restart|force-reload|status}"
+        exit 1
+        ;;
+esac
+
+exit $?
