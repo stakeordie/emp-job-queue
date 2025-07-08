@@ -48,6 +48,7 @@
     "machines:base:down": "docker compose -f apps/machines/base_machine/docker-compose.yml down",
     "machines:base:logs": "docker compose -f apps/machines/base_machine/docker-compose.yml logs -f base_machine",
     "machines:base:shell": "docker compose -f apps/machines/base_machine/docker-compose.yml exec base_machine /bin/bash",
+    "machines:basic:up:build": "docker compose -f apps/machines/basic_machine/docker-compose.yml up --build",
     "monitor": "pnpm -F monitor dev",
     "docs:dev": "pnpm -F emp-job-queue-docs docs:dev --no-cache",
     "docs:build": "pnpm -F emp-job-queue-docs docs:build --no-cache",

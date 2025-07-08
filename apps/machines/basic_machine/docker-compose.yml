@@ -1,0 +1,99 @@
+version: '3.8'
+
+services:
+  basic-machine:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        CACHE_BUST: ${CACHE_BUST:-1}
+    image: basic-machine:latest
+    platform: linux/amd64
+    container_name: basic-machine
+    hostname: basic-machine
+    restart: unless-stopped
+    
+    # GPU support (disabled for testing)
+    # deploy:
+    #   resources:
+    #     reservations:
+    #       devices:
+    #         - driver: nvidia
+    #           count: all
+    #           capabilities: [gpu]
+    
+    # Environment
+    env_file:
+      - .env.local
+    environment:
+      - NODE_ENV=production
+      - NVIDIA_VISIBLE_DEVICES=all
+      - NVIDIA_DRIVER_CAPABILITIES=compute,utility
+    
+    # Ports
+    ports:
+      # NGINX
+      - "80:80"
+      - "443:443"
+      # ComfyUI (8 GPUs max)
+      - "8188-8195:8188-8195"
+      # Automatic1111 (8 GPUs max)
+      - "3001-3008:3001-3008"
+      # Ollama
+      - "11434:11434"
+      # Health check server
+      - "9090:9090"
+    
+    # Volumes
+    volumes:
+      # Shared directory structure  
+      - ./data/shared:/workspace/shared
+      - ./data/logs:/workspace/logs
+      # Legacy compatibility (can be removed later)
+      - ./data/models:/workspace/models
+      - ./data/ComfyUI:/workspace/ComfyUI/output
+      - ./data/stable-diffusion-webui:/workspace/stable-diffusion-webui/outputs
+      
+      # Development hot reload (comment out for production)
+      - ./src:/service-manager/src:ro
+      - ./config:/service-manager/config:ro
+    
+    # Logging
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+    
+    # Health check
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9090/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 5m
+    
+    # Networks
+    networks:
+      - emp-network
+
+# Development services
+  redis:
+    image: redis:7-alpine
+    container_name: basic-machine-redis
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis-data:/data
+    networks:
+      - emp-network
+    profiles:
+      - dev
+
+networks:
+  emp-network:
+    driver: bridge
+
+volumes:
+  redis-data:

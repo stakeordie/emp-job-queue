@@ -69,33 +69,71 @@ jobs:
         corepack enable
         pnpm install --no-frozen-lockfile
         
+        # Install esbuild for bundling
+        pnpm add -g esbuild
+        
         # Build only the necessary packages
         pnpm --filter @emp/core build
         pnpm --filter worker build
         
         # Create temporary directory for packaging
-        mkdir -p worker-release/dist
+        mkdir -p worker-release
         
-        # Copy built worker
-        cp apps/worker/dist/redis-direct-worker.js worker-release/
-        cp apps/worker/dist/redis-direct-worker.js worker-release/dist/
+        # Bundle worker into a single executable file using esbuild
+        # This bundles all dependencies including @emp/core into a single file
+        esbuild apps/worker/src/redis-direct-worker.ts \
+          --bundle \
+          --platform=node \
+          --target=node18 \
+          --format=esm \
+          --external:sharp \
+          --external:canvas \
+          --external:@tensorflow/tfjs-node \
+          --external:sqlite3 \
+          --banner:js="#!/usr/bin/env node" \
+          --outfile=worker-release/redis-direct-worker.js
         
-        # Copy package.json and dependencies info
-        cp apps/worker/package.json worker-release/
+        # Make the bundled worker executable
+        chmod +x worker-release/redis-direct-worker.js
+        
+        # Create a minimal package.json for the bundled worker
+        cat > worker-release/package.json << 'EOF'
+        {
+          "name": "emp-job-queue-worker",
+          "version": "1.0.0",
+          "description": "Bundled Redis worker for EmProps GPU job queue system",
+          "type": "module",
+          "main": "redis-direct-worker.js",
+          "bin": {
+            "emp-worker": "redis-direct-worker.js"
+          }
+        }
+        EOF
         
         # Create a simple README for the release
         cat > worker-release/README.md << 'EOF'
         # EmProps Job Queue Worker
         
-        TypeScript-based Redis worker for the EmProps GPU job queue system.
+        Self-contained bundled Redis worker for the EmProps GPU job queue system.
         
         ## Usage
         ```bash
         node redis-direct-worker.js
         ```
         
+        ## Features
+        - Single bundled executable (no external dependencies)
+        - Supports ComfyUI, A1111, and simulation connectors
+        - Direct Redis connection (no WebSocket hub required)
+        - Multi-GPU support via CUDA_VISIBLE_DEVICES
+        
         ## Environment Variables
-        See apps/worker/.env.example for configuration options.
+        - `HUB_REDIS_URL` - Redis connection URL
+        - `WORKER_ID` - Unique worker identifier  
+        - `WORKER_CONNECTORS` - Comma-separated list (e.g., "comfyui,a1111,simulation")
+        - `CUDA_VISIBLE_DEVICES` - GPU index for this worker
+        - `GPU_MEMORY_GB` - Available GPU memory
+        - `GPU_MODEL` - GPU model name
         EOF
         
         # Create tarball
@@ -109,10 +147,10 @@ jobs:
         body: |
           ## EmProps Job Queue Worker Release
           
-          This release contains the TypeScript worker for the EmProps GPU job queue system.
+          This release contains a **self-contained bundled worker** for the EmProps GPU job queue system.
           
           ### What's Included
-          - `redis-direct-worker.js` - Main worker executable
+          - `redis-direct-worker.js` - **Single bundled executable** (all dependencies included)
           - `package.json` - Package metadata
           - `README.md` - Usage instructions
           
@@ -121,9 +159,17 @@ jobs:
           2. Extract: `tar -xzf emp-job-queue-worker.tar.gz`
           3. Run: `node redis-direct-worker.js`
           
+          ### Features
+          - **Zero dependencies** - Single bundled file with everything included
+          - **Multi-connector support** - ComfyUI, A1111, and simulation modes
+          - **Direct Redis connection** - No WebSocket hub dependency
+          - **Multi-GPU ready** - Use CUDA_VISIBLE_DEVICES for GPU assignment
+          - **TypeScript-based** - Modern, type-safe worker implementation
+          
           ### Changes
-          - TypeScript worker with Redis-direct architecture
-          - Compatible with existing machine infrastructure
+          - Single bundled executable using esbuild (no more import errors!)
+          - All @emp/core dependencies bundled inline
+          - Compatible with existing basic_machine and base_machine infrastructure
           - Replaces Python worker from emp-redis
           
         files: |
