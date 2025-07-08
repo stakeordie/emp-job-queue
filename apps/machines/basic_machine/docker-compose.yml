@@ -1,5 +1,3 @@
-version: '3.8'
-
 services:
   basic-machine:
     build:
@@ -49,10 +47,6 @@ services:
       # Shared directory structure  
       - ./data/shared:/workspace/shared
       - ./data/logs:/workspace/logs
-      # Legacy compatibility (can be removed later)
-      - ./data/models:/workspace/models
-      - ./data/ComfyUI:/workspace/ComfyUI/output
-      - ./data/stable-diffusion-webui:/workspace/stable-diffusion-webui/outputs
       
       # Development hot reload (comment out for production)
       - ./src:/service-manager/src:ro
