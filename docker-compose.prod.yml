@@ -16,7 +16,7 @@ services:
     restart: unless-stopped
 
   api:
-    image: emprops/emp-job-queue-api:latest
+    image: stakeordie/emp-job-queue-api:latest
     ports:
       - "3001:3001"
     environment:

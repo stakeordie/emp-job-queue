@@ -38,18 +38,13 @@ const CONNECTION_PRESETS = {
     auth: '3u8sdj5389fj3kljsf90u',
     name: 'Local Dev'
   },
-  'local-test': {
-    websocket: 'ws://localhost:3011', 
-    auth: '3u8sdj5389fj3kljsf90u',
-    name: 'Local Test'
-  },
   railway: {
     websocket: 'wss://redisserver-production.up.railway.app',
     auth: '3u8sdj5389fj3kljsf90u',
     name: 'Railway (Old)'
   },
   railwaynew: {
-    websocket: 'wss://redisservernew-production.up.railway.app',
+    websocket: 'wss://emp-job-queue-production.up.railway.app',
     auth: '3u8sdj5389fj3kljsf90u',
     name: 'Railway (New)'
   }

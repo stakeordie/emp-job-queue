@@ -1,4 +1,4 @@
-FROM emprops/emp-job-queue-api:latest
+FROM stakeordie/emp-job-queue-api:latest
 
 # Expose port
 EXPOSE 3001
