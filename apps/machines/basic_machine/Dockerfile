@@ -68,7 +68,9 @@ exec node src/index.js' > /entrypoint.sh && \
     chmod +x /entrypoint.sh
 
 # Expose common ports
-# NGINX
+# SSH
+EXPOSE 22
+# NGINX (optional)
 EXPOSE 80 443
 # ComfyUI (8188-8195 for up to 8 GPUs)
 EXPOSE 8188-8195
@@ -76,10 +78,12 @@ EXPOSE 8188-8195
 EXPOSE 3001-3008
 # Ollama
 EXPOSE 11434
+# Health monitoring
+EXPOSE 9090
 
-# Health check
+# Health check (use health monitoring port instead of NGINX)
 HEALTHCHECK --interval=30s --timeout=10s --start-period=5m --retries=3 \
-    CMD curl -f http://localhost/health || exit 1
+    CMD curl -f http://localhost:9090/health || exit 1
 
 # Set entrypoint
 ENTRYPOINT ["/entrypoint.sh"]

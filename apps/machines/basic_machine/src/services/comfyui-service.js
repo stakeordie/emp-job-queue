@@ -233,10 +233,15 @@ export default class ComfyUIService extends BaseService {
           throw new Error('Process exited during startup');
         }
 
-        // Check if port is responsive
-        if (await this.isPortInUse(this.port)) {
-          this.logger.info(`Service is ready on port ${this.port}`);
-          return;
+        // Check if HTTP endpoint is responsive
+        try {
+          const response = await this.makeHealthRequest();
+          if (response.statusCode === 200) {
+            this.logger.info(`Service is ready on port ${this.port}`);
+            return;
+          }
+        } catch (error) {
+          // Service not ready yet, continue waiting
         }
 
         await this.sleep(intervalMs);
