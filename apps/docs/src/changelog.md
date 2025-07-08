@@ -1,5 +1,25 @@
 # EmProps Job Queue Development Changelog
 
+## 2025-07-08 (Part 3)
+
+### ✅ Completed - ComfyUI Service Implementation for basic_machine
+- **Core Service**: Implemented full ComfyUI service with process management, health checks, and lifecycle controls
+- **Multi-GPU Support**: Dynamic port assignment (basePort + GPU#) with CUDA_VISIBLE_DEVICES configuration
+- **Process Management**: Using execa for robust process spawning with proper stdout/stderr capture and logging
+- **Health Monitoring**: HTTP endpoint validation with automatic readiness detection and timeout handling
+- **Event Architecture**: Service emits start/stop/error events for orchestration integration
+- **Mock GPU Support**: Testing capability with --cpu flag for development and CI environments
+- **Configuration**: Environment-driven service enablement (NGINX/A1111/Ollama disabled by default for ComfyUI focus)
+- **Container Ready**: Updated Dockerfile and docker-compose with ports 22 (SSH) and 8188 (ComfyUI) exposed
+- **Test Validation**: Comprehensive test suite confirms service starts in ~1s, responds to HTTP, and shuts down cleanly
+
+### ✅ Infrastructure and Configuration Updates
+- **Port Configuration**: Exposed SSH (22), ComfyUI (8188-8195), and health monitoring (9090) ports
+- **Service Defaults**: Changed NGINX, A1111, and Ollama to require explicit enable for focused ComfyUI testing
+- **Health Checks**: Updated Docker health check to use service health endpoint (port 9090) instead of NGINX
+- **Development Tools**: Added mock ComfyUI server and test scripts for service validation
+- **Workspace Support**: Added WORKSPACE_DIR environment variable for flexible testing environments
+
 ## 2025-07-08 (Part 2)
 
 ### ✅ Fixed Multi-GPU Worker Support in basic_machine
