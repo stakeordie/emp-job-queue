@@ -85,16 +85,18 @@ jobs:
           --bundle \
           --platform=node \
           --target=node18 \
-          --format=esm \
+          --format=cjs \
           --external:sharp \
           --external:canvas \
           --external:@tensorflow/tfjs-node \
           --external:sqlite3 \
-          --banner:js="#!/usr/bin/env node" \
-          --outfile=worker-release/redis-direct-worker.js
+          --outfile=worker-release/redis-direct-worker.cjs
         
-        # Make the bundled worker executable
+        # Add shebang to bundled worker and make executable
+        echo '#!/usr/bin/env node' > worker-release/redis-direct-worker.js
+        cat worker-release/redis-direct-worker.cjs >> worker-release/redis-direct-worker.js
         chmod +x worker-release/redis-direct-worker.js
+        rm worker-release/redis-direct-worker.cjs
         
         # Create a minimal package.json for the bundled worker
         cat > worker-release/package.json << 'EOF'
