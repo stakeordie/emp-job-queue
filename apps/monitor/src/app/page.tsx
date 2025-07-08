@@ -52,9 +52,9 @@ const CONNECTION_PRESETS = {
 
 export default function Home() {
   const { connection, jobs, workers, connect, disconnect, syncJobState, cancelJob } = useMonitorStore();
-  const [websocketUrl, setWebsocketUrl] = useState(CONNECTION_PRESETS.local.websocket);
-  const [authToken, setAuthToken] = useState(CONNECTION_PRESETS.local.auth);
-  const [selectedPreset, setSelectedPreset] = useState('local');
+  const [websocketUrl, setWebsocketUrl] = useState(CONNECTION_PRESETS.railwaynew.websocket);
+  const [authToken, setAuthToken] = useState(CONNECTION_PRESETS.railwaynew.auth);
+  const [selectedPreset, setSelectedPreset] = useState('railwaynew');
   const [cancelJobId, setCancelJobId] = useState<string | null>(null);
   const [selectedJob, setSelectedJob] = useState<Job | null>(null);
 

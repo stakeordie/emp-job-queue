@@ -4,7 +4,7 @@
 import { EventEmitter } from 'events';
 import { WebSocket } from 'ws';
 import fetch from 'node-fetch';
-import { EventSource } from 'eventsource';
+import EventSource from 'eventsource';
 import { Job, logger } from '@emp/core';
 
 export interface HybridClientConfig {
