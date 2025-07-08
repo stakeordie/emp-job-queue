@@ -69,8 +69,8 @@ jobs:
         corepack enable
         pnpm install --no-frozen-lockfile
         
-        # Install esbuild for bundling
-        pnpm add -g esbuild
+        # Install esbuild for bundling (use npm for global installs in CI)
+        npm install -g esbuild
         
         # Build only the necessary packages
         pnpm --filter @emp/core build
@@ -104,7 +104,6 @@ jobs:
           "name": "emp-job-queue-worker",
           "version": "1.0.0",
           "description": "Bundled Redis worker for EmProps GPU job queue system",
-          "type": "module",
           "main": "redis-direct-worker.js",
           "bin": {
             "emp-worker": "redis-direct-worker.js"
