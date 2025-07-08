@@ -77,6 +77,7 @@ const config = defineConfig({
         ]
       },
       { text: 'API Reference', link: '/guide/websocket-api' },
+      { text: 'Basic Machine Logs', link: '/basic-machine-logs' },
       { text: 'Examples', link: '/examples/' },
       { text: 'Changelog', link: '/changelog' }
     ],
@@ -105,6 +106,13 @@ const config = defineConfig({
           collapsed: true,
           items: [
             { text: 'WebSocket API', link: '/guide/websocket-api' }
+          ]
+        },
+        {
+          text: 'Operations',
+          collapsed: true,
+          items: [
+            { text: 'Basic Machine Logs', link: '/basic-machine-logs' }
           ]
         },
         {
