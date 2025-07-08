@@ -2,6 +2,7 @@ import { EventEmitter } from 'events';
 import { createLogger } from './utils/logger.js';
 import config from './config/environment.js';
 import { ServiceStatus } from './services/base-service.js';
+import { RedisStartupNotifier } from './services/redis-startup-notifier.js';
 
 const logger = createLogger('orchestrator');
 
@@ -12,6 +13,7 @@ export class ServiceOrchestrator extends EventEmitter {
     this.startupPromises = new Map();
     this.isShuttingDown = false;
     this.startTime = null;
+    this.startupNotifier = new RedisStartupNotifier(config);
   }
 
   /**
@@ -22,15 +24,25 @@ export class ServiceOrchestrator extends EventEmitter {
     this.startTime = Date.now();
 
     try {
+      // Initialize Redis startup notifier
+      await this.startupNotifier.connect();
+
       // Phase 0: Shared directory setup
       logger.info('Phase 0: Setting up shared directories');
+      await this.startupNotifier.notifyStep('phase_0_begin', { phase: 'shared_setup' });
       await this.startService('shared-setup');
+      await this.startupNotifier.notifyStep('phase_0_complete', { phase: 'shared_setup' });
 
       // Phase 1: Core infrastructure
       logger.info('Phase 1: Starting core infrastructure services');
+      await this.startupNotifier.notifyStep('phase_1_begin', { phase: 'core_infrastructure' });
       if (config.services.nginx.enabled) {
         await this.startService('nginx');
+        await this.startupNotifier.notifyServiceStarted('nginx');
+      } else {
+        await this.startupNotifier.notifyStep('nginx_skipped', { reason: 'disabled' });
       }
+      await this.startupNotifier.notifyStep('phase_1_complete', { phase: 'core_infrastructure' });
 
       // Phase 2: AI Services (parallel per GPU)
       logger.info(`Phase 2: Starting AI services for ${config.machine.gpu.count} GPUs`);
@@ -38,10 +50,16 @@ export class ServiceOrchestrator extends EventEmitter {
         logger.info('TEST MODE: Using NUM_GPUS from environment instead of detecting GPUs');
       }
       
+      await this.startupNotifier.notifyStep('phase_2_begin', { 
+        phase: 'ai_services', 
+        gpu_count: config.machine.gpu.count 
+      });
+      
       const aiServices = [];
       
       for (let gpu = 0; gpu < config.machine.gpu.count; gpu++) {
         logger.info(`Starting services for GPU ${gpu}`);
+        await this.startupNotifier.notifyStep(`gpu_${gpu}_begin`, { gpu });
         
         if (config.services.comfyui.enabled) {
           logger.info(`  - ComfyUI for GPU ${gpu}`);
@@ -58,19 +76,29 @@ export class ServiceOrchestrator extends EventEmitter {
       }
 
       await Promise.all(aiServices);
+      await this.startupNotifier.notifyStep('phase_2_complete', { phase: 'ai_services' });
 
       // Phase 3: Supporting services
       logger.info('Phase 3: Starting supporting services');
+      await this.startupNotifier.notifyStep('phase_3_begin', { phase: 'supporting_services' });
       if (config.services.ollama.enabled) {
         await this.startService('ollama');
+        await this.startupNotifier.notifyServiceStarted('ollama');
+      } else {
+        await this.startupNotifier.notifyStep('ollama_skipped', { reason: 'disabled' });
       }
+      await this.startupNotifier.notifyStep('phase_3_complete', { phase: 'supporting_services' });
 
       const startupTime = Date.now() - this.startTime;
       logger.info(`All services started successfully in ${startupTime}ms`);
       
+      // Notify startup complete
+      await this.startupNotifier.notifyStartupComplete();
+      
       this.emit('ready');
     } catch (error) {
       logger.error('Failed to start services:', error);
+      await this.startupNotifier.notifyStartupFailed(error);
       await this.shutdown();
       throw error;
     }
@@ -123,10 +151,21 @@ export class ServiceOrchestrator extends EventEmitter {
       // Start the service
       await service.start();
       
+      // Notify Redis about successful service startup
+      await this.startupNotifier.notifyServiceStarted(serviceKey, {
+        service_type: serviceName,
+        options: options,
+        startup_time: Date.now() - this.startTime
+      });
+      
       logger.info(`Service ${serviceKey} started successfully`);
       return service;
     } catch (error) {
       logger.error(`Failed to start service ${serviceKey}:`, error);
+      
+      // Notify Redis about service startup failure
+      await this.startupNotifier.notifyServiceFailed(serviceKey, error);
+      
       throw error;
     }
   }
@@ -209,6 +248,10 @@ export class ServiceOrchestrator extends EventEmitter {
     }
 
     logger.info('All services stopped');
+    
+    // Disconnect Redis startup notifier
+    await this.startupNotifier.disconnect();
+    
     this.emit('shutdown');
   }
 
@@ -241,25 +284,42 @@ export class ServiceOrchestrator extends EventEmitter {
       });
     }
 
+    // Add Redis startup notifier health check
+    healthChecks.push({
+      service: 'redis-startup-notifier',
+      checkPromise: this.startupNotifier.healthCheck()
+    });
+
     const results = await Promise.allSettled(
       healthChecks.map(({ checkPromise }) => checkPromise)
     );
 
     const health = {
       healthy: true,
-      services: {}
+      services: {},
+      startup_progress: this.startupNotifier.getStartupProgress()
     };
 
     results.forEach((result, index) => {
       const { service } = healthChecks[index];
-      const healthy = result.status === 'fulfilled' && result.value === true;
       
-      health.services[service] = {
-        healthy,
-        error: result.status === 'rejected' ? result.reason.message : null
-      };
+      if (service === 'redis-startup-notifier') {
+        // Handle Redis notifier health check result
+        const healthy = result.status === 'fulfilled' && result.value.healthy;
+        health.services[service] = {
+          healthy,
+          error: result.status === 'rejected' ? result.reason.message : result.value.error
+        };
+      } else {
+        // Handle regular service health check
+        const healthy = result.status === 'fulfilled' && result.value === true;
+        health.services[service] = {
+          healthy,
+          error: result.status === 'rejected' ? result.reason.message : null
+        };
+      }
 
-      if (!healthy) {
+      if (!health.services[service].healthy) {
         health.healthy = false;
       }
     });

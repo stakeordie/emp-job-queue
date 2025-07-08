@@ -943,6 +943,44 @@ export class LightweightAPIServer {
     }
   }
 
+  private broadcastWorkerStartupEvent(startupData: any): void {
+    const workerStartupEvent = {
+      type: 'worker_startup',
+      worker_id: startupData.worker_id,
+      event_type: startupData.event_type,
+      timestamp: startupData.timestamp,
+      elapsed_ms: startupData.elapsed_ms,
+      step_name: startupData.step_name,
+      step_data: startupData.step_data,
+      total_startup_time_ms: startupData.total_startup_time_ms,
+      startup_steps: startupData.startup_steps,
+      machine_config: startupData.machine_config,
+      error: startupData.error,
+      stack: startupData.stack
+    };
+
+    const eventJson = JSON.stringify(workerStartupEvent);
+
+    for (const [_monitorId, connection] of this.monitorConnections) {
+      if (connection.ws.readyState === WebSocket.OPEN) {
+        // Check if monitor is subscribed to worker startup events
+        const isSubscribed =
+          connection.subscribedTopics.has('workers') ||
+          connection.subscribedTopics.has('worker:startup') ||
+          connection.subscribedTopics.size === 0; // Subscribe to all if no specific topics
+
+        if (isSubscribed) {
+          connection.ws.send(eventJson);
+          logger.debug(`Sent worker startup event to monitor ${connection.monitorId}`);
+        }
+      }
+    }
+
+    logger.info(
+      `📢 Broadcasted worker startup event: ${startupData.worker_id} - ${startupData.event_type}`
+    );
+  }
+
   private broadcastJobEventToClient(
     jobId: string,
     event:
@@ -1018,6 +1056,8 @@ export class LightweightAPIServer {
     this.progressSubscriber.subscribe('worker_status');
     // Subscribe to job completion events
     this.progressSubscriber.subscribe('complete_job');
+    // Subscribe to worker startup events
+    this.progressSubscriber.subscribe('worker:startup:events');
 
     this.progressSubscriber.on('message', async (channel, message) => {
       if (channel === 'update_job_progress') {
@@ -1071,6 +1111,18 @@ export class LightweightAPIServer {
           );
         } catch (error) {
           logger.error('Error processing job completion message:', error);
+        }
+      } else if (channel === 'worker:startup:events') {
+        try {
+          const startupData = JSON.parse(message);
+          logger.info(
+            `🚀 Received worker startup event: ${startupData.worker_id} - ${startupData.event_type}`
+          );
+
+          // Broadcast the worker startup event to monitors
+          this.broadcastWorkerStartupEvent(startupData);
+        } catch (error) {
+          logger.error('Error processing worker startup message:', error);
         }
       }
     });
