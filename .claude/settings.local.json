@@ -126,7 +126,9 @@
       "Bash(--external:canvas )",
       "Bash(--external:@tensorflow/tfjs-node )",
       "Bash(--external:sqlite3 )",
-      "Bash(--outfile=test-worker-release/redis-direct-worker.cjs)"
+      "Bash(--outfile=test-worker-release/redis-direct-worker.cjs)",
+      "Bash(git rm:*)",
+      "Bash(true)"
     ],
     "deny": []
   }
