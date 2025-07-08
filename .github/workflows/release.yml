@@ -1,0 +1,107 @@
+name: Release Worker Assets
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Release tag (e.g., v1.0.0)'
+        required: true
+        type: string
+
+jobs:
+  build-and-release:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      
+    - name: Setup Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: '20'
+        
+    - name: Setup pnpm
+      uses: pnpm/action-setup@v2
+      with:
+        version: 8
+        
+    - name: Install dependencies
+      run: pnpm install --frozen-lockfile
+      
+    - name: Build monorepo
+      run: pnpm build
+      
+    - name: Create worker release package
+      run: |
+        # Create temporary directory for packaging
+        mkdir -p worker-release/dist
+        
+        # Copy built worker
+        cp apps/worker/dist/redis-direct-worker.js worker-release/
+        cp apps/worker/dist/redis-direct-worker.js worker-release/dist/
+        
+        # Copy package.json and dependencies info
+        cp apps/worker/package.json worker-release/
+        
+        # Create a simple README for the release
+        cat > worker-release/README.md << 'EOF'
+        # EmProps Job Queue Worker
+        
+        TypeScript-based Redis worker for the EmProps GPU job queue system.
+        
+        ## Usage
+        ```bash
+        node redis-direct-worker.js
+        ```
+        
+        ## Environment Variables
+        See apps/worker/.env.example for configuration options.
+        EOF
+        
+        # Create tarball
+        tar -czf emp-job-queue-worker.tar.gz -C worker-release .
+        
+    - name: Get release tag
+      id: get_tag
+      run: |
+        if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+          echo "tag=${{ github.event.inputs.tag }}" >> $GITHUB_OUTPUT
+        else
+          echo "tag=${GITHUB_REF#refs/tags/}" >> $GITHUB_OUTPUT
+        fi
+        
+    - name: Create Release
+      uses: softprops/action-gh-release@v1
+      with:
+        tag_name: ${{ steps.get_tag.outputs.tag }}
+        name: Release ${{ steps.get_tag.outputs.tag }}
+        body: |
+          ## EmProps Job Queue Worker Release
+          
+          This release contains the TypeScript worker for the EmProps GPU job queue system.
+          
+          ### What's Included
+          - `redis-direct-worker.js` - Main worker executable
+          - `package.json` - Package metadata
+          - `README.md` - Usage instructions
+          
+          ### Installation
+          1. Download `emp-job-queue-worker.tar.gz`
+          2. Extract: `tar -xzf emp-job-queue-worker.tar.gz`
+          3. Run: `node redis-direct-worker.js`
+          
+          ### Changes
+          - TypeScript worker with Redis-direct architecture
+          - Compatible with existing machine infrastructure
+          - Replaces Python worker from emp-redis
+          
+        files: |
+          emp-job-queue-worker.tar.gz
+        draft: false
+        prerelease: false
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
