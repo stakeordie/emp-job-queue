@@ -103,6 +103,16 @@ dump.rdb
 *.swo
 *~
 
+# Debug scripts and screenshots
+debug-*.js
+debug-*.sh
+test-*.sh
+monitor-*.png
+screenshot-*.png
+
+# Generated Docker overrides
+docker-compose.override.yml
+
 # OS generated files
 .DS_Store
 .DS_Store?

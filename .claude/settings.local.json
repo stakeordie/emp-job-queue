@@ -143,7 +143,15 @@
       "Bash(awk:*)",
       "Bash(pnpm --filter=api build)",
       "Bash(pnpm --filter=monitor build)",
-      "Bash(pnpm:*)"
+      "Bash(pnpm:*)",
+      "Bash(NODE_OPTIONS=\"--loader tsx\" pnpm dev)",
+      "Bash(brew services start:*)",
+      "Bash(./scripts/dev-local-redis.sh:*)",
+      "Bash(./generate-docker-compose.sh:*)",
+      "Bash(pkill:*)",
+      "Bash(open:*)",
+      "Bash(npx playwright test:*)",
+      "Bash(npx playwright:*)"
     ],
     "deny": []
   }
