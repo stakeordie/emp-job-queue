@@ -7,6 +7,7 @@
 - **Solution**: Cleaned build cache and forced rebuild to regenerate proper `export declare enum JobStatus` type definitions
 - **Impact**: Fixed Railway CI/CD deployment failures due to TypeScript compilation errors in API server
 - **Files Fixed**: Fixed `JobStatus` type casting in lightweight-api-server.ts to use proper enum types
+- **Worker Fix**: Updated worker client to use hardcoded values instead of non-existent `gpu_count` and `cpu_cores` properties
 - **Build Process**: Ensures enum types are properly preserved during TypeScript compilation
 
 ### 📁 Project Organization and Cleanup

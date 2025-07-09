@@ -145,10 +145,10 @@ export class RedisDirectWorkerClient {
         id: this.workerId,
         status: 'idle',
         capabilities: {
-          gpu_count: capabilities.hardware?.gpu_count || 0,
+          gpu_count: 1, // Default to 1 GPU
           gpu_memory_gb: capabilities.hardware?.gpu_memory_gb || 0,
           gpu_model: capabilities.hardware?.gpu_model || 'Unknown',
-          cpu_cores: capabilities.hardware?.cpu_cores || 1,
+          cpu_cores: 1, // Default to 1 CPU core
           ram_gb: capabilities.hardware?.ram_gb || 1,
           services: capabilities.services || [],
           models: Object.keys(capabilities.models || {}),
