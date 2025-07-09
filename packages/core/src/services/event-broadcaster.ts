@@ -464,7 +464,6 @@ export class EventBroadcaster {
       case 'machine_startup':
       case 'machine_startup_step':
       case 'machine_startup_complete':
-      case 'machine_startup_failed':
         return ['machines', 'workers'];
 
       case 'job_submitted':
