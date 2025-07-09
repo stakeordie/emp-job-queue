@@ -285,7 +285,7 @@ export class WebSocketService {
     if (!this.monitorWs || this.monitorWs.readyState !== WebSocket.OPEN) return;
     
     // Default to all topics if none specified
-    const subscriptionTopics = topics || ['workers', 'jobs', 'jobs:progress', 'jobs:status', 'system_stats'];
+    const subscriptionTopics = topics || ['workers', 'machines', 'jobs', 'jobs:progress', 'jobs:status', 'system_stats'];
     this.subscriptions = subscriptionTopics;
     
     const message: SubscribeMessage = {

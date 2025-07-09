@@ -16,6 +16,14 @@
 - **Fix**: Added `machine_config` with `machine_id` to all event types (startup_step, startup_complete, startup_failed)
 - **Result**: All machine events now include proper machine identification for monitor display
 
+### 🐛 Fixed Monitor Not Receiving Machine Events
+- **Issue**: Monitor was not receiving machine startup events despite API server processing them correctly
+- **Root Cause**: EventBroadcaster didn't include machine event types in `getEventTopics` method
+- **Fix**: Added machine event types (`machine_startup`, `machine_startup_step`, etc.) to return `['machines', 'workers']` topics
+- **Fix**: Added `'machines'` to SubscriptionTopic type definition
+- **Fix**: Added `'machines'` to default monitor subscription topics
+- **Result**: Monitors now properly receive and display machine startup events in real-time
+
 ### ✅ Complete Machine-Centric Monitoring System
 - **Redis Events**: Changed channel from `worker:startup:events` to `machine:startup:events`
 - **API Server**: Integrated EventBroadcaster with proper machine event handling

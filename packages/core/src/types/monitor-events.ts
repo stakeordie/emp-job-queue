@@ -16,6 +16,7 @@ export interface BaseMonitorEvent {
 // Subscription system
 export type SubscriptionTopic =
   | 'workers' // All worker events
+  | 'machines' // All machine events
   | 'jobs' // All job events
   | 'jobs:progress' // Only progress updates
   | 'jobs:status' // Only status changes
