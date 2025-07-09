@@ -997,12 +997,16 @@ export class LightweightAPIServer {
 
     // TEST: Send a simple message to verify WebSocket connection
     this.eventBroadcaster.broadcast({
-      type: 'heartbeat' as const,
-      monitor_id: 'test',
-      message: 'Hello World from API server - machine event processed!',
+      type: 'system_stats' as const,
+      stats: {
+        message: 'Hello World from API server - machine event processed!',
+        timestamp: Date.now(),
+        test: true
+      },
       timestamp: Date.now()
     });
-    logger.info('🧪 Sent Hello World test message to monitors');
+    logger.info('🧪 Sent Hello World test message as system_stats to monitors');
+    logger.info('🚀 FORCE DEPLOY: Testing machine event processing v2');
 
     // Map the startup event types to machine events
     switch (startupData.event_type) {
