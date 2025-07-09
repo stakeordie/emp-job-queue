@@ -6,6 +6,7 @@
  */
 
 import WebSocket from 'ws';
+import { Response } from 'express';
 import {
   MonitorEvent,
   SubscriptionTopic,
@@ -25,8 +26,11 @@ import {
 } from '../types/monitor-events.js';
 import { JobRequirements, JobStatus } from '../types/job.js';
 
+// Union type for monitor connections
+type MonitorConnection = WebSocket | Response;
+
 export class EventBroadcaster {
-  private monitors: Map<string, WebSocket> = new Map();
+  private monitors: Map<string, MonitorConnection> = new Map();
   private subscriptions: Map<string, MonitorSubscription> = new Map();
   private eventHistory: MonitorEvent[] = [];
   private maxHistorySize = 1000;
@@ -37,27 +41,41 @@ export class EventBroadcaster {
   }
 
   /**
-   * Register a new monitor connection
+   * Register a new monitor connection (WebSocket or SSE)
    */
-  addMonitor(monitorId: string, ws: WebSocket): void {
+  addMonitor(monitorId: string, connection: MonitorConnection): void {
     // Monitor connected
 
-    this.monitors.set(monitorId, ws);
+    this.monitors.set(monitorId, connection);
 
-    // Set up WebSocket handlers
-    ws.on('close', () => {
-      this.removeMonitor(monitorId);
-    });
+    // Set up handlers based on connection type
+    if (connection instanceof WebSocket) {
+      // WebSocket handlers
+      connection.on('close', () => {
+        this.removeMonitor(monitorId);
+      });
 
-    ws.on('error', error => {
-      console.error(`[EventBroadcaster] Monitor ${monitorId} error:`, error);
-      this.removeMonitor(monitorId);
-    });
+      connection.on('error', error => {
+        console.error(`[EventBroadcaster] Monitor ${monitorId} error:`, error);
+        this.removeMonitor(monitorId);
+      });
+    } else {
+      // SSE (Response) handlers
+      connection.on('close', () => {
+        this.removeMonitor(monitorId);
+      });
+
+      connection.on('error', error => {
+        console.error(`[EventBroadcaster] SSE Monitor ${monitorId} error:`, error);
+        this.removeMonitor(monitorId);
+      });
+    }
 
     // Initialize subscription with heartbeat tracking
+    // Subscribe to all relevant topics by default for monitors
     this.subscriptions.set(monitorId, {
       monitor_id: monitorId,
-      topics: [],
+      topics: ['workers', 'jobs', 'jobs:status', 'jobs:progress', 'machines', 'system_stats', 'heartbeat'],
       connected_at: Date.now(),
       last_heartbeat: Date.now(),
     });
@@ -106,9 +124,9 @@ export class EventBroadcaster {
     this.addToHistory(event);
 
     // Send to all subscribed monitors
-    for (const [monitorId, ws] of this.monitors) {
+    for (const [monitorId, connection] of this.monitors) {
       if (this.shouldReceiveEvent(monitorId, event)) {
-        this.sendToMonitor(ws, event);
+        this.sendToMonitor(connection, event);
       }
     }
 
@@ -122,8 +140,8 @@ export class EventBroadcaster {
    * Send full state snapshot to specific monitor
    */
   async sendFullState(monitorId: string, stateData: FullStateSnapshotEvent['data']): Promise<void> {
-    const ws = this.monitors.get(monitorId);
-    if (!ws) return;
+    const connection = this.monitors.get(monitorId);
+    if (!connection) return;
 
     const event: FullStateSnapshotEvent = {
       type: 'full_state_snapshot',
@@ -131,7 +149,7 @@ export class EventBroadcaster {
       timestamp: Date.now(),
     };
 
-    this.sendToMonitor(ws, event);
+    this.sendToMonitor(connection, event);
     // Sent full state to monitor
   }
 
@@ -171,8 +189,8 @@ export class EventBroadcaster {
    * Handle resync request from monitor
    */
   handleResyncRequest(monitorId: string, sinceTimestamp: number, maxEvents?: number): void {
-    const ws = this.monitors.get(monitorId);
-    if (!ws) return;
+    const connection = this.monitors.get(monitorId);
+    if (!connection) return;
 
     const { events, hasMore } = this.getEventsSince(sinceTimestamp, maxEvents);
     const oldestTimestamp = this.getOldestTimestamp();
@@ -186,7 +204,7 @@ export class EventBroadcaster {
       timestamp: Date.now(),
     };
 
-    this.sendToMonitor(ws, resyncResponse);
+    this.sendToMonitor(connection, resyncResponse);
 
     // Log resync activity
     // eslint-disable-next-line no-console
@@ -464,6 +482,7 @@ export class EventBroadcaster {
       case 'machine_startup':
       case 'machine_startup_step':
       case 'machine_startup_complete':
+      case 'machine_shutdown':
         return ['machines', 'workers'];
 
       case 'job_submitted':
@@ -516,13 +535,22 @@ export class EventBroadcaster {
     return true;
   }
 
-  private sendToMonitor(ws: WebSocket, event: MonitorEvent): void {
-    if (ws.readyState === WebSocket.OPEN) {
-      try {
-        ws.send(JSON.stringify(event));
-      } catch (error) {
-        console.error('[EventBroadcaster] Error sending event:', error);
+  private sendToMonitor(connection: MonitorConnection, event: MonitorEvent): void {
+    try {
+      if (connection instanceof WebSocket) {
+        // Send via WebSocket
+        if (connection.readyState === WebSocket.OPEN) {
+          connection.send(JSON.stringify(event));
+        }
+      } else {
+        // Send via SSE (Response)
+        if (!connection.destroyed) {
+          const sseData = `data: ${JSON.stringify(event)}\n\n`;
+          connection.write(sseData);
+        }
       }
+    } catch (error) {
+      console.error('[EventBroadcaster] Error sending event:', error);
     }
   }
 
@@ -548,15 +576,15 @@ export class EventBroadcaster {
           this.removeMonitor(monitorId);
         } else {
           // Send heartbeat ack
-          const ws = this.monitors.get(monitorId);
-          if (ws) {
+          const connection = this.monitors.get(monitorId);
+          if (connection) {
             const ackEvent: HeartbeatAckEvent = {
               type: 'heartbeat_ack',
               monitor_id: monitorId,
               server_timestamp: now,
               timestamp: now,
             };
-            this.sendToMonitor(ws, ackEvent);
+            this.sendToMonitor(connection, ackEvent);
           }
         }
       }
@@ -573,6 +601,11 @@ export class EventBroadcaster {
   }
 
   getMonitorWebSocket(monitorId: string): WebSocket | undefined {
+    const connection = this.monitors.get(monitorId);
+    return connection instanceof WebSocket ? connection : undefined;
+  }
+
+  getMonitorConnection(monitorId: string): MonitorConnection | undefined {
     return this.monitors.get(monitorId);
   }
 }

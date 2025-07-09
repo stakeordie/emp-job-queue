@@ -226,7 +226,7 @@ export class LightweightAPIServer {
       try {
         const { status, limit = '50', offset = '0' } = req.query;
         const jobs = await this.getJobs({
-          status: status as JobStatus,
+          status: status as string,
           limit: parseInt(limit as string),
           offset: parseInt(offset as string),
         });
@@ -245,6 +245,63 @@ export class LightweightAPIServer {
           timestamp: new Date().toISOString(),
         });
       }
+    });
+
+    // Monitor events streaming (Server-Sent Events)
+    this.app.get('/api/events/monitor', (req: Request, res: Response) => {
+      const monitorId = `monitor-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+
+      // Parse token from query parameters
+      const token = req.query.token as string;
+
+      // Validate token if provided
+      if (token && !this.isValidToken(token)) {
+        res.status(401).json({
+          success: false,
+          error: 'Invalid authentication token',
+          timestamp: new Date().toISOString(),
+        });
+        return;
+      }
+
+      // Set SSE headers
+      res.writeHead(200, {
+        'Content-Type': 'text/event-stream',
+        'Cache-Control': 'no-cache',
+        Connection: 'keep-alive',
+        'Access-Control-Allow-Origin': '*',
+        'Access-Control-Allow-Headers': 'Cache-Control',
+      });
+
+      // Send initial connection event
+      res.write(
+        `data: ${JSON.stringify({
+          type: 'connected',
+          monitor_id: monitorId,
+          timestamp: new Date().toISOString(),
+        })}\n\n`
+      );
+
+      // Register monitor with EventBroadcaster for SSE
+      this.eventBroadcaster.addMonitor(monitorId, res);
+
+      logger.info(`SSE monitor ${monitorId} connected`);
+      logger.debug(`📊 Total monitors connected: ${this.eventBroadcaster.getMonitorCount()}`);
+
+      // Send full state if needed
+      this.sendFullStateSnapshotSSE(monitorId, res);
+
+      // Handle client disconnect
+      req.on('close', () => {
+        this.eventBroadcaster.removeMonitor(monitorId);
+        logger.info(`SSE monitor ${monitorId} disconnected`);
+        logger.debug(`📊 Total monitors remaining: ${this.eventBroadcaster.getMonitorCount()}`);
+      });
+
+      req.on('error', error => {
+        logger.error(`SSE monitor error for ${monitorId}:`, error);
+        this.eventBroadcaster.removeMonitor(monitorId);
+      });
     });
 
     // Worker and job cleanup endpoint
@@ -852,6 +909,7 @@ export class LightweightAPIServer {
               const caps = capabilities as CapabilitiesData;
               const worker = {
                 id: workerId,
+                machine_id: data.machine_id || this.extractMachineIdFromWorkerId(workerId), // Add machine_id field
                 status: (data.status as 'idle' | 'busy' | 'offline' | 'error') || 'idle',
                 capabilities: {
                   gpu_count: caps?.hardware?.gpu_count || 0,
@@ -924,9 +982,59 @@ export class LightweightAPIServer {
         }
       }
 
+      // Get machines from Redis
+      const machines = [];
+      try {
+        const machineKeys = await this.redis.keys('machine:*:info');
+        for (const machineKey of machineKeys) {
+          const machineData = await this.redis.hgetall(machineKey);
+          if (machineData && machineData.machine_id) {
+            // Get workers for this machine
+            const machineWorkers = workers.filter(
+              worker => worker.machine_id === machineData.machine_id
+            );
+
+            // Determine machine status based on workers and stored status
+            let machineStatus = machineData.status || 'offline';
+
+            // If no workers are connected, mark machine as offline (but still show it)
+            if (machineWorkers.length === 0) {
+              machineStatus = 'offline';
+              // Update Redis to reflect the offline status
+              await this.redis.hset(`machine:${machineData.machine_id}:info`, {
+                status: 'offline',
+                last_activity: new Date().toISOString(),
+              });
+            } else {
+              // If workers are connected, machine should be ready (unless explicitly starting)
+              if (machineStatus !== 'starting') {
+                machineStatus = 'ready';
+              }
+            }
+
+            machines.push({
+              machine_id: machineData.machine_id,
+              status: machineStatus,
+              workers: machineWorkers.map(w => w.id),
+              host_info: {
+                hostname: machineData.hostname,
+                os: machineData.os,
+                cpu_cores: parseInt(machineData.cpu_cores) || 0,
+                total_ram_gb: parseInt(machineData.total_ram_gb) || 0,
+                gpu_count: parseInt(machineData.gpu_count) || 0,
+                gpu_models: machineData.gpu_models ? JSON.parse(machineData.gpu_models) : [],
+              },
+            });
+          }
+        }
+      } catch (error) {
+        logger.error('Error fetching machines from Redis:', error);
+      }
+
       const snapshot = {
         workers,
         jobs: jobsByStatus,
+        machines,
         timestamp: Date.now(),
         system_stats: {
           total_jobs: allJobs.length,
@@ -936,6 +1044,7 @@ export class LightweightAPIServer {
           failed_jobs: jobsByStatus.failed.length,
           total_workers: workers.length,
           active_workers: workers.filter(w => w.status === 'active' || w.status === 'busy').length,
+          total_machines: machines.length,
         },
       };
 
@@ -953,6 +1062,253 @@ export class LightweightAPIServer {
       );
     } catch (error) {
       logger.error(`Failed to send full state snapshot to monitor ${connection.monitorId}:`, error);
+    }
+  }
+
+  private async sendFullStateSnapshotSSE(monitorId: string, res: Response): Promise<void> {
+    try {
+      const startTime = Date.now();
+
+      // Get current workers using SCAN for heartbeat keys
+      const workerKeys: string[] = [];
+      let cursor = '0';
+      do {
+        const [newCursor, keys] = await this.redis.scan(
+          cursor,
+          'MATCH',
+          'worker:*:heartbeat',
+          'COUNT',
+          100
+        );
+        cursor = newCursor;
+        workerKeys.push(...keys);
+      } while (cursor !== '0');
+
+      logger.debug(
+        `SCAN found ${workerKeys.length} worker heartbeat keys in ${Date.now() - startTime}ms`
+      );
+
+      const workers = [];
+
+      if (workerKeys.length > 0) {
+        // Extract worker IDs and prepare pipeline
+        const workerIds = workerKeys.map(key => key.split(':')[1]);
+        const pipeline = this.redis.pipeline();
+
+        // Batch fetch worker data and TTLs
+        for (const workerId of workerIds) {
+          pipeline.hgetall(`worker:${workerId}`);
+        }
+        for (const key of workerKeys) {
+          pipeline.ttl(key);
+        }
+
+        const pipelineStart = Date.now();
+        const results = await pipeline.exec();
+        logger.debug(
+          `Pipeline fetched ${workerIds.length} workers data in ${Date.now() - pipelineStart}ms`
+        );
+
+        if (results) {
+          const workerDataResults = results.slice(0, workerIds.length);
+          const ttlResults = results.slice(workerIds.length);
+
+          for (let i = 0; i < workerIds.length; i++) {
+            const [workerErr, workerData] = workerDataResults[i];
+            const [ttlErr, ttl] = ttlResults[i];
+
+            if (
+              !workerErr &&
+              workerData &&
+              Object.keys(workerData as Record<string, unknown>).length > 0
+            ) {
+              const workerId = workerIds[i];
+              const data = workerData as Record<string, string>;
+
+              // Parse capabilities JSON from Redis
+              let capabilities: Record<string, unknown>;
+              try {
+                capabilities = JSON.parse(data.capabilities || '{}');
+              } catch {
+                capabilities = {};
+              }
+
+              // Transform Redis worker data to monitor format
+              interface CapabilitiesData {
+                hardware?: {
+                  gpu_count?: number;
+                  gpu_memory_gb?: number;
+                  gpu_model?: string;
+                  cpu_cores?: number;
+                  ram_gb?: number;
+                };
+                services?: string[];
+                models?: Record<string, unknown>;
+                customer_access?: {
+                  isolation?: string;
+                };
+                performance?: {
+                  concurrent_jobs?: number;
+                };
+              }
+
+              const caps = capabilities as CapabilitiesData;
+              const worker = {
+                id: workerId,
+                machine_id: data.machine_id || this.extractMachineIdFromWorkerId(workerId), // Add machine_id field
+                status: (data.status as 'idle' | 'busy' | 'offline' | 'error') || 'idle',
+                capabilities: {
+                  gpu_count: caps?.hardware?.gpu_count || 0,
+                  gpu_memory_gb: caps?.hardware?.gpu_memory_gb || 0,
+                  gpu_model: caps?.hardware?.gpu_model || 'Unknown',
+                  cpu_cores: caps?.hardware?.cpu_cores || 1,
+                  ram_gb: caps?.hardware?.ram_gb || 1,
+                  services: caps?.services || [],
+                  models: Object.keys(caps?.models || {}),
+                  customer_access: caps?.customer_access?.isolation || 'none',
+                  max_concurrent_jobs: caps?.performance?.concurrent_jobs || 1,
+                },
+                current_job_id: data.current_job_id,
+                connected_at: data.connected_at || new Date().toISOString(),
+                last_activity: data.last_heartbeat || new Date().toISOString(),
+                jobs_completed: parseInt(data.total_jobs_completed || '0'),
+                jobs_failed: parseInt(data.total_jobs_failed || '0'),
+                total_processing_time: 0, // Could be calculated from job history
+                last_heartbeat: !ttlErr ? (ttl as number) : -1,
+              };
+              workers.push(worker);
+            }
+          }
+        }
+      }
+
+      // Get current jobs and organize by status
+      const jobsStart = Date.now();
+      const allJobs = await this.getAllJobs();
+      logger.debug(`Fetched ${allJobs.length} jobs in ${Date.now() - jobsStart}ms`);
+
+      // Organize jobs by status for monitor compatibility
+      const jobsByStatus = {
+        pending: [] as unknown[],
+        active: [] as unknown[],
+        completed: [] as unknown[],
+        failed: [] as unknown[],
+      };
+
+      for (const job of allJobs) {
+        // Convert job for monitor compatibility
+        const monitorJob = {
+          ...job,
+          job_type: job.service_required, // Map service_required to job_type for monitor
+        };
+
+        // Categorize by status
+        switch (job.status) {
+          case 'pending':
+          case 'queued':
+            jobsByStatus.pending.push(monitorJob);
+            break;
+          case 'assigned':
+          case 'accepted':
+          case 'in_progress':
+            jobsByStatus.active.push(monitorJob);
+            break;
+          case 'completed':
+            jobsByStatus.completed.push(monitorJob);
+            break;
+          case 'failed':
+          case 'cancelled':
+          case 'timeout':
+          case 'unworkable':
+            jobsByStatus.failed.push(monitorJob);
+            break;
+          default:
+            // Default to pending for unknown status
+            jobsByStatus.pending.push(monitorJob);
+        }
+      }
+
+      // Get machines from Redis
+      const machines = [];
+      try {
+        const machineKeys = await this.redis.keys('machine:*:info');
+        for (const machineKey of machineKeys) {
+          const machineData = await this.redis.hgetall(machineKey);
+          if (machineData && machineData.machine_id) {
+            // Get workers for this machine
+            const machineWorkers = workers.filter(
+              worker => worker.machine_id === machineData.machine_id
+            );
+
+            // Determine machine status based on workers and stored status
+            let machineStatus = machineData.status || 'offline';
+
+            // If no workers are connected, mark machine as offline (but still show it)
+            if (machineWorkers.length === 0) {
+              machineStatus = 'offline';
+              // Update Redis to reflect the offline status
+              await this.redis.hset(`machine:${machineData.machine_id}:info`, {
+                status: 'offline',
+                last_activity: new Date().toISOString(),
+              });
+            } else {
+              // If workers are connected, machine should be ready (unless explicitly starting)
+              if (machineStatus !== 'starting') {
+                machineStatus = 'ready';
+              }
+            }
+
+            machines.push({
+              machine_id: machineData.machine_id,
+              status: machineStatus,
+              workers: machineWorkers.map(w => w.id),
+              host_info: {
+                hostname: machineData.hostname,
+                os: machineData.os,
+                cpu_cores: parseInt(machineData.cpu_cores) || 0,
+                total_ram_gb: parseInt(machineData.total_ram_gb) || 0,
+                gpu_count: parseInt(machineData.gpu_count) || 0,
+                gpu_models: machineData.gpu_models ? JSON.parse(machineData.gpu_models) : [],
+              },
+            });
+          }
+        }
+      } catch (error) {
+        logger.error('Error fetching machines from Redis:', error);
+      }
+
+      const snapshot = {
+        workers,
+        jobs: jobsByStatus,
+        machines,
+        timestamp: Date.now(),
+        system_stats: {
+          total_jobs: allJobs.length,
+          pending_jobs: jobsByStatus.pending.length,
+          active_jobs: jobsByStatus.active.length,
+          completed_jobs: jobsByStatus.completed.length,
+          failed_jobs: jobsByStatus.failed.length,
+          total_workers: workers.length,
+          active_workers: workers.filter(w => w.status === 'active' || w.status === 'busy').length,
+          total_machines: machines.length,
+        },
+      };
+
+      // Send via SSE
+      res.write(
+        `data: ${JSON.stringify({
+          type: 'full_state_snapshot',
+          data: snapshot,
+          monitor_id: monitorId,
+          timestamp: new Date().toISOString(),
+        })}\n\n`
+      );
+
+      logger.info(
+        `Sent full state snapshot to SSE monitor ${monitorId}: ${workers.length} workers, ${allJobs.length} jobs (total time: ${Date.now() - startTime}ms)`
+      );
+    } catch (error) {
+      logger.error(`Failed to send full state snapshot to SSE monitor ${monitorId}:`, error);
     }
   }
 
@@ -984,53 +1340,73 @@ export class LightweightAPIServer {
     }
   }
 
+  private extractMachineIdFromWorkerId(workerId: string): string {
+    // For current worker naming: "redis-direct-worker-basic-machine-44"
+    // We want to extract the machine part and find the actual machine_id
+    // This is a temporary fallback until workers store machine_id directly
+
+    // First, try to match the basic-machine pattern
+    const basicMachineMatch = workerId.match(/redis-direct-worker-(basic-machine)-\d+/);
+    if (basicMachineMatch) {
+      // For basic-machine workers, we know the machine_id is "basic-machine-001"
+      // This is a temporary hardcoded mapping
+      return 'basic-machine-001';
+    }
+
+    // Fallback to generic pattern extraction
+    const genericMatch = workerId.match(/.*-worker-(.+)-\d+$/);
+    if (genericMatch) {
+      return genericMatch[1];
+    }
+
+    return 'unknown';
+  }
+
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  private handleMachineStartupEvent(startupData: any): void {
+  private async handleMachineEvent(eventData: any): Promise<void> {
     // Extract machine_id from the worker_id or use machine config
     const machineId =
-      startupData.machine_config?.machine_id ||
-      startupData.worker_id.split('-').slice(0, -1).join('-') ||
+      eventData.machine_config?.machine_id ||
+      eventData.worker_id.split('-').slice(0, -1).join('-') ||
       'unknown-machine';
 
     logger.info(`🏭 Processing machine event for: ${machineId}`);
     const monitorCount = this.eventBroadcaster.getMonitorCount();
     logger.info(`📊 Connected monitors: ${monitorCount}`);
 
-    if (monitorCount === 0) {
-      logger.warn('⚠️  NO MONITORS CONNECTED - Hello World message will not be received');
-    } else {
-      logger.info(`🔄 Broadcasting to ${monitorCount} connected monitors`);
-    }
-
-    // TEST: Send a simple message to verify WebSocket connection
-    this.eventBroadcaster.broadcast({
-      type: 'system_stats' as const,
-      stats: {
-        message: 'Hello World from API server - machine event processed!',
-        timestamp: Date.now(),
-        test: true
-      },
-      timestamp: Date.now()
-    });
-    logger.info('🧪 Sent Hello World test message as system_stats to monitors');
-    logger.info('🚀 FORCE DEPLOY: Testing machine event processing v3');
-
-    // Map the startup event types to machine events
-    switch (startupData.event_type) {
+    // Map the event types to machine events
+    switch (eventData.event_type) {
       case 'startup_begin':
         logger.info(`🚀 Broadcasting machine startup for: ${machineId}`);
+
+        // Create machine record in Redis
+        const machineData = {
+          machine_id: machineId,
+          status: 'starting',
+          started_at: new Date().toISOString(),
+          last_activity: new Date().toISOString(),
+          hostname: eventData.machine_config?.hostname || 'unknown',
+          os: process.platform,
+          cpu_cores: eventData.machine_config?.cpu_cores || 4,
+          total_ram_gb: eventData.machine_config?.ram_gb || 16,
+          gpu_count: eventData.machine_config?.gpu_count || 0,
+          gpu_models: JSON.stringify(eventData.machine_config?.gpu_models || []),
+        };
+
+        await this.redis.hset(`machine:${machineId}:info`, machineData);
+
         this.eventBroadcaster.broadcastMachineStartup(
           machineId,
           'starting',
-          startupData.machine_config
+          eventData.machine_config
             ? {
-                hostname: startupData.machine_config.hostname || 'unknown',
+                hostname: eventData.machine_config.hostname || 'unknown',
                 os: process.platform,
-                cpu_cores: startupData.machine_config.cpu_cores || 4,
-                total_ram_gb: startupData.machine_config.ram_gb || 16,
-                gpu_count: startupData.machine_config.gpu_count || 1,
-                gpu_models: startupData.machine_config.gpu_model
-                  ? [startupData.machine_config.gpu_model]
+                cpu_cores: eventData.machine_config.cpu_cores || 4,
+                total_ram_gb: eventData.machine_config.ram_gb || 16,
+                gpu_count: eventData.machine_config.gpu_count || 1,
+                gpu_models: eventData.machine_config.gpu_model
+                  ? [eventData.machine_config.gpu_model]
                   : undefined,
               }
             : undefined
@@ -1039,44 +1415,74 @@ export class LightweightAPIServer {
         break;
 
       case 'startup_step':
-        logger.info(`📝 Broadcasting step '${startupData.step_name}' for: ${machineId}`);
+        logger.info(`📝 Broadcasting step '${eventData.step_name}' for: ${machineId}`);
         this.eventBroadcaster.broadcastMachineStartupStep(
           machineId,
-          startupData.step_name,
-          this.mapStepToPhase(startupData.step_name),
-          startupData.elapsed_ms || 0,
-          startupData.step_data
+          eventData.step_name,
+          this.mapStepToPhase(eventData.step_name),
+          eventData.elapsed_ms || 0,
+          eventData.step_data
         );
         break;
 
       case 'startup_complete':
         logger.info(`🎉 Broadcasting startup complete for: ${machineId}`);
+
+        // Update machine status to ready
+        await this.redis.hset(`machine:${machineId}:info`, {
+          status: 'ready',
+          last_activity: new Date().toISOString(),
+        });
+
         this.eventBroadcaster.broadcastMachineStartupComplete(
           machineId,
-          startupData.total_startup_time_ms,
+          eventData.total_startup_time_ms,
           1, // worker count - basic machine has 1 worker typically
-          startupData.machine_config?.services || []
+          eventData.machine_config?.services || []
         );
         break;
 
       case 'startup_failed':
         logger.error(`❌ Broadcasting startup failure for: ${machineId}`);
+
+        // Mark machine as offline
+        await this.redis.hset(`machine:${machineId}:info`, {
+          status: 'offline',
+          last_activity: new Date().toISOString(),
+        });
+
         // For now, we'll treat this as a machine startup step with error
         this.eventBroadcaster.broadcastMachineStartupStep(
           machineId,
-          `startup_failed: ${startupData.error}`,
+          `startup_failed: ${eventData.error}`,
           'supporting_services',
-          startupData.total_startup_time_ms || 0,
-          { error: startupData.error, stack: startupData.stack }
+          eventData.total_startup_time_ms || 0,
+          { error: eventData.error, stack: eventData.stack }
+        );
+        break;
+
+      case 'shutdown':
+        logger.info(`🔄 Broadcasting machine shutdown for: ${machineId}`);
+
+        // Mark machine as offline
+        await this.redis.hset(`machine:${machineId}:info`, {
+          status: 'offline',
+          last_activity: new Date().toISOString(),
+        });
+
+        // Broadcast shutdown event
+        this.eventBroadcaster.broadcastMachineShutdown(
+          machineId,
+          eventData.reason || 'Machine shutdown'
         );
         break;
 
       default:
-        logger.warn(`⚠️  Unknown machine event type: ${startupData.event_type} for ${machineId}`);
+        logger.warn(`⚠️  Unknown machine event type: ${eventData.event_type} for ${machineId}`);
         break;
     }
 
-    logger.info(`📢 Processed machine startup event: ${machineId} - ${startupData.event_type}`);
+    logger.info(`📢 Processed machine event: ${machineId} - ${eventData.event_type}`);
   }
 
   private mapStepToPhase(stepName: string): string {
@@ -1191,6 +1597,10 @@ export class LightweightAPIServer {
     await this.progressSubscriber.subscribe('machine:startup:events');
     logger.info('✅ Subscribed to: machine:startup:events');
 
+    // Subscribe to worker connection/disconnection events
+    await this.progressSubscriber.subscribe('worker:events');
+    logger.info('✅ Subscribed to: worker:events');
+
     // Add debug subscription to legacy channel to catch any old events
     await this.progressSubscriber.subscribe('worker:startup:events');
     logger.warn('⚠️  Also subscribed to legacy channel: worker:startup:events (should be empty)');
@@ -1250,16 +1660,44 @@ export class LightweightAPIServer {
         }
       } else if (channel === 'machine:startup:events') {
         try {
-          const startupData = JSON.parse(message);
+          const eventData = JSON.parse(message);
           logger.info(
-            `🚀 Received machine startup event: ${startupData.worker_id} - ${startupData.event_type}`
+            `🚀 Received machine startup event: ${eventData.worker_id} - ${eventData.event_type}`
           );
-          logger.debug('🔍 Machine startup data:', JSON.stringify(startupData, null, 2));
+          logger.debug('🔍 Machine startup data:', JSON.stringify(eventData, null, 2));
 
           // Process machine startup event and broadcast via EventBroadcaster
-          this.handleMachineStartupEvent(startupData);
+          await this.handleMachineEvent(eventData);
         } catch (error) {
           logger.error('❌ Error processing machine startup message:', error);
+          logger.error('Raw message:', message);
+        }
+      } else if (channel === 'worker:events') {
+        try {
+          const eventData = JSON.parse(message);
+          logger.info(
+            `📞 Received worker event: ${eventData.type} for worker ${eventData.worker_id}`
+          );
+          logger.debug('🔍 Worker event data:', JSON.stringify(eventData, null, 2));
+
+          // Handle worker connected/disconnected events
+          if (eventData.type === 'worker_connected') {
+            this.eventBroadcaster.broadcastWorkerConnected(
+              eventData.worker_id,
+              eventData.worker_data
+            );
+            logger.info(`📢 Broadcasted worker_connected event for ${eventData.worker_id}`);
+          } else if (eventData.type === 'worker_disconnected') {
+            this.eventBroadcaster.broadcastWorkerDisconnected(
+              eventData.worker_id,
+              eventData.machine_id
+            );
+            logger.info(`📢 Broadcasted worker_disconnected event for ${eventData.worker_id}`);
+          } else {
+            logger.warn(`❓ Unknown worker event type: ${eventData.type}`);
+          }
+        } catch (error) {
+          logger.error('❌ Error processing worker event:', error);
           logger.error('Raw message:', message);
         }
       } else if (channel === 'worker:startup:events') {
@@ -1286,7 +1724,7 @@ export class LightweightAPIServer {
       const jobData = await this.redis.hgetall(`job:${jobId}`);
       if (!jobData.id) return;
 
-      const status = jobData.status as JobStatus;
+      const status = jobData.status as string;
       const workerId = jobData.worker_id;
 
       // Broadcast appropriate event based on status
@@ -1684,7 +2122,7 @@ export class LightweightAPIServer {
       completed_at: jobData.completed_at || undefined,
       failed_at: jobData.failed_at || undefined,
       worker_id: jobData.worker_id || undefined,
-      status: jobData.status as JobStatus,
+      status: jobData.status as string,
       retry_count: parseInt(jobData.retry_count || '0'),
       max_retries: parseInt(jobData.max_retries || '3'),
       last_failed_worker: jobData.last_failed_worker || undefined,
@@ -1770,7 +2208,7 @@ export class LightweightAPIServer {
   }
 
   private async getJobs(options: {
-    status?: JobStatus;
+    status?: string;
     limit: number;
     offset: number;
   }): Promise<Job[]> {
@@ -1846,7 +2284,7 @@ export class LightweightAPIServer {
       completed_at: jobData.completed_at || undefined,
       failed_at: jobData.failed_at || undefined,
       worker_id: jobData.worker_id || undefined,
-      status: jobData.status as JobStatus,
+      status: jobData.status as string,
       retry_count: parseInt(jobData.retry_count || '0'),
       max_retries: parseInt(jobData.max_retries || '3'),
       last_failed_worker: jobData.last_failed_worker || undefined,

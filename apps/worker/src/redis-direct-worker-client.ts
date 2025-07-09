@@ -83,6 +83,20 @@ export class RedisDirectWorkerClient {
       this.heartbeatTimeout = undefined;
     }
 
+    // Get worker data before deletion for the event
+    const workerData = await this.redis.hgetall(`worker:${this.workerId}`);
+    const capabilities = workerData.capabilities ? JSON.parse(workerData.capabilities) : {};
+    
+    // Publish worker disconnected event
+    const workerDisconnectedEvent = {
+      type: 'worker_disconnected',
+      worker_id: this.workerId,
+      machine_id: capabilities.machine_id || workerData.machine_id || 'unknown',
+      timestamp: Date.now(),
+    };
+    
+    await this.redis.publish('worker:events', JSON.stringify(workerDisconnectedEvent));
+
     // Remove worker from active set
     await this.redis.srem('workers:active', this.workerId);
     await this.redis.del(`worker:${this.workerId}`);
@@ -91,7 +105,7 @@ export class RedisDirectWorkerClient {
     await this.redis.quit();
     this.isConnectedFlag = false;
 
-    logger.info(`Worker ${this.workerId} disconnected from Redis`);
+    logger.info(`Worker ${this.workerId} disconnected from Redis and published disconnected event`);
   }
 
   isConnected(): boolean {
@@ -107,6 +121,7 @@ export class RedisDirectWorkerClient {
     // Store worker capabilities
     await this.redis.hmset(`worker:${this.workerId}`, {
       worker_id: this.workerId,
+      machine_id: capabilities.machine_id || 'unknown',
       capabilities: JSON.stringify(capabilities),
       status: 'idle',
       connected_at: now,
@@ -121,7 +136,34 @@ export class RedisDirectWorkerClient {
     // Set heartbeat
     await this.redis.setex(`worker:${this.workerId}:heartbeat`, 60, now);
 
-    logger.info(`Worker ${this.workerId} registered capabilities in Redis`);
+    // Publish worker connected event
+    const workerConnectedEvent = {
+      type: 'worker_connected',
+      worker_id: this.workerId,
+      machine_id: capabilities.machine_id || 'unknown',
+      worker_data: {
+        id: this.workerId,
+        status: 'idle',
+        capabilities: {
+          gpu_count: capabilities.hardware?.gpu_count || 0,
+          gpu_memory_gb: capabilities.hardware?.gpu_memory_gb || 0,
+          gpu_model: capabilities.hardware?.gpu_model || 'Unknown',
+          cpu_cores: capabilities.hardware?.cpu_cores || 1,
+          ram_gb: capabilities.hardware?.ram_gb || 1,
+          services: capabilities.services || [],
+          models: Object.keys(capabilities.models || {}),
+          customer_access: capabilities.customer_access?.isolation || 'none',
+          max_concurrent_jobs: capabilities.performance?.concurrent_jobs || 1,
+        },
+        connected_at: now,
+        jobs_completed: 0,
+        jobs_failed: 0,
+      },
+      timestamp: Date.now(),
+    };
+
+    await this.redis.publish('worker:events', JSON.stringify(workerConnectedEvent));
+    logger.info(`Worker ${this.workerId} registered capabilities in Redis and published connected event`);
   }
 
   /**
@@ -777,6 +819,19 @@ export class RedisDirectWorkerClient {
       clearTimeout(this.pollTimeout);
       this.pollTimeout = undefined;
       logger.info(`Worker ${this.workerId} stopped job polling`);
+    }
+  }
+
+  /**
+   * Publish machine lifecycle events to Redis
+   */
+  async publishMachineEvent(event: Record<string, unknown>): Promise<void> {
+    try {
+      await this.redis.publish('machine:startup:events', JSON.stringify(event));
+      logger.debug(`Published machine event: ${event.event_type} for ${event.machine_id}`);
+    } catch (error) {
+      logger.error(`Failed to publish machine event:`, error);
+      throw error;
     }
   }
 

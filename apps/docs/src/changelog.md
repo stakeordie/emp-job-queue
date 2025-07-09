@@ -2,6 +2,16 @@
 
 ## 2025-01-09
 
+### ✅ Complete Worker Event Lifecycle Implementation
+- **Worker Connected Events**: Workers now publish `worker_connected` events to Redis when registering
+- **Worker Disconnected Events**: Workers publish `worker_disconnected` events when shutting down gracefully
+- **API Server Integration**: Added Redis subscription to `worker:events` channel in lightweight-api-server
+- **Event Broadcasting**: API server properly broadcasts worker events to monitors via EventBroadcaster
+- **Monitor Updates**: Workers now appear/disappear in monitor UI in real-time during machine startup/shutdown
+- **Machine Cleanup**: Machine shutdown events properly remove associated workers from monitor display
+- **Docker Graceful Shutdown**: Enhanced container shutdown handling with proper Redis event publishing
+- **Result**: Complete machine lifecycle now visible - workers appear on startup, disappear on shutdown
+
 ### 🐛 Fixed Machine Event Publishing
 - **ES Module Fix**: Fixed `require is not defined` error in redis-startup-notifier.js
 - **Import Fix**: Changed `require('os')` to `import os from 'os'` for ES6 compatibility

@@ -1,6 +1,12 @@
 // API Server Entry Point
+import { config } from 'dotenv';
 import { LightweightAPIServer } from './lightweight-api-server.js';
 import { logger } from '@emp/core';
+
+// Load environment variables - prefer local dev config if it exists
+import { existsSync } from 'fs';
+const envFile = existsSync('.env.local.dev') ? '.env.local.dev' : '.env.local';
+config({ path: envFile });
 
 // Also export components for library use
 export * from './lightweight-api-server.js';

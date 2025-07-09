@@ -196,7 +196,7 @@ export const useMonitorStore = create<MonitorStore>()(
     
     // Event-driven state management
     handleFullState: (state: unknown) => {
-      const { addLog, addWorker, addJob } = get();
+      const { addLog, addWorker, addJob, addMachine } = get();
       
       addLog({
         level: 'info',
@@ -213,11 +213,12 @@ export const useMonitorStore = create<MonitorStore>()(
           completed: unknown[];
           failed: unknown[];
         };
+        machines?: unknown[];
         system_stats: Record<string, number>;
       };
       
       // Clear existing data
-      set({ workers: [], jobs: [] });
+      set({ workers: [], jobs: [], machines: [] });
       
       // Process workers
       if (stateData.workers) {
@@ -243,8 +244,10 @@ export const useMonitorStore = create<MonitorStore>()(
               }
             };
             
+            const workerId = worker.worker_id as string || worker.id as string;
+            
             addWorker({
-              worker_id: worker.worker_id as string || worker.id as string,
+              worker_id: workerId,
               status: (worker.status as WorkerStatus) || 'idle',
               capabilities,
               current_jobs: Array.isArray(worker.current_jobs) ? worker.current_jobs as string[] : (worker.current_job_id ? [worker.current_job_id as string] : []),
@@ -255,6 +258,7 @@ export const useMonitorStore = create<MonitorStore>()(
               average_processing_time: (worker.average_processing_time as number) || (worker.total_processing_time as number) || 0,
               uptime: 0
             });
+            
           });
         } else if (typeof stateData.workers === 'object') {
           // console.log('Full state workers received (object):', Object.keys(stateData.workers));
@@ -290,8 +294,34 @@ export const useMonitorStore = create<MonitorStore>()(
               average_processing_time: (worker.average_processing_time as number) || (worker.total_processing_time as number) || 0,
               uptime: 0
             });
+            
           });
         }
+      }
+      
+      // Process machines
+      if (stateData.machines && Array.isArray(stateData.machines)) {
+        stateData.machines.forEach((machineData: unknown) => {
+          const machine = machineData as {
+            machine_id: string;
+            workers: string[];
+            status: string;
+            host_info?: {
+              gpu_count?: number;
+              total_ram_gb?: number;
+            };
+          };
+          
+          addMachine({
+            machine_id: machine.machine_id,
+            status: machine.status as 'ready' | 'starting' | 'offline',
+            workers: machine.workers || [],
+            logs: [],
+            started_at: new Date().toISOString(),
+            last_activity: new Date().toISOString(),
+            host_info: machine.host_info
+          });
+        });
       }
       
       // Process jobs
@@ -341,6 +371,11 @@ export const useMonitorStore = create<MonitorStore>()(
 
     handleEvent: (event: MonitorEvent) => {
       const { addLog, addWorker, updateWorker, removeWorker, addJob, updateJob, addMachine, updateMachine, addMachineLog } = get();
+      
+      // Debug logging for machine events
+      if (event.type && event.type.startsWith('machine_')) {
+        console.log('[Store] Processing machine event:', event.type, event);
+      }
       
       // Only log important events, skip progress spam
       if (event.type !== 'update_job_progress' && event.type !== 'heartbeat_ack' && event.type !== 'heartbeat') {
@@ -470,9 +505,20 @@ export const useMonitorStore = create<MonitorStore>()(
             timestamp: number;
           };
           
+          // Find the machine to get its workers
+          const machine = get().machines.find(m => m.machine_id === shutdownEvent.machine_id);
+          if (machine) {
+            // Remove all workers associated with this machine
+            const workerIds = machine.workers;
+            for (const workerId of workerIds) {
+              removeWorker(workerId);
+            }
+          }
+          
           updateMachine(shutdownEvent.machine_id, {
             status: 'offline',
-            last_activity: new Date().toISOString()
+            last_activity: new Date().toISOString(),
+            workers: [] // Clear the workers array
           });
           
           addMachineLog(shutdownEvent.machine_id, {
