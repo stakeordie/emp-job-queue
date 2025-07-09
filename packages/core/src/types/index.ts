@@ -33,22 +33,22 @@ export {
   ConnectorStatus,
 } from './worker.js';
 
-// Connector types - import specific types to avoid conflicts
-export {
+// Connector types - export all as type-only since they're interfaces
+export type {
   ConnectorInterface,
   JobData as ConnectorJobData,
   JobResult as ConnectorJobResult,
   ProgressCallback,
   ConnectorConfig,
-  RestConnectorConfig,
-  A1111ConnectorConfig,
-  ComfyUIConnectorConfig,
-  WebSocketConnectorConfig,
   ConnectorRegistry,
   ConnectorFactory,
   ServiceInfo,
   JobData,
   JobResult,
+  RestConnectorConfig,
+  A1111ConnectorConfig,
+  ComfyUIConnectorConfig,
+  WebSocketConnectorConfig,
 } from './connector.js';
 
 // Monitor event types

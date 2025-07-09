@@ -2,7 +2,7 @@
   "compilerOptions": {
     "target": "ES2022",
     "module": "ESNext",
-    "moduleResolution": "node",
+    "moduleResolution": "bundler",
     "allowSyntheticDefaultImports": true,
     "esModuleInterop": true,
     "allowJs": true,
@@ -23,10 +23,13 @@
     "skipLibCheck": true,
     "baseUrl": ".",
     "paths": {
-      "@emp/core": ["packages/core/src"],
-      "@emp/core/*": ["packages/core/src/*"]
+      "@emp/core": ["packages/core/dist"],
+      "@emp/core/*": ["packages/core/dist/*"]
     }
   },
+  "include": [
+    "src/**/*"
+  ],
   "exclude": [
     "node_modules",
     "dist",
