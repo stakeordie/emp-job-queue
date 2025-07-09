@@ -28,10 +28,50 @@ export interface SubscriptionFilters {
   priority_range?: [number, number];
 }
 
+// Machine Events
+export interface MachineStartupEvent extends BaseMonitorEvent {
+  type: 'machine_startup';
+  machine_id: string;
+  phase: 'starting' | 'configuring' | 'ready';
+  host_info?: {
+    hostname: string;
+    ip_address?: string;
+    os: string;
+    cpu_cores: number;
+    total_ram_gb: number;
+    gpu_count: number;
+    gpu_models?: string[];
+  };
+}
+
+export interface MachineStartupStepEvent extends BaseMonitorEvent {
+  type: 'machine_startup_step';
+  machine_id: string;
+  step_name: string;
+  step_phase: 'shared_setup' | 'core_infrastructure' | 'ai_services' | 'supporting_services';
+  step_data?: Record<string, unknown>;
+  elapsed_ms: number;
+}
+
+export interface MachineStartupCompleteEvent extends BaseMonitorEvent {
+  type: 'machine_startup_complete';
+  machine_id: string;
+  total_startup_time_ms: number;
+  worker_count: number;
+  services_started: string[];
+}
+
+export interface MachineShutdownEvent extends BaseMonitorEvent {
+  type: 'machine_shutdown';
+  machine_id: string;
+  reason?: string;
+}
+
 // Worker Events
 export interface WorkerConnectedEvent extends BaseMonitorEvent {
   type: 'worker_connected';
   worker_id: string;
+  machine_id: string; // Add machine_id to worker events
   worker_data: {
     id: string;
     status: string;
@@ -55,6 +95,7 @@ export interface WorkerConnectedEvent extends BaseMonitorEvent {
 export interface WorkerDisconnectedEvent extends BaseMonitorEvent {
   type: 'worker_disconnected';
   worker_id: string;
+  machine_id: string;
 }
 
 export interface WorkerStatusChangedEvent extends BaseMonitorEvent {
@@ -197,6 +238,10 @@ export interface SystemStatsEvent extends BaseMonitorEvent {
 
 // Union type for all events
 export type MonitorEvent =
+  | MachineStartupEvent
+  | MachineStartupStepEvent
+  | MachineStartupCompleteEvent
+  | MachineShutdownEvent
   | WorkerConnectedEvent
   | WorkerDisconnectedEvent
   | WorkerStatusChangedEvent

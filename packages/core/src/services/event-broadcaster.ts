@@ -197,10 +197,85 @@ export class EventBroadcaster {
 
   // Event Broadcasting Methods
 
+  // Machine Events
+  broadcastMachineStartup(
+    machineId: string, 
+    phase: 'starting' | 'configuring' | 'ready',
+    hostInfo?: {
+      hostname: string;
+      ip_address?: string;
+      os: string;
+      cpu_cores: number;
+      total_ram_gb: number;
+      gpu_count: number;
+      gpu_models?: string[];
+    }
+  ): void {
+    const event = {
+      type: 'machine_startup' as const,
+      machine_id: machineId,
+      phase,
+      host_info: hostInfo,
+      timestamp: Date.now(),
+    };
+    this.broadcast(event);
+  }
+
+  broadcastMachineStartupStep(
+    machineId: string,
+    stepName: string,
+    stepPhase: string,
+    elapsedMs: number,
+    stepData?: Record<string, unknown>
+  ): void {
+    const event = {
+      type: 'machine_startup_step' as const,
+      machine_id: machineId,
+      step_name: stepName,
+      step_phase: stepPhase as 'shared_setup' | 'core_infrastructure' | 'ai_services' | 'supporting_services',
+      step_data: stepData,
+      elapsed_ms: elapsedMs,
+      timestamp: Date.now(),
+    };
+    this.broadcast(event);
+  }
+
+  broadcastMachineStartupComplete(
+    machineId: string,
+    totalStartupTimeMs: number,
+    workerCount: number,
+    servicesStarted: string[]
+  ): void {
+    const event = {
+      type: 'machine_startup_complete' as const,
+      machine_id: machineId,
+      total_startup_time_ms: totalStartupTimeMs,
+      worker_count: workerCount,
+      services_started: servicesStarted,
+      timestamp: Date.now(),
+    };
+    this.broadcast(event);
+  }
+
+  broadcastMachineShutdown(machineId: string, reason?: string): void {
+    const event = {
+      type: 'machine_shutdown' as const,
+      machine_id: machineId,
+      reason,
+      timestamp: Date.now(),
+    };
+    this.broadcast(event);
+  }
+
   broadcastWorkerConnected(workerId: string, workerData: Record<string, unknown>): void {
+    // Extract machine_id from worker capabilities or use default
+    const capabilities = workerData.capabilities as Record<string, unknown> || {};
+    const machineId = (capabilities.machine_id as string) || 'unknown-machine';
+    
     const event: WorkerConnectedEvent = {
       type: 'worker_connected',
       worker_id: workerId,
+      machine_id: machineId,
       worker_data: {
         id: workerId,
         status: (workerData.status as string) || 'idle',
@@ -236,10 +311,11 @@ export class EventBroadcaster {
     this.broadcast(event);
   }
 
-  broadcastWorkerDisconnected(workerId: string): void {
+  broadcastWorkerDisconnected(workerId: string, machineId?: string): void {
     const event: WorkerDisconnectedEvent = {
       type: 'worker_disconnected',
       worker_id: workerId,
+      machine_id: machineId || 'unknown-machine',
       timestamp: Date.now(),
     };
     this.broadcast(event);

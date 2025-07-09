@@ -354,10 +354,141 @@ export const useMonitorStore = create<MonitorStore>()(
       }
       
       switch (event.type) {
+        // Machine Events
+        case 'machine_startup': {
+          const machineEvent = event as {
+            type: 'machine_startup';
+            machine_id: string;
+            phase: 'starting' | 'configuring' | 'ready';
+            host_info?: {
+              hostname: string;
+              ip_address?: string;
+              os: string;
+              cpu_cores: number;
+              total_ram_gb: number;
+              gpu_count: number;
+              gpu_models?: string[];
+            };
+            timestamp: number;
+          };
+          
+          const existingMachine = get().machines.find(m => m.machine_id === machineEvent.machine_id);
+          
+          if (!existingMachine) {
+            // Create new machine
+            addMachine({
+              machine_id: machineEvent.machine_id,
+              status: machineEvent.phase === 'ready' ? 'ready' : 'starting',
+              workers: [],
+              logs: [],
+              started_at: new Date().toISOString(),
+              last_activity: new Date().toISOString(),
+              host_info: machineEvent.host_info
+            });
+            
+            addMachineLog(machineEvent.machine_id, {
+              timestamp: new Date().toISOString(),
+              level: 'info',
+              message: `Machine ${machineEvent.phase}`,
+              source: 'system'
+            });
+          } else {
+            // Update existing machine
+            updateMachine(machineEvent.machine_id, {
+              status: machineEvent.phase === 'ready' ? 'ready' : 'starting',
+              last_activity: new Date().toISOString(),
+              host_info: machineEvent.host_info || existingMachine.host_info
+            });
+          }
+          break;
+        }
+        
+        case 'machine_startup_step': {
+          const stepEvent = event as {
+            type: 'machine_startup_step';
+            machine_id: string;
+            step_name: string;
+            step_phase: 'shared_setup' | 'core_infrastructure' | 'ai_services' | 'supporting_services';
+            step_data?: Record<string, unknown>;
+            elapsed_ms: number;
+            timestamp: number;
+          };
+          
+          // Make sure machine exists
+          const machine = get().machines.find(m => m.machine_id === stepEvent.machine_id);
+          if (!machine) {
+            // Create machine if it doesn't exist
+            addMachine({
+              machine_id: stepEvent.machine_id,
+              status: 'starting',
+              workers: [],
+              logs: [],
+              started_at: new Date().toISOString(),
+              last_activity: new Date().toISOString()
+            });
+          }
+          
+          // Add log for this step
+          addMachineLog(stepEvent.machine_id, {
+            timestamp: new Date().toISOString(),
+            level: 'info',
+            message: `${stepEvent.step_name} (${stepEvent.step_phase}) - ${stepEvent.elapsed_ms}ms`,
+            source: 'startup'
+          });
+          break;
+        }
+        
+        case 'machine_startup_complete': {
+          const completeEvent = event as {
+            type: 'machine_startup_complete';
+            machine_id: string;
+            total_startup_time_ms: number;
+            worker_count: number;
+            services_started: string[];
+            timestamp: number;
+          };
+          
+          updateMachine(completeEvent.machine_id, {
+            status: 'ready',
+            last_activity: new Date().toISOString()
+          });
+          
+          addMachineLog(completeEvent.machine_id, {
+            timestamp: new Date().toISOString(),
+            level: 'info',
+            message: `Machine startup complete - ${completeEvent.total_startup_time_ms}ms, ${completeEvent.worker_count} workers, services: ${completeEvent.services_started.join(', ')}`,
+            source: 'system'
+          });
+          break;
+        }
+        
+        case 'machine_shutdown': {
+          const shutdownEvent = event as {
+            type: 'machine_shutdown';
+            machine_id: string;
+            reason?: string;
+            timestamp: number;
+          };
+          
+          updateMachine(shutdownEvent.machine_id, {
+            status: 'offline',
+            last_activity: new Date().toISOString()
+          });
+          
+          addMachineLog(shutdownEvent.machine_id, {
+            timestamp: new Date().toISOString(),
+            level: 'info',
+            message: `Machine shutdown${shutdownEvent.reason ? `: ${shutdownEvent.reason}` : ''}`,
+            source: 'system'
+          });
+          break;
+        }
+        
         case 'worker_connected': {
           const workerEvent = event as {
             type: 'worker_connected';
             worker_id: string;
+            machine_id: string;
             worker_data: {
               id: string;
               status: string;
@@ -416,7 +547,7 @@ export const useMonitorStore = create<MonitorStore>()(
           addWorker(worker);
           
           // Handle machine creation/update
-          const machineId = capabilities.machine_id || 'unknown-machine';
+          const machineId = workerEvent.machine_id;
           const currentMachines = get().machines;
           const existingMachine = currentMachines.find(m => m.machine_id === machineId);
           
@@ -465,13 +596,12 @@ export const useMonitorStore = create<MonitorStore>()(
           const workerEvent = event as {
             type: 'worker_disconnected';
             worker_id: string;
+            machine_id: string;
             timestamp: number;
           };
           
-          // Find worker's machine before removing
-          const currentWorkers = get().workers;
-          const worker = currentWorkers.find(w => w.worker_id === workerEvent.worker_id);
-          const machineId = worker?.capabilities?.machine_id || 'unknown-machine';
+          // Use machine_id from the event
+          const machineId = workerEvent.machine_id;
           
           removeWorker(workerEvent.worker_id);
           
