@@ -249,6 +249,17 @@ export class ServiceOrchestrator extends EventEmitter {
 
     logger.info('All services stopped');
     
+    // Send shutdown notification before disconnecting
+    try {
+      const shutdownReason = process.env.SHUTDOWN_REASON || 
+        (process.env.NODE_ENV === 'production' 
+          ? 'Docker container shutdown' 
+          : 'Process termination');
+      await this.startupNotifier.notifyShutdown(shutdownReason);
+    } catch (error) {
+      logger.error('Failed to send shutdown notification:', error);
+    }
+    
     // Disconnect Redis startup notifier
     await this.startupNotifier.disconnect();
     

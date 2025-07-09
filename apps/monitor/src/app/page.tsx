@@ -34,7 +34,7 @@ import type { Job } from "@/types/job"
 // Environment presets
 const CONNECTION_PRESETS = {
   local: {
-    websocket: 'ws://localhost:3001',
+    websocket: 'http://localhost:3001',
     auth: '3u8sdj5389fj3kljsf90u',
     name: 'Local Dev'
   },
@@ -52,9 +52,9 @@ const CONNECTION_PRESETS = {
 
 export default function Home() {
   const { connection, jobs, workers, machines, connect, disconnect, syncJobState, cancelJob } = useMonitorStore();
-  const [websocketUrl, setWebsocketUrl] = useState(CONNECTION_PRESETS.railwaynew.websocket);
-  const [authToken, setAuthToken] = useState(CONNECTION_PRESETS.railwaynew.auth);
-  const [selectedPreset, setSelectedPreset] = useState('railwaynew');
+  const [websocketUrl, setWebsocketUrl] = useState(CONNECTION_PRESETS.local.websocket);
+  const [authToken, setAuthToken] = useState(CONNECTION_PRESETS.local.auth);
+  const [selectedPreset, setSelectedPreset] = useState('local');
   const [cancelJobId, setCancelJobId] = useState<string | null>(null);
   const [selectedJob, setSelectedJob] = useState<Job | null>(null);
 
@@ -236,7 +236,7 @@ export default function Home() {
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
             {machines.map((machine) => {
               const machineWorkers = workers.filter(w => 
-                w.capabilities?.machine_id === machine.machine_id
+                machine.workers.includes(w.worker_id)
               );
               return (
                 <MachineCard 
