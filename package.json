@@ -32,6 +32,8 @@
     "build:core": "turbo run build --filter=@emp/core",
     "machines:basic:up": "pnpm machines:basic:down && cd apps/machines/basic_machine && docker compose --profile expose-ports up",
     "machines:basic:up:build": "pnpm machines:basic:down && cd apps/machines/basic_machine && docker compose --profile expose-ports up --build",
+    "machines:basic:local:up": "pnpm machines:basic:down && cd apps/machines/basic_machine && cp .env.local.dev .env.local && docker compose --profile expose-ports up",
+    "machines:basic:local:up:build": "pnpm machines:basic:down && cd apps/machines/basic_machine && cp .env.local.dev .env.local && docker compose --profile expose-ports up --build",
     "machines:basic:up:no-ports": "pnpm machines:basic:down && cd apps/machines/basic_machine && docker compose up",
     "machines:basic:down": "cd apps/machines/basic_machine && docker compose down",
     "machines:basic:logs": "docker compose -f apps/machines/basic_machine/docker-compose.yml logs -f",
