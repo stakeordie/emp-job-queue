@@ -993,7 +993,14 @@ export class LightweightAPIServer {
       'unknown-machine';
 
     logger.info(`🏭 Processing machine event for: ${machineId}`);
-    logger.debug(`📊 Connected monitors: ${this.eventBroadcaster.getMonitorCount()}`);
+    const monitorCount = this.eventBroadcaster.getMonitorCount();
+    logger.info(`📊 Connected monitors: ${monitorCount}`);
+
+    if (monitorCount === 0) {
+      logger.warn('⚠️  NO MONITORS CONNECTED - Hello World message will not be received');
+    } else {
+      logger.info(`🔄 Broadcasting to ${monitorCount} connected monitors`);
+    }
 
     // TEST: Send a simple message to verify WebSocket connection
     this.eventBroadcaster.broadcast({
@@ -1006,7 +1013,7 @@ export class LightweightAPIServer {
       timestamp: Date.now()
     });
     logger.info('🧪 Sent Hello World test message as system_stats to monitors');
-    logger.info('🚀 FORCE DEPLOY: Testing machine event processing v2');
+    logger.info('🚀 FORCE DEPLOY: Testing machine event processing v3');
 
     // Map the startup event types to machine events
     switch (startupData.event_type) {
