@@ -51,7 +51,7 @@ export class EventStreamService {
     const host = this.baseUrl.replace(/^(https?:\/\/|wss?:\/\/)/, '');
     
     // Determine protocols based on URL
-    const isSecure = this.baseUrl.startsWith('https://');
+    const isSecure = this.baseUrl.startsWith('https://') || this.baseUrl.startsWith('wss://');
     const httpProtocol = isSecure ? 'https' : 'http';
     const wsProtocol = isSecure ? 'wss' : 'ws';
     
