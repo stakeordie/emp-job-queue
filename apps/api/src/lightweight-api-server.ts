@@ -328,6 +328,7 @@ export class LightweightAPIServer {
     this.eventBroadcaster.addMonitor(monitorId, ws);
 
     logger.info(`Monitor ${monitorId} connected`);
+    logger.debug(`📊 Total monitors connected: ${this.eventBroadcaster.getMonitorCount()}`);
 
     ws.on('message', async (data: Buffer) => {
       try {
@@ -349,6 +350,7 @@ export class LightweightAPIServer {
       this.monitorConnections.delete(monitorId);
       this.eventBroadcaster.removeMonitor(monitorId);
       logger.info(`Monitor ${monitorId} disconnected`);
+      logger.debug(`📊 Total monitors remaining: ${this.eventBroadcaster.getMonitorCount()}`);
     });
 
     ws.on('error', error => {
@@ -990,9 +992,13 @@ export class LightweightAPIServer {
       startupData.worker_id.split('-').slice(0, -1).join('-') ||
       'unknown-machine';
 
+    logger.info(`🏭 Processing machine event for: ${machineId}`);
+    logger.debug(`📊 Connected monitors: ${this.eventBroadcaster.getMonitorCount()}`);
+
     // Map the startup event types to machine events
     switch (startupData.event_type) {
       case 'startup_begin':
+        logger.info(`🚀 Broadcasting machine startup for: ${machineId}`);
         this.eventBroadcaster.broadcastMachineStartup(
           machineId,
           'starting',
@@ -1009,9 +1015,11 @@ export class LightweightAPIServer {
               }
             : undefined
         );
+        logger.debug(`✅ Machine startup broadcast sent for: ${machineId}`);
         break;
 
       case 'startup_step':
+        logger.info(`📝 Broadcasting step '${startupData.step_name}' for: ${machineId}`);
         this.eventBroadcaster.broadcastMachineStartupStep(
           machineId,
           startupData.step_name,
@@ -1022,6 +1030,7 @@ export class LightweightAPIServer {
         break;
 
       case 'startup_complete':
+        logger.info(`🎉 Broadcasting startup complete for: ${machineId}`);
         this.eventBroadcaster.broadcastMachineStartupComplete(
           machineId,
           startupData.total_startup_time_ms,
@@ -1031,6 +1040,7 @@ export class LightweightAPIServer {
         break;
 
       case 'startup_failed':
+        logger.error(`❌ Broadcasting startup failure for: ${machineId}`);
         // For now, we'll treat this as a machine startup step with error
         this.eventBroadcaster.broadcastMachineStartupStep(
           machineId,
@@ -1039,6 +1049,10 @@ export class LightweightAPIServer {
           startupData.total_startup_time_ms || 0,
           { error: startupData.error, stack: startupData.stack }
         );
+        break;
+
+      default:
+        logger.warn(`⚠️  Unknown machine event type: ${startupData.event_type} for ${machineId}`);
         break;
     }
 
@@ -1142,13 +1156,24 @@ export class LightweightAPIServer {
 
   private async startProgressStreamPolling(): Promise<void> {
     // Subscribe to real-time progress events from all workers
-    this.progressSubscriber.subscribe('update_job_progress');
+    await this.progressSubscriber.subscribe('update_job_progress');
+    logger.info('✅ Subscribed to: update_job_progress');
+
     // Subscribe to real-time worker status changes
-    this.progressSubscriber.subscribe('worker_status');
+    await this.progressSubscriber.subscribe('worker_status');
+    logger.info('✅ Subscribed to: worker_status');
+
     // Subscribe to job completion events
-    this.progressSubscriber.subscribe('complete_job');
+    await this.progressSubscriber.subscribe('complete_job');
+    logger.info('✅ Subscribed to: complete_job');
+
     // Subscribe to machine startup events
-    this.progressSubscriber.subscribe('machine:startup:events');
+    await this.progressSubscriber.subscribe('machine:startup:events');
+    logger.info('✅ Subscribed to: machine:startup:events');
+
+    // Add debug subscription to legacy channel to catch any old events
+    await this.progressSubscriber.subscribe('worker:startup:events');
+    logger.warn('⚠️  Also subscribed to legacy channel: worker:startup:events (should be empty)');
 
     this.progressSubscriber.on('message', async (channel, message) => {
       if (channel === 'update_job_progress') {
@@ -1209,11 +1234,24 @@ export class LightweightAPIServer {
           logger.info(
             `🚀 Received machine startup event: ${startupData.worker_id} - ${startupData.event_type}`
           );
+          logger.debug('🔍 Machine startup data:', JSON.stringify(startupData, null, 2));
 
           // Process machine startup event and broadcast via EventBroadcaster
           this.handleMachineStartupEvent(startupData);
         } catch (error) {
-          logger.error('Error processing machine startup message:', error);
+          logger.error('❌ Error processing machine startup message:', error);
+          logger.error('Raw message:', message);
+        }
+      } else if (channel === 'worker:startup:events') {
+        logger.warn(
+          `⚠️  Received event on legacy channel 'worker:startup:events' - this should not happen!`
+        );
+        logger.warn('Raw message:', message);
+        try {
+          const data = JSON.parse(message);
+          logger.warn('Parsed legacy event:', JSON.stringify(data, null, 2));
+        } catch (error) {
+          logger.error('Failed to parse legacy event:', error);
         }
       }
     });

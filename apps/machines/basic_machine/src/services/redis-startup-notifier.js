@@ -1,4 +1,5 @@
 import Redis from 'ioredis';
+import os from 'os';
 import { createLogger } from '../utils/logger.js';
 
 const logger = createLogger('redis-startup-notifier');
@@ -85,9 +86,9 @@ export class RedisStartupNotifier {
         gpu_count: this.config.machine.gpu.count,
         gpu_memory: this.config.machine.gpu.memoryGB,
         gpu_model: this.config.machine.gpu.model,
-        hostname: require('os').hostname(),
-        cpu_cores: require('os').cpus().length,
-        ram_gb: Math.round(require('os').totalmem() / (1024 * 1024 * 1024)),
+        hostname: os.hostname(),
+        cpu_cores: os.cpus().length,
+        ram_gb: Math.round(os.totalmem() / (1024 * 1024 * 1024)),
         services: Object.entries(this.config.services)
           .filter(([_, service]) => service.enabled)
           .map(([name]) => name)

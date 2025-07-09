@@ -2,6 +2,14 @@
 
 ## 2025-01-09
 
+### 🐛 Fixed Machine Event Publishing
+- **ES Module Fix**: Fixed `require is not defined` error in redis-startup-notifier.js
+- **Import Fix**: Changed `require('os')` to `import os from 'os'` for ES6 compatibility
+- **Railway Config**: Added missing `REDIS_URL` environment variable to railway.toml
+- **Debug Tools**: Created comprehensive debugging system to identify event flow issues
+- **Root Cause**: basic_machine couldn't publish to Redis due to CommonJS/ES6 module conflict
+- **Result**: Machine events now properly published to Redis and visible in monitor
+
 ### ✅ Complete Machine-Centric Monitoring System
 - **Redis Events**: Changed channel from `worker:startup:events` to `machine:startup:events`
 - **API Server**: Integrated EventBroadcaster with proper machine event handling

@@ -152,6 +152,23 @@ This is a complete rebuild of the Python-based emp-redis system into JavaScript/
 - Event-driven communication
 - Proper error handling and logging
 
+## Debugging Event Flow Issues
+
+If machine cards aren't appearing or events aren't flowing properly:
+
+```bash
+# Quick diagnosis - tests entire event chain
+cd tools && pnpm install && pnpm debug:full
+
+# Monitor Redis events in real-time
+pnpm debug:redis
+
+# Test API server event processing  
+pnpm debug:api
+```
+
+See `tools/README.md` for detailed debugging instructions.
+
 ## Development Commands
 
 ### Setup
