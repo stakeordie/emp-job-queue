@@ -2,7 +2,7 @@ import { BaseMessage } from '@/types/message';
 import type { 
   MonitorEvent,
   SubscriptionTopic
-} from '@emp/core/dist/types/monitor-events.js';
+} from '@emp/core';
 
 export class EventStreamService {
   private eventSource: EventSource | null = null;
