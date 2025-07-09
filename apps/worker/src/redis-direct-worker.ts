@@ -8,8 +8,9 @@ import { logger } from '@emp/core';
 import os from 'os';
 
 // Worker configuration from environment
-const WORKER_ID = process.env.WORKER_ID || `redis-direct-worker-${os.hostname()}-${process.pid}`;
+const WORKER_ID = process.env.WORKER_ID || `worker-${process.pid}`;
 const HUB_REDIS_URL = process.env.HUB_REDIS_URL || 'redis://localhost:6379';
+const MACHINE_ID = process.env.MACHINE_ID || os.hostname();
 
 async function main() {
   logger.info(`Starting Redis-direct worker ${WORKER_ID}...`);
@@ -25,8 +26,22 @@ async function main() {
   const shutdown = async (signal: string) => {
     logger.info(`Received ${signal}, shutting down worker...`);
     try {
+      // Determine shutdown reason based on signal and environment
+      let shutdownReason = `${signal} signal received`;
+      if (signal === 'SIGTERM') {
+        // SIGTERM is typically sent by Docker during container shutdown
+        shutdownReason = process.env.NODE_ENV === 'production' 
+          ? 'Docker container shutdown' 
+          : 'Process termination requested';
+      } else if (signal === 'SIGINT') {
+        shutdownReason = 'Manual interruption (Ctrl+C)';
+      }
+
+      // Set environment variable so worker can access shutdown reason
+      process.env.SHUTDOWN_REASON = shutdownReason;
+      
       await worker.stop();
-      logger.info('Worker shutdown complete');
+      logger.info(`Worker shutdown complete: ${shutdownReason}`);
       process.exit(0);
     } catch (error) {
       logger.error('Error during shutdown:', error);

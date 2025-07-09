@@ -141,7 +141,7 @@ export class RedisDirectBaseWorker {
     // Build base capabilities
     const capabilities: WorkerCapabilities = {
       worker_id: this.workerId,
-      machine_id: process.env.WORKER_MACHINE_ID || os.hostname(),
+      machine_id: process.env.MACHINE_ID || process.env.WORKER_MACHINE_ID || os.hostname(),
       services,
       hardware,
       models: {}, // Will be populated by connectors
@@ -291,6 +291,15 @@ export class RedisDirectBaseWorker {
 
     this.running = false;
 
+    // Send machine shutdown event to Redis before stopping
+    try {
+      const machineId = this.capabilities.machine_id || this.extractMachineIdFromWorkerId();
+      const shutdownReason = process.env.SHUTDOWN_REASON || 'Worker shutdown';
+      await this.sendMachineShutdownEvent(machineId, shutdownReason);
+    } catch (error) {
+      logger.warn('Failed to send machine shutdown event:', error);
+    }
+
     // Stop job polling
     this.redisClient.stopPolling();
 
@@ -319,6 +328,40 @@ export class RedisDirectBaseWorker {
 
     this.status = WorkerStatus.OFFLINE;
     logger.info(`Redis-direct worker ${this.workerId} stopped`);
+  }
+
+  private extractMachineIdFromWorkerId(): string {
+    // Extract machine ID from worker ID: "redis-direct-worker-basic-machine-44" -> "basic-machine-001"
+    const basicMachineMatch = this.workerId.match(/redis-direct-worker-(basic-machine)-\d+/);
+    if (basicMachineMatch) {
+      return 'basic-machine-001';
+    }
+    
+    // Fallback to generic pattern extraction
+    const genericMatch = this.workerId.match(/.*-worker-(.+)-\d+$/);
+    if (genericMatch) {
+      return genericMatch[1];
+    }
+    
+    return 'unknown-machine';
+  }
+
+  private async sendMachineShutdownEvent(machineId: string, reason: string): Promise<void> {
+    try {
+      const shutdownEvent = {
+        event_type: 'shutdown',
+        machine_id: machineId,
+        worker_id: this.workerId,
+        reason: reason,
+        timestamp: Date.now(),
+      };
+
+      await this.redisClient.publishMachineEvent(shutdownEvent);
+      logger.info(`📢 Published machine shutdown event for ${machineId}: ${reason}`);
+    } catch (error) {
+      logger.error('Failed to publish machine shutdown event:', error);
+      throw error;
+    }
   }
 
   private startJobPolling(): void {

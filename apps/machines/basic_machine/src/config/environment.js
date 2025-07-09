@@ -28,7 +28,7 @@ const schema = Joi.object({
   
   // Worker configuration
   worker: Joi.object({
-    idPrefix: Joi.string().default('basic-machine'),
+    idPrefix: Joi.string().default('worker'),
     connectors: Joi.array().items(Joi.string()).default(['simulation', 'comfyui', 'a1111']),
     downloadUrl: Joi.string().uri().default(
       'https://github.com/stakeordie/emp-job-queue/releases/latest/download/emp-job-queue-worker.tar.gz'

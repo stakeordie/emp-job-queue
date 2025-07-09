@@ -11,6 +11,10 @@ services:
     hostname: basic-machine
     restart: unless-stopped
     
+    # Graceful shutdown configuration
+    stop_grace_period: 45s  # Allow time to finish jobs and send shutdown events
+    stop_signal: SIGTERM    # Send SIGTERM for graceful shutdown
+    
     # GPU support (disabled for testing)
     # deploy:
     #   resources:
@@ -28,21 +32,9 @@ services:
       - NVIDIA_VISIBLE_DEVICES=all
       - NVIDIA_DRIVER_CAPABILITIES=compute,utility
     
-    # Ports
-    ports:
-      # SSH
-      - "22:22"
-      # NGINX (optional)
-      - "80:80"
-      - "443:443"
-      # ComfyUI (8 GPUs max)
-      - "8188-8195:8188-8195"
-      # Automatic1111 (8 GPUs max)
-      - "3001-3008:3001-3008"
-      # Ollama
-      - "11434:11434"
-      # Health check server
-      - "9090:9090"
+    # Ports are configured in docker-compose.override.yml
+    # Generated from EXPOSED_PORTS in .env.local
+    # Run: ./generate-docker-compose.sh to regenerate
     
     # Volumes
     volumes:
@@ -78,8 +70,9 @@ services:
     image: redis:7-alpine
     container_name: basic-machine-redis
     restart: unless-stopped
+    stop_grace_period: 10s  # Allow Redis to save data
     ports:
-      - "6379:6379"
+      - "${REDIS_PORT:-6379}:6379"
     volumes:
       - redis-data:/data
     networks:

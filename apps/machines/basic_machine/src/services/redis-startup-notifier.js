@@ -60,6 +60,33 @@ export class RedisStartupNotifier {
   }
 
   /**
+   * Notify that machine is shutting down
+   */
+  async notifyShutdown(reason = 'Machine shutdown') {
+    if (!this.isConnected) return;
+
+    const shutdownEvent = {
+      worker_id: this.workerId,
+      machine_id: this.config.machine.id,
+      event_type: 'shutdown',
+      timestamp: Date.now(),
+      reason: reason,
+      uptime_ms: this.startupStartTime ? Date.now() - this.startupStartTime : 0,
+      machine_config: {
+        machine_id: this.config.machine.id,
+        hostname: os.hostname()
+      }
+    };
+
+    try {
+      await this.publishStartupEvent(shutdownEvent);
+      logger.info(`Machine shutdown event published for ${this.config.machine.id}: ${reason}`);
+    } catch (error) {
+      logger.error('Failed to publish shutdown event:', error);
+    }
+  }
+
+  /**
    * Disconnect from Redis
    */
   async disconnect() {

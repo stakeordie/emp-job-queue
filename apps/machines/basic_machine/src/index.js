@@ -111,11 +111,24 @@ function startHealthServer() {
  */
 async function handleShutdown(signal) {
   logger.info(`Received ${signal}, starting graceful shutdown...`);
+  
+  // Set shutdown reason based on signal
+  let shutdownReason = `${signal} signal received`;
+  if (signal === 'SIGTERM') {
+    shutdownReason = process.env.NODE_ENV === 'production' 
+      ? 'Docker container shutdown' 
+      : 'Process termination requested';
+  } else if (signal === 'SIGINT') {
+    shutdownReason = 'Manual interruption (Ctrl+C)';
+  }
+  
+  // Store in env for orchestrator to use
+  process.env.SHUTDOWN_REASON = shutdownReason;
 
   if (orchestrator) {
     try {
       await orchestrator.shutdown();
-      logger.info('Graceful shutdown completed');
+      logger.info(`Graceful shutdown completed: ${shutdownReason}`);
       process.exit(0);
     } catch (error) {
       logger.error('Error during shutdown:', error);
