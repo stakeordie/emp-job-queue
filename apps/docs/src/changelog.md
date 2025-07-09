@@ -22,6 +22,7 @@
 - **Fix**: Added machine event types (`machine_startup`, `machine_startup_step`, etc.) to return `['machines', 'workers']` topics
 - **Fix**: Added `'machines'` to SubscriptionTopic type definition
 - **Fix**: Added `'machines'` to default monitor subscription topics
+- **TypeScript Fix**: Removed unimplemented `machine_startup_failed` event type that caused build errors
 - **Result**: Monitors now properly receive and display machine startup events in real-time
 
 ### ✅ Complete Machine-Centric Monitoring System
