@@ -25,7 +25,7 @@ import {
 import { Progress } from "@/components/ui/progress"
 import { Play, Square, RefreshCw, X } from "lucide-react"
 import { JobSubmissionForm } from "@/components/job-submission-form"
-import { SimpleWorkerCard } from "@/components/SimpleWorkerCard"
+import { MachineCard } from "@/components/MachineCard"
 import { JobDetailsModal } from "@/components/JobDetailsModal"
 import { useMonitorStore } from "@/store"
 import { useState, useMemo } from "react"
@@ -51,7 +51,7 @@ const CONNECTION_PRESETS = {
 };
 
 export default function Home() {
-  const { connection, jobs, workers, connect, disconnect, syncJobState, cancelJob } = useMonitorStore();
+  const { connection, jobs, workers, machines, connect, disconnect, syncJobState, cancelJob } = useMonitorStore();
   const [websocketUrl, setWebsocketUrl] = useState(CONNECTION_PRESETS.railwaynew.websocket);
   const [authToken, setAuthToken] = useState(CONNECTION_PRESETS.railwaynew.auth);
   const [selectedPreset, setSelectedPreset] = useState('railwaynew');
@@ -214,28 +214,38 @@ export default function Home() {
         </CardContent>
       </Card>
 
-      {/* Workers */}
+      {/* Machines */}
       <div className="space-y-4">
         <div className="flex items-center justify-between">
           <h2 className="text-lg font-semibold">
-            Workers ({workers.length})
+            Machines ({machines.length})
           </h2>
           <div className="flex items-center gap-4 text-sm text-muted-foreground">
+            <span>Total Workers: {workers.length}</span>
             <span>Active Jobs: {jobCounts.active}</span>
             <span>Completed: {jobCounts.completed}</span>
             <span>Failed: {jobCounts.failed}</span>
           </div>
         </div>
         
-        {workers.length === 0 ? (
+        {machines.length === 0 ? (
           <Card className="p-8">
-            <p className="text-muted-foreground text-center">No workers connected. Start some workers to see them here.</p>
+            <p className="text-muted-foreground text-center">No machines connected. Start some machines to see them here.</p>
           </Card>
         ) : (
-          <div className="flex flex-wrap gap-2">
-            {workers.map((worker) => (
-              <SimpleWorkerCard key={worker.worker_id} worker={worker} />
-            ))}
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+            {machines.map((machine) => {
+              const machineWorkers = workers.filter(w => 
+                w.capabilities?.machine_id === machine.machine_id
+              );
+              return (
+                <MachineCard 
+                  key={machine.machine_id} 
+                  machine={machine} 
+                  workers={machineWorkers} 
+                />
+              );
+            })}
           </div>
         )}
       </div>

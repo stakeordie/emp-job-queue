@@ -1,5 +1,6 @@
 export * from './job';
 export * from './worker';
+export * from './machine';
 export * from './message';
 
 // UI State Types

@@ -1,6 +1,6 @@
 import { create } from 'zustand';
 import { subscribeWithSelector } from 'zustand/middleware';
-import { Job, Worker, WorkerCapabilities, WorkerStatus, JobStatus, JobRequirements, ConnectionState, UIState, LogEntry } from '@/types';
+import { Job, Worker, Machine, WorkerCapabilities, WorkerStatus, JobStatus, JobRequirements, ConnectionState, UIState, LogEntry } from '@/types';
 import { SyncJobStateMessage, CancelJobMessage } from '@/types/message';
 import { websocketService } from '@/services/websocket';
 import type { MonitorEvent } from '@emp/core/dist/types/monitor-events.js';
@@ -14,6 +14,7 @@ interface MonitorStore {
   // Data
   jobs: Job[];
   workers: Worker[];
+  machines: Machine[];
   logs: LogEntry[];
   
   // UI state
@@ -28,6 +29,10 @@ interface MonitorStore {
   addWorker: (worker: Worker) => void;
   updateWorker: (workerId: string, updates: Partial<Worker>) => void;
   removeWorker: (workerId: string) => void;
+  addMachine: (machine: Machine) => void;
+  updateMachine: (machineId: string, updates: Partial<Machine>) => void;
+  removeMachine: (machineId: string) => void;
+  addMachineLog: (machineId: string, log: Omit<Machine['logs'][0], 'id'>) => void;
   addLog: (log: Omit<LogEntry, 'id' | 'timestamp'>) => void;
   clearLogs: () => void;
   setUIState: (updates: Partial<UIState>) => void;
@@ -56,6 +61,7 @@ export const useMonitorStore = create<MonitorStore>()(
     
     jobs: [],
     workers: [],
+    machines: [],
     logs: [],
     
     ui: {
@@ -126,6 +132,45 @@ export const useMonitorStore = create<MonitorStore>()(
     removeWorker: (workerId) =>
       set((state) => ({
         workers: state.workers.filter((worker) => worker.worker_id !== workerId),
+      })),
+    
+    // Machine actions
+    addMachine: (machine) =>
+      set((state) => ({
+        machines: [
+          ...state.machines.filter((m) => m.machine_id !== machine.machine_id),
+          machine,
+        ],
+      })),
+    
+    updateMachine: (machineId, updates) =>
+      set((state) => ({
+        machines: state.machines.map((machine) =>
+          machine.machine_id === machineId ? { ...machine, ...updates } : machine
+        ),
+      })),
+    
+    removeMachine: (machineId) =>
+      set((state) => ({
+        machines: state.machines.filter((machine) => machine.machine_id !== machineId),
+      })),
+    
+    addMachineLog: (machineId, log) =>
+      set((state) => ({
+        machines: state.machines.map((machine) =>
+          machine.machine_id === machineId
+            ? {
+                ...machine,
+                logs: [
+                  {
+                    ...log,
+                    id: crypto.randomUUID(),
+                  },
+                  ...machine.logs,
+                ].slice(0, 100), // Keep last 100 logs per machine
+              }
+            : machine
+        ),
       })),
     
     // Log actions
@@ -295,7 +340,7 @@ export const useMonitorStore = create<MonitorStore>()(
     },
 
     handleEvent: (event: MonitorEvent) => {
-      const { addLog, addWorker, updateWorker, removeWorker, addJob, updateJob } = get();
+      const { addLog, addWorker, updateWorker, removeWorker, addJob, updateJob, addMachine, updateMachine, addMachineLog } = get();
       
       // Only log important events, skip progress spam
       if (event.type !== 'update_job_progress' && event.type !== 'heartbeat_ack' && event.type !== 'heartbeat') {
@@ -355,7 +400,7 @@ export const useMonitorStore = create<MonitorStore>()(
             }
           };
           
-          addWorker({
+          const worker = {
             worker_id: workerEvent.worker_id,
             status: workerData.status as WorkerStatus,
             capabilities,
@@ -366,7 +411,53 @@ export const useMonitorStore = create<MonitorStore>()(
             total_jobs_failed: workerData.jobs_failed || 0,
             average_processing_time: 0,
             uptime: 0
-          });
+          };
+          
+          addWorker(worker);
+          
+          // Handle machine creation/update
+          const machineId = capabilities.machine_id || 'unknown-machine';
+          const currentMachines = get().machines;
+          const existingMachine = currentMachines.find(m => m.machine_id === machineId);
+          
+          if (!existingMachine) {
+            // Create new machine
+            addMachine({
+              machine_id: machineId,
+              status: 'ready',
+              workers: [worker.worker_id],
+              logs: [],
+              started_at: new Date().toISOString(),
+              last_activity: new Date().toISOString(),
+              host_info: {
+                gpu_count: workerData.capabilities.gpu_count || 1,
+                total_ram_gb: workerData.capabilities.ram_gb,
+              }
+            });
+            
+            addMachineLog(machineId, {
+              timestamp: new Date().toISOString(),
+              level: 'info',
+              message: `Machine started with worker ${worker.worker_id}`,
+              source: 'system'
+            });
+          } else {
+            // Update existing machine
+            const updatedWorkers = [...new Set([...existingMachine.workers, worker.worker_id])];
+            updateMachine(machineId, {
+              workers: updatedWorkers,
+              status: 'ready',
+              last_activity: new Date().toISOString(),
+            });
+            
+            addMachineLog(machineId, {
+              timestamp: new Date().toISOString(),
+              level: 'info',
+              message: `Worker ${worker.worker_id} connected`,
+              source: 'worker',
+              worker_id: worker.worker_id
+            });
+          }
           break;
         }
         
@@ -376,7 +467,43 @@ export const useMonitorStore = create<MonitorStore>()(
             worker_id: string;
             timestamp: number;
           };
+          
+          // Find worker's machine before removing
+          const currentWorkers = get().workers;
+          const worker = currentWorkers.find(w => w.worker_id === workerEvent.worker_id);
+          const machineId = worker?.capabilities?.machine_id || 'unknown-machine';
+          
           removeWorker(workerEvent.worker_id);
+          
+          // Update machine
+          const currentMachines = get().machines;
+          const machine = currentMachines.find(m => m.machine_id === machineId);
+          if (machine) {
+            const updatedWorkers = machine.workers.filter(w => w !== workerEvent.worker_id);
+            
+            if (updatedWorkers.length === 0) {
+              // No workers left, mark machine as offline
+              updateMachine(machineId, {
+                workers: updatedWorkers,
+                status: 'offline',
+                last_activity: new Date().toISOString(),
+              });
+            } else {
+              // Still has workers
+              updateMachine(machineId, {
+                workers: updatedWorkers,
+                last_activity: new Date().toISOString(),
+              });
+            }
+            
+            addMachineLog(machineId, {
+              timestamp: new Date().toISOString(),
+              level: 'info',
+              message: `Worker ${workerEvent.worker_id} disconnected`,
+              source: 'worker',
+              worker_id: workerEvent.worker_id
+            });
+          }
           break;
         }
         

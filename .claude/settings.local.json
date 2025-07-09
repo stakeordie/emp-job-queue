@@ -141,7 +141,8 @@
       "Bash(WORKSPACE_DIR=/tmp/workspace LOG_LEVEL=debug node test-comfyui-simple.js)",
       "Bash(WORKSPACE_DIR=/tmp/workspace LOG_LEVEL=info node test-comfyui-simple.js)",
       "Bash(awk:*)",
-      "Bash(pnpm --filter=api build)"
+      "Bash(pnpm --filter=api build)",
+      "Bash(pnpm --filter=monitor build)"
     ],
     "deny": []
   }
