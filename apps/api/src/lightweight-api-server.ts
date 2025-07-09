@@ -995,6 +995,15 @@ export class LightweightAPIServer {
     logger.info(`🏭 Processing machine event for: ${machineId}`);
     logger.debug(`📊 Connected monitors: ${this.eventBroadcaster.getMonitorCount()}`);
 
+    // TEST: Send a simple message to verify WebSocket connection
+    this.eventBroadcaster.broadcast({
+      type: 'heartbeat' as const,
+      monitor_id: 'test',
+      message: 'Hello World from API server - machine event processed!',
+      timestamp: Date.now()
+    });
+    logger.info('🧪 Sent Hello World test message to monitors');
+
     // Map the startup event types to machine events
     switch (startupData.event_type) {
       case 'startup_begin':
