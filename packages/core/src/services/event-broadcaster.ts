@@ -199,7 +199,7 @@ export class EventBroadcaster {
 
   // Machine Events
   broadcastMachineStartup(
-    machineId: string, 
+    machineId: string,
     phase: 'starting' | 'configuring' | 'ready',
     hostInfo?: {
       hostname: string;
@@ -232,7 +232,11 @@ export class EventBroadcaster {
       type: 'machine_startup_step' as const,
       machine_id: machineId,
       step_name: stepName,
-      step_phase: stepPhase as 'shared_setup' | 'core_infrastructure' | 'ai_services' | 'supporting_services',
+      step_phase: stepPhase as
+        | 'shared_setup'
+        | 'core_infrastructure'
+        | 'ai_services'
+        | 'supporting_services',
       step_data: stepData,
       elapsed_ms: elapsedMs,
       timestamp: Date.now(),
@@ -269,9 +273,9 @@ export class EventBroadcaster {
 
   broadcastWorkerConnected(workerId: string, workerData: Record<string, unknown>): void {
     // Extract machine_id from worker capabilities or use default
-    const capabilities = workerData.capabilities as Record<string, unknown> || {};
+    const capabilities = (workerData.capabilities as Record<string, unknown>) || {};
     const machineId = (capabilities.machine_id as string) || 'unknown-machine';
-    
+
     const event: WorkerConnectedEvent = {
       type: 'worker_connected',
       worker_id: workerId,

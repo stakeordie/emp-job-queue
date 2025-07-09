@@ -184,6 +184,7 @@ export default class RedisWorkerService extends BaseService {
     const envContent = {
       HUB_REDIS_URL: this.config.redis.url,
       WORKER_ID: this.workerId,
+      MACHINE_ID: this.config.machine.id,
       WORKER_CONNECTORS: this.config.worker.connectors.join(','),
       WORKER_WEBSOCKET_AUTH_TOKEN: this.config.redis.authToken || 'default-token',
       GPU_MEMORY_GB: this.config.machine.gpu.memoryGB || 16,

@@ -81,9 +81,13 @@ export class RedisStartupNotifier {
       timestamp: new Date().toISOString(),
       startup_time: this.startupStartTime,
       machine_config: {
+        machine_id: this.config.machine.id,
         gpu_count: this.config.machine.gpu.count,
         gpu_memory: this.config.machine.gpu.memoryGB,
         gpu_model: this.config.machine.gpu.model,
+        hostname: require('os').hostname(),
+        cpu_cores: require('os').cpus().length,
+        ram_gb: Math.round(require('os').totalmem() / (1024 * 1024 * 1024)),
         services: Object.entries(this.config.services)
           .filter(([_, service]) => service.enabled)
           .map(([name]) => name)
@@ -189,11 +193,11 @@ export class RedisStartupNotifier {
     }
 
     try {
-      // Publish to worker startup events channel
-      await this.redis.publish('worker:startup:events', JSON.stringify(event));
+      // Publish to machine startup events channel
+      await this.redis.publish('machine:startup:events', JSON.stringify(event));
       
-      // Also store in worker startup log with TTL (24 hours)
-      const key = `worker:startup:${this.workerId}:${event.event_type}:${Date.now()}`;
+      // Also store in machine startup log with TTL (24 hours)
+      const key = `machine:startup:${this.config.machine.id}:${event.event_type}:${Date.now()}`;
       await this.redis.setex(key, 24 * 60 * 60, JSON.stringify(event));
       
       logger.debug(`Published startup event: ${event.event_type}`);

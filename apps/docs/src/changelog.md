@@ -1,5 +1,22 @@
 # EmProps Job Queue Development Changelog
 
+## 2025-01-09
+
+### ✅ Complete Machine-Centric Monitoring System
+- **Redis Events**: Changed channel from `worker:startup:events` to `machine:startup:events`
+- **API Server**: Integrated EventBroadcaster with proper machine event handling
+- **Machine Configuration**: Added machine_id, hostname, and system info to startup events
+- **Worker Environment**: Workers now receive MACHINE_ID for proper association
+- **Event Broadcasting**: Real-time machine startup, steps, and completion events
+- **TypeScript**: Fixed root tsconfig.json "No inputs found" error by removing include paths
+
+### 🎯 Key Features Added
+- Machine cards appear with outlined borders during startup
+- Real-time startup progress logs visible in machine cards
+- Workers properly grouped inside machine cards when ready
+- Proper machine event types with typed event system
+- Host information (CPU, RAM, GPU) included in machine events
+
 ## 2025-01-08
 
 ### 🐛 Fixed CI/CD Build Errors

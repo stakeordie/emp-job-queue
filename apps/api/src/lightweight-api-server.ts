@@ -13,6 +13,7 @@ import {
   JobRequirements,
   logger,
   RedisService,
+  EventBroadcaster,
   JobSubmittedEvent,
   JobAssignedEvent,
   JobStatusChangedEvent,
@@ -58,6 +59,7 @@ export class LightweightAPIServer {
   private wsServer: WebSocketServer;
   private redis: Redis;
   private redisService: RedisService;
+  private eventBroadcaster: EventBroadcaster;
   private config: LightweightAPIConfig;
 
   // Connection tracking
@@ -79,6 +81,9 @@ export class LightweightAPIServer {
     this.redis = new Redis(config.redisUrl);
     this.redisService = new RedisService(config.redisUrl);
     this.progressSubscriber = new Redis(config.redisUrl);
+
+    // Event broadcaster for real-time updates
+    this.eventBroadcaster = new EventBroadcaster();
 
     this.setupMiddleware();
     this.setupHTTPRoutes();
@@ -302,7 +307,7 @@ export class LightweightAPIServer {
     // Parse query parameters for authentication
     const urlParams = new URLSearchParams(url.split('?')[1]);
     const token = urlParams.get('token');
-    
+
     // Validate token if provided
     if (token && !this.isValidToken(token)) {
       logger.warn(`Invalid token provided for monitor ${monitorId}: ${token}`);
@@ -318,6 +323,10 @@ export class LightweightAPIServer {
     };
 
     this.monitorConnections.set(monitorId, connection);
+
+    // Register monitor with EventBroadcaster
+    this.eventBroadcaster.addMonitor(monitorId, ws);
+
     logger.info(`Monitor ${monitorId} connected`);
 
     ws.on('message', async (data: Buffer) => {
@@ -338,12 +347,14 @@ export class LightweightAPIServer {
 
     ws.on('close', () => {
       this.monitorConnections.delete(monitorId);
+      this.eventBroadcaster.removeMonitor(monitorId);
       logger.info(`Monitor ${monitorId} disconnected`);
     });
 
     ws.on('error', error => {
       logger.error(`Monitor WebSocket error for ${monitorId}:`, error);
       this.monitorConnections.delete(monitorId);
+      this.eventBroadcaster.removeMonitor(monitorId);
     });
   }
 
@@ -357,7 +368,7 @@ export class LightweightAPIServer {
     // Parse query parameters for authentication
     const urlParams = new URLSearchParams(url.split('?')[1]);
     const token = urlParams.get('token');
-    
+
     // Validate token if provided
     if (token && !this.isValidToken(token)) {
       logger.warn(`Invalid token provided for client ${clientId}: ${token}`);
@@ -972,42 +983,93 @@ export class LightweightAPIServer {
   }
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  private broadcastWorkerStartupEvent(startupData: any): void {
-    const workerStartupEvent = {
-      type: 'worker_startup',
-      worker_id: startupData.worker_id,
-      event_type: startupData.event_type,
-      timestamp: startupData.timestamp,
-      elapsed_ms: startupData.elapsed_ms,
-      step_name: startupData.step_name,
-      step_data: startupData.step_data,
-      total_startup_time_ms: startupData.total_startup_time_ms,
-      startup_steps: startupData.startup_steps,
-      machine_config: startupData.machine_config,
-      error: startupData.error,
-      stack: startupData.stack,
-    };
+  private handleMachineStartupEvent(startupData: any): void {
+    // Extract machine_id from the worker_id or use machine config
+    const machineId =
+      startupData.machine_config?.machine_id ||
+      startupData.worker_id.split('-').slice(0, -1).join('-') ||
+      'unknown-machine';
 
-    const eventJson = JSON.stringify(workerStartupEvent);
+    // Map the startup event types to machine events
+    switch (startupData.event_type) {
+      case 'startup_begin':
+        this.eventBroadcaster.broadcastMachineStartup(
+          machineId,
+          'starting',
+          startupData.machine_config
+            ? {
+                hostname: startupData.machine_config.hostname || 'unknown',
+                os: process.platform,
+                cpu_cores: startupData.machine_config.cpu_cores || 4,
+                total_ram_gb: startupData.machine_config.ram_gb || 16,
+                gpu_count: startupData.machine_config.gpu_count || 1,
+                gpu_models: startupData.machine_config.gpu_model
+                  ? [startupData.machine_config.gpu_model]
+                  : undefined,
+              }
+            : undefined
+        );
+        break;
 
-    for (const [_monitorId, connection] of this.monitorConnections) {
-      if (connection.ws.readyState === WebSocket.OPEN) {
-        // Check if monitor is subscribed to worker startup events
-        const isSubscribed =
-          connection.subscribedTopics.has('workers') ||
-          connection.subscribedTopics.has('worker:startup') ||
-          connection.subscribedTopics.size === 0; // Subscribe to all if no specific topics
+      case 'startup_step':
+        this.eventBroadcaster.broadcastMachineStartupStep(
+          machineId,
+          startupData.step_name,
+          this.mapStepToPhase(startupData.step_name),
+          startupData.elapsed_ms || 0,
+          startupData.step_data
+        );
+        break;
 
-        if (isSubscribed) {
-          connection.ws.send(eventJson);
-          logger.debug(`Sent worker startup event to monitor ${connection.monitorId}`);
-        }
-      }
+      case 'startup_complete':
+        this.eventBroadcaster.broadcastMachineStartupComplete(
+          machineId,
+          startupData.total_startup_time_ms,
+          1, // worker count - basic machine has 1 worker typically
+          startupData.machine_config?.services || []
+        );
+        break;
+
+      case 'startup_failed':
+        // For now, we'll treat this as a machine startup step with error
+        this.eventBroadcaster.broadcastMachineStartupStep(
+          machineId,
+          `startup_failed: ${startupData.error}`,
+          'supporting_services',
+          startupData.total_startup_time_ms || 0,
+          { error: startupData.error, stack: startupData.stack }
+        );
+        break;
     }
 
-    logger.info(
-      `📢 Broadcasted worker startup event: ${startupData.worker_id} - ${startupData.event_type}`
-    );
+    logger.info(`📢 Processed machine startup event: ${machineId} - ${startupData.event_type}`);
+  }
+
+  private mapStepToPhase(stepName: string): string {
+    if (stepName.includes('phase_0') || stepName.includes('shared')) {
+      return 'shared_setup';
+    } else if (
+      stepName.includes('phase_1') ||
+      stepName.includes('nginx') ||
+      stepName.includes('infrastructure')
+    ) {
+      return 'core_infrastructure';
+    } else if (
+      stepName.includes('phase_2') ||
+      stepName.includes('gpu') ||
+      stepName.includes('comfyui') ||
+      stepName.includes('automatic1111') ||
+      stepName.includes('redis-worker')
+    ) {
+      return 'ai_services';
+    } else if (
+      stepName.includes('phase_3') ||
+      stepName.includes('ollama') ||
+      stepName.includes('supporting')
+    ) {
+      return 'supporting_services';
+    }
+    return 'ai_services'; // default
   }
 
   private broadcastJobEventToClient(
@@ -1085,8 +1147,8 @@ export class LightweightAPIServer {
     this.progressSubscriber.subscribe('worker_status');
     // Subscribe to job completion events
     this.progressSubscriber.subscribe('complete_job');
-    // Subscribe to worker startup events
-    this.progressSubscriber.subscribe('worker:startup:events');
+    // Subscribe to machine startup events
+    this.progressSubscriber.subscribe('machine:startup:events');
 
     this.progressSubscriber.on('message', async (channel, message) => {
       if (channel === 'update_job_progress') {
@@ -1141,17 +1203,17 @@ export class LightweightAPIServer {
         } catch (error) {
           logger.error('Error processing job completion message:', error);
         }
-      } else if (channel === 'worker:startup:events') {
+      } else if (channel === 'machine:startup:events') {
         try {
           const startupData = JSON.parse(message);
           logger.info(
-            `🚀 Received worker startup event: ${startupData.worker_id} - ${startupData.event_type}`
+            `🚀 Received machine startup event: ${startupData.worker_id} - ${startupData.event_type}`
           );
 
-          // Broadcast the worker startup event to monitors
-          this.broadcastWorkerStartupEvent(startupData);
+          // Process machine startup event and broadcast via EventBroadcaster
+          this.handleMachineStartupEvent(startupData);
         } catch (error) {
-          logger.error('Error processing worker startup message:', error);
+          logger.error('Error processing machine startup message:', error);
         }
       }
     });
