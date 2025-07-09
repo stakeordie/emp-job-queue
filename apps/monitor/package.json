@@ -4,7 +4,7 @@
   "private": true,
   "packageManager": "pnpm@10.12.4",
   "scripts": {
-    "dev": "next dev",
+    "dev": "mkdir -p logs && (echo '   - Logs:         pnpm logs:monitor' && echo '   - All Logs:     pnpm logs:all' && echo && next dev) 2>&1 | tee logs/dev.log",
     "build": "next build",
     "start": "next start",
     "lint": "next lint",

@@ -11,7 +11,7 @@
   },
   "scripts": {
     "build": "tsc",
-    "dev": "tsx watch src/redis-direct-worker.ts",
+    "dev": "mkdir -p logs && echo '   - Logs:         pnpm logs:worker' && echo '   - All Logs:     pnpm logs:all' && tsx watch src/redis-direct-worker.ts 2>&1 | tee logs/dev.log",
     "start": "node dist/redis-direct-worker.js",
     "test": "jest",
     "lint": "eslint 'src/**/*.ts' --ignore-pattern '**/*.test.ts'",
