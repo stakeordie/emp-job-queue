@@ -7,7 +7,8 @@
     "debug:redis": "node debug-redis-events.js",
     "debug:api": "node debug-api-events.js",
     "debug:full": "node debug-full-flow.js",
-    "debug:verbose": "DEBUG=verbose node debug-api-events.js"
+    "debug:verbose": "DEBUG=verbose node debug-api-events.js",
+    "query:redis": "node query-redis.js"
   },
   "dependencies": {
     "chalk": "^5.3.0",

@@ -111,7 +111,19 @@ export class RedisStartupNotifier {
       timestamp: new Date().toISOString(),
       elapsed_ms: Date.now() - this.startupStartTime,
       step_name: stepName,
-      step_data: stepData
+      step_data: stepData,
+      machine_config: {
+        machine_id: this.config.machine.id,
+        gpu_count: this.config.machine.gpu.count,
+        gpu_memory: this.config.machine.gpu.memoryGB,
+        gpu_model: this.config.machine.gpu.model,
+        hostname: os.hostname(),
+        cpu_cores: os.cpus().length,
+        ram_gb: Math.round(os.totalmem() / (1024 * 1024 * 1024)),
+        services: Object.entries(this.config.services)
+          .filter(([_, service]) => service.enabled)
+          .map(([name]) => name)
+      }
     };
 
     // Store step locally
@@ -155,7 +167,19 @@ export class RedisStartupNotifier {
       timestamp: new Date().toISOString(),
       total_startup_time_ms: totalTime,
       step_count: this.startupSteps.length,
-      startup_steps: this.startupSteps
+      startup_steps: this.startupSteps,
+      machine_config: {
+        machine_id: this.config.machine.id,
+        gpu_count: this.config.machine.gpu.count,
+        gpu_memory: this.config.machine.gpu.memoryGB,
+        gpu_model: this.config.machine.gpu.model,
+        hostname: os.hostname(),
+        cpu_cores: os.cpus().length,
+        ram_gb: Math.round(os.totalmem() / (1024 * 1024 * 1024)),
+        services: Object.entries(this.config.services)
+          .filter(([_, service]) => service.enabled)
+          .map(([name]) => name)
+      }
     };
 
     await this.publishStartupEvent(completeEvent);
@@ -177,7 +201,19 @@ export class RedisStartupNotifier {
       step_count: this.startupSteps.length,
       startup_steps: this.startupSteps,
       error: error.message,
-      stack: error.stack
+      stack: error.stack,
+      machine_config: {
+        machine_id: this.config.machine.id,
+        gpu_count: this.config.machine.gpu.count,
+        gpu_memory: this.config.machine.gpu.memoryGB,
+        gpu_model: this.config.machine.gpu.model,
+        hostname: os.hostname(),
+        cpu_cores: os.cpus().length,
+        ram_gb: Math.round(os.totalmem() / (1024 * 1024 * 1024)),
+        services: Object.entries(this.config.services)
+          .filter(([_, service]) => service.enabled)
+          .map(([name]) => name)
+      }
     };
 
     await this.publishStartupEvent(failedEvent);

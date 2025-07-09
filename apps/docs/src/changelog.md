@@ -10,6 +10,12 @@
 - **Root Cause**: basic_machine couldn't publish to Redis due to CommonJS/ES6 module conflict
 - **Result**: Machine events now properly published to Redis and visible in monitor
 
+### 🐛 Fixed Missing machine_id in Redis Events
+- **Issue**: Only `startup_begin` events had `machine_config`, `startup_step` events were missing it
+- **Debug**: Created targeted debugging tools to examine exact Redis event structure
+- **Fix**: Added `machine_config` with `machine_id` to all event types (startup_step, startup_complete, startup_failed)
+- **Result**: All machine events now include proper machine identification for monitor display
+
 ### ✅ Complete Machine-Centric Monitoring System
 - **Redis Events**: Changed channel from `worker:startup:events` to `machine:startup:events`
 - **API Server**: Integrated EventBroadcaster with proper machine event handling
