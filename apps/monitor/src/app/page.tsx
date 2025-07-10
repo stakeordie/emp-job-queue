@@ -184,7 +184,7 @@ export default function Home() {
             <div>
               <Label htmlFor="preset">Environment</Label>
               <Select value={selectedPreset} onValueChange={handlePresetChange}>
-                <SelectTrigger>
+                <SelectTrigger id="preset">
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
