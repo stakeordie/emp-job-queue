@@ -5,6 +5,7 @@
 ### ✅ Real-Time Service Badge Status Updates
 - **Feature**: Implemented real-time connector status reporting with 15-second intervals 
 - **Issue Fixed**: Service badges in monitor UI were showing grey (no color) instead of green for active services
+- **Additional Fix**: Service badges now appear immediately when new machines come online (no refresh required)
 - **Implementation**: Added direct connector-to-Redis status publishing every 15 seconds from SimulationConnector
 - **End-to-End Flow**: Connector → Redis pub/sub → API server → EventSource → Monitor UI
 - **Files Enhanced**: 
@@ -12,9 +13,9 @@
   - `apps/worker/src/connectors/simulation-connector.ts` - Implemented comprehensive status reporting
   - `apps/api/src/lightweight-api-server.ts` - Added Redis subscription to `connector_status:*` pattern
   - `packages/core/src/types/monitor-events.ts` - Added ConnectorStatusChangedEvent interface
-  - `apps/monitor/src/store/index.ts` - Added event handler for connector status updates
+  - `apps/monitor/src/store/index.ts` - Added event handler for connector status updates and empty connector_statuses initialization
 - **Monitoring**: API server logs show connector status changes being broadcast to monitors every 15 seconds
-- **Result**: Service badges now show green for active services, providing real-time health visualization
+- **Result**: Service badges now show green for active services with real-time health visualization and immediate visibility for new workers
 - **TypeScript**: Fixed linting errors and ensured proper type safety throughout the implementation
 
 ## 2025-01-10
