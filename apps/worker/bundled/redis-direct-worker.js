@@ -24431,7 +24431,9 @@ var init_simulation_connector = __esm({
         try {
           this.redis = new import_ioredis4.default(redisUrl);
           this.startStatusReporting();
-          logger.info(`Simulation connector ${this.connector_id} connected to Redis and started status reporting`);
+          logger.info(
+            `Simulation connector ${this.connector_id} connected to Redis and started status reporting`
+          );
         } catch (error) {
           logger.warn(`Failed to connect to Redis for status reporting: ${error}`);
         }
@@ -24583,15 +24585,14 @@ var init_simulation_connector = __esm({
             `connector_status:${this.service_type}`,
             JSON.stringify(statusReport)
           );
-          await this.redis.hset(
-            `connector_status:${this.workerId}:${this.service_type}`,
-            {
-              status: statusReport.status,
-              last_update: statusReport.timestamp,
-              service_info: JSON.stringify(statusReport.service_info)
-            }
+          await this.redis.hset(`connector_status:${this.workerId}:${this.service_type}`, {
+            status: statusReport.status,
+            last_update: statusReport.timestamp,
+            service_info: JSON.stringify(statusReport.service_info)
+          });
+          logger.debug(
+            `Simulation connector ${this.connector_id} reported status: ${statusReport.status}`
           );
-          logger.debug(`Simulation connector ${this.connector_id} reported status: ${statusReport.status}`);
         } catch (error) {
           logger.error(`Failed to report status for connector ${this.connector_id}:`, error);
         }

@@ -607,7 +607,8 @@ export const useMonitorStore = create<MonitorStore>()(
             total_jobs_completed: workerData.jobs_completed || 0,
             total_jobs_failed: workerData.jobs_failed || 0,
             average_processing_time: 0,
-            uptime: 0
+            uptime: 0,
+            connector_statuses: {}
           };
           
           addWorker(worker);
