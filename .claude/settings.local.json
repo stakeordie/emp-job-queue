@@ -154,7 +154,8 @@
       "Bash(npx playwright:*)",
       "Bash(docker stop:*)",
       "Bash(docker rm:*)",
-      "Bash(./scripts/bundle-worker.sh:*)"
+      "Bash(./scripts/bundle-worker.sh:*)",
+      "Bash(git log:*)"
     ],
     "deny": []
   }

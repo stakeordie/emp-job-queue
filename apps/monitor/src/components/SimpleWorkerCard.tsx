@@ -24,8 +24,7 @@ export const SimpleWorkerCard = memo(function SimpleWorkerCard({ worker }: Simpl
       <div
         onClick={() => setShowDetails(true)}
         className={`
-          w-[200px] h-[40px] px-3 py-2 rounded border cursor-pointer
-          flex items-center justify-center
+          w-full px-3 py-2 rounded border cursor-pointer
           transition-all duration-300 ease-in-out
           ${isProcessing 
             ? 'bg-blue-500 text-white border-blue-600 animate-pulse' 
@@ -33,9 +32,29 @@ export const SimpleWorkerCard = memo(function SimpleWorkerCard({ worker }: Simpl
           }
         `}
       >
-        <span className="text-sm font-medium truncate">
-          {worker.worker_id}
-        </span>
+        <div className="flex items-center justify-between">
+          <span className="text-xs font-medium truncate">
+            {worker.worker_id}
+          </span>
+          <div className="flex items-center gap-1">
+            {worker.capabilities?.services?.map((service: string) => {
+              const connectorStatus = worker.connector_statuses?.[service];
+              const isHealthy = connectorStatus?.status === 'active';
+              const hasError = connectorStatus?.status === 'error';
+              
+              return (
+                <div
+                  key={service}
+                  className={`
+                    w-2 h-2 rounded-full
+                    ${isHealthy ? 'bg-green-500' : hasError ? 'bg-red-500' : 'bg-gray-400'}
+                  `}
+                  title={`${service}: ${connectorStatus?.status || 'unknown'}`}
+                />
+              );
+            })}
+          </div>
+        </div>
       </div>
 
       <Dialog open={showDetails} onOpenChange={setShowDetails}>
@@ -69,11 +88,25 @@ export const SimpleWorkerCard = memo(function SimpleWorkerCard({ worker }: Simpl
               <div>
                 <p className="text-sm font-medium mb-1">Services</p>
                 <div className="flex flex-wrap gap-1">
-                  {worker.capabilities?.services?.map((service: string) => (
-                    <Badge key={service} variant="outline" className="text-xs">
-                      {service}
-                    </Badge>
-                  ))}
+                  {worker.capabilities?.services?.map((service: string) => {
+                    const connectorStatus = worker.connector_statuses?.[service];
+                    const isHealthy = connectorStatus?.status === 'active';
+                    const hasError = connectorStatus?.status === 'error';
+                    
+                    return (
+                      <Badge 
+                        key={service} 
+                        variant={isHealthy ? "default" : hasError ? "destructive" : "outline"} 
+                        className="text-xs"
+                        title={connectorStatus?.error_message || `Status: ${connectorStatus?.status || 'unknown'}`}
+                      >
+                        <div className={`w-2 h-2 rounded-full mr-1 ${
+                          isHealthy ? 'bg-green-500' : hasError ? 'bg-red-500' : 'bg-gray-400'
+                        }`} />
+                        {service}
+                      </Badge>
+                    );
+                  })}
                 </div>
               </div>
             )}

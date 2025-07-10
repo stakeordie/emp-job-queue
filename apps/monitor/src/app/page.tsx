@@ -81,6 +81,16 @@ export default function Home() {
     localStorage.setItem('monitor-auto-connect', 'false');
   };
 
+  const handleForceDisconnect = () => {
+    console.log('[Force Disconnect] Emergency disconnect');
+    disconnect();
+    localStorage.setItem('monitor-auto-connect', 'false');
+    // Force reload to clean up any stuck state
+    setTimeout(() => {
+      window.location.reload();
+    }, 500);
+  };
+
   // Auto-connect on page load only if user hasn't manually disconnected
   useEffect(() => {
     const shouldAutoConnect = localStorage.getItem('monitor-auto-connect');
@@ -242,6 +252,18 @@ export default function Home() {
                 </>
               )}
             </Button>
+            {connection.isConnected && (
+              <Button
+                onClick={handleForceDisconnect}
+                variant="outline"
+                size="sm"
+                className="text-red-600 border-red-200 hover:bg-red-50 hover:border-red-300"
+                title="Force disconnect and reload page to break connection loops"
+              >
+                <X className="h-4 w-4 mr-1" />
+                Force Stop
+              </Button>
+            )}
           </div>
         </CardContent>
       </Card>
