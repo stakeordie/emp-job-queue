@@ -43,24 +43,33 @@ export class RedisDirectWorkerClient {
 
   private setupEventHandlers(): void {
     this.redis.on('connect', () => {
-      logger.info(`✅ Worker ${this.workerId} connected to Redis: ${this.maskRedisUrl(this.hubRedisUrl)}`);
+      logger.info(
+        `✅ Worker ${this.workerId} connected to Redis: ${this.maskRedisUrl(this.hubRedisUrl)}`
+      );
       this.isConnectedFlag = true;
     });
 
     this.redis.on('disconnect', () => {
-      logger.warn(`❌ Worker ${this.workerId} disconnected from Redis: ${this.maskRedisUrl(this.hubRedisUrl)}`);
+      logger.warn(
+        `❌ Worker ${this.workerId} disconnected from Redis: ${this.maskRedisUrl(this.hubRedisUrl)}`
+      );
       this.isConnectedFlag = false;
     });
 
     this.redis.on('error', error => {
-      logger.error(`❌ Worker ${this.workerId} Redis connection error [${this.maskRedisUrl(this.hubRedisUrl)}]:`, error);
+      logger.error(
+        `❌ Worker ${this.workerId} Redis connection error [${this.maskRedisUrl(this.hubRedisUrl)}]:`,
+        error
+      );
     });
   }
 
   async connect(capabilities: WorkerCapabilities): Promise<void> {
     try {
-      logger.info(`🔄 Worker ${this.workerId} attempting connection to Redis: ${this.maskRedisUrl(this.hubRedisUrl)}`);
-      
+      logger.info(
+        `🔄 Worker ${this.workerId} attempting connection to Redis: ${this.maskRedisUrl(this.hubRedisUrl)}`
+      );
+
       await this.redis.ping();
       logger.info(`✅ Worker ${this.workerId} Redis connection successful`);
 
@@ -73,7 +82,10 @@ export class RedisDirectWorkerClient {
       this.isConnectedFlag = true;
       logger.info(`🚀 Worker ${this.workerId} connected and registered with Redis-direct mode`);
     } catch (error) {
-      logger.error(`❌ Failed to connect worker ${this.workerId} to Redis [${this.maskRedisUrl(this.hubRedisUrl)}]:`, error);
+      logger.error(
+        `❌ Failed to connect worker ${this.workerId} to Redis [${this.maskRedisUrl(this.hubRedisUrl)}]:`,
+        error
+      );
       throw error;
     }
   }
@@ -92,7 +104,7 @@ export class RedisDirectWorkerClient {
     // Get worker data before deletion for the event
     const workerData = await this.redis.hgetall(`worker:${this.workerId}`);
     const capabilities = workerData.capabilities ? JSON.parse(workerData.capabilities) : {};
-    
+
     // Publish worker disconnected event
     const workerDisconnectedEvent = {
       type: 'worker_disconnected',
@@ -100,7 +112,7 @@ export class RedisDirectWorkerClient {
       machine_id: capabilities.machine_id || workerData.machine_id || 'unknown',
       timestamp: Date.now(),
     };
-    
+
     await this.redis.publish('worker:events', JSON.stringify(workerDisconnectedEvent));
 
     // Remove worker from active set
@@ -169,15 +181,24 @@ export class RedisDirectWorkerClient {
     };
 
     await this.redis.publish('worker:events', JSON.stringify(workerConnectedEvent));
-    logger.info(`Worker ${this.workerId} registered capabilities in Redis and published connected event`);
+    logger.info(
+      `Worker ${this.workerId} registered capabilities in Redis and published connected event`
+    );
   }
 
-  async updateConnectorStatuses(connectorStatuses: Record<string, any>): Promise<void> {
+  async updateConnectorStatuses(connectorStatuses: Record<string, unknown>): Promise<void> {
     try {
       // Update the connector statuses in the worker's Redis data
-      await this.redis.hset(`worker:${this.workerId}`, 'connector_statuses', JSON.stringify(connectorStatuses));
-      
-      logger.debug(`Updated connector statuses for worker ${this.workerId}:`, Object.keys(connectorStatuses));
+      await this.redis.hset(
+        `worker:${this.workerId}`,
+        'connector_statuses',
+        JSON.stringify(connectorStatuses)
+      );
+
+      logger.debug(
+        `Updated connector statuses for worker ${this.workerId}:`,
+        Object.keys(connectorStatuses)
+      );
     } catch (error) {
       logger.error(`Failed to update connector statuses for worker ${this.workerId}:`, error);
     }
@@ -337,7 +358,9 @@ export class RedisDirectWorkerClient {
   async requestJob(capabilities: WorkerCapabilities): Promise<Job | null> {
     try {
       // Phase 4: Use Redis Function for intelligent job matching
-      logger.info(`🔍 [DEBUG] Worker ${this.workerId} requesting job with services: ${capabilities.services?.join(', ') || 'none'}`);
+      logger.info(
+        `🔍 [DEBUG] Worker ${this.workerId} requesting job with services: ${capabilities.services?.join(', ') || 'none'}`
+      );
       logger.debug(`Worker ${this.workerId} requesting job with capabilities:`, capabilities);
 
       // Ensure worker_id is included in capabilities
@@ -392,7 +415,9 @@ export class RedisDirectWorkerClient {
     try {
       // Phase 1B: Simple Redis polling - get highest priority job
       const jobIds = await this.redis.zrevrange('jobs:pending', 0, 0);
-      logger.info(`🔍 [DEBUG] Worker ${this.workerId} simple polling found ${jobIds.length} pending jobs`);
+      logger.info(
+        `🔍 [DEBUG] Worker ${this.workerId} simple polling found ${jobIds.length} pending jobs`
+      );
 
       if (jobIds.length === 0) {
         logger.debug(`Worker ${this.workerId} - No jobs available`);
@@ -885,7 +910,7 @@ export class RedisDirectWorkerClient {
         urlObj.password = '***';
       }
       return urlObj.toString();
-    } catch (error) {
+    } catch (_error) {
       // If URL parsing fails, just mask anything that looks like a password
       return url.replace(/:([^@:]+)@/, ':***@');
     }

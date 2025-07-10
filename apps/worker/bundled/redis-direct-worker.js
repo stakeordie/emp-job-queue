@@ -40679,20 +40679,29 @@ var RedisDirectWorkerClient = class {
   }
   setupEventHandlers() {
     this.redis.on("connect", () => {
-      logger.info(`\u2705 Worker ${this.workerId} connected to Redis: ${this.maskRedisUrl(this.hubRedisUrl)}`);
+      logger.info(
+        `\u2705 Worker ${this.workerId} connected to Redis: ${this.maskRedisUrl(this.hubRedisUrl)}`
+      );
       this.isConnectedFlag = true;
     });
     this.redis.on("disconnect", () => {
-      logger.warn(`\u274C Worker ${this.workerId} disconnected from Redis: ${this.maskRedisUrl(this.hubRedisUrl)}`);
+      logger.warn(
+        `\u274C Worker ${this.workerId} disconnected from Redis: ${this.maskRedisUrl(this.hubRedisUrl)}`
+      );
       this.isConnectedFlag = false;
     });
     this.redis.on("error", (error) => {
-      logger.error(`\u274C Worker ${this.workerId} Redis connection error [${this.maskRedisUrl(this.hubRedisUrl)}]:`, error);
+      logger.error(
+        `\u274C Worker ${this.workerId} Redis connection error [${this.maskRedisUrl(this.hubRedisUrl)}]:`,
+        error
+      );
     });
   }
   async connect(capabilities) {
     try {
-      logger.info(`\u{1F504} Worker ${this.workerId} attempting connection to Redis: ${this.maskRedisUrl(this.hubRedisUrl)}`);
+      logger.info(
+        `\u{1F504} Worker ${this.workerId} attempting connection to Redis: ${this.maskRedisUrl(this.hubRedisUrl)}`
+      );
       await this.redis.ping();
       logger.info(`\u2705 Worker ${this.workerId} Redis connection successful`);
       await this.registerWorker(capabilities);
@@ -40700,7 +40709,10 @@ var RedisDirectWorkerClient = class {
       this.isConnectedFlag = true;
       logger.info(`\u{1F680} Worker ${this.workerId} connected and registered with Redis-direct mode`);
     } catch (error) {
-      logger.error(`\u274C Failed to connect worker ${this.workerId} to Redis [${this.maskRedisUrl(this.hubRedisUrl)}]:`, error);
+      logger.error(
+        `\u274C Failed to connect worker ${this.workerId} to Redis [${this.maskRedisUrl(this.hubRedisUrl)}]:`,
+        error
+      );
       throw error;
     }
   }
@@ -40776,7 +40788,24 @@ var RedisDirectWorkerClient = class {
       timestamp: Date.now()
     };
     await this.redis.publish("worker:events", JSON.stringify(workerConnectedEvent));
-    logger.info(`Worker ${this.workerId} registered capabilities in Redis and published connected event`);
+    logger.info(
+      `Worker ${this.workerId} registered capabilities in Redis and published connected event`
+    );
+  }
+  async updateConnectorStatuses(connectorStatuses) {
+    try {
+      await this.redis.hset(
+        `worker:${this.workerId}`,
+        "connector_statuses",
+        JSON.stringify(connectorStatuses)
+      );
+      logger.debug(
+        `Updated connector statuses for worker ${this.workerId}:`,
+        Object.keys(connectorStatuses)
+      );
+    } catch (error) {
+      logger.error(`Failed to update connector statuses for worker ${this.workerId}:`, error);
+    }
   }
   /**
    * Start heartbeat to keep worker alive
@@ -40902,7 +40931,9 @@ var RedisDirectWorkerClient = class {
    */
   async requestJob(capabilities) {
     try {
-      logger.info(`\u{1F50D} [DEBUG] Worker ${this.workerId} requesting job with services: ${capabilities.services?.join(", ") || "none"}`);
+      logger.info(
+        `\u{1F50D} [DEBUG] Worker ${this.workerId} requesting job with services: ${capabilities.services?.join(", ") || "none"}`
+      );
       logger.debug(`Worker ${this.workerId} requesting job with capabilities:`, capabilities);
       const capabilitiesWithId = {
         ...capabilities,
@@ -40942,7 +40973,9 @@ var RedisDirectWorkerClient = class {
   async requestJobSimple(_capabilities) {
     try {
       const jobIds = await this.redis.zrevrange("jobs:pending", 0, 0);
-      logger.info(`\u{1F50D} [DEBUG] Worker ${this.workerId} simple polling found ${jobIds.length} pending jobs`);
+      logger.info(
+        `\u{1F50D} [DEBUG] Worker ${this.workerId} simple polling found ${jobIds.length} pending jobs`
+      );
       if (jobIds.length === 0) {
         logger.debug(`Worker ${this.workerId} - No jobs available`);
         return null;
@@ -41346,7 +41379,7 @@ var RedisDirectWorkerClient = class {
         urlObj.password = "***";
       }
       return urlObj.toString();
-    } catch (error) {
+    } catch (_error) {
       return url2.replace(/:([^@:]+)@/, ":***@");
     }
   }
@@ -41367,6 +41400,7 @@ var RedisDirectBaseWorker = class {
   jobTimeouts = /* @__PURE__ */ new Map();
   running = false;
   jobTimeoutCheckInterval;
+  connectorStatusInterval;
   pollIntervalMs;
   maxConcurrentJobs;
   jobTimeoutMinutes;
@@ -41526,6 +41560,7 @@ var RedisDirectBaseWorker = class {
       this.running = true;
       this.startJobPolling();
       this.startJobTimeoutChecker();
+      this.startConnectorStatusUpdates();
       logger.info(`Redis-direct worker ${this.workerId} started successfully`);
     } catch (error) {
       logger.error(`Failed to start worker ${this.workerId}:`, error);
@@ -41548,6 +41583,10 @@ var RedisDirectBaseWorker = class {
     if (this.jobTimeoutCheckInterval) {
       clearInterval(this.jobTimeoutCheckInterval);
       this.jobTimeoutCheckInterval = void 0;
+    }
+    if (this.connectorStatusInterval) {
+      clearInterval(this.connectorStatusInterval);
+      this.connectorStatusInterval = void 0;
     }
     for (const [jobId, _job] of this.currentJobs) {
       await this.failJob(jobId, "Worker shutdown", false);
@@ -41698,6 +41737,19 @@ var RedisDirectBaseWorker = class {
   getCurrentJobs() {
     return Array.from(this.currentJobs.values());
   }
+  async getCurrentCapabilitiesWithConnectorStatus() {
+    const capabilities = this.getCapabilities();
+    try {
+      const connectorStatuses = await this.connectorManager.getConnectorStatuses();
+      return {
+        ...capabilities,
+        connector_statuses: connectorStatuses
+      };
+    } catch (error) {
+      logger.warn(`Failed to get connector statuses for worker ${this.workerId}:`, error);
+      return capabilities;
+    }
+  }
   getCapabilities() {
     return this.capabilities;
   }
@@ -41795,6 +41847,17 @@ var RedisDirectBaseWorker = class {
       summary.sample_keys = keys;
     }
     return summary;
+  }
+  startConnectorStatusUpdates() {
+    this.connectorStatusInterval = setInterval(async () => {
+      try {
+        const connectorStatuses = await this.connectorManager.getConnectorStatuses();
+        await this.redisClient.updateConnectorStatuses(connectorStatuses);
+      } catch (error) {
+        logger.warn(`Failed to update connector statuses for worker ${this.workerId}:`, error);
+      }
+    }, 3e4);
+    logger.debug(`Started connector status updates for worker ${this.workerId}`);
   }
 };
 
@@ -41915,16 +41978,35 @@ var ConnectorManager = class {
   getAllConnectors() {
     return Array.from(this.connectors.values());
   }
-  getConnectorHealth() {
+  async getConnectorHealth() {
     const health = {};
-    for (const [connectorId, _connector] of this.connectors) {
+    for (const [connectorId, connector] of this.connectors) {
       try {
-        health[connectorId] = true;
-      } catch (_error) {
+        health[connectorId] = await connector.checkHealth();
+      } catch (error) {
+        logger.warn(`Health check failed for connector ${connectorId}:`, error);
         health[connectorId] = false;
       }
     }
     return health;
+  }
+  async getConnectorStatuses() {
+    const statuses = {};
+    for (const [connectorId, connector] of this.connectors) {
+      try {
+        const isHealthy = await connector.checkHealth();
+        statuses[connectorId] = {
+          status: isHealthy ? "active" : "inactive"
+        };
+      } catch (error) {
+        logger.warn(`Health check failed for connector ${connectorId}:`, error);
+        statuses[connectorId] = {
+          status: "error",
+          error_message: error instanceof Error ? error.message : "Unknown error"
+        };
+      }
+    }
+    return statuses;
   }
   // ConnectorFactory implementation
   async createConnector(_config) {

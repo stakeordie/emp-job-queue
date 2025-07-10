@@ -43,7 +43,12 @@ export class RedisDirectBaseWorker {
   private jobTimeoutMinutes: number;
   private dashboard?: WorkerDashboard;
 
-  constructor(workerId: string, machineId: string, connectorManager: ConnectorManager, hubRedisUrl: string) {
+  constructor(
+    workerId: string,
+    machineId: string,
+    connectorManager: ConnectorManager,
+    hubRedisUrl: string
+  ) {
     this.workerId = workerId;
     this.machineId = machineId;
     this.connectorManager = connectorManager;
@@ -65,7 +70,13 @@ export class RedisDirectBaseWorker {
 
   private buildCapabilities(): WorkerCapabilities {
     // Services this worker can handle
-    const services = (process.env.WORKER_SERVICES || process.env.WORKER_CONNECTORS || 'comfyui,a1111').split(',').map(s => s.trim());
+    const services = (
+      process.env.WORKER_SERVICES ||
+      process.env.WORKER_CONNECTORS ||
+      'comfyui,a1111'
+    )
+      .split(',')
+      .map(s => s.trim());
 
     // Hardware specs - Each worker represents ONE GPU + supporting resources
     const hardware: HardwareSpecs = {
@@ -521,16 +532,18 @@ export class RedisDirectBaseWorker {
     return Array.from(this.currentJobs.values());
   }
 
-  async getCurrentCapabilitiesWithConnectorStatus(): Promise<WorkerCapabilities & { connector_statuses?: Record<string, any> }> {
+  async getCurrentCapabilitiesWithConnectorStatus(): Promise<
+    WorkerCapabilities & { connector_statuses?: Record<string, unknown> }
+  > {
     const capabilities = this.getCapabilities();
-    
+
     try {
       // Get real-time connector statuses
       const connectorStatuses = await this.connectorManager.getConnectorStatuses();
-      
+
       return {
         ...capabilities,
-        connector_statuses: connectorStatuses
+        connector_statuses: connectorStatuses,
       };
     } catch (error) {
       logger.warn(`Failed to get connector statuses for worker ${this.workerId}:`, error);

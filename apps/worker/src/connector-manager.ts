@@ -175,20 +175,25 @@ export class ConnectorManager implements ConnectorRegistry, ConnectorFactory {
     return health;
   }
 
-  async getConnectorStatuses(): Promise<Record<string, { status: 'active' | 'inactive' | 'error'; error_message?: string }>> {
-    const statuses: Record<string, { status: 'active' | 'inactive' | 'error'; error_message?: string }> = {};
+  async getConnectorStatuses(): Promise<
+    Record<string, { status: 'active' | 'inactive' | 'error'; error_message?: string }>
+  > {
+    const statuses: Record<
+      string,
+      { status: 'active' | 'inactive' | 'error'; error_message?: string }
+    > = {};
 
     for (const [connectorId, connector] of this.connectors) {
       try {
         const isHealthy = await connector.checkHealth();
         statuses[connectorId] = {
-          status: isHealthy ? 'active' : 'inactive'
+          status: isHealthy ? 'active' : 'inactive',
         };
       } catch (error) {
         logger.warn(`Health check failed for connector ${connectorId}:`, error);
         statuses[connectorId] = {
           status: 'error',
-          error_message: error instanceof Error ? error.message : 'Unknown error'
+          error_message: error instanceof Error ? error.message : 'Unknown error',
         };
       }
     }

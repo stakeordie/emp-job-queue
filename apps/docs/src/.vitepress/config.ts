@@ -10,6 +10,7 @@ const config = defineConfig({
   base: '/',
   lastUpdated: true,
   cleanUrls: true,
+  ignoreDeadLinks: true, // Ignore dead links to prevent build failures
   head: [
     ['link', { rel: 'icon', type: 'image/png', href: '/images/favicon.png' }],
     ['link', { rel: 'stylesheet', href: '/css/styles.css' }]

@@ -23,7 +23,6 @@ async function main() {
   // Create Redis-direct worker
   const worker = new RedisDirectBaseWorker(WORKER_ID, MACHINE_ID, connectorManager, HUB_REDIS_URL);
 
-
   // Graceful shutdown handling
   const shutdown = async (signal: string) => {
     logger.info(`Received ${signal}, shutting down worker...`);
@@ -32,16 +31,17 @@ async function main() {
       let shutdownReason = `${signal} signal received`;
       if (signal === 'SIGTERM') {
         // SIGTERM is typically sent by Docker during container shutdown
-        shutdownReason = process.env.NODE_ENV === 'production' 
-          ? 'Docker container shutdown' 
-          : 'Process termination requested';
+        shutdownReason =
+          process.env.NODE_ENV === 'production'
+            ? 'Docker container shutdown'
+            : 'Process termination requested';
       } else if (signal === 'SIGINT') {
         shutdownReason = 'Manual interruption (Ctrl+C)';
       }
 
       // Set environment variable so worker can access shutdown reason
       process.env.SHUTDOWN_REASON = shutdownReason;
-      
+
       await worker.stop();
       logger.info(`Worker shutdown complete: ${shutdownReason}`);
       process.exit(0);

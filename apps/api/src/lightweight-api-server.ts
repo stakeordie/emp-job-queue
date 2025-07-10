@@ -938,9 +938,9 @@ export class LightweightAPIServer {
               }
 
               const caps = capabilities as CapabilitiesData;
-              
+
               // Parse connector statuses if available
-              let connectorStatuses: Record<string, any> = {};
+              let connectorStatuses: Record<string, unknown> = {};
               try {
                 if (data.connector_statuses) {
                   connectorStatuses = JSON.parse(data.connector_statuses as string);
@@ -1111,7 +1111,7 @@ export class LightweightAPIServer {
   private async sendFullStateSnapshotSSE(monitorId: string, res: Response): Promise<void> {
     try {
       const startTime = Date.now();
-      
+
       // Get current workers using SCAN for heartbeat keys
       const workerKeys: string[] = [];
       let cursor = '0';
@@ -1196,9 +1196,9 @@ export class LightweightAPIServer {
               }
 
               const caps = capabilities as CapabilitiesData;
-              
+
               // Parse connector statuses if available
-              let connectorStatuses: Record<string, any> = {};
+              let connectorStatuses: Record<string, unknown> = {};
               try {
                 if (data.connector_statuses) {
                   connectorStatuses = JSON.parse(data.connector_statuses as string);
@@ -1356,10 +1356,10 @@ export class LightweightAPIServer {
         monitor_id: monitorId,
         timestamp: new Date().toISOString(),
       };
-      
+
       const eventJson = JSON.stringify(eventData);
       const maxChunkSize = 32768; // 32KB chunks
-      
+
       if (eventJson.length <= maxChunkSize) {
         // Small enough to send as single message
         res.write(`data: ${eventJson}\n\n`);
@@ -1367,39 +1367,45 @@ export class LightweightAPIServer {
         // Split into chunks
         const chunkId = Date.now().toString();
         const chunks = [];
-        
+
         for (let i = 0; i < eventJson.length; i += maxChunkSize) {
           chunks.push(eventJson.slice(i, i + maxChunkSize));
         }
-        
+
         // Send chunk header
-        res.write(`data: ${JSON.stringify({
-          type: 'full_state_snapshot_chunked_start',
-          chunk_id: chunkId,
-          total_chunks: chunks.length,
-          monitor_id: monitorId,
-          timestamp: new Date().toISOString(),
-        })}\n\n`);
-        
+        res.write(
+          `data: ${JSON.stringify({
+            type: 'full_state_snapshot_chunked_start',
+            chunk_id: chunkId,
+            total_chunks: chunks.length,
+            monitor_id: monitorId,
+            timestamp: new Date().toISOString(),
+          })}\n\n`
+        );
+
         // Send each chunk
         chunks.forEach((chunk, index) => {
-          res.write(`data: ${JSON.stringify({
-            type: 'full_state_snapshot_chunk',
-            chunk_id: chunkId,
-            chunk_index: index,
-            chunk_data: chunk,
-            monitor_id: monitorId,
-          })}\n\n`);
+          res.write(
+            `data: ${JSON.stringify({
+              type: 'full_state_snapshot_chunk',
+              chunk_id: chunkId,
+              chunk_index: index,
+              chunk_data: chunk,
+              monitor_id: monitorId,
+            })}\n\n`
+          );
         });
-        
+
         // Send completion marker
-        res.write(`data: ${JSON.stringify({
-          type: 'full_state_snapshot_chunked_complete',
-          chunk_id: chunkId,
-          total_chunks: chunks.length,
-          monitor_id: monitorId,
-          timestamp: new Date().toISOString(),
-        })}\n\n`);
+        res.write(
+          `data: ${JSON.stringify({
+            type: 'full_state_snapshot_chunked_complete',
+            chunk_id: chunkId,
+            total_chunks: chunks.length,
+            monitor_id: monitorId,
+            timestamp: new Date().toISOString(),
+          })}\n\n`
+        );
       }
 
       logger.info(
