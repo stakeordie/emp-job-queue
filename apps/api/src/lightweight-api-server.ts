@@ -335,6 +335,37 @@ export class LightweightAPIServer {
         });
       }
     });
+
+    // Machine deletion endpoint
+    this.app.delete('/api/machines/:machineId', async (req: Request, res: Response) => {
+      try {
+        const { machineId } = req.params;
+
+        if (!machineId) {
+          res.status(400).json({
+            success: false,
+            error: 'Machine ID is required',
+            timestamp: new Date().toISOString(),
+          });
+          return;
+        }
+
+        const result = await this.deleteMachine(machineId);
+
+        res.json({
+          success: true,
+          ...result,
+          timestamp: new Date().toISOString(),
+        });
+      } catch (error) {
+        logger.error(`Failed to delete machine ${req.params.machineId}:`, error);
+        res.status(500).json({
+          success: false,
+          error: error instanceof Error ? error.message : 'Unknown error',
+          timestamp: new Date().toISOString(),
+        });
+      }
+    });
   }
 
   private setupWebSocketHandling(): void {
@@ -1323,8 +1354,12 @@ export class LightweightAPIServer {
       | WorkerStatusChangedEvent
   ): void {
     const eventJson = JSON.stringify(event);
+    logger.info(
+      `📡 [DEBUG] Broadcasting ${event.type} to ${this.monitorConnections.size} WebSocket monitors + ${this.eventBroadcaster.getMonitorCount()} SSE monitors`
+    );
 
-    for (const [_monitorId, connection] of this.monitorConnections) {
+    // Broadcast to WebSocket monitors (legacy)
+    for (const [monitorId, connection] of this.monitorConnections) {
       if (connection.ws.readyState === WebSocket.OPEN) {
         // Check if monitor is subscribed to this event type
         const eventType = event.type as string;
@@ -1333,30 +1368,36 @@ export class LightweightAPIServer {
           connection.subscribedTopics.has(`jobs:${eventType.split('_')[1]}`) ||
           connection.subscribedTopics.size === 0; // Subscribe to all if no specific topics
 
+        logger.info(
+          `📡 [DEBUG] WebSocket Monitor ${monitorId}: subscribedTopics=${Array.from(connection.subscribedTopics)}, isSubscribed=${isSubscribed}`
+        );
+
         if (isSubscribed) {
           connection.ws.send(eventJson);
+          logger.info(`📡 [DEBUG] Sent ${event.type} to WebSocket monitor ${monitorId}`);
+        } else {
+          logger.warn(`📡 [DEBUG] WebSocket Monitor ${monitorId} not subscribed to ${event.type}`);
         }
       }
     }
+
+    // Also broadcast to SSE monitors via EventBroadcaster
+    this.eventBroadcaster.broadcast(event);
+    logger.info(`📡 [DEBUG] Also sent ${event.type} to SSE monitors via EventBroadcaster`);
   }
 
   private extractMachineIdFromWorkerId(workerId: string): string {
-    // For current worker naming: "redis-direct-worker-basic-machine-44"
-    // We want to extract the machine part and find the actual machine_id
-    // This is a temporary fallback until workers store machine_id directly
-
-    // First, try to match the basic-machine pattern
-    const basicMachineMatch = workerId.match(/redis-direct-worker-(basic-machine)-\d+/);
-    if (basicMachineMatch) {
-      // For basic-machine workers, we know the machine_id is "basic-machine-001"
-      // This is a temporary hardcoded mapping
-      return 'basic-machine-001';
+    // For new worker naming: "basic-machine-local-worker-0"
+    // Extract machine ID from worker ID: "basic-machine-local-worker-0" -> "basic-machine-local"
+    const workerMatch = workerId.match(/^(.+)-worker-\d+$/);
+    if (workerMatch) {
+      return workerMatch[1];
     }
 
-    // Fallback to generic pattern extraction
-    const genericMatch = workerId.match(/.*-worker-(.+)-\d+$/);
-    if (genericMatch) {
-      return genericMatch[1];
+    // Fallback for old pattern: "redis-direct-worker-basic-machine-44" -> "basic-machine"
+    const oldPatternMatch = workerId.match(/redis-direct-worker-(.+)-\d+$/);
+    if (oldPatternMatch) {
+      return oldPatternMatch[1];
     }
 
     return 'unknown';
@@ -1649,12 +1690,14 @@ export class LightweightAPIServer {
             `🎉 Received job completion: job ${completionData.job_id} completed by worker ${completionData.worker_id}`
           );
 
-          // Broadcast the completion event to both clients and monitors
-          await this.broadcastCompletion(completionData.job_id, completionData);
-
-          logger.info(
-            `📢 Broadcasted job completion event to clients and monitors: ${completionData.job_id}`
-          );
+          // Add a small delay before broadcasting completion to ensure any pending progress updates are processed first
+          // This prevents the race condition where completion events arrive before final progress updates
+          setTimeout(async () => {
+            await this.broadcastCompletion(completionData.job_id, completionData);
+            logger.info(
+              `📢 Broadcasted job completion event to clients and monitors: ${completionData.job_id}`
+            );
+          }, 50); // 50ms delay to allow pending progress updates to be processed
         } catch (error) {
           logger.error('Error processing job completion message:', error);
         }
@@ -1682,10 +1725,7 @@ export class LightweightAPIServer {
 
           // Handle worker connected/disconnected events
           if (eventData.type === 'worker_connected') {
-            this.eventBroadcaster.broadcastWorkerConnected(
-              eventData.worker_id,
-              eventData.worker_data
-            );
+            this.eventBroadcaster.broadcastWorkerConnected(eventData.worker_id, eventData);
             logger.info(`📢 Broadcasted worker_connected event for ${eventData.worker_id}`);
           } else if (eventData.type === 'worker_disconnected') {
             this.eventBroadcaster.broadcastWorkerDisconnected(
@@ -2100,6 +2140,7 @@ export class LightweightAPIServer {
       timestamp: Date.now(),
     };
     this.broadcastToMonitors(jobSubmittedEvent);
+    logger.info(`📢 [DEBUG] Broadcasted job_submitted event for ${jobId}`);
 
     logger.info(`Job ${jobId} submitted via lightweight API (${job.service_required})`);
     return jobId;
@@ -2487,6 +2528,146 @@ export class LightweightAPIServer {
       return cleanedCount;
     } catch (error) {
       logger.error('Failed to cleanup orphaned jobs:', error);
+      throw error;
+    }
+  }
+
+  private async deleteMachine(machineId: string): Promise<{
+    machine_id: string;
+    workers_found: string[];
+    workers_cleaned: number;
+    message: string;
+  }> {
+    try {
+      logger.info(`🗑️  Deleting machine: ${machineId}`);
+
+      // First, check if machine exists
+      const machineData = await this.redis.hgetall(`machine:${machineId}:info`);
+      if (!machineData || !machineData.machine_id) {
+        throw new Error(`Machine ${machineId} not found`);
+      }
+
+      // Find all workers for this machine
+      const allWorkerKeys: string[] = [];
+      let cursor = '0';
+      do {
+        const [newCursor, keys] = await this.redis.scan(
+          cursor,
+          'MATCH',
+          'worker:*:heartbeat',
+          'COUNT',
+          100
+        );
+        cursor = newCursor;
+        allWorkerKeys.push(...keys);
+      } while (cursor !== '0');
+
+      const allWorkerIds = allWorkerKeys.map(key => key.split(':')[1]);
+      const machineWorkers: string[] = [];
+
+      // Check each worker to see if it belongs to this machine
+      for (const workerId of allWorkerIds) {
+        const workerData = await this.redis.hgetall(`worker:${workerId}`);
+        if (workerData && workerData.machine_id === machineId) {
+          machineWorkers.push(workerId);
+        } else {
+          // For workers that don't have machine_id set, use pattern matching
+          const extractedMachineId = this.extractMachineIdFromWorkerId(workerId);
+          if (extractedMachineId === machineId) {
+            machineWorkers.push(workerId);
+          }
+        }
+      }
+
+      logger.info(
+        `Found ${machineWorkers.length} workers for machine ${machineId}: ${machineWorkers.join(', ')}`
+      );
+
+      // Clean up each worker
+      let workersCleanedCount = 0;
+      for (const workerId of machineWorkers) {
+        try {
+          await this.cleanupWorker(workerId);
+          workersCleanedCount++;
+          logger.info(`✅ Cleaned up worker: ${workerId}`);
+        } catch (error) {
+          logger.error(`❌ Failed to clean up worker ${workerId}:`, error);
+        }
+      }
+
+      // Delete machine record from Redis
+      await this.redis.del(`machine:${machineId}:info`);
+
+      // Broadcast machine deletion event
+      this.eventBroadcaster.broadcastMachineShutdown(machineId, 'Machine deleted by user request');
+
+      const result = {
+        machine_id: machineId,
+        workers_found: machineWorkers,
+        workers_cleaned: workersCleanedCount,
+        message: `Machine ${machineId} deleted successfully. Cleaned up ${workersCleanedCount} workers.`,
+      };
+
+      logger.info(`🎉 Machine deletion completed:`, result);
+      return result;
+    } catch (error) {
+      logger.error(`Failed to delete machine ${machineId}:`, error);
+      throw error;
+    }
+  }
+
+  private async cleanupWorker(workerId: string): Promise<void> {
+    try {
+      logger.info(`🧹 Cleaning up worker: ${workerId}`);
+
+      // Get current worker data
+      const workerData = await this.redis.hgetall(`worker:${workerId}`);
+      if (!workerData || Object.keys(workerData).length === 0) {
+        logger.warn(`Worker ${workerId} not found - may already be deleted`);
+        return;
+      }
+
+      // If worker has active jobs, reset them to pending
+      if (workerData.current_job_id) {
+        const jobId = workerData.current_job_id;
+        logger.info(`🔄 Resetting job ${jobId} from worker ${workerId} to pending`);
+
+        const jobData = await this.redis.hgetall(`job:${jobId}`);
+        if (jobData.id) {
+          await this.redis.hset(`job:${jobId}`, {
+            ...jobData,
+            status: 'pending',
+            worker_id: '',
+            assigned_at: '',
+            started_at: '',
+          });
+
+          // Re-add to pending queue with original priority
+          const priority = parseInt(jobData.priority || '50');
+          const timestamp = parseInt(jobData.created_at) || Date.now();
+          const score = priority * Math.pow(10, 15) - timestamp / 1000;
+          await this.redis.zadd('jobs:pending', score, jobId);
+        }
+      }
+
+      // Clean up worker-related Redis keys
+      const keysToDelete = [
+        `worker:${workerId}`,
+        `worker:${workerId}:heartbeat`,
+        `worker:${workerId}:jobs`,
+        `worker:${workerId}:status`,
+      ];
+
+      for (const key of keysToDelete) {
+        await this.redis.del(key);
+      }
+
+      // Broadcast worker disconnection
+      this.eventBroadcaster.broadcastWorkerDisconnected(workerId, workerId);
+
+      logger.info(`✅ Worker ${workerId} cleaned up successfully`);
+    } catch (error) {
+      logger.error(`Failed to cleanup worker ${workerId}:`, error);
       throw error;
     }
   }
