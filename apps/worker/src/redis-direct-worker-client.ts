@@ -172,6 +172,17 @@ export class RedisDirectWorkerClient {
     logger.info(`Worker ${this.workerId} registered capabilities in Redis and published connected event`);
   }
 
+  async updateConnectorStatuses(connectorStatuses: Record<string, any>): Promise<void> {
+    try {
+      // Update the connector statuses in the worker's Redis data
+      await this.redis.hset(`worker:${this.workerId}`, 'connector_statuses', JSON.stringify(connectorStatuses));
+      
+      logger.debug(`Updated connector statuses for worker ${this.workerId}:`, Object.keys(connectorStatuses));
+    } catch (error) {
+      logger.error(`Failed to update connector statuses for worker ${this.workerId}:`, error);
+    }
+  }
+
   /**
    * Start heartbeat to keep worker alive
    */

@@ -37,6 +37,7 @@ export class RedisDirectBaseWorker {
   private jobTimeouts = new Map<string, NodeJS.Timeout>();
   private running = false;
   private jobTimeoutCheckInterval?: NodeJS.Timeout;
+  private connectorStatusInterval?: NodeJS.Timeout;
   private pollIntervalMs: number;
   private maxConcurrentJobs: number;
   private jobTimeoutMinutes: number;
@@ -271,6 +272,9 @@ export class RedisDirectBaseWorker {
       // Start job timeout checker
       this.startJobTimeoutChecker();
 
+      // Start periodic connector status updates
+      this.startConnectorStatusUpdates();
+
       // TODO: Start dashboard if enabled (requires interface compatibility)
       // if (process.env.WORKER_DASHBOARD_ENABLED === 'true') {
       //   const port = parseInt(process.env.WORKER_DASHBOARD_PORT || '3003');
@@ -309,6 +313,12 @@ export class RedisDirectBaseWorker {
     if (this.jobTimeoutCheckInterval) {
       clearInterval(this.jobTimeoutCheckInterval);
       this.jobTimeoutCheckInterval = undefined;
+    }
+
+    // Stop connector status updates
+    if (this.connectorStatusInterval) {
+      clearInterval(this.connectorStatusInterval);
+      this.connectorStatusInterval = undefined;
     }
 
     // Cancel any ongoing jobs
@@ -511,6 +521,23 @@ export class RedisDirectBaseWorker {
     return Array.from(this.currentJobs.values());
   }
 
+  async getCurrentCapabilitiesWithConnectorStatus(): Promise<WorkerCapabilities & { connector_statuses?: Record<string, any> }> {
+    const capabilities = this.getCapabilities();
+    
+    try {
+      // Get real-time connector statuses
+      const connectorStatuses = await this.connectorManager.getConnectorStatuses();
+      
+      return {
+        ...capabilities,
+        connector_statuses: connectorStatuses
+      };
+    } catch (error) {
+      logger.warn(`Failed to get connector statuses for worker ${this.workerId}:`, error);
+      return capabilities;
+    }
+  }
+
   getCapabilities(): WorkerCapabilities {
     return this.capabilities;
   }
@@ -644,5 +671,19 @@ export class RedisDirectBaseWorker {
     }
 
     return summary;
+  }
+
+  private startConnectorStatusUpdates(): void {
+    // Update connector statuses every 30 seconds
+    this.connectorStatusInterval = setInterval(async () => {
+      try {
+        const connectorStatuses = await this.connectorManager.getConnectorStatuses();
+        await this.redisClient.updateConnectorStatuses(connectorStatuses);
+      } catch (error) {
+        logger.warn(`Failed to update connector statuses for worker ${this.workerId}:`, error);
+      }
+    }, 30000); // 30 seconds
+
+    logger.debug(`Started connector status updates for worker ${this.workerId}`);
   }
 }

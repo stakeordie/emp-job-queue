@@ -32,25 +32,35 @@ export const SimpleWorkerCard = memo(function SimpleWorkerCard({ worker }: Simpl
           }
         `}
       >
-        <div className="flex items-center justify-between">
-          <span className="text-xs font-medium truncate">
-            {worker.worker_id}
-          </span>
-          <div className="flex items-center gap-1">
+        <div className="flex flex-col gap-2">
+          <div className="flex items-center justify-between">
+            <span className="text-xs font-medium truncate">
+              {worker.worker_id}
+            </span>
+            {isProcessing && (
+              <Badge variant="secondary" className="text-xs">
+                Processing
+              </Badge>
+            )}
+          </div>
+          <div className="flex flex-wrap gap-1">
             {worker.capabilities?.services?.map((service: string) => {
               const connectorStatus = worker.connector_statuses?.[service];
               const isHealthy = connectorStatus?.status === 'active';
               const hasError = connectorStatus?.status === 'error';
               
               return (
-                <div
+                <Badge
                   key={service}
-                  className={`
-                    w-2 h-2 rounded-full
-                    ${isHealthy ? 'bg-green-500' : hasError ? 'bg-red-500' : 'bg-gray-400'}
-                  `}
-                  title={`${service}: ${connectorStatus?.status || 'unknown'}`}
-                />
+                  variant={isHealthy ? "default" : hasError ? "destructive" : "outline"}
+                  className="text-xs px-2 py-0.5 h-5"
+                  title={connectorStatus?.error_message || `Status: ${connectorStatus?.status || 'unknown'}`}
+                >
+                  <div className={`w-1.5 h-1.5 rounded-full mr-1 ${
+                    isHealthy ? 'bg-green-500' : hasError ? 'bg-red-500' : 'bg-gray-400'
+                  }`} />
+                  {service}
+                </Badge>
               );
             })}
           </div>

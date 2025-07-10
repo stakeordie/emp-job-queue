@@ -160,20 +160,40 @@ export class ConnectorManager implements ConnectorRegistry, ConnectorFactory {
     return Array.from(this.connectors.values());
   }
 
-  getConnectorHealth(): Record<string, boolean> {
+  async getConnectorHealth(): Promise<Record<string, boolean>> {
     const health: Record<string, boolean> = {};
 
-    for (const [connectorId, _connector] of this.connectors) {
+    for (const [connectorId, connector] of this.connectors) {
       try {
-        // Note: checkHealth is async but we're doing sync here for simplicity
-        // In a real implementation, this should be cached or handled differently
-        health[connectorId] = true; // Assume healthy for now
-      } catch (_error) {
+        health[connectorId] = await connector.checkHealth();
+      } catch (error) {
+        logger.warn(`Health check failed for connector ${connectorId}:`, error);
         health[connectorId] = false;
       }
     }
 
     return health;
+  }
+
+  async getConnectorStatuses(): Promise<Record<string, { status: 'active' | 'inactive' | 'error'; error_message?: string }>> {
+    const statuses: Record<string, { status: 'active' | 'inactive' | 'error'; error_message?: string }> = {};
+
+    for (const [connectorId, connector] of this.connectors) {
+      try {
+        const isHealthy = await connector.checkHealth();
+        statuses[connectorId] = {
+          status: isHealthy ? 'active' : 'inactive'
+        };
+      } catch (error) {
+        logger.warn(`Health check failed for connector ${connectorId}:`, error);
+        statuses[connectorId] = {
+          status: 'error',
+          error_message: error instanceof Error ? error.message : 'Unknown error'
+        };
+      }
+    }
+
+    return statuses;
   }
 
   // ConnectorFactory implementation

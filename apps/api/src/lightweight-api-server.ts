@@ -938,6 +938,17 @@ export class LightweightAPIServer {
               }
 
               const caps = capabilities as CapabilitiesData;
+              
+              // Parse connector statuses if available
+              let connectorStatuses: Record<string, any> = {};
+              try {
+                if (data.connector_statuses) {
+                  connectorStatuses = JSON.parse(data.connector_statuses as string);
+                }
+              } catch (error) {
+                logger.debug(`Failed to parse connector statuses for worker ${workerId}:`, error);
+              }
+
               const worker = {
                 id: workerId,
                 machine_id: data.machine_id || this.extractMachineIdFromWorkerId(workerId), // Add machine_id field
@@ -953,6 +964,7 @@ export class LightweightAPIServer {
                   customer_access: caps?.customer_access?.isolation || 'none',
                   max_concurrent_jobs: caps?.performance?.concurrent_jobs || 1,
                 },
+                connector_statuses: connectorStatuses,
                 current_job_id: data.current_job_id,
                 connected_at: data.connected_at || new Date().toISOString(),
                 last_activity: data.last_heartbeat || new Date().toISOString(),
@@ -1184,6 +1196,17 @@ export class LightweightAPIServer {
               }
 
               const caps = capabilities as CapabilitiesData;
+              
+              // Parse connector statuses if available
+              let connectorStatuses: Record<string, any> = {};
+              try {
+                if (data.connector_statuses) {
+                  connectorStatuses = JSON.parse(data.connector_statuses as string);
+                }
+              } catch (error) {
+                logger.debug(`Failed to parse connector statuses for worker ${workerId}:`, error);
+              }
+
               const worker = {
                 id: workerId,
                 machine_id: data.machine_id || this.extractMachineIdFromWorkerId(workerId), // Add machine_id field
@@ -1199,6 +1222,7 @@ export class LightweightAPIServer {
                   customer_access: caps?.customer_access?.isolation || 'none',
                   max_concurrent_jobs: caps?.performance?.concurrent_jobs || 1,
                 },
+                connector_statuses: connectorStatuses,
                 current_job_id: data.current_job_id,
                 connected_at: data.connected_at || new Date().toISOString(),
                 last_activity: data.last_heartbeat || new Date().toISOString(),

@@ -191,7 +191,7 @@ export interface ConnectorRegistry {
   getConnector(connectorId: string): ConnectorInterface | undefined;
   getConnectorsByServiceType(serviceType: string): ConnectorInterface[];
   getAllConnectors(): ConnectorInterface[];
-  getConnectorHealth(): Record<string, boolean>;
+  getConnectorHealth(): Promise<Record<string, boolean>>;
 }
 
 // Connector factory

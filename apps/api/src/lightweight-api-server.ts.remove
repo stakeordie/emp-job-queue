@@ -1099,20 +1099,6 @@ export class LightweightAPIServer {
   private async sendFullStateSnapshotSSE(monitorId: string, res: Response): Promise<void> {
     try {
       const startTime = Date.now();
-      
-      // TEMPORARY: Skip snapshot to test if it's causing the EventSource hang
-      console.log('[SSE] Skipping full state snapshot to test EventSource connection');
-      res.write(`data: ${JSON.stringify({
-        type: 'connection_test',
-        message: 'EventSource connected successfully - snapshot disabled for testing',
-        monitor_id: monitorId,
-        timestamp: new Date().toISOString(),
-      })}\n\n`);
-      
-      logger.info(`Sent test message to SSE monitor ${monitorId} (time: ${Date.now() - startTime}ms)`);
-      return;
-      
-      // Original snapshot code (commented out for testing)
 
       // Get current workers using SCAN for heartbeat keys
       const workerKeys: string[] = [];
@@ -1393,7 +1379,7 @@ export class LightweightAPIServer {
       }
 
       logger.info(
-        `Sent full state snapshot to SSE monitor ${monitorId}: ${workers.length} workers, ${allJobs.length} jobs (size: ${eventJson.length} bytes, chunked: ${eventJson.length > maxChunkSize}, total time: ${Date.now() - startTime}ms)`
+        `Sent full state snapshot to SSE monitor ${monitorId}: ${workers.length} workers, ${allJobs.length} jobs (total time: ${Date.now() - startTime}ms)`
       );
     } catch (error) {
       logger.error(`Failed to send full state snapshot to SSE monitor ${monitorId}:`, error);
