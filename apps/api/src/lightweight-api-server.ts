@@ -1099,7 +1099,7 @@ export class LightweightAPIServer {
   private async sendFullStateSnapshotSSE(monitorId: string, res: Response): Promise<void> {
     try {
       const startTime = Date.now();
-
+      
       // Get current workers using SCAN for heartbeat keys
       const workerKeys: string[] = [];
       let cursor = '0';
@@ -1325,18 +1325,61 @@ export class LightweightAPIServer {
         },
       };
 
-      // Send via SSE
-      res.write(
-        `data: ${JSON.stringify({
-          type: 'full_state_snapshot',
-          data: snapshot,
+      // Send via SSE with chunking for large payloads
+      const eventData = {
+        type: 'full_state_snapshot',
+        data: snapshot,
+        monitor_id: monitorId,
+        timestamp: new Date().toISOString(),
+      };
+      
+      const eventJson = JSON.stringify(eventData);
+      const maxChunkSize = 32768; // 32KB chunks
+      
+      if (eventJson.length <= maxChunkSize) {
+        // Small enough to send as single message
+        res.write(`data: ${eventJson}\n\n`);
+      } else {
+        // Split into chunks
+        const chunkId = Date.now().toString();
+        const chunks = [];
+        
+        for (let i = 0; i < eventJson.length; i += maxChunkSize) {
+          chunks.push(eventJson.slice(i, i + maxChunkSize));
+        }
+        
+        // Send chunk header
+        res.write(`data: ${JSON.stringify({
+          type: 'full_state_snapshot_chunked_start',
+          chunk_id: chunkId,
+          total_chunks: chunks.length,
           monitor_id: monitorId,
           timestamp: new Date().toISOString(),
-        })}\n\n`
-      );
+        })}\n\n`);
+        
+        // Send each chunk
+        chunks.forEach((chunk, index) => {
+          res.write(`data: ${JSON.stringify({
+            type: 'full_state_snapshot_chunk',
+            chunk_id: chunkId,
+            chunk_index: index,
+            chunk_data: chunk,
+            monitor_id: monitorId,
+          })}\n\n`);
+        });
+        
+        // Send completion marker
+        res.write(`data: ${JSON.stringify({
+          type: 'full_state_snapshot_chunked_complete',
+          chunk_id: chunkId,
+          total_chunks: chunks.length,
+          monitor_id: monitorId,
+          timestamp: new Date().toISOString(),
+        })}\n\n`);
+      }
 
       logger.info(
-        `Sent full state snapshot to SSE monitor ${monitorId}: ${workers.length} workers, ${allJobs.length} jobs (total time: ${Date.now() - startTime}ms)`
+        `Sent full state snapshot to SSE monitor ${monitorId}: ${workers.length} workers, ${allJobs.length} jobs (size: ${eventJson.length} bytes, chunked: ${eventJson.length > maxChunkSize}, total time: ${Date.now() - startTime}ms)`
       );
     } catch (error) {
       logger.error(`Failed to send full state snapshot to SSE monitor ${monitorId}:`, error);
