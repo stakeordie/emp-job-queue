@@ -32,7 +32,10 @@ export class RedisDirectWorkerClient {
 
     this.redis = new Redis(hubRedisUrl, {
       enableReadyCheck: true,
-      maxRetriesPerRequest: 3,
+      maxRetriesPerRequest: 10,
+      lazyConnect: false,
+      connectTimeout: 10000,
+      commandTimeout: 5000,
     });
 
     this.setupEventHandlers();
@@ -40,23 +43,26 @@ export class RedisDirectWorkerClient {
 
   private setupEventHandlers(): void {
     this.redis.on('connect', () => {
-      logger.info(`Worker ${this.workerId} connected to Redis`);
+      logger.info(`✅ Worker ${this.workerId} connected to Redis: ${this.maskRedisUrl(this.hubRedisUrl)}`);
       this.isConnectedFlag = true;
     });
 
     this.redis.on('disconnect', () => {
-      logger.warn(`Worker ${this.workerId} disconnected from Redis`);
+      logger.warn(`❌ Worker ${this.workerId} disconnected from Redis: ${this.maskRedisUrl(this.hubRedisUrl)}`);
       this.isConnectedFlag = false;
     });
 
     this.redis.on('error', error => {
-      logger.error(`Worker ${this.workerId} Redis error:`, error);
+      logger.error(`❌ Worker ${this.workerId} Redis connection error [${this.maskRedisUrl(this.hubRedisUrl)}]:`, error);
     });
   }
 
   async connect(capabilities: WorkerCapabilities): Promise<void> {
     try {
+      logger.info(`🔄 Worker ${this.workerId} attempting connection to Redis: ${this.maskRedisUrl(this.hubRedisUrl)}`);
+      
       await this.redis.ping();
+      logger.info(`✅ Worker ${this.workerId} Redis connection successful`);
 
       // Register worker capabilities in Redis
       await this.registerWorker(capabilities);
@@ -65,9 +71,9 @@ export class RedisDirectWorkerClient {
       this.startHeartbeat();
 
       this.isConnectedFlag = true;
-      logger.info(`Worker ${this.workerId} connected and registered with Redis-direct mode`);
+      logger.info(`🚀 Worker ${this.workerId} connected and registered with Redis-direct mode`);
     } catch (error) {
-      logger.error(`Failed to connect worker ${this.workerId}:`, error);
+      logger.error(`❌ Failed to connect worker ${this.workerId} to Redis [${this.maskRedisUrl(this.hubRedisUrl)}]:`, error);
       throw error;
     }
   }
@@ -320,6 +326,7 @@ export class RedisDirectWorkerClient {
   async requestJob(capabilities: WorkerCapabilities): Promise<Job | null> {
     try {
       // Phase 4: Use Redis Function for intelligent job matching
+      logger.info(`🔍 [DEBUG] Worker ${this.workerId} requesting job with services: ${capabilities.services?.join(', ') || 'none'}`);
       logger.debug(`Worker ${this.workerId} requesting job with capabilities:`, capabilities);
 
       // Ensure worker_id is included in capabilities
@@ -374,6 +381,7 @@ export class RedisDirectWorkerClient {
     try {
       // Phase 1B: Simple Redis polling - get highest priority job
       const jobIds = await this.redis.zrevrange('jobs:pending', 0, 0);
+      logger.info(`🔍 [DEBUG] Worker ${this.workerId} simple polling found ${jobIds.length} pending jobs`);
 
       if (jobIds.length === 0) {
         logger.debug(`Worker ${this.workerId} - No jobs available`);
@@ -853,6 +861,22 @@ export class RedisDirectWorkerClient {
     } catch (error) {
       logger.warn(`Failed to parse JSON: ${trimmed}`, error);
       return defaultValue;
+    }
+  }
+
+  /**
+   * Mask Redis URL for logging (hide password)
+   */
+  private maskRedisUrl(url: string): string {
+    try {
+      const urlObj = new URL(url);
+      if (urlObj.password) {
+        urlObj.password = '***';
+      }
+      return urlObj.toString();
+    } catch (error) {
+      // If URL parsing fails, just mask anything that looks like a password
+      return url.replace(/:([^@:]+)@/, ':***@');
     }
   }
 }

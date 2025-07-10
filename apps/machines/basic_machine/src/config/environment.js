@@ -11,7 +11,7 @@ dotenv.config();
 const schema = Joi.object({
   // Machine configuration
   machine: Joi.object({
-    id: Joi.string().default('basic-machine-001'),
+    id: Joi.string().default(`${process.env.CONTAINER_NAME || 'basic-machine'}`),
     testMode: Joi.boolean().default(false),
     gpu: Joi.object({
       count: Joi.number().integer().min(0).default(1),
@@ -32,7 +32,9 @@ const schema = Joi.object({
     connectors: Joi.array().items(Joi.string()).default(['simulation', 'comfyui', 'a1111']),
     downloadUrl: Joi.string().uri().default(
       'https://github.com/stakeordie/emp-job-queue/releases/latest/download/emp-job-queue-worker.tar.gz'
-    )
+    ),
+    useLocalPath: Joi.string().allow('').optional(), // Path to local worker build for development
+    skipDownload: Joi.boolean().default(false) // Skip download entirely if local path is set
   }),
   
   // Service configuration
@@ -93,7 +95,7 @@ const schema = Joi.object({
 function buildConfig() {
   const config = {
     machine: {
-      id: process.env.MACHINE_ID,
+      id: process.env.MACHINE_ID || process.env.CONTAINER_NAME,
       testMode: process.env.TEST_MODE === 'true',
       gpu: {
         count: parseInt(process.env.NUM_GPUS || '1'),
@@ -108,7 +110,9 @@ function buildConfig() {
     worker: {
       idPrefix: process.env.WORKER_ID_PREFIX,
       connectors: process.env.WORKER_CONNECTORS?.split(',').map(s => s.trim()),
-      downloadUrl: process.env.WORKER_DOWNLOAD_URL
+      downloadUrl: process.env.WORKER_DOWNLOAD_URL,
+      useLocalPath: process.env.WORKER_LOCAL_PATH,
+      skipDownload: !!process.env.WORKER_LOCAL_PATH
     },
     services: {
       nginx: {

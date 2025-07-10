@@ -43,6 +43,7 @@ interface MonitorStore {
   submitJob: (jobData: Record<string, unknown>) => void;
   syncJobState: (jobId?: string) => void;
   cancelJob: (jobId: string) => void;
+  deleteMachine: (machineId: string) => void;
   
   // Event-driven state management
   handleFullState: (state: unknown) => void;
@@ -835,6 +836,14 @@ export const useMonitorStore = create<MonitorStore>()(
             estimated_completion?: string;
             timestamp: number;
           };
+          
+          // Defensive check: ignore progress updates for already completed jobs
+          const currentJob = get().jobs.find(job => job.id === jobEvent.job_id);
+          if (currentJob?.status === 'completed' || currentJob?.status === 'failed') {
+            console.log(`[Monitor] Ignoring progress update for already completed job: ${jobEvent.job_id}`);
+            break;
+          }
+          
           // Use throttled update for progress events
           throttledJobProgressUpdate(jobEvent.job_id, {
             status: (jobEvent.status as JobStatus) || 'processing',
@@ -857,6 +866,7 @@ export const useMonitorStore = create<MonitorStore>()(
             completed_at: number;
             timestamp: number;
           };
+          
           updateJob(jobEvent.job_id, {
             status: 'completed' as JobStatus,
             worker_id: jobEvent.worker_id,
@@ -921,12 +931,12 @@ export const useMonitorStore = create<MonitorStore>()(
       
       websocketService.onDisconnect(() => {
         setConnection({ isConnected: false });
-        // Clear workers and jobs when disconnected
-        set({ workers: [], jobs: [] });
+        // Clear workers, jobs, and machines when disconnected to get fresh data on reconnect
+        set({ workers: [], jobs: [], machines: [] });
         addLog({
           level: 'warn',
           category: 'websocket',
-          message: 'Disconnected from hub',
+          message: 'Disconnected from hub - cleared stale data',
           source: 'websocket',
         });
       });
@@ -951,6 +961,15 @@ export const useMonitorStore = create<MonitorStore>()(
         // Most message handling is now done through handleEvent
       });
       
+      // Clear any stale data before connecting to get fresh state
+      set({ workers: [], jobs: [], machines: [] });
+      addLog({
+        level: 'info',
+        category: 'websocket',
+        message: 'Cleared stale data before connecting',
+        source: 'store',
+      });
+      
       websocketService.connect();
     },
     
@@ -958,16 +977,55 @@ export const useMonitorStore = create<MonitorStore>()(
       websocketService.disconnect();
       const { setConnection, addLog } = get();
       setConnection({ isConnected: false });
-      // Clear workers and jobs when manually disconnecting
-      set({ workers: [], jobs: [] });
+      // Clear workers, jobs, and machines when manually disconnecting
+      set({ workers: [], jobs: [], machines: [] });
       addLog({
         level: 'info',
         category: 'websocket',
-        message: 'Manually disconnected from hub',
+        message: 'Manually disconnected from hub - cleared stale data',
         source: 'store',
       });
     },
     
+    deleteMachine: async (machineId: string) => {
+      const { addLog } = get();
+      try {
+        // Get the current WebSocket URL from the websocket service
+        const websocketUrl = websocketService.getUrl();
+        
+        const response = await fetch(`/api/machines/${machineId}`, {
+          method: 'DELETE',
+          headers: {
+            'x-websocket-url': websocketUrl || 'http://localhost:3001',
+          },
+        });
+        
+        if (!response.ok) {
+          const errorData = await response.json();
+          throw new Error(errorData.error || `HTTP ${response.status}: ${response.statusText}`);
+        }
+        
+        // Remove from local state
+        set(state => ({
+          machines: state.machines.filter(m => m.machine_id !== machineId),
+        }));
+        
+        addLog({
+          level: 'info',
+          category: 'machine',
+          message: `Machine ${machineId} deleted successfully`,
+          source: 'store',
+        });
+      } catch (error) {
+        addLog({
+          level: 'error',
+          category: 'machine',
+          message: `Failed to delete machine ${machineId}: ${error}`,
+          source: 'store',
+        });
+      }
+    },
+
     submitJob: (jobData) => {
       const { addLog } = get();
       
@@ -1039,7 +1097,11 @@ const throttledJobProgressUpdate = throttle(
   (jobId: string, updates: Partial<Job>) => {
     useMonitorStore.getState().updateJob(jobId, updates);
   },
-  100 // Update at most every 100ms
+  100, // Update at most every 100ms
+  { 
+    leading: true,  // Execute immediately on first call
+    trailing: true  // Execute after the wait period
+  }
 );
 
 // Batch worker status updates (unused but kept for future use)

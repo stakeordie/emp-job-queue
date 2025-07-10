@@ -7,8 +7,8 @@ services:
         CACHE_BUST: ${CACHE_BUST:-1}
     image: basic-machine:latest
     platform: linux/amd64
-    container_name: basic-machine
-    hostname: basic-machine
+    container_name: ${CONTAINER_NAME:-basic-machine}
+    hostname: ${CONTAINER_NAME:-basic-machine}
     restart: unless-stopped
     
     # Graceful shutdown configuration
@@ -25,12 +25,26 @@ services:
     #           capabilities: [gpu]
     
     # Environment
-    env_file:
-      - .env.local
+    # env_file is specified via --env-file flag in commands
     environment:
       - NODE_ENV=production
       - NVIDIA_VISIBLE_DEVICES=all
       - NVIDIA_DRIVER_CAPABILITIES=compute,utility
+      - TEST_MODE=${TEST_MODE}
+      - NUM_GPUS=${NUM_GPUS}
+      - GPU_MEMORY_GB=${GPU_MEMORY_GB}
+      - GPU_MODEL=${GPU_MODEL}
+      - CONTAINER_NAME=${CONTAINER_NAME}
+      - HUB_REDIS_URL=${HUB_REDIS_URL}
+      - WORKER_CONNECTORS=${WORKER_CONNECTORS}
+      - WORKER_WEBSOCKET_AUTH_TOKEN=${WORKER_WEBSOCKET_AUTH_TOKEN}
+      - WORKER_ID_PREFIX=${WORKER_ID_PREFIX}
+      - ENABLE_NGINX=${ENABLE_NGINX}
+      - ENABLE_COMFYUI=${ENABLE_COMFYUI}
+      - ENABLE_A1111=${ENABLE_A1111}
+      - ENABLE_REDIS_WORKERS=${ENABLE_REDIS_WORKERS}
+      - ENABLE_OLLAMA=${ENABLE_OLLAMA}
+      - LOG_LEVEL=${LOG_LEVEL}
     
     # Ports are configured in docker-compose.override.yml
     # Generated from EXPOSED_PORTS in .env.local
@@ -45,6 +59,10 @@ services:
       # Development hot reload (comment out for production)
       - ./src:/service-manager/src:ro
       - ./config:/service-manager/config:ro
+      
+      # Mount local worker build for development (when WORKER_LOCAL_PATH is set)
+      # Uncomment and update path when using local worker
+      # - ../../worker/dist:/workspace/worker-dist:ro
     
     # Logging
     logging:

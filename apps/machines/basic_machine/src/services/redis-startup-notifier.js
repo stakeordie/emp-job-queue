@@ -8,7 +8,7 @@ export class RedisStartupNotifier {
   constructor(config) {
     this.config = config;
     this.redis = null;
-    this.workerId = `${config.worker.idPrefix}-${config.machine.id}`;
+    this.workerId = `${config.machine.id}-startup-notifier`;
     this.isConnected = false;
     this.startupSteps = [];
     this.startupStartTime = null;

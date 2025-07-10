@@ -14,7 +14,27 @@ Basic Machine provides the same AI service infrastructure as `base_machine` but 
 
 ## Quick Start
 
-### Development
+### Development Mode (with local worker)
+
+```bash
+# Run with local worker build (no GitHub download)
+./run-dev.sh
+```
+
+This automatically builds the worker locally and mounts it into the container. See [DEV_MODE.md](./DEV_MODE.md) for details.
+
+### Production Mode
+
+```bash
+# Copy and configure environment
+cp .env.example .env.local.prod
+nano .env.local.prod
+
+# Run with worker downloaded from GitHub releases
+./run.sh
+```
+
+### Local Node.js (without Docker)
 
 ```bash
 # Install dependencies
@@ -28,16 +48,6 @@ nano .env.local
 
 # Start services
 npm start
-```
-
-### Docker
-
-```bash
-# Build image
-docker build -t basic-machine .
-
-# Run with docker-compose
-docker-compose up
 ```
 
 ## Architecture

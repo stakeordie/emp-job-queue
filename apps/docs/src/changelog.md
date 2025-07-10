@@ -1,5 +1,24 @@
 # EmProps Job Queue Development Changelog
 
+## 2025-01-10
+
+### 🐛 Fixed Job Completion Race Condition
+- **Issue**: Completed jobs sometimes remained stuck in active jobs section in monitor UI
+- **Root Cause**: API server immediately broadcast both `update_job_progress` and `complete_job` events without coordination, allowing completion events to arrive before final progress updates
+- **Solution**: Added 50ms delay before broadcasting completion events at API server level (`apps/api/src/lightweight-api-server.ts`)
+- **Defensive Redundancy**: Added monitor-side check to ignore progress updates for already completed jobs
+- **Throttle Enhancement**: Enhanced throttle utility with `flush()` method for proper event coordination
+- **Impact**: Ensures proper event ordering - completion events always arrive after final progress updates
+- **Result**: Completed jobs now properly move from active to finished section without getting stuck
+
+### 🔄 Improved Monitor Auto-Reconnection  
+- **Feature**: Monitor now automatically reconnects to WebSocket/EventSource connections on page refresh
+- **User Control**: Respects user choice - if manually disconnected, auto-reconnect is disabled until user reconnects
+- **Persistence**: Uses localStorage to remember user's connection preference across page refreshes
+- **Implementation**: Enhanced EventSource error handling with continued reconnection attempts
+- **Files**: `apps/monitor/src/app/page.tsx`, `apps/monitor/src/services/websocket.ts`
+- **Result**: Seamless monitor experience - refreshes don't require manual reconnection unless user chose to disconnect
+
 ## 2025-01-09
 
 ### 🐛 Fixed TypeScript Enum Compilation Issue

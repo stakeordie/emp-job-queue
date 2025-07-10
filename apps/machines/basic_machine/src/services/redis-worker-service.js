@@ -11,7 +11,7 @@ export default class RedisWorkerService extends BaseService {
     super('redis-worker', options);
     this.config = config;
     this.gpu = options.gpu || 0;
-    this.workerId = `${config.worker.idPrefix}-gpu${this.gpu}`;
+    this.workerId = `${config.machine.id}-worker-${this.gpu}`;
     this.workerDir = `/tmp/worker_gpu${this.gpu}`;
     this.workerProcess = null;
     // Use GitHub releases URL for worker package
@@ -98,12 +98,45 @@ export default class RedisWorkerService extends BaseService {
   async ensureWorkerPackage() {
     const workerScript = path.join(this.workerDir, 'redis-direct-worker.js');
     
+    // Check if we should use a local worker path (development mode)
+    if (this.config.worker.useLocalPath) {
+      await this.useLocalWorker();
+      return;
+    }
+    
     if (await fs.pathExists(workerScript)) {
       this.logger.info('Worker package already exists');
       return;
     }
 
     await this.downloadWorkerPackage();
+  }
+
+  async useLocalWorker() {
+    const localPath = this.config.worker.useLocalPath;
+    this.logger.info(`Using local worker from: ${localPath}`);
+    
+    try {
+      // Check if local path exists
+      if (!await fs.pathExists(localPath)) {
+        throw new Error(`Local worker path does not exist: ${localPath}`);
+      }
+      
+      // Copy local worker files to worker directory
+      this.logger.info(`Copying local worker files to: ${this.workerDir}`);
+      await fs.copy(localPath, this.workerDir, {
+        overwrite: true,
+        dereference: true
+      });
+      
+      // For bundled worker, just copy the package.json that's already there
+      // The bundled worker includes all dependencies
+      
+      this.logger.info('Local worker files copied successfully with package.json');
+    } catch (error) {
+      this.logger.error('Failed to use local worker:', error);
+      throw error;
+    }
   }
 
   async downloadWorkerPackage() {
@@ -160,6 +193,19 @@ export default class RedisWorkerService extends BaseService {
         strip: 1,
         preservePaths: false
       });
+      
+      // Ensure package.json exists with type: module
+      const packageJsonPath = path.join(this.workerDir, 'package.json');
+      if (!await fs.pathExists(packageJsonPath)) {
+        const packageJson = {
+          name: 'emp-worker',
+          type: 'module',
+          version: '1.0.0',
+          description: 'EMP Worker - Production'
+        };
+        await fs.writeJson(packageJsonPath, packageJson, { spaces: 2 });
+        this.logger.info('Created package.json for ES module support');
+      }
 
       // Clean up temp file
       await fs.remove(tempFile);
@@ -199,7 +245,7 @@ export default class RedisWorkerService extends BaseService {
       .join('\n');
 
     await fs.writeFile(envPath, envString);
-    this.logger.debug('Created environment file', { workerId: this.workerId, gpu: this.gpu });
+    this.logger.info('Created environment file', envContent);
   }
 
   async startWorkerProcess() {
@@ -212,12 +258,35 @@ export default class RedisWorkerService extends BaseService {
       throw new Error(`Worker script not found: ${workerScript}`);
     }
 
+    // Read the .env file we created and parse environment variables
+    const envPath = path.join(this.workerDir, '.env');
+    let envVars = {};
+    
+    if (await fs.pathExists(envPath)) {
+      const envContent = await fs.readFile(envPath, 'utf8');
+      envVars = envContent.split('\n')
+        .filter(line => line.trim() && !line.startsWith('#'))
+        .reduce((acc, line) => {
+          const [key, ...valueParts] = line.split('=');
+          if (key && valueParts.length > 0) {
+            acc[key.trim()] = valueParts.join('=').trim();
+          }
+          return acc;
+        }, {});
+      
+      this.logger.debug('Loaded environment variables from .env file', { 
+        workerId: envVars.WORKER_ID,
+        machineId: envVars.MACHINE_ID 
+      });
+    }
+
     // Start worker process using execa
     try {
       this.workerProcess = execa('node', [workerScript], {
         cwd: this.workerDir,
         env: {
           ...process.env,
+          ...envVars, // Load environment variables from .env file
           CUDA_VISIBLE_DEVICES: this.gpu.toString()
         },
         stdio: ['ignore', 'pipe', 'pipe'],

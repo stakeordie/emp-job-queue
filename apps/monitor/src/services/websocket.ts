@@ -34,6 +34,10 @@ export class EventStreamService {
     this.baseUrl = url;
   }
 
+  getUrl(): string {
+    return this.baseUrl;
+  }
+
   connect() {
     if ((this.eventSource?.readyState === EventSource.OPEN && this.clientWs?.readyState === WebSocket.OPEN) || this.isConnecting) {
       return;
@@ -124,13 +128,29 @@ export class EventStreamService {
     eventSource.onerror = (error) => {
       console.error('[EventStream] Monitor error:', error);
       this.isConnecting = false;
+      
+      // EventSource automatically closes on error
+      if (this.eventSource?.readyState === EventSource.CLOSED) {
+        this.eventSource = null;
+        console.log('[EventStream] EventSource closed');
+      }
+      
       this.onErrorCallbacks.forEach(callback => callback(error));
       
       // Auto-reconnect only if not manually disconnected
-      if (!this.manuallyDisconnected && this.reconnectAttempts < this.maxReconnectAttempts) {
-        this.reconnectAttempts++;
-        console.log(`[EventStream] Reconnecting... (attempt ${this.reconnectAttempts}/${this.maxReconnectAttempts})`);
-        setTimeout(() => this.connect(), this.reconnectInterval);
+      if (!this.manuallyDisconnected) {
+        if (this.reconnectAttempts < this.maxReconnectAttempts) {
+          this.reconnectAttempts++;
+          console.log(`[EventStream] Reconnecting... (attempt ${this.reconnectAttempts}/${this.maxReconnectAttempts})`);
+          setTimeout(() => this.connect(), this.reconnectInterval);
+        } else {
+          console.log('[EventStream] Max reconnection attempts reached, will continue trying with longer interval');
+          // Continue trying with a longer interval after max attempts
+          setTimeout(() => {
+            this.reconnectAttempts = 0; // Reset counter for next round
+            this.connect();
+          }, this.reconnectInterval * 5); // 15 seconds
+        }
       }
     };
   }
@@ -171,10 +191,19 @@ export class EventStreamService {
         this.onDisconnectCallbacks.forEach(callback => callback());
         
         // Auto-reconnect only if not manually disconnected
-        if (!this.manuallyDisconnected && this.reconnectAttempts < this.maxReconnectAttempts) {
-          this.reconnectAttempts++;
-          console.log(`[WebSocket] Reconnecting... (attempt ${this.reconnectAttempts}/${this.maxReconnectAttempts})`);
-          setTimeout(() => this.connect(), this.reconnectInterval);
+        if (!this.manuallyDisconnected) {
+          if (this.reconnectAttempts < this.maxReconnectAttempts) {
+            this.reconnectAttempts++;
+            console.log(`[WebSocket] Reconnecting... (attempt ${this.reconnectAttempts}/${this.maxReconnectAttempts})`);
+            setTimeout(() => this.connect(), this.reconnectInterval);
+          } else {
+            console.log('[WebSocket] Max reconnection attempts reached, will continue trying with longer interval');
+            // Continue trying with a longer interval after max attempts
+            setTimeout(() => {
+              this.reconnectAttempts = 0; // Reset counter for next round
+              this.connect();
+            }, this.reconnectInterval * 5); // 15 seconds
+          }
         }
       }
     };

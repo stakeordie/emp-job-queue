@@ -11,14 +11,15 @@ import {
 import { SimpleWorkerCard } from "@/components/SimpleWorkerCard";
 import { Machine, Worker } from "@/types";
 import { useState, memo } from "react";
-import { Monitor, Server, Activity, AlertTriangle } from "lucide-react";
+import { Monitor, Server, Activity, AlertTriangle, X } from "lucide-react";
 
 interface MachineCardProps {
   machine: Machine;
   workers: Worker[];
+  onDelete?: (machineId: string) => void;
 }
 
-export const MachineCard = memo(function MachineCard({ machine, workers }: MachineCardProps) {
+export const MachineCard = memo(function MachineCard({ machine, workers, onDelete }: MachineCardProps) {
   const [showLogs, setShowLogs] = useState(false);
 
   const getStatusColor = (status: Machine['status']) => {
@@ -64,9 +65,25 @@ export const MachineCard = memo(function MachineCard({ machine, workers }: Machi
               {getStatusIcon(machine.status)}
               {machine.machine_id}
             </CardTitle>
-            <Badge variant={getStatusColor(machine.status)}>
-              {machine.status}
-            </Badge>
+            <div className="flex items-center gap-2">
+              <Badge variant={getStatusColor(machine.status)}>
+                {machine.status}
+              </Badge>
+              {machine.status === 'offline' && onDelete && (
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onDelete(machine.machine_id);
+                  }}
+                  className="h-6 w-6 p-0 hover:bg-red-100 hover:text-red-600"
+                  title="Delete offline machine"
+                >
+                  <X className="h-4 w-4" />
+                </Button>
+              )}
+            </div>
           </div>
           {machine.host_info && (
             <div className="text-sm text-muted-foreground">

@@ -290,9 +290,8 @@ export class EventBroadcaster {
   }
 
   broadcastWorkerConnected(workerId: string, workerData: Record<string, unknown>): void {
-    // Extract machine_id from worker capabilities or use default
-    const capabilities = (workerData.capabilities as Record<string, unknown>) || {};
-    const machineId = (capabilities.machine_id as string) || 'unknown-machine';
+    // Extract machine_id from worker data (same level as worker_id)
+    const machineId = (workerData.machine_id as string) || 'unknown-machine';
 
     const event: WorkerConnectedEvent = {
       type: 'worker_connected',

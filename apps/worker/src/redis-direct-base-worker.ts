@@ -27,6 +27,7 @@ import os from 'os';
 
 export class RedisDirectBaseWorker {
   private workerId: string;
+  private machineId: string;
   private connectorManager: ConnectorManager;
   private redisClient: RedisDirectWorkerClient;
   private capabilities: WorkerCapabilities;
@@ -41,8 +42,9 @@ export class RedisDirectBaseWorker {
   private jobTimeoutMinutes: number;
   private dashboard?: WorkerDashboard;
 
-  constructor(workerId: string, connectorManager: ConnectorManager, hubRedisUrl: string) {
+  constructor(workerId: string, machineId: string, connectorManager: ConnectorManager, hubRedisUrl: string) {
     this.workerId = workerId;
+    this.machineId = machineId;
     this.connectorManager = connectorManager;
     this.redisClient = new RedisDirectWorkerClient(hubRedisUrl, workerId);
 
@@ -62,7 +64,7 @@ export class RedisDirectBaseWorker {
 
   private buildCapabilities(): WorkerCapabilities {
     // Services this worker can handle
-    const services = (process.env.WORKER_SERVICES || 'comfyui,a1111').split(',').map(s => s.trim());
+    const services = (process.env.WORKER_SERVICES || process.env.WORKER_CONNECTORS || 'comfyui,a1111').split(',').map(s => s.trim());
 
     // Hardware specs - Each worker represents ONE GPU + supporting resources
     const hardware: HardwareSpecs = {
@@ -141,7 +143,7 @@ export class RedisDirectBaseWorker {
     // Build base capabilities
     const capabilities: WorkerCapabilities = {
       worker_id: this.workerId,
-      machine_id: process.env.MACHINE_ID || process.env.WORKER_MACHINE_ID || os.hostname(),
+      machine_id: this.machineId,
       services,
       hardware,
       models: {}, // Will be populated by connectors
@@ -293,7 +295,7 @@ export class RedisDirectBaseWorker {
 
     // Send machine shutdown event to Redis before stopping
     try {
-      const machineId = this.capabilities.machine_id || this.extractMachineIdFromWorkerId();
+      const machineId = this.capabilities.machine_id;
       const shutdownReason = process.env.SHUTDOWN_REASON || 'Worker shutdown';
       await this.sendMachineShutdownEvent(machineId, shutdownReason);
     } catch (error) {
@@ -328,22 +330,6 @@ export class RedisDirectBaseWorker {
 
     this.status = WorkerStatus.OFFLINE;
     logger.info(`Redis-direct worker ${this.workerId} stopped`);
-  }
-
-  private extractMachineIdFromWorkerId(): string {
-    // Extract machine ID from worker ID: "redis-direct-worker-basic-machine-44" -> "basic-machine-001"
-    const basicMachineMatch = this.workerId.match(/redis-direct-worker-(basic-machine)-\d+/);
-    if (basicMachineMatch) {
-      return 'basic-machine-001';
-    }
-    
-    // Fallback to generic pattern extraction
-    const genericMatch = this.workerId.match(/.*-worker-(.+)-\d+$/);
-    if (genericMatch) {
-      return genericMatch[1];
-    }
-    
-    return 'unknown-machine';
   }
 
   private async sendMachineShutdownEvent(machineId: string, reason: string): Promise<void> {

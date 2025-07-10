@@ -71,7 +71,7 @@ if (process.env.NODE_ENV === 'production') {
   // Daily rotate file for all logs
   transports.push(
     new DailyRotateFile({
-      filename: path.join(logDir, 'basic-machine-%DATE%.log'),
+      filename: path.join(logDir, `${process.env.CONTAINER_NAME || 'basic-machine'}-%DATE%.log`),
       datePattern: 'YYYY-MM-DD',
       zippedArchive: true,
       maxSize: process.env.LOG_MAX_SIZE || '20m',

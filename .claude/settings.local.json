@@ -151,7 +151,10 @@
       "Bash(pkill:*)",
       "Bash(open:*)",
       "Bash(npx playwright test:*)",
-      "Bash(npx playwright:*)"
+      "Bash(npx playwright:*)",
+      "Bash(docker stop:*)",
+      "Bash(docker rm:*)",
+      "Bash(./scripts/bundle-worker.sh:*)"
     ],
     "deny": []
   }

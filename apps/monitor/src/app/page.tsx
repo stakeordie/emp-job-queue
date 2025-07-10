@@ -28,7 +28,7 @@ import { JobSubmissionForm } from "@/components/job-submission-form"
 import { MachineCard } from "@/components/MachineCard"
 import { JobDetailsModal } from "@/components/JobDetailsModal"
 import { useMonitorStore } from "@/store"
-import { useState, useMemo } from "react"
+import { useState, useMemo, useEffect } from "react"
 import type { Job } from "@/types/job"
 
 // Environment presets
@@ -51,12 +51,13 @@ const CONNECTION_PRESETS = {
 };
 
 export default function Home() {
-  const { connection, jobs, workers, machines, connect, disconnect, syncJobState, cancelJob } = useMonitorStore();
+  const { connection, jobs, workers, machines, connect, disconnect, syncJobState, cancelJob, deleteMachine } = useMonitorStore();
   const [websocketUrl, setWebsocketUrl] = useState(CONNECTION_PRESETS.local.websocket);
   const [authToken, setAuthToken] = useState(CONNECTION_PRESETS.local.auth);
   const [selectedPreset, setSelectedPreset] = useState('local');
   const [cancelJobId, setCancelJobId] = useState<string | null>(null);
   const [selectedJob, setSelectedJob] = useState<Job | null>(null);
+  const [deleteMachineId, setDeleteMachineId] = useState<string | null>(null);
 
   const handlePresetChange = (preset: string) => {
     setSelectedPreset(preset);
@@ -70,7 +71,27 @@ export default function Home() {
   const handleConnect = () => {
     const urlWithAuth = authToken ? `${websocketUrl}?token=${encodeURIComponent(authToken)}` : websocketUrl;
     connect(urlWithAuth);
+    // Remember that user wants to be connected
+    localStorage.setItem('monitor-auto-connect', 'true');
   };
+
+  const handleDisconnect = () => {
+    disconnect();
+    // Remember that user manually disconnected
+    localStorage.setItem('monitor-auto-connect', 'false');
+  };
+
+  // Auto-connect on page load only if user hasn't manually disconnected
+  useEffect(() => {
+    const shouldAutoConnect = localStorage.getItem('monitor-auto-connect');
+    // Default to auto-connect if no preference is stored (first time user)
+    // But respect the user's choice if they've manually disconnected
+    if (shouldAutoConnect !== 'false' && !connection.isConnected && websocketUrl && authToken) {
+      const urlWithAuth = authToken ? `${websocketUrl}?token=${encodeURIComponent(authToken)}` : websocketUrl;
+      connect(urlWithAuth);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []); // Run only on mount, ignore dependency warnings since we want this to run once
 
   const handleSyncJob = (jobId: string) => {
     syncJobState(jobId);
@@ -84,6 +105,17 @@ export default function Home() {
     if (cancelJobId) {
       cancelJob(cancelJobId);
       setCancelJobId(null);
+    }
+  };
+
+  const handleDeleteMachine = (machineId: string) => {
+    setDeleteMachineId(machineId);
+  };
+
+  const confirmDeleteMachine = () => {
+    if (deleteMachineId) {
+      deleteMachine(deleteMachineId);
+      setDeleteMachineId(null);
     }
   };
 
@@ -189,7 +221,7 @@ export default function Home() {
               {connection.isConnected ? "Connected" : "Disconnected"}
             </Badge>
             <Button
-              onClick={connection.isConnected ? disconnect : handleConnect}
+              onClick={connection.isConnected ? handleDisconnect : handleConnect}
               variant={connection.isConnected ? "destructive" : "default"}
               size="sm"
               className={`transition-all duration-200 transform ${
@@ -243,6 +275,7 @@ export default function Home() {
                   key={machine.machine_id} 
                   machine={machine} 
                   workers={machineWorkers} 
+                  onDelete={handleDeleteMachine}
                 />
               );
             })}
@@ -475,6 +508,28 @@ export default function Home() {
               className="bg-red-600 hover:bg-red-700"
             >
               Cancel Job
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      {/* Delete Machine Confirmation Dialog */}
+      <AlertDialog open={!!deleteMachineId} onOpenChange={() => setDeleteMachineId(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete Machine</AlertDialogTitle>
+            <AlertDialogDescription>
+              Are you sure you want to delete machine &quot;{deleteMachineId}&quot;? This action cannot be undone.
+              The machine and all its associated workers will be permanently removed from the system.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Keep Machine</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={confirmDeleteMachine}
+              className="bg-red-600 hover:bg-red-700"
+            >
+              Delete Machine
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

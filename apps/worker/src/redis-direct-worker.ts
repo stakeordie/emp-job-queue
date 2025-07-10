@@ -13,14 +13,16 @@ const HUB_REDIS_URL = process.env.HUB_REDIS_URL || 'redis://localhost:6379';
 const MACHINE_ID = process.env.MACHINE_ID || os.hostname();
 
 async function main() {
-  logger.info(`Starting Redis-direct worker ${WORKER_ID}...`);
+  logger.info(`Starting Redis-direct worker ${WORKER_ID} on machine ${MACHINE_ID}  ^^^^^^`);
+
   logger.info(`Connecting to Redis at: ${HUB_REDIS_URL}`);
 
   // Initialize connector manager
   const connectorManager = new ConnectorManager();
 
   // Create Redis-direct worker
-  const worker = new RedisDirectBaseWorker(WORKER_ID, connectorManager, HUB_REDIS_URL);
+  const worker = new RedisDirectBaseWorker(WORKER_ID, MACHINE_ID, connectorManager, HUB_REDIS_URL);
+
 
   // Graceful shutdown handling
   const shutdown = async (signal: string) => {
