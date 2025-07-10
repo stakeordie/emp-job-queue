@@ -16,6 +16,10 @@ export interface ConnectorInterface {
   getAvailableModels(): Promise<string[]>;
   getServiceInfo(): Promise<ServiceInfo>;
 
+  // Status reporting
+  startStatusReporting?(): void;
+  stopStatusReporting?(): void;
+
   // Job processing
   canProcessJob(jobData: JobData): Promise<boolean>;
   processJob(jobData: JobData, progressCallback: ProgressCallback): Promise<JobResult>;

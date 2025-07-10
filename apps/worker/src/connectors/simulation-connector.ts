@@ -10,6 +10,7 @@ import {
   ServiceInfo,
   logger,
 } from '@emp/core';
+import Redis from 'ioredis';
 
 export class SimulationConnector implements ConnectorInterface {
   connector_id: string;
@@ -20,6 +21,9 @@ export class SimulationConnector implements ConnectorInterface {
   private steps: number;
   private failureRate: number;
   private progressIntervalMs: number;
+  private redis?: Redis;
+  private statusReportingInterval?: NodeJS.Timeout;
+  private workerId?: string;
 
   constructor(connectorId: string) {
     this.connector_id = connectorId;
@@ -53,10 +57,31 @@ export class SimulationConnector implements ConnectorInterface {
     logger.info(
       `Simulation settings: ${this.processingTimeMs}ms processing, ${this.steps} steps, ${this.failureRate} failure rate`
     );
+
+    // Initialize Redis connection for status reporting
+    const redisUrl = process.env.HUB_REDIS_URL || 'redis://localhost:6379';
+    this.workerId = process.env.WORKER_ID || 'unknown-worker';
+
+    try {
+      this.redis = new Redis(redisUrl);
+      this.startStatusReporting();
+      logger.info(
+        `Simulation connector ${this.connector_id} connected to Redis and started status reporting`
+      );
+    } catch (error) {
+      logger.warn(`Failed to connect to Redis for status reporting: ${error}`);
+    }
   }
 
   async cleanup(): Promise<void> {
     logger.info(`Cleaning up Simulation connector ${this.connector_id}`);
+
+    this.stopStatusReporting();
+
+    if (this.redis) {
+      await this.redis.quit();
+      this.redis = undefined;
+    }
   }
 
   async checkHealth(): Promise<boolean> {
@@ -185,5 +210,67 @@ export class SimulationConnector implements ConnectorInterface {
 
   private async sleep(ms: number): Promise<void> {
     return new Promise(resolve => setTimeout(resolve, ms));
+  }
+
+  // Status reporting methods
+  startStatusReporting(): void {
+    if (this.statusReportingInterval || !this.redis) {
+      return;
+    }
+
+    // Report status every 15 seconds
+    this.statusReportingInterval = setInterval(async () => {
+      await this.reportStatus();
+    }, 15000);
+
+    // Send initial status immediately
+    this.reportStatus();
+  }
+
+  stopStatusReporting(): void {
+    if (this.statusReportingInterval) {
+      clearInterval(this.statusReportingInterval);
+      this.statusReportingInterval = undefined;
+    }
+  }
+
+  private async reportStatus(): Promise<void> {
+    if (!this.redis || !this.workerId) {
+      return;
+    }
+
+    try {
+      const isHealthy = await this.checkHealth();
+      const serviceInfo = await this.getServiceInfo();
+
+      const statusReport = {
+        connector_id: this.connector_id,
+        service_type: this.service_type,
+        worker_id: this.workerId,
+        status: isHealthy ? 'active' : 'error',
+        service_info: serviceInfo,
+        timestamp: new Date().toISOString(),
+        last_health_check: Date.now(),
+      };
+
+      // Publish to Redis channel for real-time updates
+      await this.redis.publish(
+        `connector_status:${this.service_type}`,
+        JSON.stringify(statusReport)
+      );
+
+      // Also store in Redis hash for persistence
+      await this.redis.hset(`connector_status:${this.workerId}:${this.service_type}`, {
+        status: statusReport.status,
+        last_update: statusReport.timestamp,
+        service_info: JSON.stringify(statusReport.service_info),
+      });
+
+      logger.debug(
+        `Simulation connector ${this.connector_id} reported status: ${statusReport.status}`
+      );
+    } catch (error) {
+      logger.error(`Failed to report status for connector ${this.connector_id}:`, error);
+    }
   }
 }

@@ -107,6 +107,15 @@ export interface WorkerStatusChangedEvent extends BaseMonitorEvent {
   current_job_id?: string;
 }
 
+export interface ConnectorStatusChangedEvent extends BaseMonitorEvent {
+  type: 'connector_status_changed';
+  connector_id: string;
+  service_type: string;
+  worker_id: string;
+  status: 'active' | 'inactive' | 'error';
+  service_info?: Record<string, unknown>;
+}
+
 // Job Events
 export interface JobSubmittedEvent extends BaseMonitorEvent {
   type: 'job_submitted';
@@ -246,6 +255,7 @@ export type MonitorEvent =
   | WorkerConnectedEvent
   | WorkerDisconnectedEvent
   | WorkerStatusChangedEvent
+  | ConnectorStatusChangedEvent
   | JobSubmittedEvent
   | JobAssignedEvent
   | JobStatusChangedEvent

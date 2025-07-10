@@ -301,6 +301,7 @@ export class EventStreamService {
   private isMonitorEvent(data: unknown): boolean {
     const eventTypes = [
       'worker_connected', 'worker_disconnected', 'worker_status_changed',
+      'connector_status_changed',
       'job_submitted', 'job_assigned', 'job_status_changed', 'update_job_progress',
       'complete_job', 'job_failed', 'full_state_snapshot', 'heartbeat_ack',
       'resync_response', 'system_stats',

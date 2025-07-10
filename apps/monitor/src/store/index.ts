@@ -97,11 +97,30 @@ export const useMonitorStore = create<MonitorStore>()(
       }),
     
     updateJob: (jobId, updates) =>
-      set((state) => ({
-        jobs: state.jobs.map((job) =>
-          job.id === jobId ? { ...job, ...updates } : job
-        ),
-      })),
+      set((state) => {
+        // Find the job to update
+        const jobIndex = state.jobs.findIndex(job => job.id === jobId);
+        if (jobIndex === -1) {
+          // Job not found, might have been removed or not yet added
+          // This is now handled more gracefully in event handlers
+          return state;
+        }
+        
+        const currentJob = state.jobs[jobIndex];
+        
+        // Prevent status downgrades (completed/failed jobs cannot go back to active states)
+        if ((currentJob.status === 'completed' || currentJob.status === 'failed') && 
+            updates.status && !['completed', 'failed'].includes(updates.status)) {
+          console.log(`[Store] Preventing status downgrade for job ${jobId}: ${currentJob.status} -> ${updates.status}`);
+          return state;
+        }
+        
+        // Create new jobs array with atomic update
+        const newJobs = [...state.jobs];
+        newJobs[jobIndex] = { ...currentJob, ...updates };
+        
+        return { jobs: newJobs };
+      }),
     
     removeJob: (jobId) =>
       set((state) => ({
@@ -639,6 +658,49 @@ export const useMonitorStore = create<MonitorStore>()(
           break;
         }
         
+        case 'connector_status_changed': {
+          const connectorEvent = event as {
+            type: 'connector_status_changed';
+            connector_id: string;
+            service_type: string;
+            worker_id: string;
+            status: 'active' | 'inactive' | 'error';
+            service_info?: Record<string, unknown>;
+            timestamp: number;
+          };
+          
+          // Update the worker's connector statuses
+          const { workers } = get();
+          const workerIndex = workers.findIndex(w => w.worker_id === connectorEvent.worker_id);
+          
+          if (workerIndex !== -1) {
+            const updatedWorkers = [...workers];
+            const worker = { ...updatedWorkers[workerIndex] };
+            
+            // Update connector statuses
+            if (!worker.connector_statuses) {
+              worker.connector_statuses = {};
+            }
+            worker.connector_statuses[connectorEvent.service_type] = {
+              connector_id: connectorEvent.connector_id,
+              status: connectorEvent.status,
+              service_info: connectorEvent.service_info
+            };
+            
+            updatedWorkers[workerIndex] = worker;
+            
+            set({ workers: updatedWorkers });
+            
+            addLog({
+              level: 'debug',
+              category: 'connector',
+              message: `Connector ${connectorEvent.service_type} for worker ${connectorEvent.worker_id}: ${connectorEvent.status}`,
+              source: 'websocket',
+            });
+          }
+          break;
+        }
+        
         case 'worker_disconnected': {
           const workerEvent = event as {
             type: 'worker_disconnected';
@@ -837,9 +899,41 @@ export const useMonitorStore = create<MonitorStore>()(
             timestamp: number;
           };
           
-          // Defensive check: ignore progress updates for already completed jobs
+          // Defensive check: ignore progress updates for already completed jobs or non-existent jobs
           const currentJob = get().jobs.find(job => job.id === jobEvent.job_id);
-          if (currentJob?.status === 'completed' || currentJob?.status === 'failed') {
+          if (!currentJob) {
+            // Job doesn't exist - might be out of order messages or already removed
+            // Create a minimal job entry for progress tracking
+            addJob({
+              id: jobEvent.job_id,
+              job_type: 'unknown',
+              status: (jobEvent.status as JobStatus) || 'processing',
+              priority: 50,
+              payload: {},
+              customer_id: undefined,
+              requirements: undefined,
+              workflow_id: undefined,
+              workflow_priority: undefined,
+              workflow_datetime: undefined,
+              step_number: undefined,
+              created_at: Date.now(),
+              assigned_at: Date.now(),
+              started_at: Date.now(),
+              completed_at: undefined,
+              worker_id: jobEvent.worker_id,
+              progress: jobEvent.progress,
+              result: undefined,
+              error: undefined,
+              failure_count: 0,
+              progress_message: jobEvent.message,
+              current_step: jobEvent.current_step,
+              total_steps: jobEvent.total_steps,
+              estimated_completion: jobEvent.estimated_completion
+            });
+            break;
+          }
+          
+          if (currentJob.status === 'completed' || currentJob.status === 'failed') {
             console.log(`[Monitor] Ignoring progress update for already completed job: ${jobEvent.job_id}`);
             break;
           }
@@ -867,6 +961,14 @@ export const useMonitorStore = create<MonitorStore>()(
             timestamp: number;
           };
           
+          // Defensive check: don't override jobs that are already failed or completed
+          const currentJob = get().jobs.find(job => job.id === jobEvent.job_id);
+          if (currentJob?.status === 'failed') {
+            console.log(`[Monitor] Ignoring completion event for already failed job: ${jobEvent.job_id}`);
+            break;
+          }
+          
+          // Use direct update for completion events (no throttling needed for final states)
           updateJob(jobEvent.job_id, {
             status: 'completed' as JobStatus,
             worker_id: jobEvent.worker_id,

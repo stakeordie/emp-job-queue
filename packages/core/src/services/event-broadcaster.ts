@@ -75,7 +75,15 @@ export class EventBroadcaster {
     // Subscribe to all relevant topics by default for monitors
     this.subscriptions.set(monitorId, {
       monitor_id: monitorId,
-      topics: ['workers', 'jobs', 'jobs:status', 'jobs:progress', 'machines', 'system_stats', 'heartbeat'],
+      topics: [
+        'workers',
+        'jobs',
+        'jobs:status',
+        'jobs:progress',
+        'machines',
+        'system_stats',
+        'heartbeat',
+      ],
       connected_at: Date.now(),
       last_heartbeat: Date.now(),
     });
@@ -476,6 +484,9 @@ export class EventBroadcaster {
       case 'worker_connected':
       case 'worker_disconnected':
       case 'worker_status_changed':
+        return ['workers'];
+
+      case 'connector_status_changed':
         return ['workers'];
 
       case 'machine_startup':

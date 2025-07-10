@@ -21,6 +21,7 @@ import {
   JobCompletedEvent,
   JobFailedEvent,
   WorkerStatusChangedEvent,
+  ConnectorStatusChangedEvent,
 } from '@emp/core';
 
 interface LightweightAPIConfig {
@@ -1349,7 +1350,7 @@ export class LightweightAPIServer {
         },
       };
 
-      // Send via SSE with chunking for large payloads
+      // Send via SSE as single message (chunking removed)
       const eventData = {
         type: 'full_state_snapshot',
         data: snapshot,
@@ -1358,58 +1359,10 @@ export class LightweightAPIServer {
       };
 
       const eventJson = JSON.stringify(eventData);
-      const maxChunkSize = 32768; // 32KB chunks
-
-      if (eventJson.length <= maxChunkSize) {
-        // Small enough to send as single message
-        res.write(`data: ${eventJson}\n\n`);
-      } else {
-        // Split into chunks
-        const chunkId = Date.now().toString();
-        const chunks = [];
-
-        for (let i = 0; i < eventJson.length; i += maxChunkSize) {
-          chunks.push(eventJson.slice(i, i + maxChunkSize));
-        }
-
-        // Send chunk header
-        res.write(
-          `data: ${JSON.stringify({
-            type: 'full_state_snapshot_chunked_start',
-            chunk_id: chunkId,
-            total_chunks: chunks.length,
-            monitor_id: monitorId,
-            timestamp: new Date().toISOString(),
-          })}\n\n`
-        );
-
-        // Send each chunk
-        chunks.forEach((chunk, index) => {
-          res.write(
-            `data: ${JSON.stringify({
-              type: 'full_state_snapshot_chunk',
-              chunk_id: chunkId,
-              chunk_index: index,
-              chunk_data: chunk,
-              monitor_id: monitorId,
-            })}\n\n`
-          );
-        });
-
-        // Send completion marker
-        res.write(
-          `data: ${JSON.stringify({
-            type: 'full_state_snapshot_chunked_complete',
-            chunk_id: chunkId,
-            total_chunks: chunks.length,
-            monitor_id: monitorId,
-            timestamp: new Date().toISOString(),
-          })}\n\n`
-        );
-      }
+      res.write(`data: ${eventJson}\n\n`);
 
       logger.info(
-        `Sent full state snapshot to SSE monitor ${monitorId}: ${workers.length} workers, ${allJobs.length} jobs (size: ${eventJson.length} bytes, chunked: ${eventJson.length > maxChunkSize}, total time: ${Date.now() - startTime}ms)`
+        `Sent full state snapshot to SSE monitor ${monitorId}: ${workers.length} workers, ${allJobs.length} jobs (size: ${eventJson.length} bytes, total time: ${Date.now() - startTime}ms)`
       );
     } catch (error) {
       logger.error(`Failed to send full state snapshot to SSE monitor ${monitorId}:`, error);
@@ -1425,6 +1378,7 @@ export class LightweightAPIServer {
       | JobCompletedEvent
       | JobFailedEvent
       | WorkerStatusChangedEvent
+      | ConnectorStatusChangedEvent
   ): void {
     const eventJson = JSON.stringify(event);
     logger.info(
@@ -1663,33 +1617,65 @@ export class LightweightAPIServer {
     this.progressSubscriber.psubscribe('__keyspace@0__:job:*'); // Job status changes
     this.progressSubscriber.psubscribe('__keyspace@0__:worker:*'); // Worker status changes
 
-    this.progressSubscriber.on('pmessage', async (pattern, channel, event) => {
+    this.progressSubscriber.on('pmessage', async (pattern, channel, message) => {
       try {
         logger.debug(
-          `🔔 Redis keyspace notification: pattern=${pattern}, channel=${channel}, event=${event}`
+          `🔔 Redis pattern message: pattern=${pattern}, channel=${channel}, message=${message.substring(0, 100)}...`
         );
 
-        // Handle job status changes
-        if (channel.includes(':job:') && event === 'hset') {
-          const match = channel.match(/job:(.+)$/);
-          if (!match) return;
+        // Handle connector status updates
+        if (pattern === 'connector_status:*' && channel.startsWith('connector_status:')) {
+          try {
+            const statusData = JSON.parse(message);
+            logger.info(
+              `🔌 [PMESSAGE] Received connector status: ${statusData.service_type} connector for worker ${statusData.worker_id} is ${statusData.status}`
+            );
 
-          const jobId = match[1];
-          logger.info(`📋 Job status change detected for job: ${jobId}`);
-          await this.handleJobStatusChange(jobId);
+            // Broadcast connector status change to monitors
+            const connectorStatusEvent: ConnectorStatusChangedEvent = {
+              type: 'connector_status_changed',
+              connector_id: statusData.connector_id,
+              service_type: statusData.service_type,
+              worker_id: statusData.worker_id,
+              status: statusData.status,
+              service_info: statusData.service_info,
+              timestamp: Date.now(),
+            };
+
+            this.broadcastToMonitors(connectorStatusEvent);
+            logger.info(
+              `📢 [PMESSAGE] Broadcasted connector status change: ${statusData.service_type} -> ${statusData.status}`
+            );
+          } catch (error) {
+            logger.error('Error processing connector status message from pmessage:', error);
+          }
         }
+        // Handle keyspace notifications
+        else if (pattern.startsWith('__keyspace@')) {
+          // Handle job status changes
+          if (channel.includes(':job:') && message === 'hset') {
+            const match = channel.match(/job:(.+)$/);
+            if (!match) return;
 
-        // Handle worker status changes
-        else if (channel.includes(':worker:') && event === 'hset') {
-          const match = channel.match(/worker:(.+)$/);
-          if (!match) return;
+            const jobId = match[1];
+            logger.info(`📋 Job status change detected for job: ${jobId}`);
+            await this.handleJobStatusChange(jobId);
+          }
 
-          const workerId = match[1];
-          logger.info(`👷 Worker status change detected for worker: ${workerId}, event: ${event}`);
-          await this.handleWorkerStatusChange(workerId);
+          // Handle worker status changes
+          else if (channel.includes(':worker:') && message === 'hset') {
+            const match = channel.match(/worker:(.+)$/);
+            if (!match) return;
+
+            const workerId = match[1];
+            logger.info(
+              `👷 Worker status change detected for worker: ${workerId}, event: ${message}`
+            );
+            await this.handleWorkerStatusChange(workerId);
+          }
         }
       } catch (error) {
-        logger.error(`Failed to handle Redis keyspace notification:`, error);
+        logger.error(`Failed to handle Redis pattern message:`, error);
       }
     });
   }
@@ -1706,6 +1692,10 @@ export class LightweightAPIServer {
     // Subscribe to job completion events
     await this.progressSubscriber.subscribe('complete_job');
     logger.info('✅ Subscribed to: complete_job');
+
+    // Subscribe to connector status updates
+    await this.progressSubscriber.psubscribe('connector_status:*');
+    logger.info('✅ Subscribed to: connector_status:* (pattern)');
 
     // Subscribe to machine startup events
     await this.progressSubscriber.subscribe('machine:startup:events');
@@ -1770,10 +1760,11 @@ export class LightweightAPIServer {
             logger.info(
               `📢 Broadcasted job completion event to clients and monitors: ${completionData.job_id}`
             );
-          }, 50); // 50ms delay to allow pending progress updates to be processed
+          }, 100); // 100ms delay to allow pending progress updates to be processed
         } catch (error) {
           logger.error('Error processing job completion message:', error);
         }
+        // Note: connector_status:* is handled in pmessage event since it's a pattern subscription
       } else if (channel === 'machine:startup:events') {
         try {
           const eventData = JSON.parse(message);

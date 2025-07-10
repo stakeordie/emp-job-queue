@@ -9050,7 +9050,7 @@ var require_Redis = __commonJS({
     var lodash_1 = require_lodash3();
     var Deque = require_denque();
     var debug = (0, utils_1.Debug)("redis");
-    var Redis4 = class _Redis extends Commander_1.default {
+    var Redis5 = class _Redis extends Commander_1.default {
       constructor(arg1, arg2, arg3) {
         super();
         this.status = "wait";
@@ -9629,12 +9629,12 @@ var require_Redis = __commonJS({
         }).catch(lodash_1.noop);
       }
     };
-    Redis4.Cluster = cluster_1.default;
-    Redis4.Command = Command_1.default;
-    Redis4.defaultOptions = RedisOptions_1.DEFAULT_REDIS_OPTIONS;
-    (0, applyMixin_1.default)(Redis4, events_1.EventEmitter);
-    (0, transaction_1.addTransactionSupport)(Redis4.prototype);
-    exports2.default = Redis4;
+    Redis5.Cluster = cluster_1.default;
+    Redis5.Command = Command_1.default;
+    Redis5.defaultOptions = RedisOptions_1.DEFAULT_REDIS_OPTIONS;
+    (0, applyMixin_1.default)(Redis5, events_1.EventEmitter);
+    (0, transaction_1.addTransactionSupport)(Redis5.prototype);
+    exports2.default = Redis5;
   }
 });
 
@@ -24381,10 +24381,11 @@ var simulation_connector_exports = {};
 __export(simulation_connector_exports, {
   SimulationConnector: () => SimulationConnector
 });
-var SimulationConnector;
+var import_ioredis4, SimulationConnector;
 var init_simulation_connector = __esm({
   "apps/worker/src/connectors/simulation-connector.ts"() {
     init_dist();
+    import_ioredis4 = __toESM(require_built3(), 1);
     SimulationConnector = class {
       connector_id;
       service_type = "simulation";
@@ -24394,6 +24395,9 @@ var init_simulation_connector = __esm({
       steps;
       failureRate;
       progressIntervalMs;
+      redis;
+      statusReportingInterval;
+      workerId;
       constructor(connectorId) {
         this.connector_id = connectorId;
         this.processingTimeMs = parseInt(process.env.WORKER_SIMULATION_PROCESSING_TIME || "5") * 1e3;
@@ -24422,9 +24426,23 @@ var init_simulation_connector = __esm({
         logger.info(
           `Simulation settings: ${this.processingTimeMs}ms processing, ${this.steps} steps, ${this.failureRate} failure rate`
         );
+        const redisUrl = process.env.HUB_REDIS_URL || "redis://localhost:6379";
+        this.workerId = process.env.WORKER_ID || "unknown-worker";
+        try {
+          this.redis = new import_ioredis4.default(redisUrl);
+          this.startStatusReporting();
+          logger.info(`Simulation connector ${this.connector_id} connected to Redis and started status reporting`);
+        } catch (error) {
+          logger.warn(`Failed to connect to Redis for status reporting: ${error}`);
+        }
       }
       async cleanup() {
         logger.info(`Cleaning up Simulation connector ${this.connector_id}`);
+        this.stopStatusReporting();
+        if (this.redis) {
+          await this.redis.quit();
+          this.redis = void 0;
+        }
       }
       async checkHealth() {
         return true;
@@ -24528,6 +24546,55 @@ var init_simulation_connector = __esm({
       }
       async sleep(ms) {
         return new Promise((resolve) => setTimeout(resolve, ms));
+      }
+      // Status reporting methods
+      startStatusReporting() {
+        if (this.statusReportingInterval || !this.redis) {
+          return;
+        }
+        this.statusReportingInterval = setInterval(async () => {
+          await this.reportStatus();
+        }, 15e3);
+        this.reportStatus();
+      }
+      stopStatusReporting() {
+        if (this.statusReportingInterval) {
+          clearInterval(this.statusReportingInterval);
+          this.statusReportingInterval = void 0;
+        }
+      }
+      async reportStatus() {
+        if (!this.redis || !this.workerId) {
+          return;
+        }
+        try {
+          const isHealthy = await this.checkHealth();
+          const serviceInfo = await this.getServiceInfo();
+          const statusReport = {
+            connector_id: this.connector_id,
+            service_type: this.service_type,
+            worker_id: this.workerId,
+            status: isHealthy ? "active" : "error",
+            service_info: serviceInfo,
+            timestamp: (/* @__PURE__ */ new Date()).toISOString(),
+            last_health_check: Date.now()
+          };
+          await this.redis.publish(
+            `connector_status:${this.service_type}`,
+            JSON.stringify(statusReport)
+          );
+          await this.redis.hset(
+            `connector_status:${this.workerId}:${this.service_type}`,
+            {
+              status: statusReport.status,
+              last_update: statusReport.timestamp,
+              service_info: JSON.stringify(statusReport.service_info)
+            }
+          );
+          logger.debug(`Simulation connector ${this.connector_id} reported status: ${statusReport.status}`);
+        } catch (error) {
+          logger.error(`Failed to report status for connector ${this.connector_id}:`, error);
+        }
       }
     };
   }
