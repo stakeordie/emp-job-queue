@@ -55,14 +55,6 @@ services:
       # Shared directory structure  
       - ./data/shared:/workspace/shared
       - ./data/logs:/workspace/logs
-      
-      # Development hot reload (comment out for production)
-      - ./src:/service-manager/src:ro
-      - ./config:/service-manager/config:ro
-      
-      # Mount local worker build for development (when WORKER_LOCAL_PATH is set)
-      # Uncomment and update path when using local worker
-      # - ../../worker/dist:/workspace/worker-dist:ro
     
     # Logging
     logging:

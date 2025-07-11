@@ -1,5 +1,21 @@
 # EmProps Job Queue Development Changelog
 
+## 2025-01-11
+
+### 🐛 Fixed Machine Shutdown Reporting in PM2 Orchestration
+- **Issue**: Machines were not properly reporting shutdown status to Redis when using PM2 orchestration
+- **Root Cause**: PM2-managed services needed proper shutdown signal propagation and graceful shutdown timeouts
+- **Solution**: 
+  - Added `kill_timeout: 30000` to PM2 ecosystem config for graceful shutdown (30 seconds)
+  - Set `SHUTDOWN_REASON` environment variable in parent process for child processes to inherit
+  - Enhanced `redis-worker-service.js` to propagate shutdown reason to worker processes
+  - Updated `index-pm2.js` to set shutdown reason before notifying Redis
+- **Files Modified**:
+  - `apps/machines/basic_machine/scripts/pm2-ecosystem.config.cjs` - Added PM2 shutdown configuration
+  - `apps/machines/basic_machine/src/services/redis-worker-service.js` - Added shutdown reason propagation
+  - `apps/machines/basic_machine/src/index-pm2.js` - Set environment variable for child processes
+- **Result**: Machines now properly report shutdown events to Redis, allowing the monitor UI to show them as offline
+
 ## 2025-01-10
 
 ### ✅ Real-Time Service Badge Status Updates

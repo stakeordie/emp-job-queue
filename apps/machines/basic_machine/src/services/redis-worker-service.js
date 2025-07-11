@@ -37,6 +37,9 @@ export default class RedisWorkerService extends BaseService {
       this.logger.info('Stopping worker process...');
       
       try {
+        // Set shutdown reason in environment for worker to read
+        process.env.SHUTDOWN_REASON = process.env.SHUTDOWN_REASON || 'Service stop requested';
+        
         // Send SIGTERM for graceful shutdown
         this.workerProcess.kill('SIGTERM');
         
@@ -100,6 +103,7 @@ export default class RedisWorkerService extends BaseService {
     
     // Check if we should use a local worker path (development mode)
     if (this.config.worker.useLocalPath) {
+      console.log("🎯 Using local worker!");
       await this.useLocalWorker();
       return;
     }
@@ -233,11 +237,11 @@ export default class RedisWorkerService extends BaseService {
       MACHINE_ID: this.config.machine.id,
       WORKER_CONNECTORS: this.config.worker.connectors.join(','),
       WORKER_WEBSOCKET_AUTH_TOKEN: this.config.redis.authToken || 'default-token',
-      GPU_MEMORY_GB: this.config.machine.gpu.memoryGB || 16,
-      GPU_MODEL: this.config.machine.gpu.model || 'RTX 4090',
+      GPU_MEMORY_GB: this.config.machine.gpu.memoryGB,
+      GPU_MODEL: this.config.machine.gpu.model,
       CUDA_VISIBLE_DEVICES: this.gpu.toString(),
       NODE_ENV: 'production',
-      LOG_LEVEL: this.config.logging.level || 'info'
+      LOG_LEVEL: this.config.logging.level
     };
 
     const envString = Object.entries(envContent)

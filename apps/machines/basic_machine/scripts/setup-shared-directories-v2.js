@@ -227,4 +227,5 @@ if (import.meta.url === `file://${process.argv[1]}`) {
   main();
 }
 
-export { main as setupBaseSharedDirectories };
+// Export for use in services
+export { setupBaseSharedDirectories };

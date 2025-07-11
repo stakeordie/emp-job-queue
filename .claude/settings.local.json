@@ -155,7 +155,9 @@
       "Bash(docker stop:*)",
       "Bash(docker rm:*)",
       "Bash(./scripts/bundle-worker.sh:*)",
-      "Bash(git log:*)"
+      "Bash(git log:*)",
+      "Bash(docker image rm:*)",
+      "Bash(docker system:*)"
     ],
     "deny": []
   }

@@ -358,10 +358,10 @@ export class RedisDirectWorkerClient {
   async requestJob(capabilities: WorkerCapabilities): Promise<Job | null> {
     try {
       // Phase 4: Use Redis Function for intelligent job matching
-      logger.info(
-        `🔍 [DEBUG] Worker ${this.workerId} requesting job with services: ${capabilities.services?.join(', ') || 'none'}`
-      );
-      logger.debug(`Worker ${this.workerId} requesting job with capabilities:`, capabilities);
+      // logger.info(
+      //   `🔍 [DEBUG] Worker ${this.workerId} requesting job with services: ${capabilities.services?.join(', ') || 'none'}`
+      // );
+      // logger.debug(`Worker ${this.workerId} requesting job with capabilities:`, capabilities);
 
       // Ensure worker_id is included in capabilities
       const capabilitiesWithId: WorkerCapabilities = {

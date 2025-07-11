@@ -10,15 +10,19 @@ RUN pnpm install --prod --no-frozen-lockfile
 FROM pytorch/pytorch:2.7.0-cuda12.8-cudnn9-devel AS ai-base
 
 # Layer cache bust
-ARG CACHE_BUST=1
+ARG CACHE_BUST=2
 RUN echo "Cache bust: ${CACHE_BUST}"
 
-# Install Node.js 18
+# Install Node.js 18 and PM2
 RUN apt-get update && \
     apt-get install -y curl && \
     curl -fsSL https://deb.nodesource.com/setup_18.x | bash - && \
     apt-get install -y nodejs && \
-    npm install -g pnpm && \
+    npm install -g pnpm pm2 && \
+    pm2 install pm2-logrotate && \
+    pm2 set pm2-logrotate:max_size 10M && \
+    pm2 set pm2-logrotate:retain 7 && \
+    pm2 set pm2-logrotate:compress true && \
     apt-get clean && \
     rm -rf /var/lib/apt/lists/*
 
@@ -43,7 +47,9 @@ RUN mkdir -p \
     /workspace/ComfyUI \
     /workspace/stable-diffusion-webui \
     /workspace/configs \
-    /workspace/tmp
+    /workspace/tmp \
+    /workspace/.pm2 \
+    /workspace/scripts
 
 # Stage 3: Final image
 FROM ai-base
@@ -59,14 +65,35 @@ ENV NODE_ENV=production \
     LOG_LEVEL=info \
     SERVICE_MANAGER_PATH=/service-manager \
     WORKSPACE_PATH=/workspace \
+    PM2_HOME=/workspace/.pm2 \
     PATH="/service-manager/node_modules/.bin:${PATH}"
 
-# Create startup script
+# Copy PM2 scripts and configs
+COPY scripts/pm2-ecosystem.config.cjs /workspace/pm2-ecosystem.config.cjs
+# PM2 manager is now copied with the src directory
+
+# Create startup script with PM2
 RUN echo '#!/bin/bash\n\
 set -e\n\
-echo "Starting Basic Machine..."\n\
-cd /service-manager\n\
-exec node src/index.js' > /entrypoint.sh && \
+echo "Starting Basic Machine with PM2..."\n\
+\n\
+# Set PM2 home\n\
+export PM2_HOME=/workspace/.pm2\n\
+\n\
+# Start PM2 daemon\n\
+pm2 ping\n\
+\n\
+# Start all services using PM2\n\
+pm2 start /workspace/pm2-ecosystem.config.cjs\n\
+\n\
+# Save PM2 process list\n\
+pm2 save\n\
+\n\
+# Display initial status\n\
+pm2 list\n\
+\n\
+# Keep container running and show logs\n\
+pm2 logs' > /entrypoint.sh && \
     chmod +x /entrypoint.sh
 
 # Expose common ports

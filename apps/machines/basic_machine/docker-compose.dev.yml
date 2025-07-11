@@ -8,10 +8,6 @@ services:
       # Mount bundled worker (single file with all dependencies)
       # Run: ./scripts/bundle-worker.sh to create this
       - ../../worker/bundled:/workspace/worker-bundled:ro
-      
-      # Additional development mounts
-      - ./src:/service-manager/src:ro
-      - ./config:/service-manager/config:ro
     
     environment:
       # Override to use local bundled worker

@@ -40999,10 +40999,6 @@ var RedisDirectWorkerClient = class {
    */
   async requestJob(capabilities) {
     try {
-      logger.info(
-        `\u{1F50D} [DEBUG] Worker ${this.workerId} requesting job with services: ${capabilities.services?.join(", ") || "none"}`
-      );
-      logger.debug(`Worker ${this.workerId} requesting job with capabilities:`, capabilities);
       const capabilitiesWithId = {
         ...capabilities,
         worker_id: this.workerId
