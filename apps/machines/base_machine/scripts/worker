@@ -1,0 +1,359 @@
+#!/bin/bash
+### BEGIN INIT INFO
+# Provides:          worker
+# Required-Start:    $network
+# Required-Stop:     $network
+# Default-Start:     2 3 4 5
+# Default-Stop:      0 1 6
+# Short-Description: Start Redis Worker
+### END INIT INFO
+
+# Paths
+ROOT="${ROOT:-/workspace}"
+NUM_GPUS="${NUM_GPUS:-0}"  # Default to CPU mode if not set
+
+# [2025-04-15T16:25:23-04:00] Function to load environment variables from env.sh
+load_environment_variables() {
+    local GPU_NUM=$1
+    
+    if [ -f "/etc/profile.d/env.sh" ]; then
+        echo "[$(date '+%Y-%m-%d %H:%M:%S')] [GPU $GPU_NUM] Loading environment variables from /etc/profile.d/env.sh"
+        source "/etc/profile.d/env.sh"
+    else
+        echo "[$(date '+%Y-%m-%d %H:%M:%S')] [GPU $GPU_NUM] WARNING: Environment file /etc/profile.d/env.sh not found"
+    fi
+}
+
+# Setup logging
+setup_logs() {
+    local GPU_NUM=$1
+    local WORK_DIR="${ROOT}/worker_gpu${GPU_NUM}"
+    
+    # Create log directories
+    mkdir -p "${WORK_DIR}/logs"
+    chmod 755 "${WORK_DIR}/logs"
+    
+    # Create empty log file if it doesn't exist
+    touch "${WORK_DIR}/logs/output.log"
+    chmod 644 "${WORK_DIR}/logs/output.log"
+}
+
+log() {
+    local GPU_NUM=$1
+    shift
+    local timestamp=$(date '+%Y-%m-%d %H:%M:%S')
+    local msg="[Worker GPU${GPU_NUM}] $*"
+    local log_line="[$timestamp] $msg"
+    
+    # Always write to start.log
+    if [ -w "${ROOT}/logs/start.log" ]; then
+        echo "$log_line" >> "${ROOT}/logs/start.log"
+    else
+        echo "WARNING: Cannot write to ${ROOT}/logs/start.log" >&2
+    fi
+    
+    # Write to service-specific logs
+    local LOG_DIR="${ROOT}/worker_gpu${GPU_NUM}/logs"
+    
+    if [ -d "$LOG_DIR" ]; then
+        echo "$log_line" >> "${LOG_DIR}/output.log"
+    fi
+    
+    # Always echo to stdout for Docker logs
+    echo "$msg"
+}
+
+start() {
+    local GPU_NUM=$1
+    local WORK_DIR="${ROOT}/worker_gpu${GPU_NUM}"
+
+    
+    # Setup logs first
+    setup_logs "$GPU_NUM"
+    
+    # [2025-04-15T16:25:23-04:00] Load environment variables before starting worker
+    load_environment_variables "$GPU_NUM"
+    
+    # Check if already running
+    if [ -f "${WORK_DIR}/worker.pid" ] && kill -0 "$(cat "${WORK_DIR}/worker.pid")" 2>/dev/null; then
+        log "$GPU_NUM" "Service is already running"
+        return 0
+    fi
+    
+    # Ensure directory exists
+    if [ ! -d "$WORK_DIR" ]; then
+        log "$GPU_NUM" "ERROR: Working directory $WORK_DIR does not exist"
+        log "$GPU_NUM" "Run 'wgpu setup $GPU_NUM' to create it"
+        return 1
+    fi
+    
+    
+    log "$GPU_NUM" "Starting Redis Worker service for GPU $GPU_NUM"
+    
+    # Set worker-specific environment variables
+    export WORKER_ID="worker-gpu${GPU_NUM}"
+    
+    # Load environment variables from .env file if it exists
+    if [ -f "${WORK_DIR}/.env" ]; then
+        log "$GPU_NUM" "Loading environment from ${WORK_DIR}/.env"
+        set -a
+        # shellcheck source=/dev/null
+        source "${WORK_DIR}/.env"
+        set +a
+    fi
+    
+    # Check for TypeScript worker in the expected locations
+    # Updated: 2025-07-08 - Changed to TypeScript worker from emp-job-queue
+    local WORKER_SCRIPT_PATH=""
+    local WORKER_DIR=""
+    
+    if [ -f "${WORK_DIR}/redis-direct-worker.js" ]; then
+        WORKER_SCRIPT_PATH="redis-direct-worker.js"
+        WORKER_DIR="${WORK_DIR}"
+        log "$GPU_NUM" "Found redis-direct-worker.js at ${WORKER_DIR}/${WORKER_SCRIPT_PATH}"
+    elif [ -f "${WORK_DIR}/worker/redis-direct-worker.js" ]; then
+        WORKER_SCRIPT_PATH="redis-direct-worker.js"
+        WORKER_DIR="${WORK_DIR}/worker"
+        log "$GPU_NUM" "Found redis-direct-worker.js at ${WORKER_DIR}/${WORKER_SCRIPT_PATH}"
+    elif [ -f "${WORK_DIR}/dist/redis-direct-worker.js" ]; then
+        WORKER_SCRIPT_PATH="redis-direct-worker.js"
+        WORKER_DIR="${WORK_DIR}/dist"
+        log "$GPU_NUM" "Found redis-direct-worker.js at ${WORKER_DIR}/${WORKER_SCRIPT_PATH}"
+    else
+        log "$GPU_NUM" "ERROR: redis-direct-worker.js not found in ${WORK_DIR}, ${WORK_DIR}/worker, or ${WORK_DIR}/dist"
+        return 1
+    fi
+    
+    # Change to the worker directory
+    cd "$WORKER_DIR" || {
+        log "$GPU_NUM" "ERROR: Cannot change to worker directory $WORKER_DIR"
+        return 1
+    }
+    
+    # Start the worker process
+    log "$GPU_NUM" "Starting worker process with WORKER_ID=$WORKER_ID"
+    
+    # Build command with all necessary environment variables and arguments
+    local CMD="node ${WORKER_SCRIPT_PATH}"
+    
+    # Add environment variables to the command
+    # Build the command
+    local CMD="node ${WORKER_SCRIPT_PATH}"
+    
+    
+    # Add worker ID
+    log "$GPU_NUM" "Setting WORKER_ID=worker-gpu${GPU_NUM}"
+    CMD="WORKER_ID=worker-gpu${GPU_NUM} $CMD"
+    
+    # Log the command
+    log "$GPU_NUM" "Running command: $CMD"
+    
+    # Execute the command in the background with unbuffered output
+    eval "$CMD" >> "${WORK_DIR}/logs/output.log" 2>&1 &
+    
+    # Save the PID
+    echo $! > "${WORK_DIR}/worker.pid"
+    
+    # Create restart flag file
+    # Updated: 2025-04-07T16:15:30-04:00 - Added restart flag for automatic restart on crash
+    touch "${WORK_DIR}/restart_enabled"
+    log "$GPU_NUM" "Created restart flag file at ${WORK_DIR}/restart_enabled"
+    
+    # [2025-05-22T19:46:00-04:00] Improved worker startup verification
+    local WORKER_PID=$(cat "${WORK_DIR}/worker.pid")
+    log "$GPU_NUM" "Waiting for worker to start (PID: $WORKER_PID)"
+    
+    # Define connection indicators to look for in logs
+    local CONNECTION_INDICATORS=(
+        "Successfully connected to Redis"
+        "Successfully connected to WebSocket"
+        "connection_established"
+        "Welcome Worker"
+        "HEARTBEAT SENT"
+        "HEARTBEAT.*RECEIVED"
+        "handle_message"
+        "Worker is running"
+        "Connecting to WebSocket"
+    )
+    
+    for i in {1..45}; do  # Increased timeout to 45 seconds
+        # First check: Is the PID file present and is the process running?
+        if [ -f "${WORK_DIR}/worker.pid" ] && kill -0 "$WORKER_PID" 2>/dev/null; then
+            # Process is running, now check for WebSocket connection indicators in logs
+            local connection_found=false
+            
+            for indicator in "${CONNECTION_INDICATORS[@]}"; do
+                if grep -q "$indicator" "${WORK_DIR}/logs/output.log" 2>/dev/null; then
+                    log "$GPU_NUM" "Found connection indicator: '$indicator' in logs"
+                    connection_found=true
+                    break
+                fi
+            done
+            
+            if $connection_found; then
+                # Found evidence of successful connection
+                log "$GPU_NUM" "Worker started successfully after ${i} seconds (WebSocket connection confirmed)"
+                return 0
+            elif [ $i -ge 30 ]; then
+                # After 30 seconds, if process is still running but no connection indicators,
+                # consider it started but with a warning
+                log "$GPU_NUM" "Worker process is running but no WebSocket connection detected in logs"
+                log "$GPU_NUM" "This may be normal if the worker is still initializing"
+                # Return success anyway since the process is running
+                return 0
+            fi
+        elif [ ! -f "${WORK_DIR}/worker.pid" ]; then
+            log "$GPU_NUM" "ERROR: Worker PID file disappeared during startup"
+            return 1
+        elif ! kill -0 "$WORKER_PID" 2>/dev/null; then
+            log "$GPU_NUM" "ERROR: Worker process died during startup"
+            # Check if we can see any clues in the log
+            if [ -f "${WORK_DIR}/logs/output.log" ]; then
+                log "$GPU_NUM" "Last 10 lines of worker log:"
+                tail -n 10 "${WORK_DIR}/logs/output.log" | while read -r line; do
+                    log "$GPU_NUM" "LOG: $line"
+                done
+            fi
+            return 1
+        fi
+        
+        sleep 1
+    done
+    
+    # If we get here, the service didn't start properly within the timeout
+    # But if the process is still running, we'll consider it a warning rather than an error
+    if [ -f "${WORK_DIR}/worker.pid" ] && kill -0 "$WORKER_PID" 2>/dev/null; then
+        log "$GPU_NUM" "WARNING: Worker process is running but could not verify WebSocket connection"
+        log "$GPU_NUM" "The worker may still be initializing or connecting to the Redis hub"
+        # Return success since the process is still running
+        return 0
+    else
+        log "$GPU_NUM" "ERROR: Worker process died during startup"
+        return 1
+    fi
+}
+
+stop() {
+    local GPU_NUM=$1
+    local WORK_DIR="${ROOT}/worker_gpu${GPU_NUM}"
+    
+    # Check if running
+    if [ ! -f "${WORK_DIR}/worker.pid" ]; then
+        log "$GPU_NUM" "No PID file found, service is not running"
+        return 0
+    fi
+    
+    local PID
+    PID=$(cat "${WORK_DIR}/worker.pid")
+    
+    if ! kill -0 "$PID" 2>/dev/null; then
+        log "$GPU_NUM" "Process $PID is not running"
+        rm -f "${WORK_DIR}/worker.pid"
+        return 0
+    fi
+    
+    # Try graceful shutdown first
+    log "$GPU_NUM" "Stopping worker process (PID: $PID)"
+    kill -TERM "$PID"
+    
+    # Wait for process to terminate
+    local COUNT=0
+    while kill -0 "$PID" 2>/dev/null && [ "$COUNT" -lt 10 ]; do
+        sleep 1
+        COUNT=$((COUNT + 1))
+    done
+    
+    # If still running, force kill
+    if kill -0 "$PID" 2>/dev/null; then
+        log "$GPU_NUM" "Process did not terminate gracefully, forcing kill"
+        kill -9 "$PID"
+        sleep 1
+    fi
+    
+    # Also check for any other Python worker processes that might be running
+    log "$GPU_NUM" "Checking for other worker processes..."
+    OTHER_PIDS=$(ps aux | grep -E "python.*(worker\.py|worker_main\.py)" | grep -v grep | awk '{print $2}')
+    
+    if [ -n "$OTHER_PIDS" ]; then
+        log "$GPU_NUM" "Found additional worker processes: $OTHER_PIDS"
+        for other_pid in $OTHER_PIDS; do
+            if [ "$other_pid" != "$PID" ]; then
+                log "$GPU_NUM" "Stopping additional worker process (PID: $other_pid)"
+                kill -TERM "$other_pid" 2>/dev/null || true
+                sleep 1
+                kill -9 "$other_pid" 2>/dev/null || true
+            fi
+        done
+    fi
+    
+    # Remove PID file
+    rm -f "${WORK_DIR}/worker.pid"
+    
+    # Remove restart flag file
+    # Updated: 2025-04-07T16:16:00-04:00 - Remove restart flag on intentional stop
+    if [ -f "${WORK_DIR}/restart_enabled" ]; then
+        rm -f "${WORK_DIR}/restart_enabled"
+        log "$GPU_NUM" "Removed restart flag file at ${WORK_DIR}/restart_enabled"
+    fi
+    
+    log "$GPU_NUM" "Worker stopped"
+    return 0
+}
+
+restart() {
+    local GPU_NUM=$1
+    
+    log "$GPU_NUM" "Restarting worker"
+    
+    stop "$GPU_NUM"
+    sleep 2
+    start "$GPU_NUM"
+    
+    return $?
+}
+
+status() {
+    local GPU_NUM=$1
+    local WORK_DIR="${ROOT}/worker_gpu${GPU_NUM}"
+    
+    if [ ! -f "${WORK_DIR}/worker.pid" ]; then
+        log "$GPU_NUM" "Worker is not running"
+        return 3  # Service not running
+    fi
+    
+    local PID
+    PID=$(cat "${WORK_DIR}/worker.pid")
+    
+    if kill -0 "$PID" 2>/dev/null; then
+        log "$GPU_NUM" "Worker is running (PID: $PID)"
+        
+        # Get process info
+        local PROCESS_INFO
+        PROCESS_INFO=$(ps -p "$PID" -o pid,ppid,cmd,etime,pcpu,pmem | grep -v PID)
+        
+        log "$GPU_NUM" "Process info: $PROCESS_INFO"
+        return 0  # Service running
+    else
+        log "$GPU_NUM" "PID file exists but process is not running"
+        rm -f "${WORK_DIR}/worker.pid"
+        return 1  # Service dead but PID file exists
+    fi
+}
+
+case "$1" in
+    start|stop|status|restart)
+        if [ -z "$2" ]; then
+            echo "Usage: $0 {start|stop|restart|status} GPU_NUM"
+            exit 1
+        fi
+        
+        $1 "$2"
+        exit $?
+        ;;
+    *)
+        echo "Usage: $0 {start|stop|restart|status} GPU_NUM"
+        exit 1
+        ;;
+esac
+
+exit 0

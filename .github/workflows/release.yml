@@ -1,0 +1,183 @@
+name: Release Worker Assets
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Release tag (e.g., v1.0.0)'
+        required: true
+        type: string
+
+jobs:
+  build-and-release:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      with:
+        fetch-depth: 0
+        submodules: false
+      
+    - name: Setup Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: '20'
+        
+    - name: Enable Corepack for pnpm
+      run: corepack enable
+      
+    - name: Log in to Docker Hub
+      uses: docker/login-action@v3
+      with:
+        username: ${{ secrets.DOCKERHUB_USERNAME }}
+        password: ${{ secrets.DOCKERHUB_TOKEN }}
+        
+    - name: Get release tag
+      id: get_tag
+      run: |
+        if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+          echo "tag=${{ github.event.inputs.tag }}" >> $GITHUB_OUTPUT
+        else
+          echo "tag=${GITHUB_REF#refs/tags/}" >> $GITHUB_OUTPUT
+        fi
+        
+    - name: Debug repository structure
+      run: |
+        echo "Repository structure:"
+        ls -la
+        echo "Packages directory:"
+        ls -la packages/ || echo "packages directory not found"
+        echo "Apps directory:"
+        ls -la apps/
+        
+    - name: Build and push API Docker image
+      run: |
+        # Build API Docker image using simplified CI Dockerfile
+        docker build -f apps/api/Dockerfile.ci -t emprops/emp-job-queue-api:latest -t emprops/emp-job-queue-api:${{ steps.get_tag.outputs.tag }} .
+        
+        # Push both tags
+        docker push emprops/emp-job-queue-api:latest
+        docker push emprops/emp-job-queue-api:${{ steps.get_tag.outputs.tag }}
+        
+    - name: Build and package worker
+      run: |
+        # Enable corepack and install dependencies
+        corepack enable
+        pnpm install --no-frozen-lockfile
+        
+        # Install esbuild for bundling (use npm for global installs in CI)
+        npm install -g esbuild
+        
+        # Build only the necessary packages
+        pnpm --filter @emp/core build
+        pnpm --filter worker build
+        
+        # Create temporary directory for packaging
+        mkdir -p worker-release
+        
+        # Bundle worker into a single executable file using esbuild
+        # This bundles all dependencies including @emp/core into a single file
+        esbuild apps/worker/src/redis-direct-worker.ts \
+          --bundle \
+          --platform=node \
+          --target=node18 \
+          --format=cjs \
+          --external:sharp \
+          --external:canvas \
+          --external:@tensorflow/tfjs-node \
+          --external:sqlite3 \
+          --outfile=worker-release/redis-direct-worker.cjs
+        
+        # Add shebang to bundled worker and make executable
+        # First remove any existing shebang from the bundled file, then add our own
+        sed '/^#!/d' worker-release/redis-direct-worker.cjs > worker-release/redis-direct-worker-clean.cjs
+        echo '#!/usr/bin/env node' > worker-release/redis-direct-worker.js
+        cat worker-release/redis-direct-worker-clean.cjs >> worker-release/redis-direct-worker.js
+        chmod +x worker-release/redis-direct-worker.js
+        rm worker-release/redis-direct-worker.cjs worker-release/redis-direct-worker-clean.cjs
+        
+        # Create a minimal package.json for the bundled worker
+        cat > worker-release/package.json << 'EOF'
+        {
+          "name": "emp-job-queue-worker",
+          "version": "1.0.0",
+          "description": "Bundled Redis worker for EmProps GPU job queue system",
+          "main": "redis-direct-worker.js",
+          "bin": {
+            "emp-worker": "redis-direct-worker.js"
+          }
+        }
+        EOF
+        
+        # Create a simple README for the release
+        cat > worker-release/README.md << 'EOF'
+        # EmProps Job Queue Worker
+        
+        Self-contained bundled Redis worker for the EmProps GPU job queue system.
+        
+        ## Usage
+        ```bash
+        node redis-direct-worker.js
+        ```
+        
+        ## Features
+        - Single bundled executable (no external dependencies)
+        - Supports ComfyUI, A1111, and simulation connectors
+        - Direct Redis connection (no WebSocket hub required)
+        - Multi-GPU support via CUDA_VISIBLE_DEVICES
+        
+        ## Environment Variables
+        - `HUB_REDIS_URL` - Redis connection URL
+        - `WORKER_ID` - Unique worker identifier  
+        - `WORKER_CONNECTORS` - Comma-separated list (e.g., "comfyui,a1111,simulation")
+        - `CUDA_VISIBLE_DEVICES` - GPU index for this worker
+        - `GPU_MEMORY_GB` - Available GPU memory
+        - `GPU_MODEL` - GPU model name
+        EOF
+        
+        # Create tarball
+        tar -czf emp-job-queue-worker.tar.gz -C worker-release .
+        
+    - name: Create Release
+      uses: softprops/action-gh-release@v1
+      with:
+        tag_name: ${{ steps.get_tag.outputs.tag }}
+        name: Release ${{ steps.get_tag.outputs.tag }}
+        body: |
+          ## EmProps Job Queue Worker Release
+          
+          This release contains a **self-contained bundled worker** for the EmProps GPU job queue system.
+          
+          ### What's Included
+          - `redis-direct-worker.js` - **Single bundled executable** (all dependencies included)
+          - `package.json` - Package metadata
+          - `README.md` - Usage instructions
+          
+          ### Installation
+          1. Download `emp-job-queue-worker.tar.gz`
+          2. Extract: `tar -xzf emp-job-queue-worker.tar.gz`
+          3. Run: `node redis-direct-worker.js`
+          
+          ### Features
+          - **Zero dependencies** - Single bundled file with everything included
+          - **Multi-connector support** - ComfyUI, A1111, and simulation modes
+          - **Direct Redis connection** - No WebSocket hub dependency
+          - **Multi-GPU ready** - Use CUDA_VISIBLE_DEVICES for GPU assignment
+          - **TypeScript-based** - Modern, type-safe worker implementation
+          
+          ### Changes
+          - Single bundled executable using esbuild (no more import errors!)
+          - All @emp/core dependencies bundled inline
+          - Compatible with existing basic_machine and base_machine infrastructure
+          - Replaces Python worker from emp-redis
+          
+        files: |
+          emp-job-queue-worker.tar.gz
+        draft: false
+        prerelease: false
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

@@ -25,23 +25,18 @@ import {
 import { Progress } from "@/components/ui/progress"
 import { Play, Square, RefreshCw, X } from "lucide-react"
 import { JobSubmissionForm } from "@/components/job-submission-form"
-import { SimpleWorkerCard } from "@/components/SimpleWorkerCard"
+import { MachineCard } from "@/components/MachineCard"
 import { JobDetailsModal } from "@/components/JobDetailsModal"
 import { useMonitorStore } from "@/store"
-import { useState, useMemo } from "react"
+import { useState, useMemo, useEffect } from "react"
 import type { Job } from "@/types/job"
 
 // Environment presets
 const CONNECTION_PRESETS = {
   local: {
-    websocket: 'ws://localhost:3001',
+    websocket: 'http://localhost:3001',
     auth: '3u8sdj5389fj3kljsf90u',
     name: 'Local Dev'
-  },
-  'local-test': {
-    websocket: 'ws://localhost:3011', 
-    auth: '3u8sdj5389fj3kljsf90u',
-    name: 'Local Test'
   },
   railway: {
     websocket: 'wss://redisserver-production.up.railway.app',
@@ -49,19 +44,20 @@ const CONNECTION_PRESETS = {
     name: 'Railway (Old)'
   },
   railwaynew: {
-    websocket: 'wss://redisservernew-production.up.railway.app',
+    websocket: 'wss://emp-job-queue-production.up.railway.app',
     auth: '3u8sdj5389fj3kljsf90u',
     name: 'Railway (New)'
   }
 };
 
 export default function Home() {
-  const { connection, jobs, workers, connect, disconnect, syncJobState, cancelJob } = useMonitorStore();
+  const { connection, jobs, workers, machines, connect, disconnect, syncJobState, cancelJob, deleteMachine } = useMonitorStore();
   const [websocketUrl, setWebsocketUrl] = useState(CONNECTION_PRESETS.local.websocket);
   const [authToken, setAuthToken] = useState(CONNECTION_PRESETS.local.auth);
   const [selectedPreset, setSelectedPreset] = useState('local');
   const [cancelJobId, setCancelJobId] = useState<string | null>(null);
   const [selectedJob, setSelectedJob] = useState<Job | null>(null);
+  const [deleteMachineId, setDeleteMachineId] = useState<string | null>(null);
 
   const handlePresetChange = (preset: string) => {
     setSelectedPreset(preset);
@@ -75,7 +71,37 @@ export default function Home() {
   const handleConnect = () => {
     const urlWithAuth = authToken ? `${websocketUrl}?token=${encodeURIComponent(authToken)}` : websocketUrl;
     connect(urlWithAuth);
+    // Remember that user wants to be connected
+    localStorage.setItem('monitor-auto-connect', 'true');
   };
+
+  const handleDisconnect = () => {
+    disconnect();
+    // Remember that user manually disconnected
+    localStorage.setItem('monitor-auto-connect', 'false');
+  };
+
+  const handleForceDisconnect = () => {
+    console.log('[Force Disconnect] Emergency disconnect');
+    disconnect();
+    localStorage.setItem('monitor-auto-connect', 'false');
+    // Force reload to clean up any stuck state
+    setTimeout(() => {
+      window.location.reload();
+    }, 500);
+  };
+
+  // Auto-connect on page load only if user hasn't manually disconnected
+  useEffect(() => {
+    const shouldAutoConnect = localStorage.getItem('monitor-auto-connect');
+    // Default to auto-connect if no preference is stored (first time user)
+    // But respect the user's choice if they've manually disconnected
+    if (shouldAutoConnect !== 'false' && !connection.isConnected && websocketUrl && authToken) {
+      const urlWithAuth = authToken ? `${websocketUrl}?token=${encodeURIComponent(authToken)}` : websocketUrl;
+      connect(urlWithAuth);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []); // Run only on mount, ignore dependency warnings since we want this to run once
 
   const handleSyncJob = (jobId: string) => {
     syncJobState(jobId);
@@ -89,6 +115,17 @@ export default function Home() {
     if (cancelJobId) {
       cancelJob(cancelJobId);
       setCancelJobId(null);
+    }
+  };
+
+  const handleDeleteMachine = (machineId: string) => {
+    setDeleteMachineId(machineId);
+  };
+
+  const confirmDeleteMachine = () => {
+    if (deleteMachineId) {
+      deleteMachine(deleteMachineId);
+      setDeleteMachineId(null);
     }
   };
 
@@ -157,7 +194,7 @@ export default function Home() {
             <div>
               <Label htmlFor="preset">Environment</Label>
               <Select value={selectedPreset} onValueChange={handlePresetChange}>
-                <SelectTrigger>
+                <SelectTrigger id="preset">
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
@@ -194,7 +231,7 @@ export default function Home() {
               {connection.isConnected ? "Connected" : "Disconnected"}
             </Badge>
             <Button
-              onClick={connection.isConnected ? disconnect : handleConnect}
+              onClick={connection.isConnected ? handleDisconnect : handleConnect}
               variant={connection.isConnected ? "destructive" : "default"}
               size="sm"
               className={`transition-all duration-200 transform ${
@@ -215,32 +252,55 @@ export default function Home() {
                 </>
               )}
             </Button>
+            {connection.isConnected && (
+              <Button
+                onClick={handleForceDisconnect}
+                variant="outline"
+                size="sm"
+                className="text-red-600 border-red-200 hover:bg-red-50 hover:border-red-300"
+                title="Force disconnect and reload page to break connection loops"
+              >
+                <X className="h-4 w-4 mr-1" />
+                Force Stop
+              </Button>
+            )}
           </div>
         </CardContent>
       </Card>
 
-      {/* Workers */}
+      {/* Machines */}
       <div className="space-y-4">
         <div className="flex items-center justify-between">
           <h2 className="text-lg font-semibold">
-            Workers ({workers.length})
+            Machines ({machines.length})
           </h2>
           <div className="flex items-center gap-4 text-sm text-muted-foreground">
+            <span>Total Workers: {workers.length}</span>
             <span>Active Jobs: {jobCounts.active}</span>
             <span>Completed: {jobCounts.completed}</span>
             <span>Failed: {jobCounts.failed}</span>
           </div>
         </div>
         
-        {workers.length === 0 ? (
+        {machines.length === 0 ? (
           <Card className="p-8">
-            <p className="text-muted-foreground text-center">No workers connected. Start some workers to see them here.</p>
+            <p className="text-muted-foreground text-center">No machines connected. Start some machines to see them here.</p>
           </Card>
         ) : (
-          <div className="flex flex-wrap gap-2">
-            {workers.map((worker) => (
-              <SimpleWorkerCard key={worker.id} worker={worker} />
-            ))}
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+            {machines.map((machine) => {
+              const machineWorkers = workers.filter(w => 
+                machine.workers.includes(w.worker_id)
+              );
+              return (
+                <MachineCard 
+                  key={machine.machine_id} 
+                  machine={machine} 
+                  workers={machineWorkers} 
+                  onDelete={handleDeleteMachine}
+                />
+              );
+            })}
           </div>
         )}
       </div>
@@ -470,6 +530,28 @@ export default function Home() {
               className="bg-red-600 hover:bg-red-700"
             >
               Cancel Job
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      {/* Delete Machine Confirmation Dialog */}
+      <AlertDialog open={!!deleteMachineId} onOpenChange={() => setDeleteMachineId(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete Machine</AlertDialogTitle>
+            <AlertDialogDescription>
+              Are you sure you want to delete machine &quot;{deleteMachineId}&quot;? This action cannot be undone.
+              The machine and all its associated workers will be permanently removed from the system.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Keep Machine</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={confirmDeleteMachine}
+              className="bg-red-600 hover:bg-red-700"
+            >
+              Delete Machine
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

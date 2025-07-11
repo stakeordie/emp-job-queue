@@ -1,5 +1,269 @@
 # EmProps Job Queue Development Changelog
 
+## 2025-01-10
+
+### ✅ Real-Time Service Badge Status Updates
+- **Feature**: Implemented real-time connector status reporting with 15-second intervals 
+- **Issue Fixed**: Service badges in monitor UI were showing grey (no color) instead of green for active services
+- **Additional Fix**: Service badges now appear immediately when new machines come online (no refresh required)
+- **Implementation**: Added direct connector-to-Redis status publishing every 15 seconds from SimulationConnector
+- **End-to-End Flow**: Connector → Redis pub/sub → API server → EventSource → Monitor UI
+- **Files Enhanced**: 
+  - `packages/core/src/types/connector.ts` - Added optional status reporting methods to ConnectorInterface
+  - `apps/worker/src/connectors/simulation-connector.ts` - Implemented comprehensive status reporting
+  - `apps/api/src/lightweight-api-server.ts` - Added Redis subscription to `connector_status:*` pattern
+  - `packages/core/src/types/monitor-events.ts` - Added ConnectorStatusChangedEvent interface
+  - `apps/monitor/src/store/index.ts` - Added event handler for connector status updates and empty connector_statuses initialization
+- **Monitoring**: API server logs show connector status changes being broadcast to monitors every 15 seconds
+- **Result**: Service badges now show green for active services with real-time health visualization and immediate visibility for new workers
+- **TypeScript**: Fixed linting errors and ensured proper type safety throughout the implementation
+
+## 2025-01-10
+
+### 🐛 Fixed Job Completion Race Condition
+- **Issue**: Completed jobs sometimes remained stuck in active jobs section in monitor UI
+- **Root Cause**: API server immediately broadcast both `update_job_progress` and `complete_job` events without coordination, allowing completion events to arrive before final progress updates
+- **Solution**: Added 50ms delay before broadcasting completion events at API server level (`apps/api/src/lightweight-api-server.ts`)
+- **Defensive Redundancy**: Added monitor-side check to ignore progress updates for already completed jobs
+- **Throttle Enhancement**: Enhanced throttle utility with `flush()` method for proper event coordination
+- **Impact**: Ensures proper event ordering - completion events always arrive after final progress updates
+- **Result**: Completed jobs now properly move from active to finished section without getting stuck
+
+### 🔄 Improved Monitor Auto-Reconnection  
+- **Feature**: Monitor now automatically reconnects to WebSocket/EventSource connections on page refresh
+- **User Control**: Respects user choice - if manually disconnected, auto-reconnect is disabled until user reconnects
+- **Persistence**: Uses localStorage to remember user's connection preference across page refreshes
+- **Implementation**: Enhanced EventSource error handling with continued reconnection attempts
+- **Files**: `apps/monitor/src/app/page.tsx`, `apps/monitor/src/services/websocket.ts`
+- **Result**: Seamless monitor experience - refreshes don't require manual reconnection unless user chose to disconnect
+
+## 2025-01-09
+
+### 🐛 Fixed TypeScript Enum Compilation Issue
+- **Root Cause**: TypeScript build cache was stale, causing enum types to be generated as `export const JobStatus: any` instead of proper enum declarations
+- **Solution**: Cleaned build cache and forced rebuild to regenerate proper `export declare enum JobStatus` type definitions
+- **Impact**: Fixed Railway CI/CD deployment failures due to TypeScript compilation errors in API server
+- **Files Fixed**: Fixed `JobStatus` type casting in lightweight-api-server.ts to use proper enum types
+- **Worker Fix**: Updated worker client to use hardcoded values instead of non-existent `gpu_count` and `cpu_cores` properties
+- **Build Process**: Ensures enum types are properly preserved during TypeScript compilation
+
+### 📁 Project Organization and Cleanup
+- **Gitignore Updates**: Added patterns for debug scripts, screenshots, and generated Docker configs
+- **Documentation**: Organized documentation directory with development guides  
+- **Utility Scripts**: Added Docker port generation and testing scripts
+- **Development Tools**: Created debugging utilities for event flow monitoring
+- **File Cleanup**: Properly categorized and ignored temporary/debug files while keeping useful scripts
+
+## 2025-01-09
+
+### ✅ Complete Worker Event Lifecycle Implementation
+- **Worker Connected Events**: Workers now publish `worker_connected` events to Redis when registering
+- **Worker Disconnected Events**: Workers publish `worker_disconnected` events when shutting down gracefully
+- **API Server Integration**: Added Redis subscription to `worker:events` channel in lightweight-api-server
+- **Event Broadcasting**: API server properly broadcasts worker events to monitors via EventBroadcaster
+- **Monitor Updates**: Workers now appear/disappear in monitor UI in real-time during machine startup/shutdown
+- **Machine Cleanup**: Machine shutdown events properly remove associated workers from monitor display
+- **Docker Graceful Shutdown**: Enhanced container shutdown handling with proper Redis event publishing
+- **Result**: Complete machine lifecycle now visible - workers appear on startup, disappear on shutdown
+
+### 🐛 Fixed Machine Event Publishing
+- **ES Module Fix**: Fixed `require is not defined` error in redis-startup-notifier.js
+- **Import Fix**: Changed `require('os')` to `import os from 'os'` for ES6 compatibility
+- **Railway Config**: Added missing `REDIS_URL` environment variable to railway.toml
+- **Debug Tools**: Created comprehensive debugging system to identify event flow issues
+- **Root Cause**: basic_machine couldn't publish to Redis due to CommonJS/ES6 module conflict
+- **Result**: Machine events now properly published to Redis and visible in monitor
+
+### 🐛 Fixed Missing machine_id in Redis Events
+- **Issue**: Only `startup_begin` events had `machine_config`, `startup_step` events were missing it
+- **Debug**: Created targeted debugging tools to examine exact Redis event structure
+- **Fix**: Added `machine_config` with `machine_id` to all event types (startup_step, startup_complete, startup_failed)
+- **Result**: All machine events now include proper machine identification for monitor display
+
+### 🐛 Fixed Monitor Not Receiving Machine Events
+- **Issue**: Monitor was not receiving machine startup events despite API server processing them correctly
+- **Root Cause**: EventBroadcaster didn't include machine event types in `getEventTopics` method
+- **Fix**: Added machine event types (`machine_startup`, `machine_startup_step`, etc.) to return `['machines', 'workers']` topics
+- **Fix**: Added `'machines'` to SubscriptionTopic type definition
+- **Fix**: Added `'machines'` to default monitor subscription topics
+- **TypeScript Fix**: Removed unimplemented `machine_startup_failed` event type that caused build errors
+- **Result**: Monitors now properly receive and display machine startup events in real-time
+
+### ✅ Complete Machine-Centric Monitoring System
+- **Redis Events**: Changed channel from `worker:startup:events` to `machine:startup:events`
+- **API Server**: Integrated EventBroadcaster with proper machine event handling
+- **Machine Configuration**: Added machine_id, hostname, and system info to startup events
+- **Worker Environment**: Workers now receive MACHINE_ID for proper association
+- **Event Broadcasting**: Real-time machine startup, steps, and completion events
+- **TypeScript**: Fixed root tsconfig.json "No inputs found" error by removing include paths
+
+### 🎯 Key Features Added
+- Machine cards appear with outlined borders during startup
+- Real-time startup progress logs visible in machine cards
+- Workers properly grouped inside machine cards when ready
+- Proper machine event types with typed event system
+- Host information (CPU, RAM, GPU) included in machine events
+
+## 2025-01-08
+
+### 🐛 Fixed CI/CD Build Errors
+- Added missing dependencies to `apps/api/package.json`:
+  - Runtime: `ws`, `node-fetch`, `eventsource`, `ioredis`, `uuid`
+  - Dev: `@types/ws`, `@types/uuid`
+- Resolved TypeScript compilation errors in hybrid-client.ts and lightweight-api-server.ts
+- Build now passes successfully in CI/CD pipeline
+
+### 🐛 Fixed Worker Build & Package Manager
+- Added missing dependencies to `apps/worker/package.json`:
+  - Runtime: `ioredis`, `uuid`, `express`
+  - Dev: `@types/express`, `@types/uuid`
+- Updated `packageManager` field to `pnpm@10.12.4` in all package.json files (8 files)
+- Fixed TypeScript compilation errors in redis-direct-worker-client.ts and worker-client.ts
+- CI/CD now uses correct pnpm version consistently across monorepo
+
+### 🐛 Fixed Git Submodule Warning
+- Removed submodule reference for `apps/machines/base_machine`
+- Added directory as regular files to fix CI/CD warning
+- Resolves "No url found for submodule path" error in builds
+
+### 🐛 Fixed Railway WebSocket Connection
+- Updated monitor environment to use `https://` and `wss://` for Railway
+- Fixed API CORS origins to include Railway domain
+- Removed incorrect WS_PORT configuration (WebSocket uses same port as HTTP)
+- WebSocket connections now properly support secure connections for Railway deployment
+
+## 2025-07-08 (Part 5)
+
+### ✅ Completed - Redis Worker Startup Notification System
+- **Real-time Startup Monitoring**: Implemented comprehensive worker startup event system with Redis pub/sub
+- **Basic Machine Integration**: Added RedisStartupNotifier service that publishes detailed startup progress to Redis
+- **API Server Relay**: Enhanced lightweight API server to subscribe to worker startup events and relay to monitors
+- **Event Types**: startup_begin, startup_step, service_started_*, service_failed_*, startup_complete, startup_failed
+- **Monitor Integration**: WebSocket broadcast system with topic-based filtering (workers, worker:startup)
+- **End-to-End Flow**: basic_machine → Redis pub/sub → API server → WebSocket → Monitor
+- **Testing Ready**: System ready for complete end-to-end testing of startup event monitoring
+
+## 2025-07-08 (Part 4)
+
+### ✅ Completed - Enhanced Documentation with Interactive Mermaid Diagrams
+- **Interactive Diagrams**: Added FullscreenDiagram component wrappers to startup sequence and service lifecycle diagrams
+- **Vue Template Fix**: Resolved Vue template syntax error in FullscreenDiagram.vue component (removed extra backtick)
+- **HTML Entity Escaping**: Fixed HTML entity escaping issues in worker-selection.md to prevent Vue compiler warnings
+- **Expandable Flow Charts**: Users can now expand, zoom, and pan the complex startup sequence diagrams
+- **Documentation Enhancement**: basic-machine-logs.md now provides interactive visual flow for debugging and monitoring
+
+## 2025-07-08 (Part 3)
+
+### ✅ Completed - ComfyUI Service Implementation for basic_machine
+- **Core Service**: Implemented full ComfyUI service with process management, health checks, and lifecycle controls
+- **Multi-GPU Support**: Dynamic port assignment (basePort + GPU#) with CUDA_VISIBLE_DEVICES configuration
+- **Process Management**: Using execa for robust process spawning with proper stdout/stderr capture and logging
+- **Health Monitoring**: HTTP endpoint validation with automatic readiness detection and timeout handling
+- **Event Architecture**: Service emits start/stop/error events for orchestration integration
+- **Mock GPU Support**: Testing capability with --cpu flag for development and CI environments
+- **Configuration**: Environment-driven service enablement (NGINX/A1111/Ollama disabled by default for ComfyUI focus)
+- **Container Ready**: Updated Dockerfile and docker-compose with ports 22 (SSH) and 8188 (ComfyUI) exposed
+- **Test Validation**: Comprehensive test suite confirms service starts in ~1s, responds to HTTP, and shuts down cleanly
+
+### ✅ Infrastructure and Configuration Updates
+- **Port Configuration**: Exposed SSH (22), ComfyUI (8188-8195), and health monitoring (9090) ports
+- **Service Defaults**: Changed NGINX, A1111, and Ollama to require explicit enable for focused ComfyUI testing
+- **Health Checks**: Updated Docker health check to use service health endpoint (port 9090) instead of NGINX
+- **Development Tools**: Added mock ComfyUI server and test scripts for service validation
+- **Workspace Support**: Added WORKSPACE_DIR environment variable for flexible testing environments
+
+## 2025-07-08 (Part 2)
+
+### ✅ Fixed Multi-GPU Worker Support in basic_machine
+- Added TEST_MODE environment variable to use NUM_GPUS instead of detecting GPUs
+- Fixed multi-GPU worker startup - now correctly starts one worker per GPU
+- Added detailed startup logging to show which services are starting for each GPU
+- Confirmed orchestrator correctly loops through GPU count and starts workers
+
+### ✅ Fixed CI/CD Worker Bundle (v0.0.13)
+- Fixed sed command to properly remove duplicate shebang lines
+- Simplified sed syntax from `'1{/^#!/d;}'` to `/^#!/d` for better compatibility
+- Worker bundle should now execute without syntax errors
+- Restored missing root package.json for monorepo structure
+
+## 2025-07-08
+
+### 🚧 In Progress - TypeScript Worker Integration with Machine Infrastructure
+
+#### 🔄 **Worker System Migration Analysis**
+- **System Understanding**: Analyzed complete emp-worker-old architecture (start.sh, wgpu, worker, watchdog)
+- **Download Source**: Identified Python worker download from stakeordie/emp-redis releases (line 2437 in start.sh)
+- **Execution Point**: Located worker execution using `python ${WORKER_SCRIPT_PATH}` (line 137 in worker script)
+- **Integration Path**: Clear two-step migration - update download source + replace execution command
+- **Parallel Strategy**: Created w2gpu script for TypeScript worker alongside existing wgpu for safe migration
+
+#### ✅ **Worker Migration Completed**
+- **Updated start.sh**: Changed download from `stakeordie/emp-redis` → `emprops/emp-job-queue` releases
+- **Updated asset name**: Changed from `emp-redis-worker.tar.gz` → `emp-job-queue-worker.tar.gz`
+- **Updated worker script**: Replaced `python ${WORKER_SCRIPT_PATH}` → `node ${WORKER_SCRIPT_PATH}`
+- **Updated worker detection**: Now looks for `redis-direct-worker.js` instead of Python files
+- **Removed Python deps**: Eliminated `PYTHONUNBUFFERED` environment variable
+
+#### ✅ **CI/CD Release Pipeline Completed**
+- **GitHub Actions**: Created `.github/workflows/release.yml` for automated worker packaging
+- **Asset Creation**: Builds `emp-job-queue-worker.tar.gz` with TypeScript worker and metadata
+- **Distribution**: Machines can download from GitHub releases via start.sh script
+- **Triggers**: Automated on git tags (`v*`) + manual workflow dispatch
+- **Package Structure**: `redis-direct-worker.js`, `dist/`, `package.json`, `README.md`
+
+#### ✅ **Railway Deployment Configuration**
+- **Monorepo Support**: Added `railway:build` and `railway:start` scripts to root package.json
+- **Configuration**: Created `railway.toml` with proper monorepo build settings
+- **Nixpacks**: Added `nixpacks.toml` for Node.js 20 and pnpm support
+- **Watch Patterns**: Configured to rebuild on API and core package changes
+- **Dependencies**: Handles `@emp/core` workspace dependency correctly
+
+#### ✅ **Completed - Docker-Based Railway Deployment**
+- **Docker Strategy**: Switched from Nixpacks to pre-built Docker images
+- **CI/CD Pipeline**: Building and pushing API images to Docker Hub
+- **Railway Config**: Using Docker Compose deployment instead of source builds
+- **Docker Compose Setup**: Created production-ready compose files for Railway
+- **Benefits**: Eliminates monorepo workspace resolution issues
+
+#### 📋 **Next Steps**
+- **Test Integration**: Verify TypeScript worker works with existing GPU management infrastructure
+- **Update Documentation**: Reflect new TypeScript-based worker system
+
+### ✅ Completed - Monorepo Migration + Docker Infrastructure + Machine Images Integration
+
+#### 🏗️ **Monorepo Structure & Docker Integration**
+- **Turborepo Migration**: Successfully migrated from emp-redis-js to full monorepo architecture
+- **Fixed TypeScript Errors**: Resolved all import paths, module resolution, and dependency issues
+- **Docker Setup**: Restored and configured Docker Compose for API and worker containers
+- **API Container**: Fixed entry point and build process for lightweight API server
+- **Worker Containers**: Corrected build output paths and execution commands
+
+#### 🔧 **Technical Fixes**
+- **Module Resolution**: Fixed ES module imports with proper `.js` extensions for TypeScript builds
+- **Build Output**: Corrected API build structure from `dist/index.js` to `dist/src/index.js`
+- **Worker Structure**: Maintained worker build output at `dist/redis-direct-worker.js`
+- **Container Startup**: Fixed API server entry point to actually start server instead of just exporting components
+- **Docker Contexts**: Updated all Docker Compose context paths for monorepo structure
+
+#### 🚀 **Machine Images Infrastructure**
+- **Integration**: Successfully copied emp-worker-old → `apps/machines/base_machine/`
+- **Clean Architecture**: Archived full compose file, created streamlined development version
+- **Service Focus**: Configured single `base_machine` service (PyTorch 2.7.0 + CUDA 12.8)
+- **Package Scripts**: Added comprehensive machine management commands at root level
+- **Build Ready**: `pnpm machines:base:build`, `pnpm machines:base:up:build` working
+
+#### 📋 **System Analysis & Planning**
+- **Worker Architecture**: Analyzed complete emp-worker-old system (start.sh, wgpu, worker, watchdog)
+- **Download Source**: Identified Python worker download from stakeordie/emp-redis releases
+- **Execution Point**: Located exact worker execution in scripts/worker line 152
+- **Integration Strategy**: Clear plan to replace Python worker with TypeScript worker
+- **Migration Path**: Two-step process - update download source + update execution command
+
+#### 🎯 **Next Steps Identified**
+- **Download Source**: Change start.sh to pull from this monorepo instead of emp-redis
+- **Worker Command**: Replace `python worker_main.py` with `node redis-direct-worker.js`
+- **Safe Migration**: Both changes maintain existing GPU management and service architecture
+
 ## 2025-07-07
 
 ### ✅ Completed - Workflow Isolation + Environment Variable Updates + Deployment Planning

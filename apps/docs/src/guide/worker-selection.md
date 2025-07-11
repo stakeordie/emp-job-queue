@@ -6,7 +6,6 @@ The EmProps Job Queue system uses sophisticated multi-dimensional matching algor
 
 Worker selection is based on a **pull-based model** where workers actively request jobs they can handle. The system then uses multi-dimensional scoring to find the best job for each worker request.
 
-<FullscreenDiagram>
 ```mermaid
 graph TB
     subgraph "Job Requirements"
@@ -40,7 +39,6 @@ graph TB
     
     S1 -.->|Selected| Winner[Worker 1 Selected]
 ```
-</FullscreenDiagram>
 
 ## Worker Capabilities
 
@@ -54,7 +52,7 @@ interface WorkerCapabilities {
   services: string[];                    // ["comfyui", "a1111"]
   components?: string[] | 'all';         // Component filtering
   workflows?: string[] | 'all';          // Workflow filtering
-  models?: Record<string, string[]>;     // Service -> model mapping
+  models?: Record&lt;string, string[]&gt;;     // Service -&gt; model mapping
   hardware: HardwareSpecs;               // Physical capabilities
   customer_access: CustomerAccessConfig; // Isolation rules
   performance: PerformanceConfig;        // Performance characteristics
@@ -246,13 +244,13 @@ function calculateHardwareScore(jobReqs: JobRequirements, workerCaps: WorkerCapa
   const workerHw = workerCaps.hardware;
   
   // Check minimum requirements
-  if (hw.gpu_memory_gb && workerHw.gpu_memory_gb < hw.gpu_memory_gb) {
+  if (hw.gpu_memory_gb && workerHw.gpu_memory_gb &lt; hw.gpu_memory_gb) {
     return 0; // Disqualified
   }
-  if (hw.cpu_cores && workerHw.cpu_cores < hw.cpu_cores) {
+  if (hw.cpu_cores && workerHw.cpu_cores &lt; hw.cpu_cores) {
     return 0; // Disqualified
   }
-  if (hw.ram_gb && workerHw.ram_gb < hw.ram_gb) {
+  if (hw.ram_gb && workerHw.ram_gb &lt; hw.ram_gb) {
     return 0; // Disqualified
   }
   
@@ -261,8 +259,8 @@ function calculateHardwareScore(jobReqs: JobRequirements, workerCaps: WorkerCapa
   
   if (hw.gpu_memory_gb) {
     const ratio = workerHw.gpu_memory_gb / hw.gpu_memory_gb;
-    if (ratio > 1.5) score += 10; // Bonus for over-spec
-    if (ratio > 2.0) score += 10; // Additional bonus
+    if (ratio &gt; 1.5) score += 10; // Bonus for over-spec
+    if (ratio &gt; 2.0) score += 10; // Additional bonus
   }
   
   return Math.min(score, 100);
@@ -294,7 +292,7 @@ function calculateIsolationScore(jobReqs: JobRequirements, workerCaps: WorkerCap
   
   // Check if worker can provide required isolation
   const isolationLevels = { 'none': 0, 'loose': 1, 'strict': 2 };
-  if (isolationLevels[workerIsolation] < isolationLevels[requiredIsolation]) {
+  if (isolationLevels[workerIsolation] &lt; isolationLevels[requiredIsolation]) {
     return 0; // Disqualified
   }
   
@@ -304,7 +302,7 @@ function calculateIsolationScore(jobReqs: JobRequirements, workerCaps: WorkerCap
       .map(jobId => getJobCustomerId(jobId))
       .filter(Boolean);
     
-    if (currentCustomers.length > 0 && !currentCustomers.includes(jobReqs.customer_id)) {
+    if (currentCustomers.length &gt; 0 && !currentCustomers.includes(jobReqs.customer_id)) {
       return 0; // Customer conflict
     }
   }
@@ -330,7 +328,7 @@ function calculatePerformanceScore(jobReqs: JobRequirements, workerCaps: WorkerC
 
 ### Composite Scoring
 
-```typescript
+```ts
 function calculateCompositeScore(
   jobReqs: JobRequirements,
   workerCaps: WorkerCapabilities,
@@ -338,12 +336,12 @@ function calculateCompositeScore(
 ): MatchingScore {
   const serviceScore = calculateServiceScore(jobReqs, workerCaps);
   if (serviceScore === 0) {
-    return { total_score: 0, service_score: 0 /* ... other scores */ }; // Early disqualification
+    return { total_score: 0, service_score: 0 /* other scores... */ }; // Early disqualification
   }
   
   const hardwareScore = calculateHardwareScore(jobReqs, workerCaps);
   if (hardwareScore === 0) {
-    return { total_score: 0, hardware_score: 0 /* ... other scores */ }; // Early disqualification
+    return { total_score: 0, hardware_score: 0 /* other scores... */ }; // Early disqualification
   }
   
   const loadScore = calculateLoadScore(workerInfo);
@@ -398,7 +396,6 @@ When a worker is ready for a new job:
 
 The system finds jobs that could potentially match:
 
-<FullscreenDiagram>
 ```mermaid
 sequenceDiagram
     participant Worker
@@ -414,7 +411,6 @@ sequenceDiagram
     JobBroker->>JobBroker: Select best match
     JobBroker-->>Worker: Job assignment
 ```
-</FullscreenDiagram>
 
 ### 3. Candidate Scoring
 
@@ -431,7 +427,7 @@ interface JobCandidate {
 // Example scoring results
 const candidates: JobCandidate[] = [
   {
-    job: { id: "job-123", type: "text_to_image", priority: 80 /* ... */ },
+    job: { id: "job-123", type: "text_to_image", priority: 80 /* etc... */ },
     score: {
       total_score: 95,
       service_score: 100,
@@ -443,13 +439,13 @@ const candidates: JobCandidate[] = [
     match_reasons: [
       "Perfect service match (comfyui)",
       "Component supported (text-to-image-xl)",
-      "Hardware over-spec (16GB > 8GB required)",
+      "Hardware over-spec (16GB &gt; 8GB required)",
       "Low current load (30%)"
     ],
     warnings: []
   },
   {
-    job: { id: "job-124", type: "upscaling", priority: 90 /* ... */ },
+    job: { id: "job-124", type: "upscaling", priority: 90 /* etc... */ },
     score: {
       total_score: 0,
       service_score: 0,
@@ -468,7 +464,7 @@ The highest-scoring job is selected:
 ```typescript
 function selectBestJob(candidates: JobCandidate[]): JobCandidate | null {
   // Filter out disqualified candidates
-  const qualified = candidates.filter(c => c.score.total_score > 0);
+  const qualified = candidates.filter(c => c.score.total_score &gt; 0);
   
   if (qualified.length === 0) {
     return null; // No suitable jobs
@@ -541,7 +537,7 @@ interface PredictiveLoadInfo {
   historical_performance: {
     average_job_time: number;
     success_rate: number;
-    quality_metrics: Record<string, number>;
+    quality_metrics: Record&lt;string, number&gt;;
   };
   predicted_availability: string; // ISO timestamp
 }

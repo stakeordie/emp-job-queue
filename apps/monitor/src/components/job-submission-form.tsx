@@ -472,7 +472,7 @@ export function JobSubmissionForm() {
             {showRequirements && (
               <div className="space-y-3 p-3 border rounded-md bg-muted/50">
                 <div className="text-xs text-muted-foreground">
-                  Specify job requirements for capability matching. Choose "Must have" for required capabilities or "Must not have" for capabilities that should be absent. Use dot notation for nested keys (e.g., "hardware.gpu_memory_gb").
+                  Specify job requirements for capability matching. Choose &quot;Must have&quot; for required capabilities or &quot;Must not have&quot; for capabilities that should be absent. Use dot notation for nested keys (e.g., &quot;hardware.gpu_memory_gb&quot;).
                 </div>
                 
                 <div className="space-y-2">
@@ -558,14 +558,14 @@ export function JobSubmissionForm() {
                   <div className="space-y-1 text-xs">
                     <div className="text-green-600">✅ <strong>Must have:</strong></div>
                     <div className="ml-4"><code>hardware.gpu_memory_gb</code> → <code>16</code> (min 16GB VRAM)</div>
-                    <div className="ml-4"><code>asset_type</code> → <code>&quot;video&quot;</code> (single item from worker's array)</div>
+                    <div className="ml-4"><code>asset_type</code> → <code>&quot;video&quot;</code> (single item from worker&apos;s array)</div>
                     <div className="ml-4"><code>models</code> → <code>[&quot;sdxl&quot;, &quot;sd15&quot;]</code> (worker must have ALL these models)</div>
-                    <div className="ml-4"><code>services</code> → <code>&quot;comfyui&quot;</code> (worker's services array contains this)</div>
+                    <div className="ml-4"><code>services</code> → <code>&quot;comfyui&quot;</code> (worker&apos;s services array contains this)</div>
                     
                     <div className="text-red-600 mt-2">❌ <strong>Must not have:</strong></div>
                     <div className="ml-4"><code>customer_isolation</code> → <code>&quot;strict&quot;</code> (not strict isolation)</div>
                     <div className="ml-4"><code>debugging_enabled</code> → <code>true</code> (not in debug mode)</div>
-                    <div className="ml-4"><code>asset_type</code> → <code>&quot;audio&quot;</code> (worker's array must NOT contain this)</div>
+                    <div className="ml-4"><code>asset_type</code> → <code>&quot;audio&quot;</code> (worker&apos;s array must NOT contain this)</div>
                   </div>
                 </div>
               </div>
