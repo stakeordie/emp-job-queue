@@ -259,29 +259,34 @@ export const MachineCard = memo(function MachineCard({ machine, workers, onDelet
           
           <div className="flex-1 overflow-hidden">
             <Tabs value={activeTab} onValueChange={setActiveTab} className="h-full flex flex-col">
-              <div className="flex items-center justify-between mb-4">
-                <TabsList className="grid grid-cols-auto gap-2">
-                  <TabsTrigger value="overview">Overview</TabsTrigger>
-                  {pm2Services.map(service => (
-                    <TabsTrigger key={service.name} value={service.name} className="flex items-center gap-2">
-                      <div className={`w-2 h-2 rounded-full ${
-                        service.status === 'online' ? 'bg-green-500' : 
-                        service.status === 'stopping' ? 'bg-yellow-500' : 'bg-red-500'
-                      }`} />
-                      {service.name}
-                    </TabsTrigger>
-                  ))}
-                </TabsList>
+              <div className="flex flex-col gap-4 mb-4">
+                <div className="flex items-center justify-between">
+                  <h3 className="text-lg font-semibold">Service Logs</h3>
+                  <div className="flex items-center gap-2">
+                    <Badge variant={getStatusColor(machine.status)}>
+                      {machine.status}
+                    </Badge>
+                    {machine.started_at && (
+                      <span className="text-sm text-muted-foreground">
+                        Started: {new Date(machine.started_at).toLocaleString()}
+                      </span>
+                    )}
+                  </div>
+                </div>
                 
-                <div className="flex items-center gap-2">
-                  <Badge variant={getStatusColor(machine.status)}>
-                    {machine.status}
-                  </Badge>
-                  {machine.started_at && (
-                    <span className="text-sm text-muted-foreground">
-                      Started: {new Date(machine.started_at).toLocaleString()}
-                    </span>
-                  )}
+                <div className="overflow-x-auto">
+                  <TabsList className="inline-flex w-max gap-1 min-w-full">
+                    <TabsTrigger value="overview">Overview</TabsTrigger>
+                    {pm2Services.map(service => (
+                      <TabsTrigger key={service.name} value={service.name} className="flex items-center gap-2 whitespace-nowrap">
+                        <div className={`w-2 h-2 rounded-full ${
+                          service.status === 'online' ? 'bg-green-500' : 
+                          service.status === 'stopping' ? 'bg-yellow-500' : 'bg-red-500'
+                        }`} />
+                        {service.name}
+                      </TabsTrigger>
+                    ))}
+                  </TabsList>
                 </div>
               </div>
 
