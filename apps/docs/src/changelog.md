@@ -10,6 +10,7 @@
   - Enhanced logging to show full configuration at startup
   - Removed redundant PyTorch installation - uses pre-installed PyTorch from base image
   - Significantly faster installation (saves GB of downloads)
+  - Restored COMFYUI_CPU_ONLY flag for runtime --cpu argument (local testing)
 - **Implementation**:
   - Created `ComfyUIInstallerService` class that handles full ComfyUI setup process
   - Supports repository cloning from configurable Git sources (default: stakeordie/ComfyUI forward branch)

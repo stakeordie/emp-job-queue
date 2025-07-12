@@ -33,12 +33,14 @@ export default class ComfyUIInstallerService extends BaseService {
     this.commit = process.env.COMFYUI_COMMIT || config.services['comfyui-installer']?.commit || null;
     
     // ComfyUI runtime configuration
+    this.cpuOnly = process.env.COMFYUI_CPU_ONLY === 'true' || config.services['comfyui-installer']?.cpu_only === 'true';
     this.portStart = parseInt(process.env.COMFYUI_PORT_START || config.services['comfyui-installer']?.port_start || '8188');
     
     this.logger.info(`ComfyUI installer initialized:`, {
       repo: this.repoUrl,
       branch: this.branch,
       commit: this.commit,
+      cpuOnly: this.cpuOnly,
       portStart: this.portStart,
       workspacePath: this.workspacePath
     });
