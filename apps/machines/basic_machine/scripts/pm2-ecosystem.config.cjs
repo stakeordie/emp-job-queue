@@ -24,8 +24,10 @@ function generateServiceConfig(serviceName, serviceOptions = {}) {
     max_memory_restart: '1G',
     time: true,
     merge_logs: true,
-    kill_timeout: 30000, // 30 seconds for graceful shutdown
+    kill_timeout: 1000, // 1 second - we return jobs immediately for elastic scaling
     shutdown_with_message: true,
+    listen_timeout: 3000,
+    kill_retry_time: 100,
     env: {
       NODE_ENV: process.env.NODE_ENV || 'production',
       SERVICE_MANAGER_PATH: '/service-manager',
@@ -79,7 +81,7 @@ if (process.env.ENABLE_REDIS_WORKERS === 'true') {
       interpreter: 'node',
       args: ['redis-worker'],
       max_memory_restart: '2G',
-      kill_timeout: 30000, // Give workers 30s to finish current jobs
+      kill_timeout: 1000, // Fast shutdown for elastic scaling
       env: {
         ...generateServiceConfig('redis-worker', { gpu }).env,
         STANDALONE_MODE: 'true',

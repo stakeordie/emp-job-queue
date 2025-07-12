@@ -42,8 +42,11 @@ async function main() {
       logger.warn('Not running under PM2, but PM2 mode is enabled');
     }
 
-    // Since we're in PM2 mode, services are already started by PM2
-    // We just need to verify they're running and healthy
+    // Start PM2 services from ecosystem config
+    logger.info('Starting PM2 services from ecosystem config...');
+    await startPM2Services();
+    
+    // Verify services are running and healthy
     await verifyPM2Services();
 
     // Start health check server
@@ -58,6 +61,34 @@ async function main() {
     logger.error('Failed to start Basic Machine:', error);
     await startupNotifier.notifyStartupFailed(error);
     process.exit(1);
+  }
+}
+
+/**
+ * Start PM2 services from ecosystem config
+ */
+async function startPM2Services() {
+  logger.info('Starting PM2 daemon and services...');
+  
+  try {
+    // Start PM2 daemon
+    await pm2Manager.pm2Exec('ping');
+    logger.info('PM2 daemon started');
+    
+    // Start services from ecosystem config, excluding self to prevent recursive startup
+    await pm2Manager.pm2Exec('start /workspace/pm2-ecosystem.config.cjs --only redis-worker-gpu0,redis-worker-gpu1,shared-setup');
+    logger.info('PM2 services started from ecosystem config (excluding orchestrator to prevent recursion)');
+    
+    // Save process list
+    await pm2Manager.pm2Exec('save');
+    logger.info('PM2 process list saved');
+    
+    // Wait a moment for services to initialize
+    await new Promise(resolve => setTimeout(resolve, 2000));
+    
+  } catch (error) {
+    logger.error('Failed to start PM2 services:', error);
+    throw error;
   }
 }
 
@@ -96,15 +127,7 @@ async function verifyPM2Services() {
       }
     }
 
-    // Notify Redis about service status
-    for (const service of services) {
-      if (service.status === 'online') {
-        await startupNotifier.notifyServiceStarted(service.name, {
-          pid: service.pid,
-          uptime: service.uptime
-        });
-      }
-    }
+    // Individual service notifications removed - only single startup_complete event sent
 
   } catch (error) {
     logger.error('Failed to verify PM2 services:', error);
@@ -261,7 +284,7 @@ async function getSystemStatus() {
  * Graceful shutdown handler
  */
 async function handleShutdown(signal) {
-  logger.info(`Received ${signal}, starting graceful shutdown...`);
+  logger.info(`🔴 Received ${signal}, IMMEDIATELY sending shutdown event to Redis...`);
   
   const shutdownReason = signal === 'SIGTERM' 
     ? 'Docker container shutdown' 
@@ -271,15 +294,35 @@ async function handleShutdown(signal) {
   process.env.SHUTDOWN_REASON = shutdownReason;
 
   try {
-    // Notify Redis about shutdown
+    // CRITICAL: Send shutdown event to Redis FIRST, before anything else
+    logger.info(`🚨 PRIORITY: Sending shutdown event to Redis before any other shutdown actions`);
     await startupNotifier.notifyShutdown(shutdownReason);
-    await startupNotifier.disconnect();
+    logger.info(`✅ Shutdown event sent to Redis successfully`);
     
-    // PM2 will handle stopping services
+    // Small delay to ensure the event is transmitted
+    await new Promise(resolve => setTimeout(resolve, 100));
+    
+    // For elastic scaling: Return jobs to queue immediately, don't wait
+    logger.info('🔄 Returning active jobs to queue for redistribution...');
+    
+    // Stop PM2 services quickly
+    logger.info('🛑 Stopping PM2 services...');
+    try {
+      // Just kill everything quickly - we're ephemeral
+      await pm2Manager.pm2Exec('kill');
+      logger.info('✅ PM2 daemon killed');
+    } catch (error) {
+      logger.warn('⚠️ Error stopping PM2:', error.message);
+      // Don't wait, just exit
+    }
+    
+    // Now disconnect and exit
+    await startupNotifier.disconnect();
     logger.info('Graceful shutdown completed');
     process.exit(0);
   } catch (error) {
-    logger.error('Error during shutdown:', error);
+    logger.error('❌ Error during shutdown:', error);
+    // Even if shutdown notification fails, we should still exit
     process.exit(1);
   }
 }

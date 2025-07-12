@@ -9,10 +9,10 @@ services:
     platform: linux/amd64
     container_name: ${CONTAINER_NAME:-basic-machine}
     hostname: ${CONTAINER_NAME:-basic-machine}
-    restart: unless-stopped
+    restart: "no"  # Controlled by API instead of Docker
     
-    # Graceful shutdown configuration
-    stop_grace_period: 45s  # Allow time to finish jobs and send shutdown events
+    # Fast shutdown for elastic scaling
+    stop_grace_period: 2s   # Quick shutdown - jobs returned to queue
     stop_signal: SIGTERM    # Send SIGTERM for graceful shutdown
     
     # GPU support (disabled for testing)
@@ -44,6 +44,7 @@ services:
       - ENABLE_A1111=${ENABLE_A1111}
       - ENABLE_REDIS_WORKERS=${ENABLE_REDIS_WORKERS}
       - ENABLE_OLLAMA=${ENABLE_OLLAMA}
+      - WORKER_LOCAL_PATH=${WORKER_LOCAL_PATH}
       - LOG_LEVEL=${LOG_LEVEL}
     
     # Ports are configured in docker-compose.override.yml
@@ -55,6 +56,8 @@ services:
       # Shared directory structure  
       - ./data/shared:/workspace/shared
       - ./data/logs:/workspace/logs
+      # Local worker bundle for development
+      - ../../../apps/worker/bundled:/workspace/worker-bundled
     
     # Logging
     logging:
@@ -63,13 +66,13 @@ services:
         max-size: "10m"
         max-file: "3"
     
-    # Health check
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:9090/health"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-      start_period: 5m
+    # Health check disabled for elastic scaling - external orchestration handles failures
+    # healthcheck:
+    #   test: ["CMD", "curl", "-f", "http://localhost:9090/health"]
+    #   interval: 30s
+    #   timeout: 10s
+    #   retries: 3
+    #   start_period: 5m
     
     # Networks
     networks:
@@ -79,7 +82,7 @@ services:
   redis:
     image: redis:7-alpine
     container_name: basic-machine-redis
-    restart: unless-stopped
+    restart: "no"  # Controlled by API instead of Docker
     stop_grace_period: 10s  # Allow Redis to save data
     ports:
       - "${REDIS_PORT:-6379}:6379"

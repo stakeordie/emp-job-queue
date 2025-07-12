@@ -50,7 +50,6 @@ export class RedisStartupNotifier {
       
       // Initialize startup sequence
       this.startupStartTime = Date.now();
-      await this.notifyStartupBegin();
       
       logger.info('Redis startup notifier initialized');
     } catch (error) {
@@ -63,7 +62,25 @@ export class RedisStartupNotifier {
    * Notify that machine is shutting down
    */
   async notifyShutdown(reason = 'Machine shutdown') {
-    if (!this.isConnected) return;
+    logger.info(`🔴 Beginning URGENT shutdown notification for machine ${this.config.machine.id}`);
+    
+    // Check if Redis connection is still alive
+    if (!this.redis) {
+      logger.error(`❌ Redis client is null, cannot send shutdown event for ${this.config.machine.id}`);
+      return;
+    }
+    
+    if (!this.isConnected) {
+      logger.warn(`⚠️ Redis not connected, attempting to reconnect for shutdown event...`);
+      try {
+        await this.redis.ping();
+        this.isConnected = true;
+        logger.info(`✅ Redis reconnected for shutdown event`);
+      } catch (error) {
+        logger.error(`❌ Failed to reconnect to Redis for shutdown event:`, error);
+        return;
+      }
+    }
 
     const shutdownEvent = {
       worker_id: this.workerId,
@@ -77,12 +94,19 @@ export class RedisStartupNotifier {
         hostname: os.hostname()
       }
     };
+    
+    logger.info(`📤 Attempting to publish shutdown event:`, {
+      machine_id: this.config.machine.id,
+      worker_id: this.workerId,
+      reason: reason,
+      channel: 'machine:startup:events'
+    });
 
     try {
       await this.publishStartupEvent(shutdownEvent);
-      logger.info(`Machine shutdown event published for ${this.config.machine.id}: ${reason}`);
+      logger.info(`✅ Machine shutdown event published successfully for ${this.config.machine.id}: ${reason}`);
     } catch (error) {
-      logger.error('Failed to publish shutdown event:', error);
+      logger.error(`❌ Failed to publish shutdown event for ${this.config.machine.id}:`, error);
     }
   }
 
@@ -97,89 +121,8 @@ export class RedisStartupNotifier {
     }
   }
 
-  /**
-   * Notify that worker startup has begun
-   */
-  async notifyStartupBegin() {
-    if (!this.isConnected) return;
 
-    const startupEvent = {
-      worker_id: this.workerId,
-      event_type: 'startup_begin',
-      timestamp: new Date().toISOString(),
-      startup_time: this.startupStartTime,
-      machine_config: {
-        machine_id: this.config.machine.id,
-        gpu_count: this.config.machine.gpu.count,
-        gpu_memory: this.config.machine.gpu.memoryGB,
-        gpu_model: this.config.machine.gpu.model,
-        hostname: os.hostname(),
-        cpu_cores: os.cpus().length,
-        ram_gb: Math.round(os.totalmem() / (1024 * 1024 * 1024)),
-        services: Object.entries(this.config.services)
-          .filter(([_, service]) => service.enabled)
-          .map(([name]) => name)
-      }
-    };
 
-    await this.publishStartupEvent(startupEvent);
-    logger.info(`Notified startup begin for worker ${this.workerId}`);
-  }
-
-  /**
-   * Notify a specific step in the startup process
-   */
-  async notifyStep(stepName, stepData = {}) {
-    if (!this.isConnected) return;
-
-    const stepEvent = {
-      worker_id: this.workerId,
-      event_type: 'startup_step',
-      timestamp: new Date().toISOString(),
-      elapsed_ms: Date.now() - this.startupStartTime,
-      step_name: stepName,
-      step_data: stepData,
-      machine_config: {
-        machine_id: this.config.machine.id,
-        gpu_count: this.config.machine.gpu.count,
-        gpu_memory: this.config.machine.gpu.memoryGB,
-        gpu_model: this.config.machine.gpu.model,
-        hostname: os.hostname(),
-        cpu_cores: os.cpus().length,
-        ram_gb: Math.round(os.totalmem() / (1024 * 1024 * 1024)),
-        services: Object.entries(this.config.services)
-          .filter(([_, service]) => service.enabled)
-          .map(([name]) => name)
-      }
-    };
-
-    // Store step locally
-    this.startupSteps.push(stepEvent);
-
-    await this.publishStartupEvent(stepEvent);
-    logger.debug(`Startup step: ${stepName}`, stepData);
-  }
-
-  /**
-   * Notify that a service has started
-   */
-  async notifyServiceStarted(serviceName, serviceData = {}) {
-    await this.notifyStep(`service_started_${serviceName}`, {
-      service: serviceName,
-      ...serviceData
-    });
-  }
-
-  /**
-   * Notify that a service has failed to start
-   */
-  async notifyServiceFailed(serviceName, error) {
-    await this.notifyStep(`service_failed_${serviceName}`, {
-      service: serviceName,
-      error: error.message,
-      stack: error.stack
-    });
-  }
 
   /**
    * Notify that startup has completed successfully
@@ -252,21 +195,29 @@ export class RedisStartupNotifier {
    */
   async publishStartupEvent(event) {
     if (!this.redis || !this.isConnected) {
-      logger.debug('Redis not connected, skipping startup event:', event.event_type);
+      logger.warn(`⚠️ Redis not connected, skipping ${event.event_type} event for ${event.machine_id || this.config.machine.id}`);
       return;
     }
 
     try {
+      const eventJson = JSON.stringify(event);
+      logger.info(`📨 Publishing ${event.event_type} event to Redis channel 'machine:startup:events'`, {
+        machine_id: event.machine_id || this.config.machine.id,
+        event_type: event.event_type,
+        payload_size: eventJson.length
+      });
+      
       // Publish to machine startup events channel
-      await this.redis.publish('machine:startup:events', JSON.stringify(event));
+      const subscribers = await this.redis.publish('machine:startup:events', eventJson);
+      logger.info(`✅ Event published to ${subscribers} subscribers`);
       
       // Also store in machine startup log with TTL (24 hours)
       const key = `machine:startup:${this.config.machine.id}:${event.event_type}:${Date.now()}`;
-      await this.redis.setex(key, 24 * 60 * 60, JSON.stringify(event));
+      await this.redis.setex(key, 24 * 60 * 60, eventJson);
       
-      logger.debug(`Published startup event: ${event.event_type}`);
+      logger.info(`✅ Published and stored ${event.event_type} event for machine ${event.machine_id || this.config.machine.id}`);
     } catch (error) {
-      logger.error('Failed to publish startup event:', error);
+      logger.error(`❌ Failed to publish ${event.event_type} event:`, error);
     }
   }
 

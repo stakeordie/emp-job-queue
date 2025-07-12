@@ -43,7 +43,7 @@ export default class RedisWorkerService extends BaseService {
         // Send SIGTERM for graceful shutdown
         this.workerProcess.kill('SIGTERM');
         
-        // Wait up to 10 seconds for graceful shutdown
+        // Wait up to 5 seconds for graceful shutdown
         await new Promise((resolve, reject) => {
           const timeout = setTimeout(() => {
             if (this.workerProcess && !this.workerProcess.killed) {
@@ -55,7 +55,7 @@ export default class RedisWorkerService extends BaseService {
               }
             }
             resolve();
-          }, 10000);
+          }, 5000);
 
           // Wait for the process to complete
           this.workerProcess.then(() => {

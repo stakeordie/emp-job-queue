@@ -72,28 +72,19 @@ ENV NODE_ENV=production \
 COPY scripts/pm2-ecosystem.config.cjs /workspace/pm2-ecosystem.config.cjs
 # PM2 manager is now copied with the src directory
 
-# Create startup script with PM2
+# Create startup script that runs our Node.js app as PID 1
 RUN echo '#!/bin/bash\n\
 set -e\n\
-echo "Starting Basic Machine with PM2..."\n\
+echo "Starting Basic Machine with Node.js as PID 1..."\n\
 \n\
-# Set PM2 home\n\
+# Set environment\n\
 export PM2_HOME=/workspace/.pm2\n\
+export SERVICE_MANAGER_PATH=/service-manager\n\
+export WORKSPACE_PATH=/workspace\n\
 \n\
-# Start PM2 daemon\n\
-pm2 ping\n\
-\n\
-# Start all services using PM2\n\
-pm2 start /workspace/pm2-ecosystem.config.cjs\n\
-\n\
-# Save PM2 process list\n\
-pm2 save\n\
-\n\
-# Display initial status\n\
-pm2 list\n\
-\n\
-# Keep container running and show logs\n\
-pm2 logs' > /entrypoint.sh && \
+# Change to service manager directory and run our Node.js app directly\n\
+cd /service-manager\n\
+exec node src/index-pm2.js' > /entrypoint.sh && \
     chmod +x /entrypoint.sh
 
 # Expose common ports
