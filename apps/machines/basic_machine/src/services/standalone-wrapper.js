@@ -22,7 +22,8 @@ const serviceModules = {
   'redis-worker': './redis-worker-service.js',
   'hello-world': './hello-world-service.js',
   'shared-setup': './shared-setup-service.js',
-  'comfyui': './comfyui-service.js'
+  'comfyui': './comfyui-service.js',
+  'comfyui-installer': './comfyui-installer.js'
 };
 
 async function runStandaloneService() {

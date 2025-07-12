@@ -1,5 +1,32 @@
 # EmProps Job Queue Development Changelog
 
+## 2025-07-12
+
+### ✅ Implemented ComfyUI Installer Service
+- **Feature**: Added automatic ComfyUI installation service for basic machine containers
+- **Implementation**:
+  - Created `ComfyUIInstallerService` class that handles full ComfyUI setup process
+  - Supports repository cloning from configurable Git sources (default: stakeordie/ComfyUI forward branch)
+  - Installs Python dependencies including PyTorch with CUDA support
+  - Handles custom nodes installation from configuration
+  - Sets up model symlinks from shared storage
+  - Includes installation validation (Python imports, file structure)
+- **Integration**:
+  - Added to PM2 ecosystem config as `comfyui-installer` service
+  - Runs once during container startup when `ENABLE_COMFYUI=true`
+  - Integrated with standalone wrapper for PM2 service management
+  - Updated startup sequence: shared-setup → comfyui-installer → workers
+- **Files Added**:
+  - `apps/machines/basic_machine/src/services/comfyui-installer.js` - Main installer service
+- **Files Modified**:
+  - `apps/machines/basic_machine/scripts/pm2-ecosystem.config.cjs` - Added ComfyUI installer service
+  - `apps/machines/basic_machine/src/index-pm2.js` - Updated startup sequence
+  - `apps/machines/basic_machine/src/services/standalone-wrapper.js` - Added ComfyUI installer mapping
+  - `apps/machines/basic_machine/docker-compose.yml` - Added ComfyUI environment variables
+  - `apps/machines/basic_machine/.env.local` - Added ComfyUI configuration
+- **Testing**: Successfully tested in container - ComfyUI installs in ~30 seconds, all services start properly
+- **Result**: Basic machines can now automatically install and configure ComfyUI during startup
+
 ## 2025-01-11
 
 ### 🐛 Fixed Machine Shutdown Reporting in PM2 Orchestration

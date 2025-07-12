@@ -75,9 +75,27 @@ async function startPM2Services() {
     await pm2Manager.pm2Exec('ping');
     logger.info('PM2 daemon started');
     
-    // Start services from ecosystem config, excluding self to prevent recursive startup
-    await pm2Manager.pm2Exec('start /workspace/pm2-ecosystem.config.cjs --only redis-worker-gpu0,redis-worker-gpu1,shared-setup');
-    logger.info('PM2 services started from ecosystem config (excluding orchestrator to prevent recursion)');
+    // Start services from ecosystem config in proper order: shared-setup -> comfyui-installer -> workers
+    // First start shared setup
+    await pm2Manager.pm2Exec('start /workspace/pm2-ecosystem.config.cjs --only shared-setup');
+    logger.info('Shared setup service started');
+    
+    // Wait for shared setup to complete
+    await new Promise(resolve => setTimeout(resolve, 3000));
+    
+    // Start ComfyUI installer if enabled
+    const enableComfyUI = process.env.ENABLE_COMFYUI === 'true';
+    if (enableComfyUI) {
+      await pm2Manager.pm2Exec('start /workspace/pm2-ecosystem.config.cjs --only comfyui-installer');
+      logger.info('ComfyUI installer service started');
+      
+      // Wait for ComfyUI installation to complete
+      await new Promise(resolve => setTimeout(resolve, 10000));
+    }
+    
+    // Start worker services
+    await pm2Manager.pm2Exec('start /workspace/pm2-ecosystem.config.cjs --only redis-worker-gpu0,redis-worker-gpu1');
+    logger.info('Worker services started from ecosystem config');
     
     // Save process list
     await pm2Manager.pm2Exec('save');

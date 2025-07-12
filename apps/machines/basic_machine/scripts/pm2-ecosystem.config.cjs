@@ -122,6 +122,25 @@ apps.push({
   }
 });
 
+// ComfyUI Installer Service (runs once when enabled)
+if (process.env.ENABLE_COMFYUI === 'true') {
+  apps.push({
+    ...generateServiceConfig('comfyui-installer'),
+    script: '/service-manager/src/services/standalone-wrapper.js',
+    interpreter: 'node',
+    args: ['comfyui-installer'],
+    max_memory_restart: '1G',
+    autorestart: false, // Run once for installation
+    env: {
+      ...generateServiceConfig('comfyui-installer').env,
+      STANDALONE_MODE: 'true',
+      COMFYUI_REPO_URL: process.env.COMFYUI_REPO_URL || 'https://github.com/stakeordie/ComfyUI.git',
+      COMFYUI_BRANCH: process.env.COMFYUI_BRANCH || 'forward',
+      COMFYUI_COMMIT: process.env.COMFYUI_COMMIT || '02a1b01aad28470f06c8b4f95b90914413d3e4c8'
+    }
+  });
+}
+
 module.exports = {
   apps: apps
 };

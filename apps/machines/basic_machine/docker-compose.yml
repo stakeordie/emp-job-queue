@@ -46,6 +46,13 @@ services:
       - ENABLE_OLLAMA=${ENABLE_OLLAMA}
       - WORKER_LOCAL_PATH=${WORKER_LOCAL_PATH}
       - LOG_LEVEL=${LOG_LEVEL}
+      # ComfyUI Configuration
+      - ENABLE_COMFYUI=${ENABLE_COMFYUI}
+      - COMFYUI_CPU_ONLY=${COMFYUI_CPU_ONLY}
+      - COMFYUI_PORT_START=${COMFYUI_PORT_START}
+      - COMFYUI_REPO_URL=${COMFYUI_REPO_URL}
+      - COMFYUI_BRANCH=${COMFYUI_BRANCH}
+      - COMFYUI_COMMIT=${COMFYUI_COMMIT}
     
     # Ports are configured in docker-compose.override.yml
     # Generated from EXPOSED_PORTS in .env.local
