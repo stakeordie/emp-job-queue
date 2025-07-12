@@ -57,9 +57,9 @@ const consoleFormat = winston.format.combine(
 
 // Create transports
 const transports = [
-  // Console transport
+  // Console transport - always use readable format for console output
   new winston.transports.Console({
-    format: process.env.NODE_ENV === 'production' ? format : consoleFormat,
+    format: consoleFormat,
     level: process.env.LOG_LEVEL || 'info'
   })
 ];
