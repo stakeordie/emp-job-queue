@@ -17,8 +17,8 @@ export default class ComfyUIService extends BaseService {
     this.mockFile = path.join(this.workDir, 'comfyui.mock');
     this.argsFile = path.join(this.workDir, 'comfyui.args');
     this.logFile = path.join(this.workDir, 'logs', 'output.log');
-    this.mockGpu = process.env.MOCK_GPU === '1';
-    this.cpuOnly = process.env.COMFYUI_CPU_ONLY === 'true';
+    this.testMode = process.env.TEST_MODE === 'true';
+    this.mockGpu = process.env.MOCK_GPU === '1'; // Legacy support
     this.comfyArgs = process.env.COMFY_ARGS || '';
   }
 
@@ -26,8 +26,7 @@ export default class ComfyUIService extends BaseService {
     this.logger.info(`Starting ComfyUI service for GPU ${this.gpu}`, {
       port: this.port,
       workDir: this.workDir,
-      mockGpu: this.mockGpu,
-      cpuOnly: this.cpuOnly
+      testMode: this.testMode
     });
 
     // Setup directories and logs
@@ -208,8 +207,8 @@ export default class ComfyUIService extends BaseService {
     ];
 
     // Add mode-specific args
-    if (this.mockGpu || this.cpuOnly) {
-      this.logger.info(`Adding --cpu flag (Mock GPU: ${this.mockGpu}, CPU Only: ${this.cpuOnly})`);
+    if (this.testMode || this.mockGpu) {
+      this.logger.info(`Adding --cpu flag (Test Mode: ${this.testMode})`);
       cmd.push('--cpu');
     }
 
