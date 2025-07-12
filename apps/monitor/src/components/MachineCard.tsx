@@ -11,7 +11,7 @@ import {
 } from "@/components/ui/dialog";
 import { SimpleWorkerCard } from "@/components/SimpleWorkerCard";
 import { Machine, Worker } from "@/types";
-import { useState, memo, useEffect } from "react";
+import { useState, memo, useEffect, useRef } from "react";
 import { Monitor, Server, Activity, AlertTriangle, X, RefreshCw } from "lucide-react";
 
 interface MachineCardProps {
@@ -36,6 +36,8 @@ export const MachineCard = memo(function MachineCard({ machine, workers, onDelet
   const [serviceLogs, setServiceLogs] = useState<Record<string, string>>({});
   const [loadingLogs, setLoadingLogs] = useState<Record<string, boolean>>({});
   const [activeTab, setActiveTab] = useState("overview");
+  const [streamingIntervals, setStreamingIntervals] = useState<Record<string, NodeJS.Timeout>>({});
+  const scrollRefs = useRef<Record<string, HTMLDivElement | null>>({});
 
   const getStatusColor = (status: Machine['status']) => {
     switch (status) {
@@ -107,38 +109,111 @@ export const MachineCard = memo(function MachineCard({ machine, workers, onDelet
   };
 
   // Fetch logs for a specific service
-  const fetchServiceLogs = async (serviceName: string) => {
+  const fetchServiceLogs = async (serviceName: string, isInitial = false) => {
     const healthUrl = getHealthUrl();
     if (!healthUrl) return;
     
-    setLoadingLogs(prev => ({ ...prev, [serviceName]: true }));
+    if (isInitial) {
+      setLoadingLogs(prev => ({ ...prev, [serviceName]: true }));
+    }
     
     try {
       const response = await fetch(`${healthUrl}/pm2/logs?service=${serviceName}&lines=100`);
       if (response.ok) {
         const logs = await response.text();
         setServiceLogs(prev => ({ ...prev, [serviceName]: logs }));
+        
+        // Auto-scroll to bottom after setting logs
+        setTimeout(() => {
+          const scrollElement = scrollRefs.current[serviceName];
+          if (scrollElement) {
+            scrollElement.scrollTop = scrollElement.scrollHeight;
+          }
+        }, 50);
       }
     } catch (error) {
       console.error(`Failed to fetch logs for ${serviceName}:`, error);
     } finally {
-      setLoadingLogs(prev => ({ ...prev, [serviceName]: false }));
+      if (isInitial) {
+        setLoadingLogs(prev => ({ ...prev, [serviceName]: false }));
+      }
     }
   };
 
-  // Load PM2 data when modal opens
+  // Start streaming logs for a service
+  const startStreaming = (serviceName: string) => {
+    // Clear any existing interval
+    if (streamingIntervals[serviceName]) {
+      clearInterval(streamingIntervals[serviceName]);
+    }
+    
+    // Initial fetch
+    fetchServiceLogs(serviceName, true);
+    
+    // Set up streaming interval (refresh every 2 seconds)
+    const interval = setInterval(() => {
+      fetchServiceLogs(serviceName, false);
+    }, 2000);
+    
+    setStreamingIntervals(prev => ({ ...prev, [serviceName]: interval }));
+  };
+
+  // Stop streaming logs for a service
+  const stopStreaming = (serviceName: string) => {
+    if (streamingIntervals[serviceName]) {
+      clearInterval(streamingIntervals[serviceName]);
+      setStreamingIntervals(prev => {
+        const { [serviceName]: removed, ...rest } = prev;
+        return rest;
+      });
+    }
+  };
+
+  // Stop all streaming when modal closes
+  const stopAllStreaming = () => {
+    Object.values(streamingIntervals).forEach(interval => clearInterval(interval));
+    setStreamingIntervals({});
+  };
+
+  // Load PM2 data when modal opens and clean up when it closes
   useEffect(() => {
     if (showLogs && machine.status === 'ready') {
       fetchPM2Services();
+    } else if (!showLogs) {
+      // Clean up when modal closes
+      stopAllStreaming();
+      setServiceLogs({});
+      setPm2Services([]);
+      setActiveTab('overview');
     }
   }, [showLogs, machine.status]);
 
-  // Load logs for active tab
+  // Handle tab changes - start/stop streaming
   useEffect(() => {
-    if (showLogs && activeTab !== 'overview') {
-      fetchServiceLogs(activeTab);
+    if (!showLogs) return;
+    
+    if (activeTab !== 'overview') {
+      // Stop streaming for other services
+      pm2Services.forEach(service => {
+        if (service.name !== activeTab) {
+          stopStreaming(service.name);
+        }
+      });
+      
+      // Start streaming for the active service
+      startStreaming(activeTab);
+    } else {
+      // Stop all streaming when on overview tab
+      pm2Services.forEach(service => stopStreaming(service.name));
     }
-  }, [showLogs, activeTab]);
+    
+    // Cleanup function
+    return () => {
+      if (activeTab !== 'overview') {
+        stopStreaming(activeTab);
+      }
+    };
+  }, [showLogs, activeTab, pm2Services.length]);
 
   return (
     <>
@@ -247,7 +322,9 @@ export const MachineCard = memo(function MachineCard({ machine, workers, onDelet
                 onClick={() => {
                   fetchPM2Services();
                   if (activeTab !== 'overview') {
-                    fetchServiceLogs(activeTab);
+                    // Force refresh the active tab
+                    stopStreaming(activeTab);
+                    startStreaming(activeTab);
                   }
                 }}
                 className="ml-auto"
@@ -386,22 +463,38 @@ export const MachineCard = memo(function MachineCard({ machine, workers, onDelet
                           </span>
                         </div>
                       </div>
-                      <ScrollArea className="flex-1 border rounded p-3">
-                        {loadingLogs[service.name] ? (
-                          <div className="text-center text-muted-foreground py-8">
-                            <RefreshCw className="h-8 w-8 mx-auto mb-2 opacity-50 animate-spin" />
-                            <p>Loading logs...</p>
-                          </div>
-                        ) : serviceLogs[service.name] ? (
-                          <pre className="font-mono text-xs whitespace-pre-wrap">
-                            {serviceLogs[service.name]}
-                          </pre>
-                        ) : (
-                          <div className="text-center text-muted-foreground py-8">
-                            <Monitor className="h-8 w-8 mx-auto mb-2 opacity-50" />
-                            <p>No logs available</p>
-                          </div>
-                        )}
+                      <ScrollArea className="flex-1 border rounded">
+                        <div 
+                          ref={(el) => { scrollRefs.current[service.name] = el; }}
+                          className="p-3 h-full overflow-y-auto"
+                          style={{ maxHeight: 'calc(90vh - 300px)' }}
+                        >
+                          {loadingLogs[service.name] ? (
+                            <div className="text-center text-muted-foreground py-8">
+                              <RefreshCw className="h-8 w-8 mx-auto mb-2 opacity-50 animate-spin" />
+                              <p>Loading logs...</p>
+                            </div>
+                          ) : serviceLogs[service.name] ? (
+                            <>
+                              <div className="flex items-center justify-between mb-2 sticky top-0 bg-background z-10 pb-2">
+                                <span className="text-xs text-muted-foreground">
+                                  Live logs (refreshes every 2s)
+                                </span>
+                                <span className="text-xs text-muted-foreground">
+                                  {streamingIntervals[service.name] ? '🔴 Live' : '⏸️ Paused'}
+                                </span>
+                              </div>
+                              <pre className="font-mono text-xs whitespace-pre-wrap leading-relaxed">
+                                {serviceLogs[service.name]}
+                              </pre>
+                            </>
+                          ) : (
+                            <div className="text-center text-muted-foreground py-8">
+                              <Monitor className="h-8 w-8 mx-auto mb-2 opacity-50" />
+                              <p>No logs available</p>
+                            </div>
+                          )}
+                        </div>
                       </ScrollArea>
                     </div>
                   </TabsContent>
