@@ -5,6 +5,7 @@ export interface Machine {
   logs: MachineLog[];
   started_at?: string;
   last_activity?: string;
+  health_url?: string; // Health check endpoint URL
   host_info?: {
     hostname?: string;
     ip_address?: string;

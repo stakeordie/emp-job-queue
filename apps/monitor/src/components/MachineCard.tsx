@@ -65,20 +65,41 @@ export const MachineCard = memo(function MachineCard({ machine, workers, onDelet
 
   // Extract health check URL from machine health_url
   const getHealthUrl = () => {
-    if (!machine.health_url) return null;
-    return machine.health_url.replace('/health', '');
+    if (machine.health_url) {
+      return machine.health_url.replace('/health', '');
+    }
+    
+    // Fallback for local development - assume local machine on port 9092
+    if (machine.machine_id === 'basic-machine-local') {
+      return 'http://localhost:9092';
+    }
+    
+    return null;
   };
 
   // Fetch PM2 services list
   const fetchPM2Services = async () => {
     const healthUrl = getHealthUrl();
-    if (!healthUrl) return;
+    console.log('Machine health_url:', machine.health_url);
+    console.log('Extracted health URL:', healthUrl);
+    
+    if (!healthUrl) {
+      console.log('No health URL available');
+      return;
+    }
     
     try {
-      const response = await fetch(`${healthUrl}/pm2/list`);
+      const url = `${healthUrl}/pm2/list`;
+      console.log('Fetching PM2 services from:', url);
+      const response = await fetch(url);
+      console.log('PM2 services response:', response.status, response.ok);
+      
       if (response.ok) {
         const services = await response.json();
+        console.log('PM2 services data:', services);
         setPm2Services(services);
+      } else {
+        console.error('PM2 services fetch failed:', response.status, await response.text());
       }
     } catch (error) {
       console.error('Failed to fetch PM2 services:', error);
@@ -215,7 +236,7 @@ export const MachineCard = memo(function MachineCard({ machine, workers, onDelet
       </Card>
 
       <Dialog open={showLogs} onOpenChange={setShowLogs}>
-        <DialogContent className="max-w-[95vw] w-[95vw] max-h-[90vh] h-[90vh]">
+        <DialogContent className="max-w-[95vw] w-[95vw] max-h-[90vh] h-[90vh] sm:max-w-[95vw]">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
               {getStatusIcon(machine.status)}
