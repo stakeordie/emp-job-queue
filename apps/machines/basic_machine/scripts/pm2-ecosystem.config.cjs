@@ -137,7 +137,6 @@ if (process.env.ENABLE_COMFYUI === 'true') {
       COMFYUI_REPO_URL: process.env.COMFYUI_REPO_URL,
       COMFYUI_BRANCH: process.env.COMFYUI_BRANCH,
       COMFYUI_COMMIT: process.env.COMFYUI_COMMIT,
-      COMFYUI_CPU_ONLY: process.env.COMFYUI_CPU_ONLY,
       COMFYUI_PORT_START: process.env.COMFYUI_PORT_START,
       WORKSPACE_PATH: process.env.WORKSPACE_PATH || '/workspace'
     }

@@ -6,13 +6,14 @@
 - **Feature**: Added automatic ComfyUI installation service for basic machine containers
 - **Improvements**: 
   - Removed hardcoded values - all configuration from environment variables
-  - Added CPU-only mode support for local development (COMFYUI_CPU_ONLY)
   - Made workspace paths configurable (WORKSPACE_PATH)
   - Enhanced logging to show full configuration at startup
+  - Removed redundant PyTorch installation - uses pre-installed PyTorch from base image
+  - Significantly faster installation (saves GB of downloads)
 - **Implementation**:
   - Created `ComfyUIInstallerService` class that handles full ComfyUI setup process
   - Supports repository cloning from configurable Git sources (default: stakeordie/ComfyUI forward branch)
-  - Installs Python dependencies including PyTorch with CUDA support
+  - Installs ComfyUI Python dependencies (uses pre-installed PyTorch from container)
   - Handles custom nodes installation from configuration
   - Sets up model symlinks from shared storage
   - Includes installation validation (Python imports, file structure)

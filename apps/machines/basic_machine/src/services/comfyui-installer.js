@@ -33,14 +33,12 @@ export default class ComfyUIInstallerService extends BaseService {
     this.commit = process.env.COMFYUI_COMMIT || config.services['comfyui-installer']?.commit || null;
     
     // ComfyUI runtime configuration
-    this.cpuOnly = process.env.COMFYUI_CPU_ONLY === 'true' || config.services['comfyui-installer']?.cpu_only === 'true';
     this.portStart = parseInt(process.env.COMFYUI_PORT_START || config.services['comfyui-installer']?.port_start || '8188');
     
     this.logger.info(`ComfyUI installer initialized:`, {
       repo: this.repoUrl,
       branch: this.branch,
       commit: this.commit,
-      cpuOnly: this.cpuOnly,
       portStart: this.portStart,
       workspacePath: this.workspacePath
     });
@@ -170,28 +168,8 @@ export default class ComfyUIInstallerService extends BaseService {
         throw new Error('requirements.txt not found in ComfyUI directory');
       }
 
-      // Install PyTorch based on CPU/GPU configuration
-      if (this.cpuOnly) {
-        this.logger.info('Installing PyTorch for CPU only...');
-        await execa('python3', [
-          '-m', 'pip', 'install',
-          'torch', 'torchvision', 'torchaudio',
-          '--index-url', 'https://download.pytorch.org/whl/cpu'
-        ], {
-          cwd: this.comfyuiPath,
-          stdio: 'inherit'
-        });
-      } else {
-        this.logger.info('Installing PyTorch with CUDA support...');
-        await execa('python3', [
-          '-m', 'pip', 'install',
-          'torch', 'torchvision', 'torchaudio',
-          '--extra-index-url', 'https://download.pytorch.org/whl/cu121'
-        ], {
-          cwd: this.comfyuiPath,
-          stdio: 'inherit'
-        });
-      }
+      // Skip PyTorch installation - already included in base image
+      this.logger.info('PyTorch is pre-installed in the container image, skipping installation...');
 
       // Install ComfyUI requirements
       this.logger.info('Installing ComfyUI requirements...');
