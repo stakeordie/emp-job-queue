@@ -24398,6 +24398,8 @@ var init_simulation_connector = __esm({
       redis;
       statusReportingInterval;
       workerId;
+      lastReportedStatus;
+      // Track last reported status to prevent duplicates
       constructor(connectorId) {
         this.connector_id = connectorId;
         this.processingTimeMs = parseInt(process.env.WORKER_SIMULATION_PROCESSING_TIME || "5") * 1e3;
@@ -24549,15 +24551,13 @@ var init_simulation_connector = __esm({
       async sleep(ms) {
         return new Promise((resolve) => setTimeout(resolve, ms));
       }
-      // Status reporting methods
+      // Status reporting methods - now event-driven instead of periodic
       startStatusReporting() {
-        if (this.statusReportingInterval || !this.redis) {
+        if (!this.redis) {
           return;
         }
-        this.statusReportingInterval = setInterval(async () => {
-          await this.reportStatus();
-        }, 15e3);
         this.reportStatus();
+        logger.info(`${this.service_type} connector ${this.connector_id} using event-driven status reporting`);
       }
       stopStatusReporting() {
         if (this.statusReportingInterval) {
@@ -24571,15 +24571,23 @@ var init_simulation_connector = __esm({
         }
         try {
           const isHealthy = await this.checkHealth();
+          const currentStatus = isHealthy ? "active" : "error";
+          if (this.lastReportedStatus === currentStatus) {
+            logger.debug(`${this.service_type} connector ${this.connector_id} status unchanged (${currentStatus}), skipping report`);
+            return;
+          }
           const serviceInfo = await this.getServiceInfo();
           const statusReport = {
             connector_id: this.connector_id,
             service_type: this.service_type,
             worker_id: this.workerId,
-            status: isHealthy ? "active" : "error",
+            status: currentStatus,
             service_info: serviceInfo,
             timestamp: (/* @__PURE__ */ new Date()).toISOString(),
-            last_health_check: Date.now()
+            last_health_check: Date.now(),
+            status_changed: this.lastReportedStatus !== void 0,
+            // true if this is a status change, false for initial report
+            previous_status: this.lastReportedStatus
           };
           await this.redis.publish(
             `connector_status:${this.service_type}`,
@@ -24590,12 +24598,20 @@ var init_simulation_connector = __esm({
             last_update: statusReport.timestamp,
             service_info: JSON.stringify(statusReport.service_info)
           });
-          logger.debug(
-            `Simulation connector ${this.connector_id} reported status: ${statusReport.status}`
+          this.lastReportedStatus = currentStatus;
+          logger.info(
+            `Simulation connector ${this.connector_id} reported ${this.lastReportedStatus === statusReport.previous_status ? "initial" : "changed"} status: ${statusReport.status}`
           );
         } catch (error) {
           logger.error(`Failed to report status for connector ${this.connector_id}:`, error);
         }
+      }
+      /**
+       * Manually trigger a status check (for event-driven updates)
+       * This can be called when connector state might have changed
+       */
+      async checkAndReportStatus() {
+        await this.reportStatus();
       }
     };
   }
@@ -40855,6 +40871,10 @@ var RedisDirectWorkerClient = class {
       },
       timestamp: Date.now()
     };
+    logger.info(`\u{1F4CB} Publishing worker_connected for worker ${this.workerId}:`);
+    logger.info(`\u{1F4CB}   - capabilities.services: ${JSON.stringify(capabilities.services)}`);
+    logger.info(`\u{1F4CB}   - capabilities object: ${JSON.stringify(capabilities, null, 2).substring(0, 500)}...`);
+    logger.info(`\u{1F4CB}   - event services field: ${JSON.stringify(capabilities.services || [])}`);
     await this.redis.publish("worker:events", JSON.stringify(workerConnectedEvent));
     logger.info(
       `Worker ${this.workerId} registered capabilities in Redis and published connected event`
@@ -41408,10 +41428,19 @@ var RedisDirectWorkerClient = class {
    */
   async publishMachineEvent(event) {
     try {
-      await this.redis.publish("machine:startup:events", JSON.stringify(event));
-      logger.debug(`Published machine event: ${event.event_type} for ${event.machine_id}`);
+      const eventJson = JSON.stringify(event);
+      logger.info(`\u{1F4E2} Publishing machine event to Redis channel 'machine:startup:events':`, {
+        event_type: event.event_type,
+        machine_id: event.machine_id,
+        worker_id: event.worker_id,
+        reason: event.reason,
+        channel: "machine:startup:events",
+        payload_size: eventJson.length
+      });
+      const result = await this.redis.publish("machine:startup:events", eventJson);
+      logger.info(`\u2705 Machine event published successfully: ${event.event_type} for ${event.machine_id} (${result} subscribers received it)`);
     } catch (error) {
-      logger.error(`Failed to publish machine event:`, error);
+      logger.error(`\u274C Failed to publish machine event:`, error);
       throw error;
     }
   }
@@ -41478,6 +41507,9 @@ var RedisDirectBaseWorker = class {
     this.maxConcurrentJobs = 1;
     this.jobTimeoutMinutes = parseInt(process.env.WORKER_JOB_TIMEOUT_MINUTES || "30");
     this.capabilities = this.buildCapabilities();
+    logger.info(`\u{1F527} Built capabilities for worker ${this.workerId}:`);
+    logger.info(`\u{1F527}   - services: ${JSON.stringify(this.capabilities.services)}`);
+    logger.info(`\u{1F527}   - machine_id: ${this.capabilities.machine_id}`);
     logger.info(
       `Redis-direct worker ${this.workerId} initialized with ${this.maxConcurrentJobs} max concurrent jobs`
     );
@@ -41913,15 +41945,17 @@ var RedisDirectBaseWorker = class {
     return summary;
   }
   startConnectorStatusUpdates() {
-    this.connectorStatusInterval = setInterval(async () => {
+    const sendInitialConnectorStatus = async () => {
       try {
         const connectorStatuses = await this.connectorManager.getConnectorStatuses();
         await this.redisClient.updateConnectorStatuses(connectorStatuses);
+        logger.info(`Sent initial connector statuses for worker ${this.workerId}`);
       } catch (error) {
-        logger.warn(`Failed to update connector statuses for worker ${this.workerId}:`, error);
+        logger.warn(`Failed to send initial connector statuses for worker ${this.workerId}:`, error);
       }
-    }, 3e4);
-    logger.debug(`Started connector status updates for worker ${this.workerId}`);
+    };
+    sendInitialConnectorStatus();
+    logger.debug(`Started event-driven connector status reporting for worker ${this.workerId}`);
   }
 };
 

@@ -1,9 +1,7 @@
-import { BaseService, ServiceStatus } from './base-service.js';
+import { BaseService } from './base-service.js';
 import { execa } from 'execa';
 import fs from 'fs-extra';
 import path from 'path';
-import axios from 'axios';
-import * as tar from 'tar';
 
 /**
  * ComfyUI Installer Service
@@ -21,19 +19,31 @@ export default class ComfyUIInstallerService extends BaseService {
     super('comfyui-installer', options);
     this.config = config;
     
-    // ComfyUI installation configuration
-    this.comfyuiPath = '/workspace/ComfyUI';
-    this.sharedPath = '/workspace/shared';
+    // Workspace paths from environment
+    this.workspacePath = process.env.WORKSPACE_PATH || '/workspace';
+    this.comfyuiPath = path.join(this.workspacePath, 'ComfyUI');
+    this.sharedPath = path.join(this.workspacePath, 'shared');
     this.configPath = path.join(this.sharedPath, 'config_nodes.json');
     this.staticModelsPath = path.join(this.sharedPath, 'static-models.json');
     this.comfyDirConfigPath = path.join(this.sharedPath, 'comfy_dir_config.yaml');
     
-    // Repository configuration from environment or defaults
-    this.repoUrl = process.env.COMFYUI_REPO_URL || 'https://github.com/stakeordie/ComfyUI.git';
-    this.branch = process.env.COMFYUI_BRANCH || 'forward';
-    this.commit = process.env.COMFYUI_COMMIT || '02a1b01aad28470f06c8b4f95b90914413d3e4c8';
+    // Repository configuration from environment
+    this.repoUrl = process.env.COMFYUI_REPO_URL || config.services['comfyui-installer']?.repo_url || 'https://github.com/stakeordie/ComfyUI.git';
+    this.branch = process.env.COMFYUI_BRANCH || config.services['comfyui-installer']?.branch || 'forward';
+    this.commit = process.env.COMFYUI_COMMIT || config.services['comfyui-installer']?.commit || null;
     
-    this.logger.info(`ComfyUI installer initialized with repo: ${this.repoUrl}, branch: ${this.branch}`);
+    // ComfyUI runtime configuration
+    this.cpuOnly = process.env.COMFYUI_CPU_ONLY === 'true' || config.services['comfyui-installer']?.cpu_only === 'true';
+    this.portStart = parseInt(process.env.COMFYUI_PORT_START || config.services['comfyui-installer']?.port_start || '8188');
+    
+    this.logger.info(`ComfyUI installer initialized:`, {
+      repo: this.repoUrl,
+      branch: this.branch,
+      commit: this.commit,
+      cpuOnly: this.cpuOnly,
+      portStart: this.portStart,
+      workspacePath: this.workspacePath
+    });
   }
 
   async onStart() {
@@ -160,16 +170,28 @@ export default class ComfyUIInstallerService extends BaseService {
         throw new Error('requirements.txt not found in ComfyUI directory');
       }
 
-      // Install PyTorch with CUDA support
-      this.logger.info('Installing PyTorch with CUDA support...');
-      await execa('python3', [
-        '-m', 'pip', 'install',
-        'torch', 'torchvision', 'torchaudio',
-        '--extra-index-url', 'https://download.pytorch.org/whl/cu121'
-      ], {
-        cwd: this.comfyuiPath,
-        stdio: 'inherit'
-      });
+      // Install PyTorch based on CPU/GPU configuration
+      if (this.cpuOnly) {
+        this.logger.info('Installing PyTorch for CPU only...');
+        await execa('python3', [
+          '-m', 'pip', 'install',
+          'torch', 'torchvision', 'torchaudio',
+          '--index-url', 'https://download.pytorch.org/whl/cpu'
+        ], {
+          cwd: this.comfyuiPath,
+          stdio: 'inherit'
+        });
+      } else {
+        this.logger.info('Installing PyTorch with CUDA support...');
+        await execa('python3', [
+          '-m', 'pip', 'install',
+          'torch', 'torchvision', 'torchaudio',
+          '--extra-index-url', 'https://download.pytorch.org/whl/cu121'
+        ], {
+          cwd: this.comfyuiPath,
+          stdio: 'inherit'
+        });
+      }
 
       // Install ComfyUI requirements
       this.logger.info('Installing ComfyUI requirements...');
@@ -293,8 +315,8 @@ export default class ComfyUIInstallerService extends BaseService {
       const models = staticModels.symlinks || [];
       
       for (const model of models) {
-        const sourcePath = path.join('/workspace', model.source);
-        const targetPath = path.join('/workspace', model.target);
+        const sourcePath = path.join(this.workspacePath, model.source);
+        const targetPath = path.join(this.workspacePath, model.target);
         
         if (await fs.pathExists(sourcePath)) {
           // Ensure target directory exists

@@ -1434,11 +1434,18 @@ export class LightweightAPIServer {
   private async handleMachineEvent(eventData: any): Promise<void> {
     // Extract machine_id from the worker_id or use machine config
     const machineId =
+      eventData.machine_id ||
       eventData.machine_config?.machine_id ||
       eventData.worker_id.split('-').slice(0, -1).join('-') ||
       'unknown-machine';
 
-    logger.info(`🏭 Processing machine event for: ${machineId}`);
+    logger.info(`🏭 Processing machine event:`, {
+      event_type: eventData.event_type,
+      machine_id: machineId,
+      worker_id: eventData.worker_id,
+      reason: eventData.reason,
+    });
+
     const monitorCount = this.eventBroadcaster.getMonitorCount();
     logger.info(`📊 Connected monitors: ${monitorCount}`);
 
@@ -1530,19 +1537,26 @@ export class LightweightAPIServer {
         break;
 
       case 'shutdown':
-        logger.info(`🔄 Broadcasting machine shutdown for: ${machineId}`);
+        logger.info(
+          `🔴 Processing machine shutdown for: ${machineId} (reason: ${eventData.reason})`
+        );
 
         // Mark machine as offline
         await this.redis.hset(`machine:${machineId}:info`, {
           status: 'offline',
           last_activity: new Date().toISOString(),
         });
+        logger.info(`✅ Updated Redis machine status to offline for: ${machineId}`);
 
         // Broadcast shutdown event
+        logger.info(
+          `📢 Broadcasting shutdown event to ${this.eventBroadcaster.getMonitorCount()} monitors`
+        );
         this.eventBroadcaster.broadcastMachineShutdown(
           machineId,
           eventData.reason || 'Machine shutdown'
         );
+        logger.info(`✅ Machine shutdown event broadcasted for: ${machineId}`);
         break;
 
       default:
@@ -1698,8 +1712,9 @@ export class LightweightAPIServer {
     logger.info('✅ Subscribed to: connector_status:* (pattern)');
 
     // Subscribe to machine startup events
+    logger.info('🔌 Subscribing to Redis channel: machine:startup:events');
     await this.progressSubscriber.subscribe('machine:startup:events');
-    logger.info('✅ Subscribed to: machine:startup:events');
+    logger.info('✅ Successfully subscribed to: machine:startup:events');
 
     // Subscribe to worker connection/disconnection events
     await this.progressSubscriber.subscribe('worker:events');
@@ -1768,9 +1783,13 @@ export class LightweightAPIServer {
       } else if (channel === 'machine:startup:events') {
         try {
           const eventData = JSON.parse(message);
-          logger.info(
-            `🚀 Received machine startup event: ${eventData.worker_id} - ${eventData.event_type}`
-          );
+          logger.info(`🚀 Received machine event on channel 'machine:startup:events':`, {
+            worker_id: eventData.worker_id,
+            machine_id: eventData.machine_id,
+            event_type: eventData.event_type,
+            reason: eventData.reason,
+            timestamp: eventData.timestamp,
+          });
           logger.debug('🔍 Machine startup data:', JSON.stringify(eventData, null, 2));
 
           // Process machine startup event and broadcast via EventBroadcaster

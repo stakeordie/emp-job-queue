@@ -180,6 +180,12 @@ export class RedisDirectWorkerClient {
       timestamp: Date.now(),
     };
 
+    // DEBUG: Log what services are being sent
+    logger.info(`📋 Publishing worker_connected for worker ${this.workerId}:`);
+    logger.info(`📋   - capabilities.services: ${JSON.stringify(capabilities.services)}`);
+    logger.info(`📋   - capabilities object: ${JSON.stringify(capabilities, null, 2).substring(0, 500)}...`);
+    logger.info(`📋   - event services field: ${JSON.stringify(capabilities.services || [])}`);
+
     await this.redis.publish('worker:events', JSON.stringify(workerConnectedEvent));
     logger.info(
       `Worker ${this.workerId} registered capabilities in Redis and published connected event`
@@ -871,10 +877,21 @@ export class RedisDirectWorkerClient {
    */
   async publishMachineEvent(event: Record<string, unknown>): Promise<void> {
     try {
-      await this.redis.publish('machine:startup:events', JSON.stringify(event));
-      logger.debug(`Published machine event: ${event.event_type} for ${event.machine_id}`);
+      const eventJson = JSON.stringify(event);
+      logger.info(`📢 Publishing machine event to Redis channel 'machine:startup:events':`, {
+        event_type: event.event_type,
+        machine_id: event.machine_id,
+        worker_id: event.worker_id,
+        reason: event.reason,
+        channel: 'machine:startup:events',
+        payload_size: eventJson.length
+      });
+      
+      const result = await this.redis.publish('machine:startup:events', eventJson);
+      
+      logger.info(`✅ Machine event published successfully: ${event.event_type} for ${event.machine_id} (${result} subscribers received it)`);
     } catch (error) {
-      logger.error(`Failed to publish machine event:`, error);
+      logger.error(`❌ Failed to publish machine event:`, error);
       throw error;
     }
   }

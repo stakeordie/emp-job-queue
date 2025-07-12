@@ -30,11 +30,13 @@ export class ConnectorManager implements ConnectorRegistry, ConnectorFactory {
       } catch (error) {
         logger.error(`Failed to load connector ${connectorId}:`, error);
         // Continue loading other connectors even if one fails
+        // Note: Worker capabilities should still include this service - handled elsewhere
       }
     }
 
     logger.info(`Successfully loaded ${this.connectors.size} connectors`);
   }
+
 
   private async loadConnector(connectorId: string): Promise<void> {
     // Dynamic import based on connector ID

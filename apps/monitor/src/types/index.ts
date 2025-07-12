@@ -9,6 +9,7 @@ export interface ConnectionState {
   isReconnecting: boolean;
   lastHeartbeat: Date | null;
   reconnectAttempts: number;
+  error?: string; // Connection error message
 }
 
 export interface UIState {

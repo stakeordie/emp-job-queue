@@ -50,6 +50,24 @@ When given a task, analyze and respond with:
 
 This is a complete rebuild of the Python-based emp-redis system into JavaScript/TypeScript, maintaining the proven pull-based job broker architecture while improving developer experience and deployment.
 
+## CRITICAL DESIGN REQUIREMENT: Elastic Machine Scaling
+
+**Machines are ephemeral and scale elastically based on demand:**
+- Designed for spot instances and cheap hosting providers (not reserved instances)
+- Scale from 10 → 50 → 10 machines in a single day based on workload
+- Machines spin up/down constantly - they are NOT long-running services
+- If another customer needs the hardware, we release it immediately
+- Must handle frequent machine churn gracefully without job loss
+- Shutdown/startup events are NORMAL, not exceptional
+
+**Implications for Architecture:**
+- No Docker `restart: unless-stopped` - machines should stay down when stopped
+- Fast startup/shutdown times are critical (seconds, not minutes)
+- Graceful job handoff when machines shut down
+- Monitor UI must handle rapid machine churn without confusion
+- Job queue must efficiently redistribute work as machines come/go
+- No assumptions about machine persistence or availability
+
 ## Goals of the Rebuild
 
 ### 1. Language Migration

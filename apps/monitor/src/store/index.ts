@@ -410,6 +410,8 @@ export const useMonitorStore = create<MonitorStore>()(
       
       switch (event.type) {
         // Machine Events
+        // IMPORTANT: Only specific startup events should bring a machine from offline to online.
+        // Worker connections or other events during shutdown grace period should NOT make machine appear online.
         case 'machine_startup': {
           const machineEvent = event as {
             type: 'machine_startup';
@@ -579,6 +581,7 @@ export const useMonitorStore = create<MonitorStore>()(
           const workerData = workerEvent.worker_data;
           
           // Convert old capabilities format to new WorkerCapabilities format
+          console.log(`🔍 DEBUG: Received worker_connected for ${workerEvent.worker_id} with services:`, workerData.capabilities.services);
           const capabilities: WorkerCapabilities = {
             worker_id: workerEvent.worker_id,
             services: workerData.capabilities.services || [],
@@ -644,7 +647,9 @@ export const useMonitorStore = create<MonitorStore>()(
             const updatedWorkers = [...new Set([...existingMachine.workers, worker.worker_id])];
             updateMachine(machineId, {
               workers: updatedWorkers,
-              status: 'ready',
+              // Only set to ready if machine is not offline from shutdown
+              // Offline machines should only go online via proper startup sequence
+              status: existingMachine.status === 'offline' ? 'offline' : 'ready',
               last_activity: new Date().toISOString(),
             });
             
@@ -1031,7 +1036,7 @@ export const useMonitorStore = create<MonitorStore>()(
       
       // Set up event listeners
       websocketService.onConnect(() => {
-        setConnection({ isConnected: true, isReconnecting: false });
+        setConnection({ isConnected: true, isReconnecting: false, error: undefined });
         addLog({
           level: 'info',
           category: 'websocket',
@@ -1048,6 +1053,16 @@ export const useMonitorStore = create<MonitorStore>()(
           level: 'warn',
           category: 'websocket',
           message: 'Disconnected from hub - cleared stale data',
+          source: 'websocket',
+        });
+      });
+      
+      websocketService.onConnectionFailed((reason: string) => {
+        setConnection({ isConnected: false, error: reason });
+        addLog({
+          level: 'error',
+          category: 'websocket',
+          message: `Connection failed: ${reason}`,
           source: 'websocket',
         });
       });

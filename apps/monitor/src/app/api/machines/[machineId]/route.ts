@@ -3,10 +3,10 @@ import { NextRequest, NextResponse } from 'next/server';
 // DELETE /api/machines/[machineId]
 export async function DELETE(
   request: NextRequest,
-  { params }: { params: Promise<{ machineId: string }> }
+  context: { params: Promise<{ machineId: string }> }
 ) {
   try {
-    const { machineId } = await params;
+    const { machineId } = await context.params;
     
     // Get the WebSocket URL from the request headers or query params
     // This should match the current connection

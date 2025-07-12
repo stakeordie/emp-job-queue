@@ -50,8 +50,8 @@ const CONNECTION_PRESETS = {
   }
 };
 
-export default function Home() {
-  const { connection, jobs, workers, machines, connect, disconnect, syncJobState, cancelJob, deleteMachine } = useMonitorStore();
+function Home() {
+  const { connection, jobs, workers, machines, connect, disconnect, setConnection, syncJobState, cancelJob, deleteMachine } = useMonitorStore();
   const [websocketUrl, setWebsocketUrl] = useState(CONNECTION_PRESETS.local.websocket);
   const [authToken, setAuthToken] = useState(CONNECTION_PRESETS.local.auth);
   const [selectedPreset, setSelectedPreset] = useState('local');
@@ -69,6 +69,8 @@ export default function Home() {
   };
 
   const handleConnect = () => {
+    // Clear any existing connection error
+    setConnection({ error: undefined });
     const urlWithAuth = authToken ? `${websocketUrl}?token=${encodeURIComponent(authToken)}` : websocketUrl;
     connect(urlWithAuth);
     // Remember that user wants to be connected
@@ -91,17 +93,15 @@ export default function Home() {
     }, 500);
   };
 
-  // Auto-connect on page load only if user hasn't manually disconnected
+  // Auto-clear connection error after 3 seconds
   useEffect(() => {
-    const shouldAutoConnect = localStorage.getItem('monitor-auto-connect');
-    // Default to auto-connect if no preference is stored (first time user)
-    // But respect the user's choice if they've manually disconnected
-    if (shouldAutoConnect !== 'false' && !connection.isConnected && websocketUrl && authToken) {
-      const urlWithAuth = authToken ? `${websocketUrl}?token=${encodeURIComponent(authToken)}` : websocketUrl;
-      connect(urlWithAuth);
+    if (connection.error) {
+      const timer = setTimeout(() => {
+        setConnection({ error: undefined });
+      }, 3000);
+      return () => clearTimeout(timer);
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []); // Run only on mount, ignore dependency warnings since we want this to run once
+  }, [connection.error, setConnection]);
 
   const handleSyncJob = (jobId: string) => {
     syncJobState(jobId);
@@ -230,28 +230,34 @@ export default function Home() {
             <Badge variant={connection.isConnected ? "default" : "destructive"}>
               {connection.isConnected ? "Connected" : "Disconnected"}
             </Badge>
-            <Button
-              onClick={connection.isConnected ? handleDisconnect : handleConnect}
-              variant={connection.isConnected ? "destructive" : "default"}
-              size="sm"
-              className={`transition-all duration-200 transform ${
-                connection.isConnected 
-                  ? "hover:bg-red-600 hover:scale-105 active:scale-95 shadow-md hover:shadow-lg" 
-                  : "hover:bg-blue-600 hover:scale-105 active:scale-95 shadow-md hover:shadow-lg"
-              }`}
-            >
-              {connection.isConnected ? (
-                <>
-                  <Square className="h-4 w-4 mr-2" />
-                  Disconnect
-                </>
-              ) : (
-                <>
-                  <Play className="h-4 w-4 mr-2" />
-                  Connect
-                </>
-              )}
-            </Button>
+            {connection.error ? (
+              <div className="text-red-600 text-sm">
+                {connection.error}
+              </div>
+            ) : (
+              <Button
+                onClick={connection.isConnected ? handleDisconnect : handleConnect}
+                variant={connection.isConnected ? "destructive" : "default"}
+                size="sm"
+                className={`transition-all duration-200 transform ${
+                  connection.isConnected 
+                    ? "hover:bg-red-600 hover:scale-105 active:scale-95 shadow-md hover:shadow-lg" 
+                    : "hover:bg-blue-600 hover:scale-105 active:scale-95 shadow-md hover:shadow-lg"
+                }`}
+              >
+                {connection.isConnected ? (
+                  <>
+                    <Square className="h-4 w-4 mr-2" />
+                    Disconnect
+                  </>
+                ) : (
+                  <>
+                    <Play className="h-4 w-4 mr-2" />
+                    Connect
+                  </>
+                )}
+              </Button>
+            )}
             {connection.isConnected && (
               <Button
                 onClick={handleForceDisconnect}
@@ -564,6 +570,60 @@ export default function Home() {
         isOpen={!!selectedJob}
         onClose={() => setSelectedJob(null)}
       />
+
+      {/* Add bottom padding to prevent content from being hidden behind status tray */}
+      <div className="h-12" />
     </main>
+  )
+}
+
+{/* Status Tray Footer - Outside main */}
+function StatusTrayFooter() {
+  const { connection, jobs, workers, machines } = useMonitorStore();
+  
+  return (
+    <footer className="fixed bottom-0 left-0 right-0 bg-background border-t border-border px-4 py-2">
+      <div className="max-w-7xl mx-auto flex items-center justify-between text-sm">
+        <div className="flex items-center space-x-4">
+          <div className="flex items-center space-x-2">
+            <div className={`w-2 h-2 rounded-full ${
+              connection.isConnected 
+                ? 'bg-green-500' 
+                : connection.error 
+                  ? 'bg-red-500' 
+                  : 'bg-yellow-500'
+            }`} />
+            <span className="text-muted-foreground">
+              {connection.isConnected 
+                ? 'Connected' 
+                : connection.error 
+                  ? 'Connection Failed' 
+                  : 'Disconnected'}
+            </span>
+          </div>
+          {!connection.isConnected && !connection.error && (
+            <span className="text-muted-foreground">
+              Auto-reconnect: Disabled - Click Connect to retry
+            </span>
+          )}
+        </div>
+        <div className="flex items-center space-x-2 text-muted-foreground">
+          <span>{workers.length} workers</span>
+          <span>•</span>
+          <span>{jobs.length} jobs</span>
+          <span>•</span>
+          <span>{machines.length} machines</span>
+        </div>
+      </div>
+    </footer>
+  )
+}
+
+export default function Page() {
+  return (
+    <>
+      <Home />
+      <StatusTrayFooter />
+    </>
   )
 }

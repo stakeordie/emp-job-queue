@@ -62,6 +62,11 @@ export class RedisDirectBaseWorker {
 
     // Build capabilities
     this.capabilities = this.buildCapabilities();
+    
+    // DEBUG: Log built capabilities
+    logger.info(`🔧 Built capabilities for worker ${this.workerId}:`);
+    logger.info(`🔧   - services: ${JSON.stringify(this.capabilities.services)}`);
+    logger.info(`🔧   - machine_id: ${this.capabilities.machine_id}`);
 
     logger.info(
       `Redis-direct worker ${this.workerId} initialized with ${this.maxConcurrentJobs} max concurrent jobs`
@@ -687,16 +692,21 @@ export class RedisDirectBaseWorker {
   }
 
   private startConnectorStatusUpdates(): void {
-    // Update connector statuses every 30 seconds
-    this.connectorStatusInterval = setInterval(async () => {
+    // Event-driven connector status updates - only send initial status
+    // Individual connectors will report their own status changes via event-driven mechanisms
+    const sendInitialConnectorStatus = async () => {
       try {
         const connectorStatuses = await this.connectorManager.getConnectorStatuses();
         await this.redisClient.updateConnectorStatuses(connectorStatuses);
+        logger.info(`Sent initial connector statuses for worker ${this.workerId}`);
       } catch (error) {
-        logger.warn(`Failed to update connector statuses for worker ${this.workerId}:`, error);
+        logger.warn(`Failed to send initial connector statuses for worker ${this.workerId}:`, error);
       }
-    }, 30000); // 30 seconds
+    };
 
-    logger.debug(`Started connector status updates for worker ${this.workerId}`);
+    // Send initial status and then rely on event-driven updates
+    sendInitialConnectorStatus();
+    
+    logger.debug(`Started event-driven connector status reporting for worker ${this.workerId}`);
   }
 }

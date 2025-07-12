@@ -134,9 +134,12 @@ if (process.env.ENABLE_COMFYUI === 'true') {
     env: {
       ...generateServiceConfig('comfyui-installer').env,
       STANDALONE_MODE: 'true',
-      COMFYUI_REPO_URL: process.env.COMFYUI_REPO_URL || 'https://github.com/stakeordie/ComfyUI.git',
-      COMFYUI_BRANCH: process.env.COMFYUI_BRANCH || 'forward',
-      COMFYUI_COMMIT: process.env.COMFYUI_COMMIT || '02a1b01aad28470f06c8b4f95b90914413d3e4c8'
+      COMFYUI_REPO_URL: process.env.COMFYUI_REPO_URL,
+      COMFYUI_BRANCH: process.env.COMFYUI_BRANCH,
+      COMFYUI_COMMIT: process.env.COMFYUI_COMMIT,
+      COMFYUI_CPU_ONLY: process.env.COMFYUI_CPU_ONLY,
+      COMFYUI_PORT_START: process.env.COMFYUI_PORT_START,
+      WORKSPACE_PATH: process.env.WORKSPACE_PATH || '/workspace'
     }
   });
 }

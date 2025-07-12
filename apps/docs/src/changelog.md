@@ -4,6 +4,11 @@
 
 ### ✅ Implemented ComfyUI Installer Service
 - **Feature**: Added automatic ComfyUI installation service for basic machine containers
+- **Improvements**: 
+  - Removed hardcoded values - all configuration from environment variables
+  - Added CPU-only mode support for local development (COMFYUI_CPU_ONLY)
+  - Made workspace paths configurable (WORKSPACE_PATH)
+  - Enhanced logging to show full configuration at startup
 - **Implementation**:
   - Created `ComfyUIInstallerService` class that handles full ComfyUI setup process
   - Supports repository cloning from configurable Git sources (default: stakeordie/ComfyUI forward branch)
