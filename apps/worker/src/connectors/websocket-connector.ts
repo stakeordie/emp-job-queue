@@ -1,9 +1,8 @@
 // WebSocket Connector - base class for WebSocket-based service connections
-// Direct port from Python worker/connectors/websocket_connector.py
+// Enhanced to use BaseConnector for shared Redis connection and status reporting
 
 import { WebSocket } from 'ws';
 import {
-  ConnectorInterface,
   JobData,
   JobResult,
   ProgressCallback,
@@ -11,24 +10,20 @@ import {
   ServiceInfo,
   logger,
 } from '@emp/core';
+import { BaseConnector } from './base-connector.js';
 
-export class WebSocketConnector implements ConnectorInterface {
-  connector_id: string;
+export class WebSocketConnector extends BaseConnector {
   service_type = 'websocket' as const;
   version = '1.0.0';
-  protected config: WebSocketConnectorConfig;
   protected websocket: WebSocket | null = null;
   protected isConnected = false;
   protected reconnectAttempts = 0;
   protected maxReconnectAttempts = 5;
 
   constructor(connectorId: string) {
-    this.connector_id = connectorId;
-
-    // Basic WebSocket configuration
-    this.config = {
-      connector_id: this.connector_id,
-      service_type: this.service_type as 'websocket',
+    // Initialize BaseConnector with WebSocket-specific config
+    super(connectorId, {
+      service_type: 'websocket',
       base_url: process.env.WORKER_WEBSOCKET_BASE_URL || 'ws://localhost:8080',
       timeout_seconds: parseInt(process.env.WORKER_WEBSOCKET_TIMEOUT_SECONDS || '60'),
       retry_attempts: parseInt(process.env.WORKER_WEBSOCKET_RETRY_ATTEMPTS || '3'),
@@ -46,27 +41,25 @@ export class WebSocketConnector implements ConnectorInterface {
           process.env.WORKER_WEBSOCKET_MAX_RECONNECT_ATTEMPTS || '5'
         ),
       },
-    };
+    });
+
+    this.connector_id = connectorId;
   }
 
-  async initialize(): Promise<void> {
+  // BaseConnector implementation methods
+  protected async initializeService(): Promise<void> {
+    const wsConfig = this.config as WebSocketConnectorConfig;
     logger.info(
-      `Initializing WebSocket connector ${this.connector_id} to ${this.config.settings.websocket_url}`
+      `WebSocket connector ${this.connector_id} connecting to ${wsConfig.settings.websocket_url}`
     );
-
     await this.connectWebSocket();
-
-    logger.info(`WebSocket connector ${this.connector_id} initialized successfully`);
   }
 
-  async cleanup(): Promise<void> {
-    logger.info(`Cleaning up WebSocket connector ${this.connector_id}`);
-
+  protected async cleanupService(): Promise<void> {
     if (this.websocket) {
       this.websocket.close(1000, 'Connector cleanup');
       this.websocket = null;
     }
-
     this.isConnected = false;
   }
 
@@ -80,10 +73,11 @@ export class WebSocketConnector implements ConnectorInterface {
   }
 
   async getServiceInfo(): Promise<ServiceInfo> {
+    const wsConfig = this.config as WebSocketConnectorConfig;
     return {
       service_name: 'WebSocket Service',
       service_version: this.version,
-      base_url: this.config.settings.websocket_url,
+      base_url: wsConfig.settings.websocket_url,
       status: this.isConnected ? 'online' : 'offline',
       capabilities: {
         supported_formats: ['json', 'text', 'binary'],
@@ -102,7 +96,7 @@ export class WebSocketConnector implements ConnectorInterface {
     );
   }
 
-  async processJob(jobData: JobData, progressCallback: ProgressCallback): Promise<JobResult> {
+  protected async processJobImpl(jobData: JobData, progressCallback: ProgressCallback): Promise<JobResult> {
     const startTime = Date.now();
     logger.info(`Starting WebSocket job ${jobData.id}`);
 
@@ -142,7 +136,7 @@ export class WebSocketConnector implements ConnectorInterface {
         service_metadata: {
           service_version: this.version,
           processing_stats: {
-            websocket_url: this.config.settings.websocket_url,
+            websocket_url: (this.config as WebSocketConnectorConfig).settings.websocket_url,
             connection_state: this.websocket?.readyState,
             message_size: JSON.stringify(jobData.payload).length,
           },
@@ -186,12 +180,13 @@ export class WebSocketConnector implements ConnectorInterface {
   protected async connectWebSocket(): Promise<void> {
     return new Promise((resolve, reject) => {
       try {
-        const wsUrl = this.config.settings.websocket_url;
+        const wsConfig = this.config as WebSocketConnectorConfig;
+        const wsUrl = wsConfig.settings.websocket_url;
         if (!wsUrl) {
           reject(new Error('WebSocket URL not configured'));
           return;
         }
-        const protocol = this.config.settings.protocol;
+        const protocol = wsConfig.settings.protocol;
 
         this.websocket = new WebSocket(wsUrl, protocol ? [protocol] : undefined);
 
@@ -228,7 +223,7 @@ export class WebSocketConnector implements ConnectorInterface {
         });
 
         // Setup heartbeat if configured
-        if (this.config.settings.heartbeat_interval_ms) {
+        if (wsConfig.settings.heartbeat_interval_ms) {
           this.setupHeartbeat();
         }
 
@@ -334,7 +329,8 @@ export class WebSocketConnector implements ConnectorInterface {
   }
 
   protected setupHeartbeat(): void {
-    const interval = this.config.settings.heartbeat_interval_ms || 30000;
+    const wsConfig = this.config as WebSocketConnectorConfig;
+    const interval = wsConfig.settings.heartbeat_interval_ms || 30000;
 
     setInterval(() => {
       if (this.isConnected && this.websocket) {
@@ -358,8 +354,9 @@ export class WebSocketConnector implements ConnectorInterface {
     }
 
     this.reconnectAttempts++;
+    const wsConfig = this.config as WebSocketConnectorConfig;
     const delay =
-      (this.config.settings.reconnect_delay_ms || 5000) * Math.pow(2, this.reconnectAttempts - 1);
+      (wsConfig.settings.reconnect_delay_ms || 5000) * Math.pow(2, this.reconnectAttempts - 1);
 
     logger.info(
       `Attempting WebSocket reconnection ${this.reconnectAttempts}/${this.maxReconnectAttempts} in ${delay}ms`
@@ -377,19 +374,20 @@ export class WebSocketConnector implements ConnectorInterface {
   }
 
   async updateConfiguration(config: WebSocketConnectorConfig): Promise<void> {
-    const oldUrl = this.config.settings.websocket_url;
-    this.config = { ...this.config, ...config };
+    const oldConfig = this.config as WebSocketConnectorConfig;
+    const oldUrl = oldConfig.settings?.websocket_url;
+    this.config = { ...this.config, ...config } as WebSocketConnectorConfig;
 
     // Reconnect if URL changed
     if (config.settings?.websocket_url && config.settings.websocket_url !== oldUrl) {
-      await this.cleanup();
-      await this.connectWebSocket();
+      await this.cleanupService();
+      await this.initializeService();
     }
 
     logger.info(`Updated configuration for WebSocket connector ${this.connector_id}`);
   }
 
   getConfiguration(): WebSocketConnectorConfig {
-    return { ...this.config };
+    return { ...this.config } as WebSocketConnectorConfig;
   }
 }

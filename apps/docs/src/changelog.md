@@ -1,6 +1,55 @@
 # EmProps Job Queue Development Changelog
 
-## 2025-07-13
+## 2025-07-13\n\n### ✅ Completed - Phase 2: Service Connector Architecture Refactoring\n- **Goal**: Update ComfyUIConnector and A1111Connector to inherit from pattern connectors\n- **Implementation**: Complete refactoring of service-specific connectors to use layered architecture\n- **Result**: All service connectors now use consistent BaseConnector foundation with enhanced reliability\n\n#### 🏗️ **Architecture Completed**\n- **ComfyUIConnector**: Successfully refactored to inherit from HybridConnector\n  - Uses HTTP for job submission (`/prompt` endpoint) and WebSocket for progress monitoring  \n  - Maintains compatibility with existing ComfyUI workflow processing\n  - Enhanced error handling and timeout management with service-specific settings\n  - Implements all HybridConnector abstract methods for seamless integration\n- **A1111Connector**: Successfully refactored to inherit from RestConnector\n  - Uses HTTP REST for all operations with async polling for progress\n  - Implements full abstract method requirements for RestConnector pattern\n  - Support for txt2img, img2img workflows with comprehensive progress tracking\n  - Enhanced cancellation support via `/sdapi/v1/interrupt` endpoint\n- **Enhanced Type Safety**: All TypeScript compilation errors resolved across connectors\n- **Build System**: All packages build successfully with new layered architecture\n- **Backwards Compatibility**: Existing job processing workflows remain unchanged\n\n#### 🎯 **Key Features Delivered**\n- **Consistent Status Reporting**: All connectors now report status via BaseConnector Redis integration\n- **Layered Architecture**: Clear separation of concerns between Base → Pattern → Service layers\n- **Service-Centric Indexing**: Foundation ready for fleet visibility and scaling decisions\n- **Enhanced Error Handling**: Robust failure recovery and graceful service offline handling\n- **Pattern Abstraction**: RestConnector for HTTP-only services, HybridConnector for HTTP + WebSocket\n- **Configuration Flexibility**: Service-specific settings preserved while standardizing core connectivity\n\n#### ✅ **Verification Complete**\n- **TypeScript**: All strict type checking passes across worker package\n- **Build System**: Clean compilation of all packages (core, api, worker, monitor, docs)\n- **Architecture Validation**: BaseConnector → Pattern → Service inheritance chain working correctly\n- **North Star Alignment**: Layered architecture enables specialized machine pool management\n\n#### 📋 **Next Phase Ready**\n- Phase 3: Enhanced API server and monitor integration for fleet visibility\n- Service-centric scaling decisions now possible with reliable connector status data\n- All service connectors using consistent BaseConnector architecture with Redis status reporting
+
+### ✅ Completed - Connector Status Reliability Implementation
+- **Goal**: Fixed unreliable connector status reporting across worker → API → monitor chain
+- **Problem Solved**: Only simulation connector had Redis connections for status reporting; other connectors lacked proper status tracking
+- **Full Implementation**: Deployed comprehensive layered connector architecture with enhanced reliability
+
+#### 🏗️ **Architecture Implemented**
+- **BaseConnector Class**: 
+  - Shared Redis connection and status reporting for all connectors
+  - Enhanced status values: starting/idle/active/error/offline
+  - Service-centric indexing: `service_index:{service_type}` for fleet visibility
+  - Event-driven updates with duplicate prevention
+  - Job processing status tracking (automatic active/idle transitions)
+  - Uptime and job metrics tracking
+- **Connection Pattern Layer**:
+  - **RestConnector**: HTTP-based services with async/sync polling support
+  - **WebSocketConnector**: Real-time bidirectional communication with reconnection
+  - **HybridConnector**: Combined HTTP + WebSocket (perfect for ComfyUI architecture)
+- **Enhanced SimulationConnector**: Refactored to inherit from BaseConnector with shared functionality
+
+#### 🎯 **Key Features Delivered**
+- **Service-Centric Fleet Monitoring**: Redis indexing enables questions like "how many ComfyUI services are running?"
+- **Graceful Failure Handling**: Offline services properly reported instead of hidden from monitor
+- **Event-Driven Reliability**: Status changes only reported when they actually occur
+- **Job Processing Integration**: Connectors automatically report active/idle during job processing
+- **Status Change Detection**: Prevents duplicate status reports for unchanged states
+- **Performance Metrics**: Tracks uptime, jobs processed, and processing statistics
+
+#### 🔧 **Technical Implementation**
+- **Files Created**:
+  - `apps/worker/src/connectors/base-connector.ts` - Core shared functionality
+  - `apps/worker/src/connectors/rest-connector.ts` - HTTP pattern base class
+  - `apps/worker/src/connectors/hybrid-connector.ts` - HTTP + WebSocket pattern base class
+- **Files Enhanced**:
+  - `apps/worker/src/connectors/simulation-connector.ts` - Refactored to use BaseConnector
+  - `apps/worker/src/connectors/websocket-connector.ts` - Refactored to use BaseConnector
+- **Redis Schema**: Service-centric indexing with `connector_status:{worker_id}:{service_type}` and `service_index:{service_type}`
+- **Status Reporting**: Redis pub/sub on `connector_status:{service_type}` channels for real-time updates
+
+#### ✅ **Verification Complete**
+- **TypeScript**: All compilation errors resolved, strict type checking passing
+- **Build System**: All packages build successfully (core, api, worker, monitor, docs)
+- **Architecture Ready**: Foundation prepared for ComfyUI and A1111 connector updates
+- **North Star Alignment**: Enables service-centric fleet visibility for specialized machine pool management
+
+#### 📋 **Next Phase Ready**
+- Phase 2: Update ComfyUIConnector and A1111Connector to inherit from HybridConnector/RestConnector
+- Phase 3: Enhanced API server and monitor integration for fleet visibility
+- Service-centric scaling decisions now possible with reliable connector status data
 
 ### ✅ Completed - Connector Status Reliability Plan & Clean State Verification
 - **Goal**: Fixed unreliable connector status reporting across worker → API → monitor chain

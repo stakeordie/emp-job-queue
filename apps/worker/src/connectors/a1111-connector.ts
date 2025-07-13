@@ -1,36 +1,28 @@
-// A1111 Connector - HTTP-based connection to Automatic1111 service
-// Direct port from Python worker/connectors/a1111_connector.py
+// A1111 Connector - HTTP REST connection to Automatic1111 service
+// Enhanced to use RestConnector for shared Redis connection and status reporting
 
-import axios, { AxiosInstance } from 'axios';
 import {
-  ConnectorInterface,
   JobData,
   JobResult,
   ProgressCallback,
-  A1111ConnectorConfig,
   ServiceInfo,
   logger,
 } from '@emp/core';
+import { RestConnector, RestConnectorConfig } from './rest-connector.js';
 
-export class A1111Connector implements ConnectorInterface {
-  connector_id: string;
-  service_type = 'a1111';
+export class A1111Connector extends RestConnector {
+  service_type = 'a1111' as const;
   version = '1.0.0';
-  private config: A1111ConnectorConfig;
-  private httpClient: AxiosInstance;
 
   constructor(connectorId: string) {
-    this.connector_id = connectorId;
-
     // Build configuration from environment (matching Python patterns)
     const host = process.env.WORKER_A1111_HOST || 'localhost';
     const port = parseInt(process.env.WORKER_A1111_PORT || '7860');
     const username = process.env.WORKER_A1111_USERNAME;
     const password = process.env.WORKER_A1111_PASSWORD;
 
-    this.config = {
-      connector_id: this.connector_id,
-      service_type: this.service_type as 'a1111',
+    const config: Partial<RestConnectorConfig> = {
+      service_type: 'a1111',
       base_url: `http://${host}:${port}`,
       auth:
         username && password
@@ -46,70 +38,36 @@ export class A1111Connector implements ConnectorInterface {
       health_check_interval_seconds: 30,
       max_concurrent_jobs: parseInt(process.env.WORKER_A1111_MAX_CONCURRENT_JOBS || '1'),
       settings: {
-        enable_api: process.env.WORKER_A1111_ENABLE_API !== 'false',
-        save_images: process.env.WORKER_A1111_SAVE_IMAGES !== 'false',
-        save_grid: process.env.WORKER_A1111_SAVE_GRID !== 'false',
-        image_format: (process.env.WORKER_A1111_IMAGE_FORMAT as 'png' | 'jpg' | 'webp') || 'png',
-        jpeg_quality: parseInt(process.env.WORKER_A1111_JPEG_QUALITY || '95'),
-        png_compression: parseInt(process.env.WORKER_A1111_PNG_COMPRESSION || '6'),
+        method: 'POST',
+        response_format: 'json',
+        headers: {
+          'Content-Type': 'application/json',
+          'Accept': 'application/json',
+        },
+        body_format: 'json',
+        polling_interval_ms: 1000,
       },
     };
 
-    // Initialize HTTP client with authentication
-    this.httpClient = axios.create({
-      baseURL: this.config.base_url,
-      timeout: this.config.timeout_seconds * 1000,
-      headers: this.getAuthHeaders(),
-    });
+    super(connectorId, config);
   }
 
-  private getAuthHeaders(): Record<string, string> {
-    const headers: Record<string, string> = {
-      'Content-Type': 'application/json',
-    };
-
-    if (
-      this.config.auth?.type === 'basic' &&
-      this.config.auth.username &&
-      this.config.auth.password
-    ) {
-      const credentials = Buffer.from(
-        `${this.config.auth.username}:${this.config.auth.password}`
-      ).toString('base64');
-      headers['Authorization'] = `Basic ${credentials}`;
-    }
-
-    return headers;
-  }
-
-  async initialize(): Promise<void> {
-    logger.info(`Initializing A1111 connector ${this.connector_id} at ${this.config.base_url}`);
-
-    // Test connection
-    await this.checkHealth();
-
-    logger.info(`A1111 connector ${this.connector_id} initialized successfully`);
-  }
-
-  async cleanup(): Promise<void> {
-    logger.info(`Cleaning up A1111 connector ${this.connector_id}`);
-  }
-
+  // RestConnector overrides
   async checkHealth(): Promise<boolean> {
     try {
       // Try to get API info to check if service is running
-      const response = await this.httpClient.get('/sdapi/v1/options');
-      return response.status === 200;
+      const response = await this.makeRequest('GET', '/sdapi/v1/options');
+      return response.status >= 200 && response.status < 300;
     } catch (error) {
-      logger.error(`A1111 health check failed:`, error);
+      logger.debug(`A1111 health check failed:`, error);
       return false;
     }
   }
 
   async getAvailableModels(): Promise<string[]> {
     try {
-      const response = await this.httpClient.get('/sdapi/v1/sd-models');
-      const models = response.data || [];
+      const response = await this.makeRequest('GET', '/sdapi/v1/sd-models');
+      const models = await this.parseResponse(response) as any[] || [];
 
       const modelNames = models.map(model => model.title || model.model_name || 'unknown');
       logger.info(`Found ${modelNames.length} models in A1111`);
@@ -124,14 +82,20 @@ export class A1111Connector implements ConnectorInterface {
   async getServiceInfo(): Promise<ServiceInfo> {
     try {
       const [optionsResponse, modelsResponse, progressResponse] = await Promise.allSettled([
-        this.httpClient.get('/sdapi/v1/options'),
-        this.httpClient.get('/sdapi/v1/sd-models'),
-        this.httpClient.get('/sdapi/v1/progress'),
+        this.makeRequest('GET', '/sdapi/v1/options'),
+        this.makeRequest('GET', '/sdapi/v1/sd-models'),
+        this.makeRequest('GET', '/sdapi/v1/progress'),
       ]);
 
-      const options = optionsResponse.status === 'fulfilled' ? optionsResponse.value.data : {};
-      const models = modelsResponse.status === 'fulfilled' ? modelsResponse.value.data : [];
-      const progress = progressResponse.status === 'fulfilled' ? progressResponse.value.data : {};
+      const options = optionsResponse.status === 'fulfilled' 
+        ? await this.parseResponse(optionsResponse.value) as any
+        : {};
+      const models = modelsResponse.status === 'fulfilled' 
+        ? await this.parseResponse(modelsResponse.value) as any[]
+        : [];
+      const progress = progressResponse.status === 'fulfilled' 
+        ? await this.parseResponse(progressResponse.value) as any
+        : {};
 
       return {
         service_name: 'Automatic1111',
@@ -145,7 +109,7 @@ export class A1111Connector implements ConnectorInterface {
             height: options.img2img_max_height || 2048,
           },
           supported_models: models.map(m => m.title || m.model_name),
-          features: ['txt2img', 'img2img', 'inpainting', 'extras'],
+          features: ['txt2img', 'img2img', 'inpainting', 'extras', 'async_processing'],
           concurrent_jobs: this.config.max_concurrent_jobs,
         },
         queue_info: {
@@ -167,7 +131,8 @@ export class A1111Connector implements ConnectorInterface {
     );
   }
 
-  async processJob(jobData: JobData, progressCallback: ProgressCallback): Promise<JobResult> {
+  // Override processJobImpl from BaseConnector to customize A1111 job processing
+  protected async processJobImpl(jobData: JobData, progressCallback: ProgressCallback): Promise<JobResult> {
     const startTime = Date.now();
     logger.info(`Starting A1111 job ${jobData.id}`);
 
@@ -236,7 +201,7 @@ export class A1111Connector implements ConnectorInterface {
 
     try {
       // A1111 has an interrupt endpoint
-      await this.httpClient.post('/sdapi/v1/interrupt');
+      await this.makeRequest('POST', '/sdapi/v1/interrupt');
       logger.info(`Sent interrupt request for job ${jobId}`);
     } catch (error) {
       logger.error(`Failed to cancel A1111 job ${jobId}:`, error);
@@ -280,9 +245,9 @@ export class A1111Connector implements ConnectorInterface {
     });
 
     // Submit generation request
-    const response = await this.httpClient.post('/sdapi/v1/txt2img', payload);
+    const response = await this.makeRequest('POST', '/sdapi/v1/txt2img', payload);
 
-    if (response.status !== 200) {
+    if (!response.ok) {
       throw new Error(`A1111 txt2img request failed with status ${response.status}`);
     }
 
@@ -290,7 +255,7 @@ export class A1111Connector implements ConnectorInterface {
     const steps = typeof payload.steps === 'number' ? payload.steps : 20;
     await this.pollForProgress(jobData.id, steps, progressCallback);
 
-    return response.data;
+    return await this.parseResponse(response) as Record<string, unknown>;
   }
 
   private async processImg2Img(
@@ -320,9 +285,9 @@ export class A1111Connector implements ConnectorInterface {
     });
 
     // Submit generation request
-    const response = await this.httpClient.post('/sdapi/v1/img2img', payload);
+    const response = await this.makeRequest('POST', '/sdapi/v1/img2img', payload);
 
-    if (response.status !== 200) {
+    if (!response.ok) {
       throw new Error(`A1111 img2img request failed with status ${response.status}`);
     }
 
@@ -330,7 +295,7 @@ export class A1111Connector implements ConnectorInterface {
     const steps = typeof payload.steps === 'number' ? payload.steps : 20;
     await this.pollForProgress(jobData.id, steps, progressCallback);
 
-    return response.data;
+    return await this.parseResponse(response) as Record<string, unknown>;
   }
 
   private async pollForProgress(
@@ -338,14 +303,15 @@ export class A1111Connector implements ConnectorInterface {
     totalSteps: number,
     progressCallback: ProgressCallback
   ): Promise<void> {
-    const pollInterval = 1000; // Poll every second
-    const maxPolls = 300; // Max 5 minutes
+    const restConfig = this.config as RestConnectorConfig;
+    const pollInterval = restConfig.settings.polling_interval_ms || 1000;
+    const maxPolls = (restConfig.settings as any).a1111_max_polling_attempts || 300;
     let polls = 0;
 
     while (polls < maxPolls) {
       try {
-        const progressResponse = await this.httpClient.get('/sdapi/v1/progress');
-        const progressData = progressResponse.data;
+        const progressResponse = await this.makeRequest('GET', '/sdapi/v1/progress');
+        const progressData = await this.parseResponse(progressResponse) as any;
 
         if (progressData.active) {
           const progress = Math.round((progressData.progress || 0) * 100);
@@ -376,7 +342,7 @@ export class A1111Connector implements ConnectorInterface {
           break;
         }
 
-        await this.sleep(pollInterval);
+        await new Promise(resolve => setTimeout(resolve, pollInterval));
         polls++;
       } catch (error) {
         logger.error(`Failed to poll A1111 progress for job ${jobId}:`, error);
@@ -391,26 +357,176 @@ export class A1111Connector implements ConnectorInterface {
     }
   }
 
-  private async sleep(ms: number): Promise<void> {
-    return new Promise(resolve => setTimeout(resolve, ms));
-  }
+  // Use sleep method from BaseConnector
 
-  async updateConfiguration(config: A1111ConnectorConfig): Promise<void> {
+  async updateConfiguration(config: any): Promise<void> {
     this.config = { ...this.config, ...config };
-
-    // Recreate HTTP client if base URL or auth changed
-    if (config.base_url || config.auth) {
-      this.httpClient = axios.create({
-        baseURL: this.config.base_url,
-        timeout: this.config.timeout_seconds * 1000,
-        headers: this.getAuthHeaders(),
-      });
-    }
-
     logger.info(`Updated configuration for A1111 connector ${this.connector_id}`);
   }
 
-  getConfiguration(): A1111ConnectorConfig {
+  getConfiguration(): any {
     return { ...this.config };
+  }
+  
+  // RestConnector abstract method implementations
+  protected getHealthEndpoint(): string {
+    return '/sdapi/v1/options';
+  }
+  
+  protected getJobEndpoint(): string {
+    return '/sdapi/v1/txt2img'; // Default, overridden per job type
+  }
+  
+  protected getStatusEndpoint(): string {
+    return '/sdapi/v1/progress';
+  }
+  
+  protected getCancelEndpoint(jobId: string): string | null {
+    return '/sdapi/v1/interrupt';
+  }
+  
+  protected getCompletionEndpoint(jobId: string): string | null {
+    return null; // A1111 doesn't have separate completion endpoint
+  }
+  
+  protected prepareJobPayload(jobData: JobData): unknown {
+    const jobType = this.determineJobType(jobData.payload);
+    
+    if (jobType === 'txt2img') {
+      return {
+        prompt: jobData.payload.prompt || '',
+        negative_prompt: jobData.payload.negative_prompt || '',
+        steps: jobData.payload.steps || 20,
+        sampler_name: jobData.payload.sampler_name || 'Euler a',
+        cfg_scale: jobData.payload.cfg_scale || 7,
+        width: jobData.payload.width || 512,
+        height: jobData.payload.height || 512,
+        seed: jobData.payload.seed || -1,
+        batch_size: jobData.payload.batch_size || 1,
+        n_iter: jobData.payload.n_iter || 1,
+        ...jobData.payload,
+      };
+    } else if (jobType === 'img2img') {
+      return {
+        init_images: jobData.payload.init_images || [],
+        prompt: jobData.payload.prompt || '',
+        negative_prompt: jobData.payload.negative_prompt || '',
+        steps: jobData.payload.steps || 20,
+        sampler_name: jobData.payload.sampler_name || 'Euler a',
+        cfg_scale: jobData.payload.cfg_scale || 7,
+        denoising_strength: jobData.payload.denoising_strength || 0.75,
+        seed: jobData.payload.seed || -1,
+        batch_size: jobData.payload.batch_size || 1,
+        n_iter: jobData.payload.n_iter || 1,
+        ...jobData.payload,
+      };
+    }
+    
+    return jobData.payload;
+  }
+  
+  protected handleJobSubmissionResponse(jobData: JobData, responseData: unknown): Promise<void> {
+    // A1111 returns results directly from submission, no additional handling needed
+    return Promise.resolve();
+  }
+  
+  protected async checkJobCompletion(jobData: JobData): Promise<{ completed: boolean; result?: unknown }> {
+    try {
+      const progressResponse = await this.makeRequest('GET', '/sdapi/v1/progress');
+      const progressData = await this.parseResponse(progressResponse) as any;
+      
+      if (!progressData.active) {
+        return { completed: true };
+      }
+      
+      return { completed: false };
+    } catch (error) {
+      logger.error(`Failed to check A1111 job completion:`, error);
+      return { completed: false };
+    }
+  }
+  
+  protected extractProgressFromStatusResponse(responseData: unknown, jobData: JobData): {
+    progress: number;
+    message?: string;
+    current_step?: string;
+    total_steps?: number;
+    estimated_completion_ms?: number;
+  } {
+    const progressData = responseData as any;
+    const steps = (jobData.payload.steps as number) || 20;
+    
+    const progress = Math.round((progressData.progress || 0) * 100);
+    const currentStep = Math.round((progressData.progress || 0) * steps);
+    
+    return {
+      progress,
+      message: `Generating... Step ${currentStep}/${steps}`,
+      current_step: `Step ${currentStep}`,
+      total_steps: steps,
+      estimated_completion_ms: progressData.eta_relative ? progressData.eta_relative * 1000 : undefined,
+    };
+  }
+  
+  protected isJobCompleted(responseData: unknown): boolean {
+    const progressData = responseData as any;
+    return !progressData.active;
+  }
+  
+  protected extractResultFromResponse(responseData: unknown): unknown {
+    return responseData;
+  }
+  
+  protected isAsyncJob(jobData: JobData): boolean {
+    return true; // A1111 jobs are always async
+  }
+  
+  protected extractJobId(responseData: unknown): string {
+    // A1111 doesn't return job IDs, we track by our internal job ID
+    return '';
+  }
+  
+  protected extractJobStatus(responseData: unknown): string {
+    const progressData = responseData as any;
+    return progressData.active ? 'running' : 'completed';
+  }
+  
+  protected extractJobProgress(responseData: unknown): number {
+    const progressData = responseData as any;
+    return Math.round((progressData.progress || 0) * 100);
+  }
+  
+  protected extractJobResult(responseData: unknown): unknown {
+    return responseData;
+  }
+  
+  protected handleAsyncJobSubmission(jobData: JobData, responseData: unknown): Promise<string> {
+    // A1111 doesn't return async job IDs, return our own job ID
+    return Promise.resolve(jobData.id);
+  }
+  
+  protected createProgressFromAsyncResponse(responseData: unknown, jobData: JobData): {
+    progress: number;
+    message?: string;
+    current_step?: string;
+    total_steps?: number;
+    estimated_completion_ms?: number;
+  } {
+    return this.extractProgressFromStatusResponse(responseData, jobData);
+  }
+  
+  protected isJobComplete(responseData: unknown): boolean {
+    const progressData = responseData as any;
+    return !progressData.active;
+  }
+  
+  protected isJobFailed(responseData: unknown): boolean {
+    // A1111 doesn't typically report failures through status endpoint
+    return false;
+  }
+  
+  protected extractJobError(responseData: unknown): string {
+    const errorData = responseData as any;
+    return errorData.error || 'Unknown A1111 error';
   }
 }
