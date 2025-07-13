@@ -304,6 +304,10 @@ function Home() {
                   machine={machine} 
                   workers={machineWorkers} 
                   onDelete={handleDeleteMachine}
+                  onRestart={(machineId) => {
+                    console.log(`Machine ${machineId} restart initiated from UI`);
+                    // Optionally show a toast notification or update UI state
+                  }}
                 />
               );
             })}

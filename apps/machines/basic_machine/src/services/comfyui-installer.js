@@ -208,11 +208,45 @@ export default class ComfyUIInstallerService extends BaseService {
       // Ensure custom_nodes directory exists
       await fs.ensureDir(customNodesPath);
 
-      this.logger.info(`Installing ${Object.keys(config).length} custom nodes...`);
+      // Handle different config formats
+      let nodeConfigs = [];
+      if (config.custom_nodes && Array.isArray(config.custom_nodes)) {
+        // Standard format: { "custom_nodes": [...] }
+        nodeConfigs = config.custom_nodes;
+        this.logger.info(`Installing ${config.custom_nodes.length} custom nodes from custom_nodes array...`);
+      } else if (Array.isArray(config)) {
+        // Direct array format: [...]
+        nodeConfigs = config;
+        this.logger.info(`Installing ${config.length} custom nodes from direct array...`);
+      } else if (typeof config === 'object') {
+        // Object format: each key is a node name
+        nodeConfigs = Object.entries(config).map(([name, nodeConfig]) => ({
+          ...nodeConfig,
+          name: name
+        }));
+        this.logger.info(`Installing ${Object.keys(config).length} custom nodes from object...`);
+      } else {
+        throw new Error('config_nodes.json must contain an array, object, or {custom_nodes: [...]} structure');
+      }
       
-      // Install each custom node
-      for (const [nodeName, nodeConfig] of Object.entries(config)) {
-        await this.installCustomNode(nodeName, nodeConfig, customNodesPath);
+      // Install custom nodes in parallel batches for better performance
+      const batchSize = 5; // Clone 5 repos at a time to avoid overwhelming the system
+      this.logger.info(`Installing custom nodes in batches of ${batchSize}...`);
+      
+      for (let i = 0; i < nodeConfigs.length; i += batchSize) {
+        const batch = nodeConfigs.slice(i, i + batchSize);
+        this.logger.info(`Processing batch ${Math.floor(i / batchSize) + 1}/${Math.ceil(nodeConfigs.length / batchSize)} (${batch.length} nodes)`);
+        
+        // Process this batch in parallel
+        const batchPromises = batch.map((nodeConfig, batchIndex) => {
+          const nodeName = nodeConfig.name || `custom-node-${i + batchIndex}`;
+          return this.installCustomNode(nodeName, nodeConfig, customNodesPath);
+        });
+        
+        // Wait for the entire batch to complete before proceeding
+        await Promise.all(batchPromises);
+        
+        this.logger.info(`Batch ${Math.floor(i / batchSize) + 1} completed`);
       }
 
       this.logger.info('Custom nodes installation completed');
@@ -226,18 +260,36 @@ export default class ComfyUIInstallerService extends BaseService {
    * Install a single custom node
    */
   async installCustomNode(nodeName, nodeConfig, customNodesPath) {
-    this.logger.info(`Installing custom node: ${nodeName}`);
+    this.logger.info(`Installing custom node: ${nodeName}`, {
+      url: nodeConfig.url,
+      recursive: nodeConfig.recursive,
+      requirements: nodeConfig.requirements,
+      hasEnv: !!nodeConfig.env
+    });
     
     try {
       const nodePath = path.join(customNodesPath, nodeName);
       
       // Clone the node repository
       if (nodeConfig.url) {
-        await execa('git', [
-          'clone',
-          nodeConfig.url,
-          nodePath
-        ], {
+        const cloneArgs = ['clone'];
+        
+        // Add recursive flag if specified
+        if (nodeConfig.recursive === true) {
+          cloneArgs.push('--recursive');
+          this.logger.info(`Using recursive clone for ${nodeName}`);
+        }
+        
+        // Clean up URL - remove "git clone" prefix if present
+        let cleanUrl = nodeConfig.url.trim();
+        if (cleanUrl.startsWith('git clone ')) {
+          cleanUrl = cleanUrl.substring('git clone '.length).trim();
+          this.logger.info(`Cleaned URL from "${nodeConfig.url}" to "${cleanUrl}"`);
+        }
+        
+        cloneArgs.push(cleanUrl, nodePath);
+        
+        await execa('git', cloneArgs, {
           stdio: 'inherit'
         });
 
@@ -256,23 +308,74 @@ export default class ComfyUIInstallerService extends BaseService {
         }
       }
 
-      // Install node dependencies if requirements.txt exists
-      const requirementsPath = path.join(nodePath, 'requirements.txt');
-      if (await fs.pathExists(requirementsPath)) {
-        this.logger.info(`Installing requirements for ${nodeName}...`);
-        await execa('python3', [
-          '-m', 'pip', 'install',
-          '-r', 'requirements.txt'
-        ], {
-          cwd: nodePath,
-          stdio: 'inherit'
-        });
+      // Create .env file if env configuration is provided
+      if (nodeConfig.env && typeof nodeConfig.env === 'object') {
+        await this.createEnvFile(nodeName, nodeConfig.env, nodePath);
+      }
+
+      // Install node dependencies based on requirements flag
+      if (nodeConfig.requirements === true) {
+        const requirementsPath = path.join(nodePath, 'requirements.txt');
+        if (await fs.pathExists(requirementsPath)) {
+          this.logger.info(`Installing requirements for ${nodeName} (requirements: true)...`);
+          await execa('python3', [
+            '-m', 'pip', 'install',
+            '-r', 'requirements.txt'
+          ], {
+            cwd: nodePath,
+            stdio: 'inherit'
+          });
+        } else {
+          this.logger.warn(`${nodeName} has requirements: true but no requirements.txt found`);
+        }
+      } else if (await fs.pathExists(path.join(nodePath, 'requirements.txt'))) {
+        // Only install if explicitly marked with requirements: true
+        this.logger.info(`${nodeName} has requirements.txt but requirements flag not set, skipping pip install`);
       }
 
       this.logger.info(`Custom node ${nodeName} installed successfully`);
     } catch (error) {
       this.logger.error(`Failed to install custom node ${nodeName}:`, error);
       // Continue with other nodes even if one fails
+    }
+  }
+
+  /**
+   * Create .env file for custom node from environment variables
+   */
+  async createEnvFile(nodeName, envConfig, nodePath) {
+    this.logger.info(`Creating .env file for ${nodeName}`);
+    
+    try {
+      const envLines = [];
+      
+      for (const [envKey, envVarTemplate] of Object.entries(envConfig)) {
+        // Handle ${VAR} format by extracting the variable name
+        let envVarName = envVarTemplate;
+        if (typeof envVarTemplate === 'string' && envVarTemplate.startsWith('${') && envVarTemplate.endsWith('}')) {
+          envVarName = envVarTemplate.slice(2, -1); // Remove ${ and }
+          this.logger.info(`Extracted variable name "${envVarName}" from template "${envVarTemplate}"`);
+        }
+        
+        const envValue = process.env[envVarName];
+        if (envValue !== undefined) {
+          envLines.push(`${envKey}=${envValue}`);
+          this.logger.info(`Added ${envKey} to ${nodeName} .env (from ${envVarName})`);
+        } else {
+          this.logger.warn(`Environment variable ${envVarName} not found for ${nodeName}.${envKey}`);
+          // Still add the line but with empty value
+          envLines.push(`${envKey}=`);
+        }
+      }
+      
+      if (envLines.length > 0) {
+        const envFilePath = path.join(nodePath, '.env');
+        await fs.writeFile(envFilePath, envLines.join('\n') + '\n');
+        this.logger.info(`Created .env file for ${nodeName} with ${envLines.length} variables`);
+      }
+    } catch (error) {
+      this.logger.error(`Failed to create .env file for ${nodeName}:`, error);
+      // Don't fail the installation for .env errors
     }
   }
 

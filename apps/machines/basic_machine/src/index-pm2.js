@@ -91,6 +91,18 @@ async function startPM2Services() {
       
       // Wait for ComfyUI installation to complete
       await new Promise(resolve => setTimeout(resolve, 10000));
+      
+      // Start ComfyUI service instances (per GPU)
+      const gpuCount = parseInt(process.env.NUM_GPUS || '2');
+      const comfyuiServices = [];
+      for (let gpu = 0; gpu < gpuCount; gpu++) {
+        comfyuiServices.push(`comfyui-gpu${gpu}`);
+      }
+      
+      if (comfyuiServices.length > 0) {
+        await pm2Manager.pm2Exec(`start /workspace/pm2-ecosystem.config.cjs --only ${comfyuiServices.join(',')}`);
+        logger.info(`ComfyUI service instances started: ${comfyuiServices.join(', ')}`);
+      }
     }
     
     // Start worker services
@@ -165,7 +177,15 @@ function startHealthServer() {
     // CORS headers
     res.setHeader('Access-Control-Allow-Origin', '*');
     res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
+    res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
     res.setHeader('Content-Type', 'application/json');
+
+    // Handle preflight requests
+    if (req.method === 'OPTIONS') {
+      res.statusCode = 200;
+      res.end();
+      return;
+    }
 
     try {
       switch (url.pathname) {
@@ -203,6 +223,57 @@ function startHealthServer() {
           } else {
             res.statusCode = 400;
             res.end(JSON.stringify({ error: 'Service name required' }));
+          }
+          break;
+
+        case '/restart/machine':
+          if (req.method === 'POST') {
+            logger.info('🔄 Machine restart requested via API');
+            res.statusCode = 200;
+            res.end(JSON.stringify({ message: 'Machine restart initiated' }));
+            
+            // Schedule restart after response is sent
+            setTimeout(async () => {
+              try {
+                logger.info('🔄 Executing machine restart...');
+                
+                // Send shutdown event to Redis first
+                await startupNotifier.notifyShutdown('API restart request');
+                
+                // Exit container - Docker/PM2 will handle restart
+                process.exit(0);
+              } catch (error) {
+                logger.error('❌ Error during machine restart:', error);
+                process.exit(1);
+              }
+            }, 100);
+          } else {
+            res.statusCode = 405;
+            res.end(JSON.stringify({ error: 'Method not allowed' }));
+          }
+          break;
+
+        case '/restart/service':
+          if (req.method === 'POST') {
+            const serviceToRestart = url.searchParams.get('service');
+            if (serviceToRestart) {
+              try {
+                logger.info(`🔄 Restarting PM2 service: ${serviceToRestart}`);
+                await pm2Manager.restartService(serviceToRestart);
+                res.statusCode = 200;
+                res.end(JSON.stringify({ message: `Service ${serviceToRestart} restarted successfully` }));
+              } catch (error) {
+                logger.error(`❌ Error restarting service ${serviceToRestart}:`, error);
+                res.statusCode = 500;
+                res.end(JSON.stringify({ error: `Failed to restart service: ${error.message}` }));
+              }
+            } else {
+              res.statusCode = 400;
+              res.end(JSON.stringify({ error: 'Service name required' }));
+            }
+          } else {
+            res.statusCode = 405;
+            res.end(JSON.stringify({ error: 'Method not allowed' }));
           }
           break;
 

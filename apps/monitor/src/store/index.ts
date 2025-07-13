@@ -693,14 +693,6 @@ export const useMonitorStore = create<MonitorStore>()(
               service_info: connectorEvent.service_info
             };
             
-            // Ensure the service is in the worker's capabilities.services
-            if (!worker.capabilities.services) {
-              worker.capabilities.services = [];
-            }
-            if (!worker.capabilities.services.includes(connectorEvent.service_type)) {
-              worker.capabilities.services.push(connectorEvent.service_type);
-            }
-            
             updatedWorkers[workerIndex] = worker;
             
             set({ workers: updatedWorkers });

@@ -301,6 +301,22 @@ export class EventBroadcaster {
     // Extract machine_id from worker data (same level as worker_id)
     const machineId = (workerData.machine_id as string) || 'unknown-machine';
 
+    // Extract capabilities from nested WorkerCapabilities structure
+    const rawCapabilities = workerData.capabilities as any;
+    
+    // Map nested WorkerCapabilities to flat structure expected by monitor
+    const capabilities = {
+      gpu_count: 1, // Default to 1 GPU
+      gpu_memory_gb: rawCapabilities?.hardware?.gpu_memory_gb || 0,
+      gpu_model: rawCapabilities?.hardware?.gpu_model || 'Unknown',
+      cpu_cores: 1, // Default to 1 CPU core  
+      ram_gb: rawCapabilities?.hardware?.ram_gb || 1,
+      services: rawCapabilities?.services || [], // ← CRITICAL FIX: Extract services from root level
+      models: Object.keys(rawCapabilities?.models || {}), // Extract model keys
+      customer_access: rawCapabilities?.customer_access?.isolation || 'none',
+      max_concurrent_jobs: rawCapabilities?.performance?.concurrent_jobs || 1,
+    };
+
     const event: WorkerConnectedEvent = {
       type: 'worker_connected',
       worker_id: workerId,
@@ -308,29 +324,7 @@ export class EventBroadcaster {
       worker_data: {
         id: workerId,
         status: (workerData.status as string) || 'idle',
-        capabilities:
-          (workerData.capabilities as {
-            gpu_count: number;
-            gpu_memory_gb: number;
-            gpu_model: string;
-            cpu_cores: number;
-            ram_gb: number;
-            services: string[];
-            models: string[];
-            customer_access: string;
-            max_concurrent_jobs: number;
-          }) ||
-          ({} as unknown as {
-            gpu_count: number;
-            gpu_memory_gb: number;
-            gpu_model: string;
-            cpu_cores: number;
-            ram_gb: number;
-            services: string[];
-            models: string[];
-            customer_access: string;
-            max_concurrent_jobs: number;
-          }),
+        capabilities,
         connected_at: (workerData.connected_at as string) || new Date().toISOString(),
         jobs_completed: (workerData.jobs_completed as number) || 0,
         jobs_failed: (workerData.jobs_failed as number) || 0,

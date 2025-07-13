@@ -141,6 +141,24 @@ if (process.env.ENABLE_COMFYUI === 'true') {
       WORKSPACE_PATH: process.env.WORKSPACE_PATH || '/workspace'
     }
   });
+
+  // ComfyUI Service Instances (per GPU)
+  for (let gpu = 0; gpu < gpuCount; gpu++) {
+    const basePort = parseInt(process.env.COMFYUI_PORT_START || '8188');
+    apps.push({
+      ...generateServiceConfig('comfyui', { gpu }),
+      script: '/service-manager/src/services/standalone-wrapper.js',
+      interpreter: 'node',
+      args: ['comfyui'],
+      max_memory_restart: '4G', // ComfyUI can use more memory
+      env: {
+        ...generateServiceConfig('comfyui', { gpu }).env,
+        STANDALONE_MODE: 'true',
+        COMFYUI_PORT: basePort + gpu,
+        COMFYUI_WORK_DIR: `/workspace/ComfyUI`
+      }
+    });
+  }
 }
 
 module.exports = {

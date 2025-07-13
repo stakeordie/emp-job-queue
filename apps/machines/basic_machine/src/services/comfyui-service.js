@@ -11,12 +11,12 @@ export default class ComfyUIService extends BaseService {
     this.config = config;
     this.gpu = options.gpu || 0;
     this.port = config.services.comfyui.basePort + this.gpu;
-    this.workDir = process.env.WORKSPACE_DIR ? `${process.env.WORKSPACE_DIR}/comfyui_gpu${this.gpu}` : `/workspace/comfyui_gpu${this.gpu}`;
+    this.workDir = process.env.WORKSPACE_DIR ? `${process.env.WORKSPACE_DIR}/ComfyUI` : `/workspace/ComfyUI`;
     this.process = null;
-    this.pidFile = path.join(this.workDir, 'comfyui.pid');
-    this.mockFile = path.join(this.workDir, 'comfyui.mock');
-    this.argsFile = path.join(this.workDir, 'comfyui.args');
-    this.logFile = path.join(this.workDir, 'logs', 'output.log');
+    this.pidFile = path.join(this.workDir, `comfyui-gpu${this.gpu}.pid`);
+    this.mockFile = path.join(this.workDir, `comfyui-gpu${this.gpu}.mock`);
+    this.argsFile = path.join(this.workDir, `comfyui-gpu${this.gpu}.args`);
+    this.logFile = path.join(this.workDir, 'logs', `output-gpu${this.gpu}.log`);
     this.testMode = process.env.TEST_MODE === 'true';
     this.mockGpu = process.env.MOCK_GPU === '1'; // Legacy support
     this.comfyArgs = process.env.COMFY_ARGS || '';

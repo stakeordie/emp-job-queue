@@ -81,6 +81,11 @@ async function runStandaloneService() {
       }
     };
 
+    // Add service-specific configuration
+    if (serviceName === 'comfyui') {
+      config.services.comfyui.basePort = parseInt(process.env.COMFYUI_PORT_START || '8188');
+    }
+
     // Log config for debugging (hide sensitive data)
     const sanitizedConfig = { 
       ...config, 

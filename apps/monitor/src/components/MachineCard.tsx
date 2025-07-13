@@ -11,13 +11,15 @@ import {
 } from "@/components/ui/dialog";
 import { SimpleWorkerCard } from "@/components/SimpleWorkerCard";
 import { Machine, Worker } from "@/types";
-import { useState, memo, useEffect, useRef } from "react";
-import { Monitor, Server, Activity, AlertTriangle, X, RefreshCw } from "lucide-react";
+import { useState, memo, useEffect } from "react";
+import { Monitor, Server, Activity, AlertTriangle, X, RefreshCw, RotateCcw } from "lucide-react";
+import { LazyLog, ScrollFollow } from "@melloware/react-logviewer";
 
 interface MachineCardProps {
   machine: Machine;
   workers: Worker[];
   onDelete?: (machineId: string) => void;
+  onRestart?: (machineId: string) => void;
 }
 
 interface PM2Service {
@@ -30,14 +32,10 @@ interface PM2Service {
   restarts: number;
 }
 
-export const MachineCard = memo(function MachineCard({ machine, workers, onDelete }: MachineCardProps) {
+export const MachineCard = memo(function MachineCard({ machine, workers, onDelete, onRestart }: MachineCardProps) {
   const [showLogs, setShowLogs] = useState(false);
   const [pm2Services, setPm2Services] = useState<PM2Service[]>([]);
-  const [serviceLogs, setServiceLogs] = useState<Record<string, string>>({});
-  const [loadingLogs, setLoadingLogs] = useState<Record<string, boolean>>({});
   const [activeTab, setActiveTab] = useState("overview");
-  const [streamingIntervals, setStreamingIntervals] = useState<Record<string, NodeJS.Timeout>>({});
-  const scrollRefs = useRef<Record<string, HTMLDivElement | null>>({});
 
   const getStatusColor = (status: Machine['status']) => {
     switch (status) {
@@ -108,112 +106,79 @@ export const MachineCard = memo(function MachineCard({ machine, workers, onDelet
     }
   };
 
-  // Fetch logs for a specific service
-  const fetchServiceLogs = async (serviceName: string, isInitial = false) => {
+  // Build log stream URL for react-logviewer
+  const getLogUrl = (serviceName: string) => {
     const healthUrl = getHealthUrl();
-    if (!healthUrl) return;
+    if (!healthUrl) return null;
     
-    if (isInitial) {
-      setLoadingLogs(prev => ({ ...prev, [serviceName]: true }));
+    return `${healthUrl}/pm2/logs?service=${serviceName}&lines=1000&stream=true`;
+  };
+
+  // Restart machine
+  const restartMachine = async () => {
+    const healthUrl = getHealthUrl();
+    if (!healthUrl) {
+      console.error('No health URL available for restart');
+      return;
     }
-    
+
     try {
-      const response = await fetch(`${healthUrl}/pm2/logs?service=${serviceName}&lines=100`);
+      console.log('Restarting machine:', machine.machine_id);
+      const response = await fetch(`${healthUrl}/restart/machine`, {
+        method: 'POST'
+      });
+      
       if (response.ok) {
-        const logs = await response.text();
-        setServiceLogs(prev => ({ ...prev, [serviceName]: logs }));
-        
-        // Auto-scroll to bottom after setting logs
-        setTimeout(() => {
-          const scrollElement = scrollRefs.current[serviceName];
-          if (scrollElement) {
-            scrollElement.scrollTop = scrollElement.scrollHeight;
-          }
-        }, 50);
+        console.log('Machine restart initiated successfully');
+        // Optionally call parent callback
+        if (onRestart) {
+          onRestart(machine.machine_id);
+        }
+      } else {
+        console.error('Failed to restart machine:', response.status, await response.text());
       }
     } catch (error) {
-      console.error(`Failed to fetch logs for ${serviceName}:`, error);
-    } finally {
-      if (isInitial) {
-        setLoadingLogs(prev => ({ ...prev, [serviceName]: false }));
-      }
+      console.error('Error restarting machine:', error);
     }
   };
 
-  // Start streaming logs for a service
-  const startStreaming = (serviceName: string) => {
-    // Clear any existing interval
-    if (streamingIntervals[serviceName]) {
-      clearInterval(streamingIntervals[serviceName]);
+  // Restart PM2 service
+  const restartService = async (serviceName: string) => {
+    const healthUrl = getHealthUrl();
+    if (!healthUrl) {
+      console.error('No health URL available for service restart');
+      return;
     }
-    
-    // Initial fetch
-    fetchServiceLogs(serviceName, true);
-    
-    // Set up streaming interval (refresh every 2 seconds)
-    const interval = setInterval(() => {
-      fetchServiceLogs(serviceName, false);
-    }, 2000);
-    
-    setStreamingIntervals(prev => ({ ...prev, [serviceName]: interval }));
-  };
 
-  // Stop streaming logs for a service
-  const stopStreaming = (serviceName: string) => {
-    if (streamingIntervals[serviceName]) {
-      clearInterval(streamingIntervals[serviceName]);
-      setStreamingIntervals(prev => {
-        const { [serviceName]: removed, ...rest } = prev;
-        return rest;
+    try {
+      console.log('Restarting service:', serviceName);
+      const response = await fetch(`${healthUrl}/restart/service?service=${serviceName}`, {
+        method: 'POST'
       });
+      
+      if (response.ok) {
+        console.log(`Service ${serviceName} restarted successfully`);
+        // Refresh services list
+        await fetchPM2Services();
+        // Service restarted successfully
+      } else {
+        console.error(`Failed to restart service ${serviceName}:`, response.status, await response.text());
+      }
+    } catch (error) {
+      console.error(`Error restarting service ${serviceName}:`, error);
     }
   };
 
-  // Stop all streaming when modal closes
-  const stopAllStreaming = () => {
-    Object.values(streamingIntervals).forEach(interval => clearInterval(interval));
-    setStreamingIntervals({});
-  };
-
-  // Load PM2 data when modal opens and clean up when it closes
+  // Load PM2 data when modal opens
   useEffect(() => {
     if (showLogs && machine.status === 'ready') {
       fetchPM2Services();
     } else if (!showLogs) {
       // Clean up when modal closes
-      stopAllStreaming();
-      setServiceLogs({});
       setPm2Services([]);
       setActiveTab('overview');
     }
   }, [showLogs, machine.status]);
-
-  // Handle tab changes - start/stop streaming
-  useEffect(() => {
-    if (!showLogs) return;
-    
-    if (activeTab !== 'overview') {
-      // Stop streaming for other services
-      pm2Services.forEach(service => {
-        if (service.name !== activeTab) {
-          stopStreaming(service.name);
-        }
-      });
-      
-      // Start streaming for the active service
-      startStreaming(activeTab);
-    } else {
-      // Stop all streaming when on overview tab
-      pm2Services.forEach(service => stopStreaming(service.name));
-    }
-    
-    // Cleanup function
-    return () => {
-      if (activeTab !== 'overview') {
-        stopStreaming(activeTab);
-      }
-    };
-  }, [showLogs, activeTab, pm2Services.length]);
 
   return (
     <>
@@ -236,6 +201,20 @@ export const MachineCard = memo(function MachineCard({ machine, workers, onDelet
               <Badge variant={getStatusColor(machine.status)}>
                 {machine.status}
               </Badge>
+              {machine.status === 'ready' && (
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    restartMachine();
+                  }}
+                  className="h-6 w-6 p-0 hover:bg-blue-100 hover:text-blue-600"
+                  title="Restart machine"
+                >
+                  <RotateCcw className="h-4 w-4" />
+                </Button>
+              )}
               {machine.status === 'offline' && onDelete && (
                 <Button
                   variant="ghost"
@@ -311,9 +290,9 @@ export const MachineCard = memo(function MachineCard({ machine, workers, onDelet
       </Card>
 
       <Dialog open={showLogs} onOpenChange={setShowLogs}>
-        <DialogContent className="max-w-[95vw] w-[95vw] max-h-[90vh] h-[90vh] sm:max-w-[95vw]">
-          <DialogHeader>
-            <DialogTitle className="flex items-center gap-2">
+        <DialogContent className="max-w-[98vw] w-[98vw] max-h-[95vh] h-[95vh] sm:max-w-[98vw] p-0 flex flex-col">
+          <DialogHeader className="px-6 py-3 border-b shrink-0">
+            <DialogTitle className="flex items-center gap-2 text-lg">
               {getStatusIcon(machine.status)}
               {machine.machine_id} - Service Logs
               <Button 
@@ -321,11 +300,7 @@ export const MachineCard = memo(function MachineCard({ machine, workers, onDelet
                 size="sm" 
                 onClick={() => {
                   fetchPM2Services();
-                  if (activeTab !== 'overview') {
-                    // Force refresh the active tab
-                    stopStreaming(activeTab);
-                    startStreaming(activeTab);
-                  }
+                  // Machine restarted - logs will auto-refresh via react-logviewer
                 }}
                 className="ml-auto"
               >
@@ -334,29 +309,15 @@ export const MachineCard = memo(function MachineCard({ machine, workers, onDelet
             </DialogTitle>
           </DialogHeader>
           
-          <div className="flex-1 overflow-hidden">
+          <div className="flex-1 overflow-hidden px-6 py-4">
             <Tabs value={activeTab} onValueChange={setActiveTab} className="h-full flex flex-col">
-              <div className="flex flex-col gap-4 mb-4">
-                <div className="flex items-center justify-between">
-                  <h3 className="text-lg font-semibold">Service Logs</h3>
-                  <div className="flex items-center gap-2">
-                    <Badge variant={getStatusColor(machine.status)}>
-                      {machine.status}
-                    </Badge>
-                    {machine.started_at && (
-                      <span className="text-sm text-muted-foreground">
-                        Started: {new Date(machine.started_at).toLocaleString()}
-                      </span>
-                    )}
-                  </div>
-                </div>
-                
+              <div className="shrink-0 space-y-2 mb-2">
                 <div className="overflow-x-auto">
-                  <TabsList className="inline-flex w-max gap-1 min-w-full">
-                    <TabsTrigger value="overview">Overview</TabsTrigger>
+                  <TabsList className="inline-flex w-max gap-1 min-w-full h-8">
+                    <TabsTrigger value="overview" className="text-xs py-1 px-2">Overview</TabsTrigger>
                     {pm2Services.map(service => (
-                      <TabsTrigger key={service.name} value={service.name} className="flex items-center gap-2 whitespace-nowrap">
-                        <div className={`w-2 h-2 rounded-full ${
+                      <TabsTrigger key={service.name} value={service.name} className="flex items-center gap-1 whitespace-nowrap text-xs py-1 px-2">
+                        <div className={`w-1.5 h-1.5 rounded-full ${
                           service.status === 'online' ? 'bg-green-500' : 
                           service.status === 'stopping' ? 'bg-yellow-500' : 'bg-red-500'
                         }`} />
@@ -452,50 +413,66 @@ export const MachineCard = memo(function MachineCard({ machine, workers, onDelet
                 {pm2Services.map(service => (
                   <TabsContent key={service.name} value={service.name} className="h-full">
                     <div className="h-full flex flex-col">
-                      <div className="flex items-center justify-between mb-2">
-                        <h3 className="text-lg font-semibold">{service.name} Logs</h3>
-                        <div className="flex items-center gap-2">
-                          <Badge variant={service.status === 'online' ? 'default' : 'destructive'}>
+                      <div className="flex items-center justify-between mb-1 shrink-0">
+                        <h3 className="text-sm font-medium">{service.name}</h3>
+                        <div className="flex items-center gap-2 text-xs">
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => restartService(service.name)}
+                            className="h-5 w-5 p-0 hover:bg-blue-100 hover:text-blue-600"
+                            title={`Restart ${service.name} service`}
+                          >
+                            <RotateCcw className="h-2.5 w-2.5" />
+                          </Button>
+                          <Badge variant={service.status === 'online' ? 'default' : 'destructive'} className="text-xs py-0 px-1">
                             {service.status}
                           </Badge>
-                          <span className="text-sm text-muted-foreground">
-                            PID: {service.pid} | Memory: {Math.round(service.memory / 1024 / 1024)}MB
+                          <span className="text-xs text-muted-foreground">
+                            PID: {service.pid} | {Math.round(service.memory / 1024 / 1024)}MB
                           </span>
                         </div>
                       </div>
-                      <ScrollArea className="flex-1 border rounded">
-                        <div 
-                          ref={(el) => { scrollRefs.current[service.name] = el; }}
-                          className="p-3 h-full overflow-y-auto"
-                          style={{ maxHeight: 'calc(90vh - 300px)' }}
-                        >
-                          {loadingLogs[service.name] ? (
-                            <div className="text-center text-muted-foreground py-8">
-                              <RefreshCw className="h-8 w-8 mx-auto mb-2 opacity-50 animate-spin" />
-                              <p>Loading logs...</p>
-                            </div>
-                          ) : serviceLogs[service.name] ? (
-                            <>
-                              <div className="flex items-center justify-between mb-2 sticky top-0 bg-background z-10 pb-2">
-                                <span className="text-xs text-muted-foreground">
-                                  Live logs (refreshes every 2s)
-                                </span>
-                                <span className="text-xs text-muted-foreground">
-                                  {streamingIntervals[service.name] ? '🔴 Live' : '⏸️ Paused'}
-                                </span>
-                              </div>
-                              <pre className="font-mono text-xs whitespace-pre-wrap leading-relaxed">
-                                {serviceLogs[service.name]}
-                              </pre>
-                            </>
-                          ) : (
-                            <div className="text-center text-muted-foreground py-8">
+                      <div className="flex-1 border rounded h-full">
+                        {getLogUrl(service.name) ? (
+                          <ScrollFollow
+                            startFollowing={true}
+                            render={({ follow, onScroll }) => {
+                              const logUrl = getLogUrl(service.name);
+                              if (!logUrl) return null;
+                              
+                              return (
+                                <LazyLog
+                                  url={logUrl}
+                                  stream
+                                  follow={follow}
+                                  onScroll={onScroll}
+                                  enableSearch={false}
+                                  selectableLines={false}
+                                  style={{
+                                    backgroundColor: 'hsl(var(--background))',
+                                    color: 'hsl(var(--foreground))',
+                                    fontFamily: 'ui-monospace, SFMono-Regular, "SF Mono", Monaco, Consolas, "Liberation Mono", "Courier New", monospace',
+                                    fontSize: '13px',
+                                    lineHeight: '1.4'
+                                  }}
+                                  formatPart={(text) => {
+                                    // Simple ANSI color stripping and basic formatting
+                                    return text.replace(/\x1b\[[0-9;]*m/g, '');
+                                  }}
+                                />
+                              );
+                            }}
+                          />
+                        ) : (
+                          <div className="flex items-center justify-center h-full text-muted-foreground">
+                            <div className="text-center">
                               <Monitor className="h-8 w-8 mx-auto mb-2 opacity-50" />
-                              <p>No logs available</p>
+                              <p>Log URL not available</p>
                             </div>
-                          )}
-                        </div>
-                      </ScrollArea>
+                          </div>
+                        )}
+                      </div>
                     </div>
                   </TabsContent>
                 ))}
@@ -503,8 +480,8 @@ export const MachineCard = memo(function MachineCard({ machine, workers, onDelet
             </Tabs>
           </div>
 
-          <div className="flex justify-end pt-4">
-            <Button variant="outline" onClick={() => setShowLogs(false)}>
+          <div className="flex justify-end pt-4 px-6 pb-4 border-t shrink-0">
+            <Button variant="outline" onClick={() => setShowLogs(false)} size="sm">
               Close
             </Button>
           </div>

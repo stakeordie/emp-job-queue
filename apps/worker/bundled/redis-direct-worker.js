@@ -41638,8 +41638,8 @@ var RedisDirectBaseWorker = class {
     }
     try {
       logger.info(`Starting Redis-direct worker ${this.workerId}...`);
-      await this.redisClient.connect(this.capabilities);
       await this.connectorManager.loadConnectors();
+      await this.redisClient.connect(this.capabilities);
       const connectors = this.connectorManager.getAllConnectors();
       const models = {};
       for (const connector of connectors) {
