@@ -62,7 +62,7 @@ export class RedisDirectBaseWorker {
 
     // Build capabilities
     this.capabilities = this.buildCapabilities();
-    
+
     // DEBUG: Log built capabilities
     logger.info(`🔧 Built capabilities for worker ${this.workerId}:`);
     logger.info(`🔧   - services: ${JSON.stringify(this.capabilities.services)}`);
@@ -700,13 +700,16 @@ export class RedisDirectBaseWorker {
         await this.redisClient.updateConnectorStatuses(connectorStatuses);
         logger.info(`Sent initial connector statuses for worker ${this.workerId}`);
       } catch (error) {
-        logger.warn(`Failed to send initial connector statuses for worker ${this.workerId}:`, error);
+        logger.warn(
+          `Failed to send initial connector statuses for worker ${this.workerId}:`,
+          error
+        );
       }
     };
 
     // Send initial status and then rely on event-driven updates
     sendInitialConnectorStatus();
-    
+
     logger.debug(`Started event-driven connector status reporting for worker ${this.workerId}`);
   }
 }

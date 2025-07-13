@@ -221,9 +221,11 @@ export class SimulationConnector implements ConnectorInterface {
 
     // Send initial status immediately (first-time connection)
     this.reportStatus();
-    
+
     // Note: No longer using periodic intervals - status will be reported on actual changes
-    logger.info(`${this.service_type} connector ${this.connector_id} using event-driven status reporting`);
+    logger.info(
+      `${this.service_type} connector ${this.connector_id} using event-driven status reporting`
+    );
   }
 
   stopStatusReporting(): void {
@@ -241,10 +243,12 @@ export class SimulationConnector implements ConnectorInterface {
     try {
       const isHealthy = await this.checkHealth();
       const currentStatus = isHealthy ? 'active' : 'error';
-      
+
       // Only report if status actually changed
       if (this.lastReportedStatus === currentStatus) {
-        logger.debug(`${this.service_type} connector ${this.connector_id} status unchanged (${currentStatus}), skipping report`);
+        logger.debug(
+          `${this.service_type} connector ${this.connector_id} status unchanged (${currentStatus}), skipping report`
+        );
         return;
       }
 
@@ -277,7 +281,7 @@ export class SimulationConnector implements ConnectorInterface {
 
       // Update last reported status to prevent duplicates
       this.lastReportedStatus = currentStatus;
-      
+
       logger.info(
         `Simulation connector ${this.connector_id} reported ${this.lastReportedStatus === statusReport.previous_status ? 'initial' : 'changed'} status: ${statusReport.status}`
       );

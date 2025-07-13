@@ -1,5 +1,25 @@
 # EmProps Job Queue Development Changelog
 
+## 2025-07-13
+
+### ✅ Completed - Connector Status Reliability Plan & Clean State Verification
+- **Goal**: Fixed unreliable connector status reporting across worker → API → monitor chain
+- **Problem Analysis**: Deep dive identified only simulation connector implements status reporting; other connectors lack Redis connections and periodic health checks
+- **Solution**: Created comprehensive connector status reliability plan with layered architecture
+- **Plan Components**:
+  - **BaseConnector**: Shared Redis connection and status reporting functionality
+  - **Connection Pattern Layer**: RestConnector, WebSocketConnector, HybridConnector for different service architectures  
+  - **Service-Specific Layer**: ComfyUIConnector, A1111Connector inheriting from pattern connectors
+  - **Service-Centric Indexing**: Redis indexing by service type for fleet visibility
+  - **Enhanced Status Values**: starting/idle/active/error/offline with graceful failure handling
+- **Implementation Path**: 
+  - Phase 1: BaseConnector architecture with Redis connections
+  - Phase 2: Service-centric fleet monitoring 
+  - Phase 3: Enhanced API and monitor updates for reliability
+- **Documentation**: Created detailed `/docs/connector-status-reliability-plan.md` with problem analysis, architecture solutions, and implementation steps
+- **Clean State**: Committed all work including comprehensive plan, ran lint/typecheck/build verification - all passing
+- **North Star Alignment**: Plan advances toward specialized machine pools with predictive model management by providing service-centric fleet visibility
+
 ## 2025-07-12
 
 ### ✅ Implemented ComfyUI Installer Service
