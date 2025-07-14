@@ -157,7 +157,11 @@
       "Bash(./scripts/dev-full-stack-stop.sh:*)",
       "Bash(docker port:*)",
       "mcp__playwright__browser_type",
-      "Bash(./scripts/tail-comfyui-logs.sh:*)"
+      "Bash(./scripts/tail-comfyui-logs.sh:*)",
+      "Bash(if [ -d .git ])",
+      "Bash(then git remote -v)",
+      "Bash(else echo \"Not a git repository or no .git directory found\")",
+      "Bash(fi)"
     ],
     "deny": []
   }

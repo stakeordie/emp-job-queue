@@ -1,8 +1,9 @@
-// ComfyUI Connector - Pure HTTP REST implementation with polling
-// Simplified from hybrid approach to use only HTTP endpoints with 1-second polling
+// ComfyUI Connector - Hybrid REST + WebSocket implementation
+// REST for job submission, WebSocket for real-time progress events
 
 import { JobData, JobResult, ProgressCallback, ServiceInfo, logger } from '@emp/core';
 import { RestConnector, RestConnectorConfig } from './rest-connector.js';
+import WebSocket from 'ws';
 
 export class ComfyUIConnector extends RestConnector {
   service_type = 'comfyui' as const;
