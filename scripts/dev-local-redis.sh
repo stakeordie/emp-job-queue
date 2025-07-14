@@ -44,8 +44,8 @@ cd ../..
 echo "🌐 Configuring API for local Redis..."
 cat > apps/api/.env.local.dev << EOF
 REDIS_URL=redis://localhost:6379
-API_PORT=3001
-CORS_ORIGINS=http://localhost:3000,http://localhost:3001
+API_PORT=3331
+CORS_ORIGINS=http://localhost:3333,http://localhost:3331
 EOF
 
 # Start API server with local Redis

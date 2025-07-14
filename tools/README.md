@@ -28,7 +28,7 @@ Tests API server's Redis subscription and WebSocket broadcasting. Shows if API i
 
 ```bash
 export REDIS_URL="redis://localhost:6379"          # Redis connection
-export API_URL="ws://localhost:3001"               # API WebSocket endpoint  
+export API_URL="ws://localhost:3331"               # API WebSocket endpoint  
 export WS_AUTH_TOKEN="3u8sdj5389fj3kljsf90u"      # WebSocket auth token
 ```
 

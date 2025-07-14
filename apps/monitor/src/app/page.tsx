@@ -34,7 +34,7 @@ import type { Job } from "@/types/job"
 // Environment presets
 const CONNECTION_PRESETS = {
   local: {
-    websocket: 'http://localhost:3001',
+    websocket: 'http://localhost:3331',
     auth: '3u8sdj5389fj3kljsf90u',
     name: 'Local Dev'
   },

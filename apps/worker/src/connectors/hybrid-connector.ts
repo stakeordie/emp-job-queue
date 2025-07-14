@@ -18,7 +18,7 @@ export interface HybridConnectorConfig extends ConnectorConfig {
     http_base_url?: string;
     headers?: Record<string, string>;
     body_format?: 'json' | 'form' | 'multipart';
-    
+
     // WebSocket settings
     websocket_url: string;
     protocol?: string;
@@ -27,7 +27,7 @@ export interface HybridConnectorConfig extends ConnectorConfig {
     max_reconnect_attempts?: number;
     message_timeout_ms?: number;
     ping_interval_ms?: number;
-    
+
     // Hybrid-specific settings
     use_http_for_submission?: boolean; // Submit jobs via HTTP
     use_websocket_for_progress?: boolean; // Monitor progress via WebSocket
@@ -45,7 +45,7 @@ export interface HybridMessage {
 
 export abstract class HybridConnector extends BaseConnector {
   protected hybridConfig: HybridConnectorConfig;
-  
+
   // WebSocket connection
   protected ws?: WebSocket;
   protected isWebSocketConnected: boolean = false;
@@ -53,27 +53,30 @@ export abstract class HybridConnector extends BaseConnector {
   protected reconnectTimeout?: NodeJS.Timeout;
   protected heartbeatInterval?: NodeJS.Timeout;
   protected pingInterval?: NodeJS.Timeout;
-  
+
   // HTTP client settings
   protected httpBaseUrl: string;
   protected httpHeaders: Record<string, string> = {};
-  
+
   // Job tracking
-  protected pendingJobs = new Map<string, {
-    jobData: JobData;
-    progressCallback: ProgressCallback;
-    resolve: (result: JobResult) => void;
-    reject: (error: Error) => void;
-    startTime: number;
-    submittedViaHttp?: boolean;
-  }>();
-  
+  protected pendingJobs = new Map<
+    string,
+    {
+      jobData: JobData;
+      progressCallback: ProgressCallback;
+      resolve: (result: JobResult) => void;
+      reject: (error: Error) => void;
+      startTime: number;
+      submittedViaHttp?: boolean;
+    }
+  >();
+
   private messageHandlers = new Map<string, (message: HybridMessage) => void>();
 
   constructor(connectorId: string, config: Partial<HybridConnectorConfig>) {
     super(connectorId, config);
     this.hybridConfig = this.config as HybridConnectorConfig;
-    
+
     // Set defaults if not provided
     if (!this.hybridConfig.settings) {
       this.hybridConfig.settings = {
@@ -88,12 +91,12 @@ export abstract class HybridConnector extends BaseConnector {
         use_websocket_for_results: true,
         headers: {
           'Content-Type': 'application/json',
-          'Accept': 'application/json',
+          Accept: 'application/json',
         },
         body_format: 'json',
       };
     }
-    
+
     this.httpBaseUrl = this.hybridConfig.settings.http_base_url || this.hybridConfig.base_url;
     this.httpHeaders = { ...this.hybridConfig.settings.headers };
   }
@@ -101,13 +104,15 @@ export abstract class HybridConnector extends BaseConnector {
   protected async initializeService(): Promise<void> {
     // Initialize HTTP settings
     this.setupHttpClient();
-    
+
     // Initialize WebSocket connection if needed
-    if (this.hybridConfig.settings.use_websocket_for_progress || 
-        this.hybridConfig.settings.use_websocket_for_results) {
+    if (
+      this.hybridConfig.settings.use_websocket_for_progress ||
+      this.hybridConfig.settings.use_websocket_for_results
+    ) {
       await this.connectWebSocket();
     }
-    
+
     // Test HTTP connection
     try {
       const healthCheck = await this.checkHealth();
@@ -157,9 +162,12 @@ export abstract class HybridConnector extends BaseConnector {
     }
   }
 
-  protected async processJobImpl(jobData: JobData, progressCallback: ProgressCallback): Promise<JobResult> {
+  protected async processJobImpl(
+    jobData: JobData,
+    progressCallback: ProgressCallback
+  ): Promise<JobResult> {
     const startTime = Date.now();
-    
+
     return new Promise((resolve, reject) => {
       const jobId = jobData.id;
 
@@ -181,13 +189,13 @@ export abstract class HybridConnector extends BaseConnector {
       // Override handlers for cleanup
       const originalResolve = resolve;
       const originalReject = reject;
-      
+
       const wrappedResolve = (result: JobResult) => {
         clearTimeout(timeout);
         this.pendingJobs.delete(jobId);
         originalResolve(result);
       };
-      
+
       const wrappedReject = (error: Error) => {
         clearTimeout(timeout);
         this.pendingJobs.delete(jobId);
@@ -221,22 +229,21 @@ export abstract class HybridConnector extends BaseConnector {
       const endpoint = this.getJobSubmissionEndpoint();
       const payload = this.prepareHttpJobPayload(jobData);
       const response = await this.makeHttpRequest('POST', endpoint, payload);
-      
+
       if (!response.ok) {
         throw new Error(`HTTP ${response.status}: ${response.statusText}`);
       }
 
       const responseData = await this.parseHttpResponse(response);
-      
+
       // Mark as submitted via HTTP
       const pendingJob = this.pendingJobs.get(jobData.id);
       if (pendingJob) {
         pendingJob.submittedViaHttp = true;
       }
-      
+
       // Handle submission response
       await this.handleHttpSubmissionResponse(jobData, responseData);
-      
     } catch (error) {
       const pendingJob = this.pendingJobs.get(jobData.id);
       if (pendingJob) {
@@ -256,7 +263,9 @@ export abstract class HybridConnector extends BaseConnector {
     } catch (error) {
       const pendingJob = this.pendingJobs.get(jobData.id);
       if (pendingJob) {
-        pendingJob.reject(error instanceof Error ? error : new Error('WebSocket submission failed'));
+        pendingJob.reject(
+          error instanceof Error ? error : new Error('WebSocket submission failed')
+        );
       }
     }
   }
@@ -273,13 +282,13 @@ export abstract class HybridConnector extends BaseConnector {
           await this.makeHttpRequest('DELETE', cancelEndpoint);
         }
       }
-      
+
       // Try WebSocket cancellation
       if (this.isWebSocketConnected && this.ws) {
         const cancelMessage = this.prepareWebSocketCancelMessage(jobId);
         this.sendWebSocketMessage(cancelMessage);
       }
-      
+
       logger.info(`Cancelled hybrid job ${jobId}`);
     } catch (error) {
       logger.warn(`Failed to cancel job ${jobId}:`, error);
@@ -306,7 +315,7 @@ export abstract class HybridConnector extends BaseConnector {
     data?: unknown
   ): Promise<Response> {
     const url = new URL(endpoint, this.httpBaseUrl);
-    
+
     const options: RequestInit = {
       method,
       headers: { ...this.httpHeaders },
@@ -326,7 +335,7 @@ export abstract class HybridConnector extends BaseConnector {
 
   protected async parseHttpResponse(response: Response): Promise<unknown> {
     const contentType = response.headers.get('content-type') || '';
-    
+
     if (contentType.includes('application/json')) {
       return await response.json();
     } else if (contentType.includes('text/')) {
@@ -342,7 +351,9 @@ export abstract class HybridConnector extends BaseConnector {
     switch (this.hybridConfig.auth.type) {
       case 'basic':
         if (this.hybridConfig.auth.username && this.hybridConfig.auth.password) {
-          const credentials = btoa(`${this.hybridConfig.auth.username}:${this.hybridConfig.auth.password}`);
+          const credentials = btoa(
+            `${this.hybridConfig.auth.username}:${this.hybridConfig.auth.password}`
+          );
           this.httpHeaders['Authorization'] = `Basic ${credentials}`;
         }
         break;
@@ -367,26 +378,30 @@ export abstract class HybridConnector extends BaseConnector {
     const maxWaitMs = 60000; // 60 seconds max wait
     const pollIntervalMs = 2000; // Check every 2 seconds
     const startTime = Date.now();
-    
+
     // Update status to indicate we're waiting for service
     await this.reportStatus('waiting_for_service');
-    logger.info(`Waiting for service health check at ${this.httpBaseUrl} before connecting WebSocket`);
-    
+    logger.info(
+      `Waiting for service health check at ${this.httpBaseUrl} before connecting WebSocket`
+    );
+
     while (Date.now() - startTime < maxWaitMs) {
       try {
         const isHealthy = await this.checkHealth();
         if (isHealthy) {
-          logger.info(`Service health check passed for ${this.connector_id}, proceeding with WebSocket connection`);
+          logger.info(
+            `Service health check passed for ${this.connector_id}, proceeding with WebSocket connection`
+          );
           return;
         }
       } catch (error) {
         logger.debug(`Health check attempt failed for ${this.connector_id}:`, error);
       }
-      
+
       // Wait before next poll
       await new Promise(resolve => setTimeout(resolve, pollIntervalMs));
     }
-    
+
     // If we get here, we timed out waiting for health
     const errorMsg = `Timed out waiting for service health at ${this.httpBaseUrl} after ${maxWaitMs}ms`;
     logger.error(errorMsg);
@@ -413,7 +428,7 @@ export abstract class HybridConnector extends BaseConnector {
       try {
         const wsUrl = this.hybridConfig.settings.websocket_url;
         const protocol = this.hybridConfig.settings.protocol;
-        
+
         logger.debug(`Connecting to WebSocket: ${wsUrl}`);
         this.ws = new WebSocket(wsUrl, protocol);
 
@@ -442,7 +457,7 @@ export abstract class HybridConnector extends BaseConnector {
           logger.warn(`WebSocket connection closed: ${code} ${reason.toString()}`);
           this.isWebSocketConnected = false;
           this.onWebSocketDisconnected();
-          
+
           if (this.reconnectAttempts < (this.hybridConfig.settings.max_reconnect_attempts || 5)) {
             this.scheduleWebSocketReconnect();
           } else {
@@ -456,7 +471,6 @@ export abstract class HybridConnector extends BaseConnector {
             reject(error);
           }
         });
-
       } catch (error) {
         reject(error);
       }
@@ -480,7 +494,9 @@ export abstract class HybridConnector extends BaseConnector {
     }
 
     const delay = this.hybridConfig.settings.reconnect_delay_ms || 5000;
-    logger.info(`Scheduling WebSocket reconnection attempt ${this.reconnectAttempts + 1} in ${delay}ms`);
+    logger.info(
+      `Scheduling WebSocket reconnection attempt ${this.reconnectAttempts + 1} in ${delay}ms`
+    );
 
     this.reconnectTimeout = setTimeout(async () => {
       this.reconnectAttempts++;
@@ -493,18 +509,18 @@ export abstract class HybridConnector extends BaseConnector {
   }
 
   private setupMessageHandlers(): void {
-    this.messageHandlers.set('job_progress', (message) => this.handleJobProgress(message));
-    this.messageHandlers.set('job_complete', (message) => this.handleJobComplete(message));
-    this.messageHandlers.set('job_failed', (message) => this.handleJobFailed(message));
-    this.messageHandlers.set('error', (message) => this.handleWebSocketError(message));
-    
+    this.messageHandlers.set('job_progress', message => this.handleJobProgress(message));
+    this.messageHandlers.set('job_complete', message => this.handleJobComplete(message));
+    this.messageHandlers.set('job_failed', message => this.handleJobFailed(message));
+    this.messageHandlers.set('error', message => this.handleWebSocketError(message));
+
     // Allow subclasses to add custom handlers
     this.setupCustomMessageHandlers();
   }
 
   private handleWebSocketMessage(message: HybridMessage): void {
     logger.debug(`Received WebSocket message: ${message.type}`);
-    
+
     const handler = this.messageHandlers.get(message.type);
     if (handler) {
       handler(message);
@@ -516,7 +532,7 @@ export abstract class HybridConnector extends BaseConnector {
   private handleJobProgress(message: HybridMessage): void {
     const jobId = this.extractJobIdFromWebSocketMessage(message);
     const pendingJob = this.pendingJobs.get(jobId);
-    
+
     if (pendingJob) {
       const progress = this.extractProgressFromWebSocketMessage(message);
       pendingJob.progressCallback({
@@ -533,7 +549,7 @@ export abstract class HybridConnector extends BaseConnector {
   private handleJobComplete(message: HybridMessage): void {
     const jobId = this.extractJobIdFromWebSocketMessage(message);
     const pendingJob = this.pendingJobs.get(jobId);
-    
+
     if (pendingJob) {
       const result = this.extractResultFromWebSocketMessage(message);
       pendingJob.resolve({
@@ -550,7 +566,7 @@ export abstract class HybridConnector extends BaseConnector {
   private handleJobFailed(message: HybridMessage): void {
     const jobId = this.extractJobIdFromWebSocketMessage(message);
     const pendingJob = this.pendingJobs.get(jobId);
-    
+
     if (pendingJob) {
       const error = this.extractErrorFromWebSocketMessage(message);
       pendingJob.reject(new Error(error));
@@ -619,7 +635,10 @@ export abstract class HybridConnector extends BaseConnector {
   protected abstract getJobSubmissionEndpoint(): string;
   protected abstract getCancelEndpoint(jobId: string): string | null;
   protected abstract prepareHttpJobPayload(jobData: JobData): unknown;
-  protected abstract handleHttpSubmissionResponse(jobData: JobData, responseData: unknown): Promise<void>;
+  protected abstract handleHttpSubmissionResponse(
+    jobData: JobData,
+    responseData: unknown
+  ): Promise<void>;
 
   // WebSocket-related abstracts
   protected abstract setupCustomMessageHandlers(): void;

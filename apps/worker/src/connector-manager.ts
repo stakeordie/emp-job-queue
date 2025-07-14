@@ -54,17 +54,20 @@ export class ConnectorManager implements ConnectorRegistry, ConnectorFactory {
   /**
    * Create an offline stub connector for services that failed to initialize
    */
-  private async createOfflineConnector(connectorId: string, originalError: unknown): Promise<ConnectorInterface> {
+  private async createOfflineConnector(
+    connectorId: string,
+    originalError: unknown
+  ): Promise<ConnectorInterface> {
     // Import BaseConnector to create a minimal stub
     const { BaseConnector } = await import('./connectors/base-connector.js');
-    
+
     // Determine service type from connector ID
     const serviceType = connectorId.toLowerCase();
-    
+
     class OfflineStubConnector extends BaseConnector {
       public service_type = serviceType;
       public version = '1.0.0-offline';
-      
+
       constructor() {
         super(connectorId, {
           connector_id: connectorId,
@@ -74,9 +77,9 @@ export class ConnectorManager implements ConnectorRegistry, ConnectorFactory {
           retry_attempts: 0,
           retry_delay_seconds: 1,
           health_check_interval_seconds: 60,
-          max_concurrent_jobs: 0
+          max_concurrent_jobs: 0,
         });
-        
+
         // Set to offline status
         this.currentStatus = 'offline';
       }
@@ -103,8 +106,8 @@ export class ConnectorManager implements ConnectorRegistry, ConnectorFactory {
           capabilities: {
             supported_formats: [],
             supported_models: [],
-            features: []
-          }
+            features: [],
+          },
         };
       }
 
@@ -183,7 +186,9 @@ export class ConnectorManager implements ConnectorRegistry, ConnectorFactory {
         connector.setRedisConnection(this.redis, this.workerId, this.machineId);
         logger.info(`Injected Redis connection into connector ${connectorId}`);
       } else {
-        logger.warn(`No Redis connection available for connector ${connectorId} - status reporting may be limited`);
+        logger.warn(
+          `No Redis connection available for connector ${connectorId} - status reporting may be limited`
+        );
       }
 
       // Always register the connector first (graceful failure handling)
@@ -195,12 +200,14 @@ export class ConnectorManager implements ConnectorRegistry, ConnectorFactory {
       logger.info(`Loaded connector: ${connectorId} (${connector.service_type})`);
     } catch (error) {
       logger.error(`Failed to load connector ${connectorId}:`, error);
-      
+
       // Graceful failure handling: Create offline stub connector
       try {
         const OfflineConnector = await this.createOfflineConnector(connectorId, error);
         this.registerConnector(OfflineConnector);
-        logger.warn(`Registered offline stub connector for ${connectorId} due to initialization failure`);
+        logger.warn(
+          `Registered offline stub connector for ${connectorId} due to initialization failure`
+        );
       } catch (stubError) {
         logger.error(`Failed to create offline stub connector for ${connectorId}:`, stubError);
         // Even stub creation failed - still don't throw, just log

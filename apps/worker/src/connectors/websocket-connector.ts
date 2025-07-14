@@ -96,7 +96,10 @@ export class WebSocketConnector extends BaseConnector {
     );
   }
 
-  protected async processJobImpl(jobData: JobData, progressCallback: ProgressCallback): Promise<JobResult> {
+  protected async processJobImpl(
+    jobData: JobData,
+    progressCallback: ProgressCallback
+  ): Promise<JobResult> {
     const startTime = Date.now();
     logger.info(`Starting WebSocket job ${jobData.id}`);
 

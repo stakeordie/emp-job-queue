@@ -2,6 +2,31 @@
 
 ## [Unreleased]
 
+## [2025-07-14] - ComfyUI Connector Refactoring and Docker Optimization
+
+### Changed
+- **ComfyUI Connector Refactoring**: Migrated from hybrid WebSocket+HTTP to pure HTTP polling approach
+  - Refactored `ComfyUIConnector` to extend `RestConnector` instead of `HybridConnector`
+  - Reduced code complexity from 547 lines to 280 lines
+  - Switched to 1-second HTTP polling for job status updates (eliminates WebSocket connection issues)
+  - Maintains same functionality with improved reliability and simplified architecture
+
+### Added
+- **Docker Caching Strategy**: Implemented multi-layer Docker caching for basic_machine builds
+  - ComfyUI base installation cached in layer 1 (rarely changes)
+  - Custom nodes configuration cached in layer 2 (changes when config_nodes.json updates)
+  - Application code copied in layer 3 (allows custom nodes caching to persist)
+  - Significant build time improvements for code-only changes
+- **ComfyUI Installer Build-time Flag**: Added `--custom-nodes-only` flag for build-time execution
+  - Enables custom nodes installation during Docker build phase
+  - Optimizes container startup time by pre-installing custom nodes
+
+### Technical Details
+- **RestConnector Infrastructure**: Leverages existing polling infrastructure with 1000ms intervals
+- **HTTP Endpoint Strategy**: Uses `/prompt` for submission, `/history/{promptId}` for status polling
+- **Docker Layer Optimization**: Ordered layers to maximize cache hits during development cycles
+- **Advances North Star**: Eliminates WebSocket complexities, supports pool-aware job routing foundation
+
 ## [2025-01-14] - Health Check Polling and Connector Status Architecture
 
 ### Added

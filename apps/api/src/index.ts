@@ -15,7 +15,7 @@ export * from './hybrid-client.js';
 // Main execution when run directly
 async function main() {
   const config = {
-    port: parseInt(process.env.API_PORT || '3001'),
+    port: parseInt(process.env.API_PORT || '3331'),
     redisUrl: process.env.REDIS_URL || 'redis://localhost:6379',
     corsOrigins: process.env.CORS_ORIGINS ? process.env.CORS_ORIGINS.split(',') : ['*'],
   };

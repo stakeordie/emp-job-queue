@@ -14,7 +14,7 @@ import { fileURLToPath } from 'url';
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 // Configuration
-const API_URL = 'http://localhost:3001/api/events/monitor?token=3u8sdj5389fj3kljsf90u';
+const API_URL = 'http://localhost:3331/api/events/monitor?token=3u8sdj5389fj3kljsf90u';
 const DEFAULT_LOG_FILE = path.join(__dirname, '..', 'logs', 'monitorEventStream.log');
 
 // Get output file from command line or use default

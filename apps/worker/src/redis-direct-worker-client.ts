@@ -221,7 +221,10 @@ export class RedisDirectWorkerClient {
   /**
    * Publish worker status to Redis for API discovery
    */
-  private async publishWorkerStatus(status: 'idle' | 'busy' | 'offline' | 'error', capabilities?: WorkerCapabilities): Promise<void> {
+  private async publishWorkerStatus(
+    status: 'idle' | 'busy' | 'offline' | 'error',
+    capabilities?: WorkerCapabilities
+  ): Promise<void> {
     try {
       // Get current worker data if capabilities not provided
       if (!capabilities) {
@@ -232,7 +235,9 @@ export class RedisDirectWorkerClient {
       }
 
       if (!capabilities) {
-        logger.warn(`Cannot publish worker status for ${this.workerId} - no capabilities available`);
+        logger.warn(
+          `Cannot publish worker status for ${this.workerId} - no capabilities available`
+        );
         return;
       }
 
@@ -245,11 +250,11 @@ export class RedisDirectWorkerClient {
           hardware: capabilities.hardware || {},
           performance: capabilities.performance || {},
           customer_access: capabilities.customer_access || {},
-          models: capabilities.models || {}
+          models: capabilities.models || {},
         },
         timestamp: new Date().toISOString(),
         last_heartbeat: Date.now(),
-        connected_at: capabilities.connected_at || new Date().toISOString()
+        connected_at: capabilities.connected_at || new Date().toISOString(),
       };
 
       // Publish to worker_status channel for API discovery

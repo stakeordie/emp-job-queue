@@ -154,7 +154,9 @@
       "Bash(/opt/homebrew/bin/redis-cli:*)",
       "mcp__playwright__browser_install",
       "Bash(./scripts/dev-full-stack-status.sh:*)",
-      "Bash(./scripts/dev-full-stack-stop.sh:*)"
+      "Bash(./scripts/dev-full-stack-stop.sh:*)",
+      "Bash(docker port:*)",
+      "mcp__playwright__browser_type"
     ],
     "deny": []
   }

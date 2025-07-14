@@ -162,6 +162,46 @@ const DEFAULT_PAYLOADS = {
       }
     }
   },
+  'comfyui-cpu': {
+    workflow: {
+      "1": {
+        "inputs": {
+          "value": 1,
+          "width": 512,
+          "height": 512
+        },
+        "class_type": "SolidMask",
+        "_meta": {
+          "title": "SolidMask"
+        }
+      },
+      "2": {
+        "inputs": {
+          "mask": [
+            "1",
+            0
+          ]
+        },
+        "class_type": "MaskToImage",
+        "_meta": {
+          "title": "Convert Mask to Image"
+        }
+      },
+      "3": {
+        "inputs": {
+          "filename_prefix": "ComfyUI",
+          "images": [
+            "2",
+            0
+          ]
+        },
+        "class_type": "SaveImage",
+        "_meta": {
+          "title": "Save Image"
+        }
+      }
+    }
+  },
   rest: {
     endpoint: "/api/generate",
     method: "POST",
@@ -211,7 +251,7 @@ interface RequirementPair {
 export function JobSubmissionForm() {
   const [lastSubmission, setLastSubmission] = useState<string | null>(null);
   const [selectedJobType, setSelectedJobType] = useState('simulation');
-  const [useSimulation, setUseSimulation] = useState(false);
+  const [useCpuMode, setUseCpuMode] = useState(false);
   const [showRequirements, setShowRequirements] = useState(false);
   const [requirementPairs, setRequirementPairs] = useState<RequirementPair[]>([
     { id: '1', key: '', value: '', type: 'must_have' }
@@ -317,8 +357,20 @@ export function JobSubmissionForm() {
     setSelectedJobType(jobType);
     setValue('job_type', jobType);
     
-    // Update payload based on job type
-    const payload = DEFAULT_PAYLOADS[jobType as keyof typeof DEFAULT_PAYLOADS];
+    // Update payload based on job type and CPU mode
+    updatePayloadForJobType(jobType);
+  };
+
+  // Update payload based on job type and CPU mode
+  const updatePayloadForJobType = (jobType: string) => {
+    let payloadKey = jobType;
+    
+    // Use CPU-specific payload for ComfyUI when CPU mode is enabled
+    if (jobType === 'comfyui' && useCpuMode) {
+      payloadKey = 'comfyui-cpu';
+    }
+    
+    const payload = DEFAULT_PAYLOADS[payloadKey as keyof typeof DEFAULT_PAYLOADS];
     if (payload) {
       setValue('payload', JSON.stringify(payload, null, 2));
     }
@@ -331,6 +383,11 @@ export function JobSubmissionForm() {
       setSelectedJobType(watchedJobType);
     }
   }, [watchedJobType, selectedJobType]);
+
+  // Update payload when CPU mode is toggled
+  useEffect(() => {
+    updatePayloadForJobType(selectedJobType);
+  }, [useCpuMode]);
 
   const onSubmit = async (data: JobSubmissionData) => {
     try {
@@ -347,10 +404,8 @@ export function JobSubmissionForm() {
 
       const job_number = data.batch_number;
 
-      // Determine service type based on simulation checkbox
-      const serviceType = useSimulation && data.job_type !== 'simulation' 
-        ? `${data.job_type}-sim` 
-        : data.job_type;
+      // Service type is always the selected job type (CPU mode only changes payload, not service routing)
+      const serviceType = data.job_type;
 
       const jobData = {
         job_type: serviceType,
@@ -429,16 +484,16 @@ export function JobSubmissionForm() {
             </div>
           </div>
 
-          {/* Simulation mode checkbox */}
-          {selectedJobType !== 'simulation' && selectedJobType !== 'rest' && (
+          {/* CPU mode checkbox */}
+          {selectedJobType === 'comfyui' && (
             <div className="flex items-center space-x-2">
               <Checkbox 
-                id="simulation" 
-                checked={useSimulation}
-                onCheckedChange={(checked) => setUseSimulation(checked as boolean)}
+                id="cpumode" 
+                checked={useCpuMode}
+                onCheckedChange={(checked) => setUseCpuMode(checked as boolean)}
               />
-              <Label htmlFor="simulation" className="text-xs cursor-pointer">
-                Use simulation mode (testing only)
+              <Label htmlFor="cpumode" className="text-xs cursor-pointer">
+                Use CPU Mode (simple mask workflow)
               </Label>
             </div>
           )}

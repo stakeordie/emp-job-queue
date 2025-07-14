@@ -12,7 +12,14 @@ import {
 } from '@emp/core';
 import Redis from 'ioredis';
 
-export type ConnectorStatus = 'starting' | 'waiting_for_service' | 'connecting' | 'idle' | 'active' | 'error' | 'offline';
+export type ConnectorStatus =
+  | 'starting'
+  | 'waiting_for_service'
+  | 'connecting'
+  | 'idle'
+  | 'active'
+  | 'error'
+  | 'offline';
 
 export interface StatusReport {
   connector_id: string;
@@ -30,7 +37,7 @@ export interface StatusReport {
 }
 
 export abstract class BaseConnector implements ConnectorInterface {
-  // Required interface properties  
+  // Required interface properties
   public connector_id: string = '';
   public service_type: string = '';
   public version: string = '';
@@ -53,7 +60,7 @@ export abstract class BaseConnector implements ConnectorInterface {
 
   constructor(connectorId: string, config?: Partial<ConnectorConfig>) {
     this.connector_id = connectorId;
-    
+
     // Build default configuration
     this.config = {
       connector_id: this.connector_id,
@@ -80,7 +87,7 @@ export abstract class BaseConnector implements ConnectorInterface {
     this.redis = redis;
     this.workerId = workerId;
     this.machineId = machineId;
-    
+
     logger.info(
       `${this.service_type} connector ${this.connector_id} received Redis connection injection`
     );
@@ -148,17 +155,14 @@ export abstract class BaseConnector implements ConnectorInterface {
     }
   }
 
-  protected async reportStatus(
-    status?: ConnectorStatus,
-    errorMessage?: string
-  ): Promise<void> {
+  protected async reportStatus(status?: ConnectorStatus, errorMessage?: string): Promise<void> {
     if (!this.redis || !this.workerId) {
       return;
     }
 
     try {
       const newStatus = status || this.currentStatus;
-      
+
       // Only report if status actually changed or this is an error
       if (this.lastReportedStatus === newStatus && !errorMessage) {
         logger.debug(
@@ -235,7 +239,10 @@ export abstract class BaseConnector implements ConnectorInterface {
       const newStatus: ConnectorStatus = isHealthy ? 'idle' : 'error';
       await this.reportStatus(newStatus);
     } catch (error) {
-      await this.reportStatus('error', error instanceof Error ? error.message : 'Health check failed');
+      await this.reportStatus(
+        'error',
+        error instanceof Error ? error.message : 'Health check failed'
+      );
     }
   }
 
@@ -248,7 +255,7 @@ export abstract class BaseConnector implements ConnectorInterface {
 
   stopStatusReporting(): void {
     // Wrapper for protected method - already called in cleanup()
-    // This is here to satisfy the ConnectorInterface  
+    // This is here to satisfy the ConnectorInterface
     this.stopStatusReportingInternal();
   }
 
@@ -270,37 +277,47 @@ export abstract class BaseConnector implements ConnectorInterface {
 
   async initialize(): Promise<void> {
     logger.info(`Initializing ${this.service_type} connector ${this.connector_id}`);
-    
+
     try {
       this.currentStatus = 'starting';
-      
+
       // If Redis connection was injected, use it; otherwise create own connection
       if (!this.redis) {
-        logger.warn(`${this.service_type} connector ${this.connector_id} - No Redis connection injected, creating own connection`);
+        logger.warn(
+          `${this.service_type} connector ${this.connector_id} - No Redis connection injected, creating own connection`
+        );
         await this.initializeRedisConnection();
       }
-      
+
       // Call subclass initialization
       await this.initializeService();
-      
+
       // Start status reporting (only if we have Redis connection)
       if (this.redis) {
         this.startStatusReportingInternal();
       } else {
-        logger.warn(`${this.service_type} connector ${this.connector_id} - No Redis connection, status reporting disabled`);
+        logger.warn(
+          `${this.service_type} connector ${this.connector_id} - No Redis connection, status reporting disabled`
+        );
       }
-      
+
       // Update status to idle after successful initialization
       this.currentStatus = 'idle';
       await this.reportStatus('idle');
-      
+
       logger.info(`${this.service_type} connector ${this.connector_id} initialized successfully`);
     } catch (error) {
       this.currentStatus = 'error';
-      await this.reportStatus('error', error instanceof Error ? error.message : 'Initialization failed');
-      
+      await this.reportStatus(
+        'error',
+        error instanceof Error ? error.message : 'Initialization failed'
+      );
+
       // Don't throw error - according to plan, register connector even if service is offline
-      logger.warn(`${this.service_type} connector ${this.connector_id} initialization failed but connector will be registered:`, error);
+      logger.warn(
+        `${this.service_type} connector ${this.connector_id} initialization failed but connector will be registered:`,
+        error
+      );
     }
   }
 
@@ -320,23 +337,26 @@ export abstract class BaseConnector implements ConnectorInterface {
 
   async processJob(jobData: JobData, progressCallback: ProgressCallback): Promise<JobResult> {
     const startTime = Date.now();
-    
+
     try {
       // Report that we're starting to process a job
       await this.reportJobStatusChange(true);
-      
+
       // Call subclass job processing
       const result = await this.processJobImpl(jobData, progressCallback);
-      
+
       // Report that we're done processing
       await this.reportJobStatusChange(false);
-      
+
       return result;
     } catch (error) {
       // Report error and return to idle
-      await this.reportStatus('error', error instanceof Error ? error.message : 'Job processing failed');
+      await this.reportStatus(
+        'error',
+        error instanceof Error ? error.message : 'Job processing failed'
+      );
       await this.reportJobStatusChange(false);
-      
+
       // Return failed result
       return {
         success: false,
@@ -355,7 +375,10 @@ export abstract class BaseConnector implements ConnectorInterface {
 
   protected abstract initializeService(): Promise<void>;
   protected abstract cleanupService(): Promise<void>;
-  protected abstract processJobImpl(jobData: JobData, progressCallback: ProgressCallback): Promise<JobResult>;
+  protected abstract processJobImpl(
+    jobData: JobData,
+    progressCallback: ProgressCallback
+  ): Promise<JobResult>;
 
   // Required by ConnectorInterface - subclasses must implement
   abstract checkHealth(): Promise<boolean>;

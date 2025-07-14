@@ -502,7 +502,8 @@ export default class ComfyUIInstallerService extends BaseService {
 
 // Command line execution for build-time installation
 if (process.argv.includes('--build-time')) {
-  console.log('🔧 Running ComfyUI installer in build-time mode...');
+  const customNodesOnly = process.argv.includes('--custom-nodes-only');
+  console.log(`🔧 Running ComfyUI installer in build-time mode${customNodesOnly ? ' (custom nodes only)' : ''}...`);
   
   // Create minimal config for build-time
   const buildConfig = {
@@ -520,14 +521,18 @@ if (process.argv.includes('--build-time')) {
   const installer = new ComfyUIInstallerService({}, buildConfig);
   installer.configPath = '/workspace/config_nodes.json'; // Use the copied config
   
-  // Run installation
-  installer.onStart()
+  // Run appropriate installation based on flags
+  const installPromise = customNodesOnly ? 
+    installer.installCustomNodes() : 
+    installer.onStart();
+  
+  installPromise
     .then(() => {
-      console.log('✅ ComfyUI build-time installation completed successfully');
+      console.log(`✅ ComfyUI build-time installation completed successfully${customNodesOnly ? ' (custom nodes only)' : ''}`);
       process.exit(0);
     })
     .catch((error) => {
-      console.error('❌ ComfyUI build-time installation failed:', error);
+      console.error(`❌ ComfyUI build-time installation failed${customNodesOnly ? ' (custom nodes only)' : ''}:`, error);
       process.exit(1);
     });
 }

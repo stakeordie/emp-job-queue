@@ -11,7 +11,7 @@ This document outlines standardized testing procedures for the emp-job-queue sys
 
 ### API Servers  
 - **Remote Production**: `emp-job-queue-production.up.railway.app`
-- **Local Development**: `localhost:3001`
+- **Local Development**: `localhost:3331`
 
 ### Container Configuration
 - **Machine Container**: Uses `redis://host.docker.internal:6379` to connect to local Redis from within Docker
@@ -35,7 +35,7 @@ tail -f logs/monitor.log
 ```
 
 **Browser Testing via Playwright:**
-1. Navigate to `localhost:3000` 
+1. Navigate to `localhost:3333` 
 2. Verify real-time machine cards display
 3. Check console logs for WebSocket connections
 4. Monitor network requests for `/api/monitor/state` polling
@@ -99,7 +99,7 @@ tail -f logs/redis.log
 
 **Expected Output:**
 - Redis connection established
-- API server started on port 3001
+- API server started on port 3331
 - WebSocket endpoints active
 - Machine event subscriptions active
 
@@ -156,7 +156,7 @@ docker logs basic-machine-local -f --tail 50
 **Verify Machine Registration:**
 ```bash
 # Check if machine appears in state
-curl -s http://localhost:3001/api/monitor/state | jq '.data.machines'
+curl -s http://localhost:3331/api/monitor/state | jq '.data.machines'
 
 # Should show machine with status 'ready' and associated workers
 ```
@@ -166,7 +166,7 @@ curl -s http://localhost:3001/api/monitor/state | jq '.data.machines'
 **Verify Workers:**
 ```bash
 # Check worker registration
-curl -s http://localhost:3001/api/monitor/state | jq '.data.workers'
+curl -s http://localhost:3331/api/monitor/state | jq '.data.workers'
 
 # Should show 2 workers: basic-machine-local-worker-0, basic-machine-local-worker-1
 ```
@@ -254,7 +254,7 @@ docker exec basic-machine-local ping host.docker.internal
 ### API Server Connection Issues
 
 **Symptoms:**
-- `curl localhost:3001/health` fails
+- `curl localhost:3331/health` fails
 - Connection refused errors
 
 **Solutions:**
@@ -267,7 +267,7 @@ pkill -f "tsx.*api"
 pnpm dev:local-redis
 
 # Check port availability
-lsof -i :3001
+lsof -i :3331
 ```
 
 ## Environment Files
@@ -281,7 +281,7 @@ REDIS_URL=redis://host.docker.internal:6379
 ### Host Development (.env)
 ```bash
 REDIS_URL=redis://localhost:6379
-API_PORT=3001
+API_PORT=3331
 ```
 
 ## Success Criteria
@@ -298,7 +298,7 @@ A successful test run should show:
 
 ```bash
 # Quick system check
-curl -s http://localhost:3001/api/monitor/state | jq '{machines: .data.machines | length, workers: .data.workers | length}'
+curl -s http://localhost:3331/api/monitor/state | jq '{machines: .data.machines | length, workers: .data.workers | length}'
 
 # Redis connection test
 docker exec basic-machine-local wget -q -O- host.docker.internal:6379 2>/dev/null || echo "Redis unreachable"
@@ -353,7 +353,7 @@ pnpm dev:full-stack:status  # Should show all stopped
 pnpm dev:full-stack
 
 # If stuck processes remain
-lsof -i :3001  # Check specific ports
+lsof -i :3331  # Check specific ports
 kill -9 <PID>  # Force kill if needed
 ```
 

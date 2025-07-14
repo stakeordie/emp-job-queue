@@ -54,24 +54,6 @@ RUN mkdir -p \
 # Stage 3: Final image
 FROM ai-base
 
-# Copy Node.js application files first
-COPY . /service-manager/
-
-# Then copy the pre-built node_modules from the previous stage
-COPY --from=node-deps /app/node_modules /service-manager/node_modules
-
-# Set up environment
-ENV NODE_ENV=production \
-    LOG_LEVEL=info \
-    SERVICE_MANAGER_PATH=/service-manager \
-    WORKSPACE_PATH=/workspace \
-    PM2_HOME=/workspace/.pm2 \
-    PATH="/service-manager/node_modules/.bin:${PATH}"
-
-# Copy PM2 scripts and configs
-COPY scripts/pm2-ecosystem.config.cjs /workspace/pm2-ecosystem.config.cjs
-# PM2 manager is now copied with the src directory
-
 # Build arguments for secrets (ComfyUI custom nodes)
 ARG AWS_ACCESS_KEY_ID
 ARG AWS_SECRET_ACCESS_KEY_ENCODED
@@ -92,15 +74,26 @@ ARG OLLAMA_PORT
 ARG OLLAMA_DEFAULT_MODEL
 ARG OPENAI_API_KEY
 
-# Cache-busting for custom nodes
+# Cache layer 1: Install ComfyUI base (this rarely changes) 
+RUN echo "Installing ComfyUI base..." && \
+    git clone https://github.com/comfyanonymous/ComfyUI.git /workspace/ComfyUI && \
+    cd /workspace/ComfyUI && \
+    pip install -r requirements.txt && \
+    echo "ComfyUI base installation complete"
+
+# Cache layer 2: Copy custom nodes configuration for better custom nodes caching
+COPY config_nodes.json /workspace/config_nodes.json
+
+# Cache layer 3: Copy minimal files needed for custom nodes installation
+COPY src/ /service-manager/src/
+COPY package.json /service-manager/package.json
+COPY --from=node-deps /app/node_modules /service-manager/node_modules
+
+# Cache layer 4: Install custom nodes (this layer will cache if config_nodes.json doesn't change)
 ARG CUSTOM_NODES_CACHE_BUST=default
 ENV CUSTOM_NODES_CACHE_BUST=${CUSTOM_NODES_CACHE_BUST}
 
-# Copy custom nodes configuration
-COPY config_nodes.json /workspace/config_nodes.json
-
-# Install ComfyUI and custom nodes at build time
-RUN echo "Cache bust: $CUSTOM_NODES_CACHE_BUST" && \
+RUN echo "Installing custom nodes (cache bust: $CUSTOM_NODES_CACHE_BUST)" && \
     # Set environment variables for the installer
     export AWS_ACCESS_KEY_ID="$AWS_ACCESS_KEY_ID" && \
     export AWS_SECRET_ACCESS_KEY_ENCODED="$AWS_SECRET_ACCESS_KEY_ENCODED" && \
@@ -120,8 +113,22 @@ RUN echo "Cache bust: $CUSTOM_NODES_CACHE_BUST" && \
     export OLLAMA_PORT="$OLLAMA_PORT" && \
     export OLLAMA_DEFAULT_MODEL="$OLLAMA_DEFAULT_MODEL" && \
     export OPENAI_API_KEY="$OPENAI_API_KEY" && \
-    # Run ComfyUI installer in build mode
-    node /service-manager/src/services/comfyui-installer.js --build-time
+    # Run ComfyUI custom nodes installer only
+    node /service-manager/src/services/comfyui-installer.js --build-time --custom-nodes-only
+
+# Cache layer 5: Copy remaining application files
+COPY scripts/ /service-manager/scripts/
+
+# Set up environment
+ENV NODE_ENV=production \
+    LOG_LEVEL=info \
+    SERVICE_MANAGER_PATH=/service-manager \
+    WORKSPACE_PATH=/workspace \
+    PM2_HOME=/workspace/.pm2 \
+    PATH="/service-manager/node_modules/.bin:${PATH}"
+
+# Copy PM2 ecosystem config to workspace (needed by PM2)
+RUN cp /service-manager/scripts/pm2-ecosystem.config.cjs /workspace/pm2-ecosystem.config.cjs
 
 # Create startup script that runs our Node.js app as PID 1
 RUN echo '#!/bin/bash\n\

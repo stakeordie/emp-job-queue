@@ -24,7 +24,9 @@ export class SimulationConnector extends BaseConnector {
     const processingTimeMs = parseInt(process.env.WORKER_SIMULATION_PROCESSING_TIME || '5') * 1000;
     const steps = parseInt(process.env.WORKER_SIMULATION_STEPS || '10');
     const failureRate = parseFloat(process.env.WORKER_SIMULATION_FAILURE_RATE || '0.1');
-    const progressIntervalMs = parseInt(process.env.WORKER_SIMULATION_PROGRESS_INTERVAL_MS || '200');
+    const progressIntervalMs = parseInt(
+      process.env.WORKER_SIMULATION_PROGRESS_INTERVAL_MS || '200'
+    );
 
     // Initialize BaseConnector with simulation-specific config
     super(connectorId, {
@@ -92,7 +94,10 @@ export class SimulationConnector extends BaseConnector {
     return jobData.type === 'simulation' || jobData.type === this.service_type;
   }
 
-  protected async processJobImpl(jobData: JobData, progressCallback: ProgressCallback): Promise<JobResult> {
+  protected async processJobImpl(
+    jobData: JobData,
+    progressCallback: ProgressCallback
+  ): Promise<JobResult> {
     const startTime = Date.now();
     logger.info(`Starting simulation job ${jobData.id}`);
 
@@ -114,7 +119,8 @@ export class SimulationConnector extends BaseConnector {
           message: `Processing step ${step}/${this.steps}`,
           current_step: `Step ${step}`,
           total_steps: this.steps,
-          estimated_completion_ms: step < this.steps ? (this.steps - step) * Number(stepDuration) : 0,
+          estimated_completion_ms:
+            step < this.steps ? (this.steps - step) * Number(stepDuration) : 0,
         });
 
         if (step < this.steps) {

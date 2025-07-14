@@ -29,7 +29,7 @@ export class EventStreamService {
   private reconnectAttempts = 0;
   private isConnecting = false;
   private autoConnect = false;  // Must be explicitly enabled for reconnection
-  private baseUrl: string = 'http://localhost:3000';
+  private baseUrl: string = 'http://localhost:3331';
   private monitorId: string = '';
   private subscriptions: SubscriptionTopic[] = [];
   private lastEventTimestamp: number = 0;
@@ -44,7 +44,7 @@ export class EventStreamService {
   private onConnectionFailedCallbacks: Array<(reason: string) => void> = [];
   private onFullStateCallbacks: Array<(state: unknown) => void> = [];
 
-  constructor(url: string = 'http://localhost:3000') {
+  constructor(url: string = 'http://localhost:3331') {
     this.baseUrl = url;
   }
 

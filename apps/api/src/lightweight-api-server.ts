@@ -1646,14 +1646,22 @@ export class LightweightAPIServer {
             );
 
             // Map connector status to monitor format
-            const mapConnectorStatusToMonitor = (status: string): 'active' | 'inactive' | 'error' => {
+            const mapConnectorStatusToMonitor = (
+              status: string
+            ): 'active' | 'inactive' | 'error' => {
               switch (status) {
-                case 'active': return 'active';
-                case 'idle': return 'inactive';
-                case 'starting': return 'inactive';
-                case 'offline': return 'inactive';
-                case 'error': return 'error';
-                default: return 'inactive';
+                case 'active':
+                  return 'active';
+                case 'idle':
+                  return 'inactive';
+                case 'starting':
+                  return 'inactive';
+                case 'offline':
+                  return 'inactive';
+                case 'error':
+                  return 'error';
+                default:
+                  return 'inactive';
               }
             };
 
@@ -1697,15 +1705,19 @@ export class LightweightAPIServer {
             });
 
             // Update heartbeat TTL
-            await this.redis.setex(`worker:${workerStatusData.worker_id}:heartbeat`, 60, new Date().toISOString());
+            await this.redis.setex(
+              `worker:${workerStatusData.worker_id}:heartbeat`,
+              60,
+              new Date().toISOString()
+            );
 
             // Broadcast worker status change to monitors
             const workerStatusEvent: WorkerStatusChangedEvent = {
               type: 'worker_status_changed',
               worker_id: workerStatusData.worker_id,
-              machine_id: workerStatusData.machine_id,
-              status: workerStatusData.status as 'idle' | 'busy' | 'offline' | 'error',
-              capabilities: workerStatusData.capabilities,
+              old_status: workerStatusData.previous_status || 'unknown',
+              new_status: workerStatusData.status as 'idle' | 'busy' | 'offline' | 'error',
+              current_job_id: workerStatusData.current_job_id,
               timestamp: Date.now(),
             };
 

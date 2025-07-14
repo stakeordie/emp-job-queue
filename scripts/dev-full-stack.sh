@@ -83,8 +83,8 @@ cd ../..
 echo "🌐 Configuring API for local Redis..."
 cat > apps/api/.env.local.dev << EOF
 REDIS_URL=redis://localhost:6379
-API_PORT=3001
-CORS_ORIGINS=http://localhost:3000,http://localhost:3001
+API_PORT=3331
+CORS_ORIGINS=http://localhost:3333,http://localhost:3331
 EOF
 
 echo "🚀 Starting API server..."
@@ -97,7 +97,7 @@ cd ../..
 echo "⏳ Waiting for API server to be ready..."
 timeout=60
 counter=0
-while ! curl -s http://localhost:3001/health > /dev/null 2>&1; do
+while ! curl -s http://localhost:3331/health > /dev/null 2>&1; do
     sleep 2
     counter=$((counter + 2))
     if [ $counter -ge $timeout ]; then
@@ -119,7 +119,7 @@ cd ../..
 echo "⏳ Waiting for Monitor UI to be ready..."
 timeout=60
 counter=0
-while ! curl -s http://localhost:3000 > /dev/null 2>&1; do
+while ! curl -s http://localhost:3333 > /dev/null 2>&1; do
     sleep 2
     counter=$((counter + 2))
     if [ $counter -ge $timeout ]; then
@@ -144,8 +144,8 @@ echo ""
 echo "✅ Full stack started successfully!"
 echo ""
 echo "📊 Services:"
-echo "  🔗 API Server:      http://localhost:3001"
-echo "  🖥️  Monitor UI:      http://localhost:3000"
+echo "  🔗 API Server:      http://localhost:3331"
+echo "  🖥️  Monitor UI:      http://localhost:3333"
 echo "  🏭 Machine Health:  http://localhost:9092/health"
 echo "  🎨 ComfyUI:         http://localhost:3190"
 echo ""

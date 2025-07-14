@@ -31,7 +31,7 @@ export abstract class RestConnector extends BaseConnector {
   constructor(connectorId: string, config: Partial<RestConnectorConfig>) {
     super(connectorId, config);
     this.restConfig = this.config as RestConnectorConfig;
-    
+
     // Set default REST settings if not provided
     if (!this.restConfig.settings) {
       this.restConfig.settings = {
@@ -40,7 +40,7 @@ export abstract class RestConnector extends BaseConnector {
         polling_interval_ms: 1000,
         headers: {
           'Content-Type': 'application/json',
-          'Accept': 'application/json',
+          Accept: 'application/json',
         },
         body_format: 'json',
       };
@@ -85,17 +85,20 @@ export abstract class RestConnector extends BaseConnector {
     }
   }
 
-  protected async processJobImpl(jobData: JobData, progressCallback: ProgressCallback): Promise<JobResult> {
+  protected async processJobImpl(
+    jobData: JobData,
+    progressCallback: ProgressCallback
+  ): Promise<JobResult> {
     const startTime = Date.now();
-    
+
     try {
       // Create abort controller for this job
       this.abortController = new AbortController();
-      
+
       // Submit job to REST service
       const jobEndpoint = this.getJobEndpoint();
       const payload = this.prepareJobPayload(jobData);
-      
+
       const response = await this.makeRequest(
         this.restConfig.settings.method,
         jobEndpoint,
@@ -115,7 +118,6 @@ export abstract class RestConnector extends BaseConnector {
       } else {
         return await this.handleSyncJob(jobData, responseData, startTime);
       }
-
     } catch (error) {
       return {
         success: false,
@@ -159,7 +161,7 @@ export abstract class RestConnector extends BaseConnector {
     signal?: AbortSignal
   ): Promise<Response> {
     const url = new URL(endpoint, this.restConfig.base_url);
-    
+
     const headers: Record<string, string> = {
       ...this.restConfig.settings.headers,
     };
@@ -198,10 +200,16 @@ export abstract class RestConnector extends BaseConnector {
 
   protected async parseResponse(response: Response): Promise<unknown> {
     const contentType = response.headers.get('content-type') || '';
-    
-    if (this.restConfig.settings.response_format === 'json' || contentType.includes('application/json')) {
+
+    if (
+      this.restConfig.settings.response_format === 'json' ||
+      contentType.includes('application/json')
+    ) {
       return await response.json();
-    } else if (this.restConfig.settings.response_format === 'text' || contentType.includes('text/')) {
+    } else if (
+      this.restConfig.settings.response_format === 'text' ||
+      contentType.includes('text/')
+    ) {
       return await response.text();
     } else {
       // Binary response
@@ -215,7 +223,9 @@ export abstract class RestConnector extends BaseConnector {
     switch (this.restConfig.auth.type) {
       case 'basic':
         if (this.restConfig.auth.username && this.restConfig.auth.password) {
-          const credentials = btoa(`${this.restConfig.auth.username}:${this.restConfig.auth.password}`);
+          const credentials = btoa(
+            `${this.restConfig.auth.username}:${this.restConfig.auth.password}`
+          );
           headers['Authorization'] = `Basic ${credentials}`;
         }
         break;
@@ -283,7 +293,6 @@ export abstract class RestConnector extends BaseConnector {
           const error = this.extractJobError(statusData);
           throw new Error(`REST job failed: ${error}`);
         }
-
       } catch (error) {
         logger.error(`Error polling async job ${jobId}:`, error);
         throw error;

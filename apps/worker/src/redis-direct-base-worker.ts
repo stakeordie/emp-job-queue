@@ -266,7 +266,9 @@ export class RedisDirectBaseWorker {
         this.connectorManager.setRedisConnection(redis, this.workerId, this.machineId);
         logger.info(`Injected Redis connection into ConnectorManager for worker ${this.workerId}`);
       } else {
-        logger.warn(`No Redis connection available for ConnectorManager in worker ${this.workerId}`);
+        logger.warn(
+          `No Redis connection available for ConnectorManager in worker ${this.workerId}`
+        );
       }
 
       // Load and initialize connectors AFTER Redis injection

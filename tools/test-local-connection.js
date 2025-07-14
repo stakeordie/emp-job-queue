@@ -9,7 +9,7 @@
 import WebSocket from 'ws';
 import chalk from 'chalk';
 
-const WS_URL = 'ws://localhost:3001';
+const WS_URL = 'ws://localhost:3331';
 const WS_AUTH_TOKEN = '3u8sdj5389fj3kljsf90u';
 
 console.log(chalk.blue.bold('🔍 LOCAL MONITOR CONNECTION TEST'));

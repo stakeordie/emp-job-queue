@@ -774,7 +774,7 @@ export const useMonitorStore = create<MonitorStore>()(
           };
           
           // Use new format if available, fall back to legacy format
-          const status = workerEvent.status || workerEvent.new_status as WorkerStatus || 'idle';
+          const status: WorkerStatus = (workerEvent.status || workerEvent.new_status || 'idle') as WorkerStatus;
           
           // Check if worker exists, if not create it
           const { workers } = get();
@@ -1129,7 +1129,7 @@ export const useMonitorStore = create<MonitorStore>()(
         const response = await fetch(`/api/machines/${machineId}`, {
           method: 'DELETE',
           headers: {
-            'x-websocket-url': websocketUrl || 'http://localhost:3001',
+            'x-websocket-url': websocketUrl || 'http://localhost:3331',
           },
         });
         

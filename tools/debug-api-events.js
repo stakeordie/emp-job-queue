@@ -16,7 +16,7 @@ import dotenv from 'dotenv';
 dotenv.config();
 
 const REDIS_URL = process.env.REDIS_URL || 'redis://localhost:6379';
-const API_URL = process.env.API_URL || 'ws://localhost:3001';
+const API_URL = process.env.API_URL || 'ws://localhost:3331';
 const AUTH_TOKEN = process.env.WS_AUTH_TOKEN || '3u8sdj5389fj3kljsf90u';
 
 console.log(chalk.blue.bold('🔍 API Server Event Flow Debugger'));
