@@ -185,7 +185,8 @@
     {
       "name": "ComfyUI-Universal-Styler",
       "url": "https://github.com/KoreTeknology/ComfyUI-Universal-Styler.git",
-      "requirements": true
+      "requirements": true,
+      "custom_script": "if [ -d SCRIPTS ]; then mv SCRIPTS/* . && rmdir SCRIPTS; fi"
     },
     {
       "name": "ComfyUI-Easy-Use",

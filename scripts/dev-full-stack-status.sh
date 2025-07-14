@@ -45,13 +45,13 @@ fi
 
 # API Server
 total_count=$((total_count + 1))
-if check_port 3001 "API Server"; then
+if check_port 3331 "API Server"; then
     running_count=$((running_count + 1))
 fi
 
 # Monitor UI
 total_count=$((total_count + 1))
-if check_port 3000 "Monitor UI"; then
+if check_port 3333 "Monitor UI"; then
     running_count=$((running_count + 1))
 fi
 

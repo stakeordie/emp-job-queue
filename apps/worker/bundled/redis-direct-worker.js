@@ -24341,7 +24341,7 @@ var require_websocket_server = __commonJS({
 });
 
 // node_modules/.pnpm/ws@8.18.3/node_modules/ws/wrapper.mjs
-var import_stream, import_receiver, import_sender, import_websocket, import_websocket_server;
+var import_stream, import_receiver, import_sender, import_websocket, import_websocket_server, wrapper_default;
 var init_wrapper = __esm({
   "node_modules/.pnpm/ws@8.18.3/node_modules/ws/wrapper.mjs"() {
     import_stream = __toESM(require_stream3(), 1);
@@ -24349,6 +24349,7 @@ var init_wrapper = __esm({
     import_sender = __toESM(require_sender(), 1);
     import_websocket = __toESM(require_websocket(), 1);
     import_websocket_server = __toESM(require_websocket_server(), 1);
+    wrapper_default = import_websocket.default;
   }
 });
 
@@ -24809,6 +24810,897 @@ var init_simulation_connector = __esm({
   }
 });
 
+// apps/worker/src/connectors/hybrid-connector.ts
+var HybridConnector;
+var init_hybrid_connector = __esm({
+  "apps/worker/src/connectors/hybrid-connector.ts"() {
+    init_dist();
+    init_base_connector();
+    init_wrapper();
+    HybridConnector = class extends BaseConnector {
+      hybridConfig;
+      // WebSocket connection
+      ws;
+      isWebSocketConnected = false;
+      reconnectAttempts = 0;
+      reconnectTimeout;
+      heartbeatInterval;
+      pingInterval;
+      // HTTP client settings
+      httpBaseUrl;
+      httpHeaders = {};
+      // Job tracking
+      pendingJobs = /* @__PURE__ */ new Map();
+      messageHandlers = /* @__PURE__ */ new Map();
+      constructor(connectorId, config) {
+        super(connectorId, config);
+        this.hybridConfig = this.config;
+        if (!this.hybridConfig.settings) {
+          this.hybridConfig.settings = {
+            websocket_url: "ws://localhost:8188/ws",
+            heartbeat_interval_ms: 3e4,
+            reconnect_delay_ms: 5e3,
+            max_reconnect_attempts: 5,
+            message_timeout_ms: 3e5,
+            ping_interval_ms: 1e4,
+            use_http_for_submission: true,
+            use_websocket_for_progress: true,
+            use_websocket_for_results: true,
+            headers: {
+              "Content-Type": "application/json",
+              Accept: "application/json"
+            },
+            body_format: "json"
+          };
+        }
+        this.httpBaseUrl = this.hybridConfig.settings.http_base_url || this.hybridConfig.base_url;
+        this.httpHeaders = { ...this.hybridConfig.settings.headers };
+      }
+      async initializeService() {
+        this.setupHttpClient();
+        if (this.hybridConfig.settings.use_websocket_for_progress || this.hybridConfig.settings.use_websocket_for_results) {
+          await this.connectWebSocket();
+        }
+        try {
+          const healthCheck = await this.checkHealth();
+          if (!healthCheck) {
+            logger.warn(`Hybrid service at ${this.httpBaseUrl} failed initial health check`);
+          }
+        } catch (error) {
+          logger.warn(`Failed to perform initial health check for ${this.connector_id}:`, error);
+        }
+        logger.info(`Hybrid connector ${this.connector_id} initialized`);
+      }
+      async cleanupService() {
+        if (this.reconnectTimeout) {
+          clearTimeout(this.reconnectTimeout);
+          this.reconnectTimeout = void 0;
+        }
+        if (this.heartbeatInterval) {
+          clearInterval(this.heartbeatInterval);
+          this.heartbeatInterval = void 0;
+        }
+        if (this.pingInterval) {
+          clearInterval(this.pingInterval);
+          this.pingInterval = void 0;
+        }
+        for (const [jobId, pendingJob] of this.pendingJobs) {
+          pendingJob.reject(new Error("Connector shutting down"));
+        }
+        this.pendingJobs.clear();
+        await this.disconnectWebSocket();
+      }
+      async checkHealth() {
+        try {
+          const healthEndpoint = this.getHealthEndpoint();
+          const response = await this.makeHttpRequest("GET", healthEndpoint);
+          return response.status >= 200 && response.status < 300;
+        } catch (error) {
+          logger.debug(`Health check failed for ${this.connector_id}:`, error);
+          return false;
+        }
+      }
+      async processJobImpl(jobData, progressCallback) {
+        const startTime = Date.now();
+        return new Promise((resolve, reject) => {
+          const jobId = jobData.id;
+          this.pendingJobs.set(jobId, {
+            jobData,
+            progressCallback,
+            resolve,
+            reject,
+            startTime
+          });
+          const timeout = setTimeout(() => {
+            this.pendingJobs.delete(jobId);
+            reject(new Error(`Hybrid job ${jobId} timed out`));
+          }, this.hybridConfig.settings.message_timeout_ms || 3e5);
+          const originalResolve = resolve;
+          const originalReject = reject;
+          const wrappedResolve = (result) => {
+            clearTimeout(timeout);
+            this.pendingJobs.delete(jobId);
+            originalResolve(result);
+          };
+          const wrappedReject = (error) => {
+            clearTimeout(timeout);
+            this.pendingJobs.delete(jobId);
+            originalReject(error);
+          };
+          const pendingJob = this.pendingJobs.get(jobId);
+          if (pendingJob) {
+            pendingJob.resolve = wrappedResolve;
+            pendingJob.reject = wrappedReject;
+          }
+          this.submitJob(jobData).catch((error) => {
+            wrappedReject(error);
+          });
+        });
+      }
+      async submitJob(jobData) {
+        if (this.hybridConfig.settings.use_http_for_submission) {
+          await this.submitJobViaHttp(jobData);
+        } else {
+          await this.submitJobViaWebSocket(jobData);
+        }
+      }
+      async submitJobViaHttp(jobData) {
+        try {
+          const endpoint = this.getJobSubmissionEndpoint();
+          const payload = this.prepareHttpJobPayload(jobData);
+          const response = await this.makeHttpRequest("POST", endpoint, payload);
+          if (!response.ok) {
+            throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+          }
+          const responseData = await this.parseHttpResponse(response);
+          const pendingJob = this.pendingJobs.get(jobData.id);
+          if (pendingJob) {
+            pendingJob.submittedViaHttp = true;
+          }
+          await this.handleHttpSubmissionResponse(jobData, responseData);
+        } catch (error) {
+          const pendingJob = this.pendingJobs.get(jobData.id);
+          if (pendingJob) {
+            pendingJob.reject(error instanceof Error ? error : new Error("HTTP submission failed"));
+          }
+        }
+      }
+      async submitJobViaWebSocket(jobData) {
+        if (!this.isWebSocketConnected || !this.ws) {
+          throw new Error("WebSocket not connected for job submission");
+        }
+        try {
+          const message = this.prepareWebSocketJobMessage(jobData);
+          this.sendWebSocketMessage(message);
+        } catch (error) {
+          const pendingJob = this.pendingJobs.get(jobData.id);
+          if (pendingJob) {
+            pendingJob.reject(
+              error instanceof Error ? error : new Error("WebSocket submission failed")
+            );
+          }
+        }
+      }
+      async cancelJob(jobId) {
+        const pendingJob = this.pendingJobs.get(jobId);
+        if (!pendingJob) return;
+        try {
+          if (pendingJob.submittedViaHttp) {
+            const cancelEndpoint = this.getCancelEndpoint(jobId);
+            if (cancelEndpoint) {
+              await this.makeHttpRequest("DELETE", cancelEndpoint);
+            }
+          }
+          if (this.isWebSocketConnected && this.ws) {
+            const cancelMessage = this.prepareWebSocketCancelMessage(jobId);
+            this.sendWebSocketMessage(cancelMessage);
+          }
+          logger.info(`Cancelled hybrid job ${jobId}`);
+        } catch (error) {
+          logger.warn(`Failed to cancel job ${jobId}:`, error);
+        }
+        pendingJob.reject(new Error("Job cancelled"));
+      }
+      // ============================================================================
+      // HTTP Methods
+      // ============================================================================
+      setupHttpClient() {
+        if (this.hybridConfig.auth) {
+          this.addAuthHeaders();
+        }
+      }
+      async makeHttpRequest(method, endpoint, data) {
+        const url2 = new URL(endpoint, this.httpBaseUrl);
+        const options = {
+          method,
+          headers: { ...this.httpHeaders }
+        };
+        if (data && method !== "GET") {
+          if (this.hybridConfig.settings.body_format === "json") {
+            options.body = JSON.stringify(data);
+            options.headers["Content-Type"] = "application/json";
+          }
+        }
+        logger.debug(`Making ${method} request to ${url2.toString()}`);
+        return fetch(url2.toString(), options);
+      }
+      async parseHttpResponse(response) {
+        const contentType = response.headers.get("content-type") || "";
+        if (contentType.includes("application/json")) {
+          return await response.json();
+        } else if (contentType.includes("text/")) {
+          return await response.text();
+        } else {
+          return await response.arrayBuffer();
+        }
+      }
+      addAuthHeaders() {
+        if (!this.hybridConfig.auth) return;
+        switch (this.hybridConfig.auth.type) {
+          case "basic":
+            if (this.hybridConfig.auth.username && this.hybridConfig.auth.password) {
+              const credentials = btoa(
+                `${this.hybridConfig.auth.username}:${this.hybridConfig.auth.password}`
+              );
+              this.httpHeaders["Authorization"] = `Basic ${credentials}`;
+            }
+            break;
+          case "bearer":
+            if (this.hybridConfig.auth.token) {
+              this.httpHeaders["Authorization"] = `Bearer ${this.hybridConfig.auth.token}`;
+            }
+            break;
+          case "api_key":
+            if (this.hybridConfig.auth.api_key) {
+              this.httpHeaders["X-API-Key"] = this.hybridConfig.auth.api_key;
+            }
+            break;
+        }
+      }
+      // ============================================================================
+      // Service Health Polling
+      // ============================================================================
+      async waitForServiceHealth() {
+        const maxWaitMs = 6e4;
+        const pollIntervalMs = 2e3;
+        const startTime = Date.now();
+        await this.reportStatus("waiting_for_service");
+        logger.info(
+          `Waiting for service health check at ${this.httpBaseUrl} before connecting WebSocket`
+        );
+        while (Date.now() - startTime < maxWaitMs) {
+          try {
+            const isHealthy = await this.checkHealth();
+            if (isHealthy) {
+              logger.info(
+                `Service health check passed for ${this.connector_id}, proceeding with WebSocket connection`
+              );
+              return;
+            }
+          } catch (error) {
+            logger.debug(`Health check attempt failed for ${this.connector_id}:`, error);
+          }
+          await new Promise((resolve) => setTimeout(resolve, pollIntervalMs));
+        }
+        const errorMsg = `Timed out waiting for service health at ${this.httpBaseUrl} after ${maxWaitMs}ms`;
+        logger.error(errorMsg);
+        await this.reportStatus("error", errorMsg);
+        throw new Error(errorMsg);
+      }
+      // ============================================================================
+      // WebSocket Methods
+      // ============================================================================
+      async connectWebSocket() {
+        if (this.ws) {
+          await this.disconnectWebSocket();
+        }
+        await this.waitForServiceHealth();
+        await this.reportStatus("connecting");
+        return new Promise((resolve, reject) => {
+          try {
+            const wsUrl = this.hybridConfig.settings.websocket_url;
+            const protocol = this.hybridConfig.settings.protocol;
+            logger.debug(`Connecting to WebSocket: ${wsUrl}`);
+            this.ws = new wrapper_default(wsUrl, protocol);
+            this.ws.on("open", async () => {
+              logger.info(`Hybrid connector ${this.connector_id} WebSocket connected to ${wsUrl}`);
+              this.isWebSocketConnected = true;
+              this.reconnectAttempts = 0;
+              await this.reportStatus("active");
+              this.startHeartbeat();
+              this.startPing();
+              this.setupMessageHandlers();
+              this.onWebSocketConnected();
+              resolve();
+            });
+            this.ws.on("message", (data) => {
+              try {
+                const message = this.parseWebSocketMessage(data);
+                this.handleWebSocketMessage(message);
+              } catch (error) {
+                logger.error(`Failed to parse WebSocket message:`, error);
+              }
+            });
+            this.ws.on("close", (code, reason) => {
+              logger.warn(`WebSocket connection closed: ${code} ${reason.toString()}`);
+              this.isWebSocketConnected = false;
+              this.onWebSocketDisconnected();
+              if (this.reconnectAttempts < (this.hybridConfig.settings.max_reconnect_attempts || 5)) {
+                this.scheduleWebSocketReconnect();
+              } else {
+                logger.error(`Max WebSocket reconnection attempts reached for ${this.connector_id}`);
+              }
+            });
+            this.ws.on("error", (error) => {
+              logger.error(`WebSocket error for ${this.connector_id}:`, error);
+              if (!this.isWebSocketConnected) {
+                reject(error);
+              }
+            });
+          } catch (error) {
+            reject(error);
+          }
+        });
+      }
+      async disconnectWebSocket() {
+        if (this.ws) {
+          this.ws.removeAllListeners();
+          if (this.ws.readyState === wrapper_default.OPEN) {
+            this.ws.close();
+          }
+          this.ws = void 0;
+        }
+        this.isWebSocketConnected = false;
+      }
+      scheduleWebSocketReconnect() {
+        if (this.reconnectTimeout) {
+          clearTimeout(this.reconnectTimeout);
+        }
+        const delay = this.hybridConfig.settings.reconnect_delay_ms || 5e3;
+        logger.info(
+          `Scheduling WebSocket reconnection attempt ${this.reconnectAttempts + 1} in ${delay}ms`
+        );
+        this.reconnectTimeout = setTimeout(async () => {
+          this.reconnectAttempts++;
+          try {
+            await this.connectWebSocket();
+          } catch (error) {
+            logger.error(`WebSocket reconnection attempt ${this.reconnectAttempts} failed:`, error);
+          }
+        }, delay);
+      }
+      setupMessageHandlers() {
+        this.messageHandlers.set("job_progress", (message) => this.handleJobProgress(message));
+        this.messageHandlers.set("job_complete", (message) => this.handleJobComplete(message));
+        this.messageHandlers.set("job_failed", (message) => this.handleJobFailed(message));
+        this.messageHandlers.set("error", (message) => this.handleWebSocketError(message));
+        this.setupCustomMessageHandlers();
+      }
+      handleWebSocketMessage(message) {
+        logger.debug(`Received WebSocket message: ${message.type}`);
+        const handler = this.messageHandlers.get(message.type);
+        if (handler) {
+          handler(message);
+        } else {
+          this.handleUnknownWebSocketMessage(message);
+        }
+      }
+      handleJobProgress(message) {
+        const jobId = this.extractJobIdFromWebSocketMessage(message);
+        const pendingJob = this.pendingJobs.get(jobId);
+        if (pendingJob) {
+          const progress = this.extractProgressFromWebSocketMessage(message);
+          pendingJob.progressCallback({
+            job_id: pendingJob.jobData.id,
+            progress: progress.progress,
+            message: progress.message,
+            current_step: progress.current_step,
+            total_steps: progress.total_steps,
+            estimated_completion_ms: progress.estimated_completion_ms
+          });
+        }
+      }
+      handleJobComplete(message) {
+        const jobId = this.extractJobIdFromWebSocketMessage(message);
+        const pendingJob = this.pendingJobs.get(jobId);
+        if (pendingJob) {
+          const result = this.extractResultFromWebSocketMessage(message);
+          pendingJob.resolve({
+            success: true,
+            data: result,
+            processing_time_ms: Date.now() - pendingJob.startTime,
+            service_metadata: {
+              service_version: this.version
+            }
+          });
+        }
+      }
+      handleJobFailed(message) {
+        const jobId = this.extractJobIdFromWebSocketMessage(message);
+        const pendingJob = this.pendingJobs.get(jobId);
+        if (pendingJob) {
+          const error = this.extractErrorFromWebSocketMessage(message);
+          pendingJob.reject(new Error(error));
+        }
+      }
+      handleWebSocketError(message) {
+        logger.error(`WebSocket error message:`, message);
+      }
+      sendWebSocketMessage(message) {
+        if (!this.ws || this.ws.readyState !== wrapper_default.OPEN) {
+          throw new Error("WebSocket not connected");
+        }
+        const messageStr = JSON.stringify(message);
+        this.ws.send(messageStr);
+        logger.debug(`Sent WebSocket message: ${message.type}`);
+      }
+      parseWebSocketMessage(data) {
+        try {
+          return JSON.parse(data.toString());
+        } catch (error) {
+          throw new Error(`Failed to parse WebSocket message: ${error}`);
+        }
+      }
+      startHeartbeat() {
+        if (this.heartbeatInterval) {
+          clearInterval(this.heartbeatInterval);
+        }
+        const interval = this.hybridConfig.settings.heartbeat_interval_ms || 3e4;
+        this.heartbeatInterval = setInterval(() => {
+          if (this.isWebSocketConnected) {
+            try {
+              const heartbeatMessage = this.prepareWebSocketHeartbeatMessage();
+              this.sendWebSocketMessage(heartbeatMessage);
+            } catch (error) {
+              logger.warn(`Failed to send heartbeat:`, error);
+            }
+          }
+        }, interval);
+      }
+      startPing() {
+        if (this.pingInterval) {
+          clearInterval(this.pingInterval);
+        }
+        const interval = this.hybridConfig.settings.ping_interval_ms || 1e4;
+        this.pingInterval = setInterval(() => {
+          if (this.ws && this.ws.readyState === wrapper_default.OPEN) {
+            this.ws.ping();
+          }
+        }, interval);
+      }
+    };
+  }
+});
+
+// apps/worker/src/connectors/comfyui-hybrid-connector.ts
+var comfyui_hybrid_connector_exports = {};
+__export(comfyui_hybrid_connector_exports, {
+  ComfyUIConnector: () => ComfyUIConnector
+});
+var ComfyUIConnector;
+var init_comfyui_hybrid_connector = __esm({
+  "apps/worker/src/connectors/comfyui-hybrid-connector.ts"() {
+    init_dist();
+    init_hybrid_connector();
+    ComfyUIConnector = class extends HybridConnector {
+      service_type = "comfyui";
+      version = "1.0.0";
+      activeJobs = /* @__PURE__ */ new Map();
+      // Don't declare messageHandlers - it's inherited from HybridConnector
+      // Store A1111-specific settings as instance properties
+      workflowTimeoutSeconds;
+      imageFormat;
+      imageQuality;
+      saveWorkflow;
+      constructor(connectorId) {
+        const host = process.env.WORKER_COMFYUI_HOST || "localhost";
+        const port = parseInt(process.env.WORKER_COMFYUI_PORT || "8188");
+        const username = process.env.WORKER_COMFYUI_USERNAME;
+        const password = process.env.WORKER_COMFYUI_PASSWORD;
+        const config = {
+          service_type: "comfyui",
+          base_url: `http://${host}:${port}`,
+          auth: username && password ? {
+            type: "basic",
+            username,
+            password
+          } : { type: "none" },
+          timeout_seconds: parseInt(process.env.WORKER_COMFYUI_TIMEOUT_SECONDS || "300"),
+          retry_attempts: 3,
+          retry_delay_seconds: 2,
+          health_check_interval_seconds: 30,
+          max_concurrent_jobs: parseInt(process.env.WORKER_COMFYUI_MAX_CONCURRENT_JOBS || "1"),
+          settings: {
+            // HTTP settings
+            http_base_url: `http://${host}:${port}`,
+            headers: {
+              "Content-Type": "application/json",
+              Accept: "application/json"
+            },
+            body_format: "json",
+            // WebSocket settings
+            websocket_url: username && password ? `ws://${encodeURIComponent(username)}:${encodeURIComponent(password)}@${host}:${port}/ws` : `ws://${host}:${port}/ws`,
+            heartbeat_interval_ms: 3e4,
+            reconnect_delay_ms: 5e3,
+            max_reconnect_attempts: 5,
+            message_timeout_ms: parseInt(process.env.WORKER_COMFYUI_WORKFLOW_TIMEOUT_SECONDS || "600") * 1e3,
+            ping_interval_ms: 1e4,
+            // Hybrid configuration - ComfyUI uses HTTP for submission, WebSocket for progress
+            use_http_for_submission: true,
+            use_websocket_for_progress: true,
+            use_websocket_for_results: false
+            // Results retrieved via HTTP API
+            // ComfyUI-specific settings stored in base settings
+            // ComfyUI-specific settings will be stored elsewhere
+          }
+        };
+        super(connectorId, config);
+        this.workflowTimeoutSeconds = parseInt(
+          process.env.WORKER_COMFYUI_WORKFLOW_TIMEOUT_SECONDS || "600"
+        );
+        this.imageFormat = process.env.WORKER_COMFYUI_IMAGE_FORMAT || "png";
+        this.imageQuality = parseInt(process.env.WORKER_COMFYUI_IMAGE_QUALITY || "95");
+        this.saveWorkflow = process.env.WORKER_COMFYUI_SAVE_WORKFLOW !== "false";
+      }
+      // HybridConnector overrides
+      async checkHealth() {
+        try {
+          const response = await this.makeHttpRequest("GET", "/system_stats");
+          return response.status >= 200 && response.status < 300;
+        } catch (error) {
+          logger.debug(`ComfyUI health check failed:`, error);
+          return false;
+        }
+      }
+      async getAvailableModels() {
+        try {
+          const response = await this.makeHttpRequest("GET", "/object_info");
+          const objectInfo = await this.parseHttpResponse(response);
+          const checkpoints = objectInfo?.CheckpointLoaderSimple?.input?.required?.ckpt_name?.[0] || [];
+          logger.info(`Found ${checkpoints.length} models in ComfyUI`);
+          return checkpoints;
+        } catch (error) {
+          logger.error("Failed to get ComfyUI models:", error);
+          return [];
+        }
+      }
+      async getServiceInfo() {
+        try {
+          const systemStatsResponse = await this.makeHttpRequest("GET", "/system_stats");
+          const systemStats = await this.parseHttpResponse(systemStatsResponse);
+          await this.makeHttpRequest("GET", "/object_info");
+          return {
+            service_name: "ComfyUI",
+            service_version: "unknown",
+            // ComfyUI doesn't expose version in API
+            base_url: this.config.base_url,
+            status: "online",
+            capabilities: {
+              supported_formats: ["png", "jpg", "webp"],
+              supported_models: await this.getAvailableModels(),
+              features: [
+                "workflow_processing",
+                "progress_tracking",
+                "websocket_updates",
+                "hybrid_connectivity"
+              ],
+              concurrent_jobs: this.config.max_concurrent_jobs
+            },
+            resource_usage: {
+              cpu_usage: systemStats?.cpu_usage || 0,
+              memory_usage_mb: systemStats?.memory_usage_mb || 0,
+              ...systemStats
+            }
+          };
+        } catch (error) {
+          logger.error("Failed to get ComfyUI service info:", error);
+          throw error;
+        }
+      }
+      async canProcessJob(jobData) {
+        return jobData.type === "comfyui" && jobData.payload?.workflow !== void 0;
+      }
+      // Override processJobImpl from BaseConnector to customize ComfyUI job processing
+      async processJobImpl(jobData, progressCallback) {
+        const startTime = Date.now();
+        logger.info(`Starting ComfyUI job ${jobData.id}`);
+        try {
+          const workflow = jobData.payload.workflow;
+          if (!workflow) {
+            throw new Error("No workflow provided in job payload");
+          }
+          this.activeJobs.set(jobData.id, { jobData, progressCallback });
+          const promptId = await this.submitWorkflow(workflow);
+          logger.info(`ComfyUI job ${jobData.id} submitted with prompt ID: ${promptId}`);
+          const activeJob = this.activeJobs.get(jobData.id);
+          if (activeJob) {
+            activeJob.promptId = promptId;
+            this.activeJobs.set(jobData.id, activeJob);
+          }
+          const result = await this.waitForCompletion(jobData.id, promptId, progressCallback);
+          const processingTime = Date.now() - startTime;
+          logger.info(`ComfyUI job ${jobData.id} completed in ${processingTime}ms`);
+          return {
+            success: true,
+            data: result,
+            processing_time_ms: processingTime,
+            service_metadata: {
+              service_version: this.version,
+              model_used: this.extractModelFromWorkflow(workflow),
+              processing_stats: {
+                prompt_id: promptId,
+                workflow_nodes: Object.keys(workflow).length
+              }
+            }
+          };
+        } catch (error) {
+          const processingTime = Date.now() - startTime;
+          logger.error(`ComfyUI job ${jobData.id} failed:`, error);
+          return {
+            success: false,
+            error: error instanceof Error ? error.message : "ComfyUI processing failed",
+            processing_time_ms: processingTime,
+            service_metadata: {
+              service_version: this.version
+            }
+          };
+        } finally {
+          this.activeJobs.delete(jobData.id);
+        }
+      }
+      async cancelJob(jobId) {
+        logger.info(`Cancelling ComfyUI job ${jobId}`);
+        this.activeJobs.delete(jobId);
+      }
+      async submitWorkflow(workflow) {
+        try {
+          const payload = {
+            prompt: workflow,
+            extra_data: {
+              client_id: this.connector_id
+            }
+          };
+          const response = await this.makeHttpRequest("POST", "/prompt", payload);
+          const responseData = await this.parseHttpResponse(response);
+          const promptId = responseData.prompt_id;
+          if (!promptId) {
+            throw new Error("No prompt ID returned from ComfyUI");
+          }
+          return promptId;
+        } catch (error) {
+          logger.error("Failed to submit workflow to ComfyUI:", error);
+          throw error;
+        }
+      }
+      async waitForCompletion(jobId, promptId, progressCallback) {
+        return new Promise((resolve, reject) => {
+          const timeout = setTimeout(() => {
+            reject(
+              new Error(`ComfyUI job ${jobId} timed out after ${this.workflowTimeoutSeconds} seconds`)
+            );
+          }, this.workflowTimeoutSeconds * 1e3);
+          const originalJob = this.activeJobs.get(jobId);
+          if (originalJob) {
+            this.activeJobs.set(jobId, {
+              ...originalJob,
+              progressCallback: async (progress) => {
+                await progressCallback(progress);
+                if (progress.progress >= 100) {
+                  clearTimeout(timeout);
+                  try {
+                    const result = await this.getJobResult(promptId);
+                    resolve(result);
+                  } catch (error) {
+                    reject(error);
+                  }
+                }
+              }
+            });
+          }
+        });
+      }
+      async getJobResult(promptId) {
+        try {
+          const historyResponse = await this.makeHttpRequest("GET", `/history/${promptId}`);
+          const historyData = await this.parseHttpResponse(historyResponse);
+          const history = historyData[promptId];
+          if (!history) {
+            throw new Error(`No history found for prompt ${promptId}`);
+          }
+          const outputs = history.outputs || {};
+          const images = [];
+          for (const nodeId of Object.keys(outputs)) {
+            const nodeOutput = outputs[nodeId];
+            if (nodeOutput.images) {
+              for (const image of nodeOutput.images) {
+                const imageUrl = `${this.config.base_url}/view?filename=${image.filename}&subfolder=${image.subfolder || ""}&type=${image.type || "output"}`;
+                images.push(imageUrl);
+              }
+            }
+          }
+          return {
+            prompt_id: promptId,
+            outputs,
+            images,
+            execution_time: history.execution_time,
+            status: history.status
+          };
+        } catch (error) {
+          logger.error(`Failed to get ComfyUI job result for prompt ${promptId}:`, error);
+          throw error;
+        }
+      }
+      // HybridConnector abstract method implementations
+      handleUnknownWebSocketMessage(message) {
+        logger.debug(`Unhandled ComfyUI WebSocket message type: ${message.type}`);
+      }
+      setupCustomMessageHandlers() {
+        const messageHandlers = this.messageHandlers;
+        messageHandlers.set("progress", (message) => this.handleProgressMessage(message.data));
+        messageHandlers.set("executing", (message) => this.handleExecutingMessage(message.data));
+        messageHandlers.set("executed", (message) => this.handleExecutedMessage(message.data));
+      }
+      handleComfyUIMessage(message) {
+        const { type, data } = message;
+        switch (type) {
+          case "progress":
+            this.handleProgressMessage(data);
+            break;
+          case "executing":
+            this.handleExecutingMessage(data);
+            break;
+          case "executed":
+            this.handleExecutedMessage(data);
+            break;
+          default:
+            logger.debug(`Unhandled ComfyUI WebSocket message type: ${type}`);
+        }
+      }
+      async handleProgressMessage(data) {
+        const progressData = data;
+        const { value, max } = progressData;
+        const progress = max > 0 ? Math.round(value / max * 100) : 0;
+        for (const [jobId, jobInfo] of this.activeJobs) {
+          try {
+            await jobInfo.progressCallback({
+              job_id: jobId,
+              progress,
+              message: `Processing: ${value}/${max}`,
+              current_step: `Step ${value}`,
+              total_steps: max
+            });
+          } catch (error) {
+            logger.error(`Failed to update progress for job ${jobId}:`, error);
+          }
+        }
+      }
+      async handleExecutingMessage(_data) {
+        for (const [jobId, jobInfo] of this.activeJobs) {
+          try {
+            await jobInfo.progressCallback({
+              job_id: jobId,
+              progress: 10,
+              message: "Execution started",
+              current_step: "Starting workflow"
+            });
+          } catch (error) {
+            logger.error(`Failed to update execution status for job ${jobId}:`, error);
+          }
+        }
+      }
+      async handleExecutedMessage(_data) {
+        for (const [jobId, jobInfo] of this.activeJobs) {
+          try {
+            await jobInfo.progressCallback({
+              job_id: jobId,
+              progress: 100,
+              message: "Execution completed",
+              current_step: "Workflow finished"
+            });
+          } catch (error) {
+            logger.error(`Failed to update completion status for job ${jobId}:`, error);
+          }
+        }
+      }
+      extractModelFromWorkflow(workflow) {
+        for (const nodeId of Object.keys(workflow)) {
+          const node = workflow[nodeId];
+          if (node?.class_type === "CheckpointLoaderSimple") {
+            const inputs = node.inputs;
+            return typeof inputs?.ckpt_name === "string" ? inputs.ckpt_name : "unknown";
+          }
+        }
+        return "unknown";
+      }
+      // HybridConnector abstract implementations for ComfyUI
+      getHealthEndpoint() {
+        return "/system_stats";
+      }
+      getJobSubmissionEndpoint() {
+        return "/prompt";
+      }
+      getCancelEndpoint(jobId) {
+        return null;
+      }
+      prepareHttpJobPayload(jobData) {
+        return {
+          prompt: jobData.payload.workflow,
+          extra_data: {
+            client_id: this.connector_id
+          }
+        };
+      }
+      async handleHttpSubmissionResponse(jobData, responseData) {
+        const promptId = responseData.prompt_id;
+        if (!promptId) {
+          throw new Error("No prompt ID returned from ComfyUI");
+        }
+        const activeJob = this.activeJobs.get(jobData.id);
+        if (activeJob) {
+          activeJob.promptId = promptId;
+          this.activeJobs.set(jobData.id, activeJob);
+        }
+      }
+      prepareWebSocketJobMessage(jobData) {
+        return {
+          type: "job_submit",
+          id: jobData.id,
+          data: jobData.payload
+        };
+      }
+      prepareWebSocketCancelMessage(jobId) {
+        return {
+          type: "cancel",
+          id: jobId
+        };
+      }
+      prepareWebSocketHeartbeatMessage() {
+        return {
+          type: "ping",
+          timestamp: Date.now()
+        };
+      }
+      extractJobIdFromWebSocketMessage(message) {
+        return message.id || "";
+      }
+      extractProgressFromWebSocketMessage(message) {
+        const data = message.data;
+        const { value, max } = data;
+        const progress = max > 0 ? Math.round(value / max * 100) : 0;
+        return {
+          progress,
+          message: `Processing: ${value}/${max}`,
+          current_step: `Step ${value}`,
+          total_steps: max
+        };
+      }
+      extractResultFromWebSocketMessage(message) {
+        return message.data;
+      }
+      extractErrorFromWebSocketMessage(message) {
+        return message.error || "ComfyUI processing failed";
+      }
+      onWebSocketConnected() {
+        logger.info(`ComfyUI WebSocket connected for connector ${this.connector_id}`);
+      }
+      onWebSocketDisconnected() {
+        logger.warn(`ComfyUI WebSocket disconnected for connector ${this.connector_id}`);
+      }
+      async updateConfiguration(config) {
+        this.config = { ...this.config, ...config };
+        if (config.base_url || config.settings?.http_base_url) {
+          this.httpBaseUrl = config.settings?.http_base_url || config.base_url || this.httpBaseUrl;
+          this.setupHttpClient();
+        }
+        logger.info(`Updated configuration for ComfyUI connector ${this.connector_id}`);
+      }
+      getConfiguration() {
+        return { ...this.config };
+      }
+    };
+  }
+});
+
 // apps/worker/src/connectors/rest-connector.ts
 var RestConnector;
 var init_rest_connector = __esm({
@@ -24891,7 +25783,8 @@ var init_rest_connector = __esm({
             error: error instanceof Error ? error.message : "Unknown REST processing error",
             processing_time_ms: Date.now() - startTime,
             service_metadata: {
-              service_version: this.version
+              service_version: this.version,
+              service_type: this.restConfig.service_type
             }
           };
         } finally {
@@ -25000,7 +25893,12 @@ var init_rest_connector = __esm({
               // Don't report 100% until we have results
               message: `Processing via REST API (${progress}%)`,
               current_step: jobStatus,
-              estimated_completion_ms: this.estimateCompletion(progress, startTime)
+              estimated_completion_ms: this.estimateCompletion(progress, startTime),
+              metadata: {
+                service_job_id: jobId,
+                // Include service-specific job ID for debugging
+                service_type: this.restConfig.service_type
+              }
             });
             if (this.isJobComplete(statusData)) {
               const result = this.extractJobResult(statusData);
@@ -25009,7 +25907,9 @@ var init_rest_connector = __esm({
                 data: result,
                 processing_time_ms: Date.now() - startTime,
                 service_metadata: {
-                  service_version: this.version
+                  service_version: this.version,
+                  service_job_id: jobId,
+                  service_type: this.restConfig.service_type
                 }
               };
             }
@@ -25030,7 +25930,8 @@ var init_rest_connector = __esm({
           data: responseData,
           processing_time_ms: Date.now() - startTime,
           service_metadata: {
-            service_version: this.version
+            service_version: this.version,
+            service_type: this.restConfig.service_type
           }
         };
       }
@@ -25042,232 +25943,6 @@ var init_rest_connector = __esm({
       }
       async sleep(ms) {
         return new Promise((resolve) => setTimeout(resolve, ms));
-      }
-    };
-  }
-});
-
-// apps/worker/src/connectors/comfyui-connector.ts
-var comfyui_connector_exports = {};
-__export(comfyui_connector_exports, {
-  ComfyUIConnector: () => ComfyUIConnector
-});
-var ComfyUIConnector;
-var init_comfyui_connector = __esm({
-  "apps/worker/src/connectors/comfyui-connector.ts"() {
-    init_dist();
-    init_rest_connector();
-    ComfyUIConnector = class extends RestConnector {
-      service_type = "comfyui";
-      version = "1.0.0";
-      constructor(connectorId) {
-        const host = process.env.WORKER_COMFYUI_HOST || "localhost";
-        const port = parseInt(process.env.WORKER_COMFYUI_PORT || "8188");
-        const username = process.env.WORKER_COMFYUI_USERNAME;
-        const password = process.env.WORKER_COMFYUI_PASSWORD;
-        const config = {
-          service_type: "comfyui",
-          base_url: `http://${host}:${port}`,
-          auth: username && password ? {
-            type: "basic",
-            username,
-            password
-          } : { type: "none" },
-          timeout_seconds: parseInt(process.env.WORKER_COMFYUI_TIMEOUT_SECONDS || "300"),
-          retry_attempts: 3,
-          retry_delay_seconds: 2,
-          health_check_interval_seconds: 30,
-          max_concurrent_jobs: parseInt(process.env.WORKER_COMFYUI_MAX_CONCURRENT_JOBS || "1"),
-          settings: {
-            method: "POST",
-            response_format: "json",
-            polling_interval_ms: 1e3,
-            // 1-second polling for responsive updates
-            headers: {
-              "Content-Type": "application/json",
-              Accept: "application/json"
-            },
-            body_format: "json"
-          }
-        };
-        super(connectorId, config);
-        logger.info(`ComfyUI connector ${connectorId} initialized with REST polling`);
-      }
-      // ============================================================================
-      // Service Info and Health
-      // ============================================================================
-      async getServiceInfo() {
-        try {
-          const systemStatsResponse = await this.makeRequest("GET", "/system_stats");
-          const systemStats = await this.parseResponse(systemStatsResponse);
-          return {
-            service_name: "ComfyUI",
-            service_version: "unknown",
-            // ComfyUI doesn't expose version in API
-            base_url: this.restConfig.base_url,
-            status: "online",
-            capabilities: {
-              supported_formats: ["png", "jpg", "webp"],
-              supported_models: await this.getAvailableModels(),
-              features: ["workflow_processing", "progress_tracking", "http_polling"],
-              concurrent_jobs: this.restConfig.max_concurrent_jobs
-            },
-            resource_usage: {
-              cpu_usage: systemStats?.cpu_usage || 0,
-              memory_usage_mb: systemStats?.memory_usage_mb || 0,
-              ...systemStats
-            }
-          };
-        } catch (error) {
-          logger.error("Failed to get ComfyUI service info:", error);
-          throw error;
-        }
-      }
-      async getAvailableModels() {
-        try {
-          const response = await this.makeRequest("GET", "/object_info");
-          const objectInfo = await this.parseResponse(response);
-          const checkpoints = objectInfo?.CheckpointLoaderSimple?.input?.required?.ckpt_name?.[0] || [];
-          logger.info(`Found ${checkpoints.length} models in ComfyUI`);
-          return checkpoints;
-        } catch (error) {
-          logger.error("Failed to get ComfyUI models:", error);
-          return [];
-        }
-      }
-      async canProcessJob(jobData) {
-        return jobData.type === "comfyui" && jobData.payload?.workflow !== void 0;
-      }
-      // ============================================================================
-      // RestConnector Implementation - ComfyUI specific endpoints and logic
-      // ============================================================================
-      getHealthEndpoint() {
-        return "/system_stats";
-      }
-      getJobEndpoint() {
-        return "/prompt";
-      }
-      getStatusEndpoint(promptId) {
-        return `/history/${promptId}`;
-      }
-      getCancelEndpoint(_jobId) {
-        return null;
-      }
-      prepareJobPayload(jobData) {
-        const workflow = jobData.payload.workflow;
-        if (!workflow) {
-          throw new Error("No workflow provided in job payload");
-        }
-        return {
-          prompt: workflow,
-          extra_data: {
-            client_id: this.connector_id
-          }
-        };
-      }
-      isAsyncJob(responseData) {
-        return !!responseData?.prompt_id;
-      }
-      extractJobId(responseData) {
-        const promptId = responseData?.prompt_id;
-        if (!promptId) {
-          throw new Error("No prompt ID returned from ComfyUI");
-        }
-        return promptId;
-      }
-      extractJobStatus(statusData) {
-        const history = statusData;
-        if (!history) {
-          return "queued";
-        }
-        if (history.status) {
-          return history.status === "success" ? "completed" : history.status;
-        }
-        if (history.outputs && Object.keys(history.outputs).length > 0) {
-          return "completed";
-        }
-        return "processing";
-      }
-      extractJobProgress(statusData) {
-        const history = statusData;
-        if (!history) {
-          return 0;
-        }
-        if (history.outputs && Object.keys(history.outputs).length > 0) {
-          return 100;
-        }
-        if (history.status === "success") {
-          return 100;
-        }
-        if (history.status === "error") {
-          return 0;
-        }
-        return history ? 50 : 0;
-      }
-      isJobComplete(statusData) {
-        const history = statusData;
-        if (!history) {
-          return false;
-        }
-        if (history.outputs && Object.keys(history.outputs).length > 0) {
-          return true;
-        }
-        return history.status === "success";
-      }
-      isJobFailed(statusData) {
-        const history = statusData;
-        return history?.status === "error";
-      }
-      extractJobResult(statusData) {
-        const history = statusData;
-        if (!history) {
-          throw new Error("No history data found");
-        }
-        const outputs = history.outputs || {};
-        const images = [];
-        for (const nodeId of Object.keys(outputs)) {
-          const nodeOutput = outputs[nodeId];
-          if (nodeOutput.images) {
-            for (const image of nodeOutput.images) {
-              const imageUrl = `${this.restConfig.base_url}/view?filename=${image.filename}&subfolder=${image.subfolder || ""}&type=${image.type || "output"}`;
-              images.push(imageUrl);
-            }
-          }
-        }
-        return {
-          prompt_id: this.extractJobId({ prompt_id: Object.keys(history)[0] }),
-          outputs,
-          images,
-          execution_time: history.execution_time,
-          status: history.status
-        };
-      }
-      extractJobError(statusData) {
-        const history = statusData;
-        return history?.error || history?.messages?.join(", ") || "ComfyUI processing failed";
-      }
-      // ============================================================================
-      // BaseConnector Abstract Method Implementations
-      // ============================================================================
-      async updateConfiguration(config) {
-        this.restConfig = { ...this.restConfig, ...config };
-        logger.info(`Updated configuration for ComfyUI connector ${this.connector_id}`);
-      }
-      getConfiguration() {
-        return { ...this.restConfig };
-      }
-      // ============================================================================
-      // ComfyUI Specific Utilities
-      // ============================================================================
-      extractModelFromWorkflow(workflow) {
-        for (const nodeId of Object.keys(workflow)) {
-          const node = workflow[nodeId];
-          if (node?.class_type === "CheckpointLoaderSimple") {
-            const inputs = node.inputs;
-            return typeof inputs?.ckpt_name === "string" ? inputs.ckpt_name : "unknown";
-          }
-        }
-        return "unknown";
       }
     };
   }
@@ -42508,7 +43183,7 @@ var ConnectorManager = class {
           ConnectorClass = SimulationConnector2;
           break;
         case "comfyui":
-          const { ComfyUIConnector: ComfyUIConnector2 } = await Promise.resolve().then(() => (init_comfyui_connector(), comfyui_connector_exports));
+          const { ComfyUIConnector: ComfyUIConnector2 } = await Promise.resolve().then(() => (init_comfyui_hybrid_connector(), comfyui_hybrid_connector_exports));
           ConnectorClass = ComfyUIConnector2;
           break;
         case "a1111":

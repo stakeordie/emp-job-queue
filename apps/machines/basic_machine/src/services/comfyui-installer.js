@@ -333,6 +333,21 @@ export default class ComfyUIInstallerService extends BaseService {
         this.logger.info(`${nodeName} has requirements.txt but requirements flag not set, skipping pip install`);
       }
 
+      // Run custom script if provided
+      if (nodeConfig.custom_script) {
+        this.logger.info(`Running custom script for ${nodeName}: ${nodeConfig.custom_script}`);
+        try {
+          await execa('bash', ['-c', nodeConfig.custom_script], {
+            cwd: nodePath,
+            stdio: 'inherit'
+          });
+          this.logger.info(`Custom script completed successfully for ${nodeName}`);
+        } catch (error) {
+          this.logger.error(`Custom script failed for ${nodeName}:`, error);
+          // Continue with installation even if custom script fails
+        }
+      }
+
       this.logger.info(`Custom node ${nodeName} installed successfully`);
     } catch (error) {
       this.logger.error(`Failed to install custom node ${nodeName}:`, error);
