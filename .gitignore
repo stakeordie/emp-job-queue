@@ -21,6 +21,10 @@ build/
 !.env.example
 !**/.env.example
 
+# Machine environment files with secrets
+apps/machines/basic_machine/.env.local.dev
+apps/machines/basic_machine/.env.local.prod
+
 # Runtime data
 pids/
 *.pid
