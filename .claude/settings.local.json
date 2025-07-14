@@ -156,7 +156,8 @@
       "Bash(./scripts/dev-full-stack-status.sh:*)",
       "Bash(./scripts/dev-full-stack-stop.sh:*)",
       "Bash(docker port:*)",
-      "mcp__playwright__browser_type"
+      "mcp__playwright__browser_type",
+      "Bash(./scripts/tail-comfyui-logs.sh:*)"
     ],
     "deny": []
   }
