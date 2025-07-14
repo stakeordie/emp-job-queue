@@ -106,6 +106,8 @@ export interface JobResult {
   output_files?: OutputFile[];
   service_metadata?: {
     service_version: string;
+    service_type?: string;
+    service_job_id?: string; // Service-specific job ID (e.g., ComfyUI prompt_id)
     model_used?: string;
     processing_stats?: Record<string, unknown>;
   };

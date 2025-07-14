@@ -125,6 +125,7 @@ export abstract class RestConnector extends BaseConnector {
         processing_time_ms: Date.now() - startTime,
         service_metadata: {
           service_version: this.version,
+          service_type: this.restConfig.service_type,
         },
       };
     } finally {
@@ -275,6 +276,10 @@ export abstract class RestConnector extends BaseConnector {
           message: `Processing via REST API (${progress}%)`,
           current_step: jobStatus,
           estimated_completion_ms: this.estimateCompletion(progress, startTime),
+          metadata: {
+            service_job_id: jobId, // Include service-specific job ID for debugging
+            service_type: this.restConfig.service_type,
+          },
         });
 
         if (this.isJobComplete(statusData)) {
@@ -285,6 +290,8 @@ export abstract class RestConnector extends BaseConnector {
             processing_time_ms: Date.now() - startTime,
             service_metadata: {
               service_version: this.version,
+              service_job_id: jobId,
+              service_type: this.restConfig.service_type,
             },
           };
         }
@@ -314,6 +321,7 @@ export abstract class RestConnector extends BaseConnector {
       processing_time_ms: Date.now() - startTime,
       service_metadata: {
         service_version: this.version,
+        service_type: this.restConfig.service_type,
       },
     };
   }
