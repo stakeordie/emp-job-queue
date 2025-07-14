@@ -1517,6 +1517,22 @@ export class LightweightAPIServer {
         );
         break;
 
+      case 'service_started':
+        logger.info(`🔧 Service started: ${eventData.service_name} for: ${machineId}`);
+        
+        // Broadcast as a startup step for the monitor to track service progress
+        this.eventBroadcaster.broadcastMachineStartupStep(
+          machineId,
+          `service_started: ${eventData.service_name}`,
+          'supporting_services',
+          eventData.elapsed_ms || 0,
+          { 
+            service_name: eventData.service_name,
+            service_data: eventData.service_data 
+          }
+        );
+        break;
+
       case 'startup_failed':
         logger.error(`❌ Broadcasting startup failure for: ${machineId}`);
 
