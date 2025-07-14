@@ -86,7 +86,9 @@ if (process.env.ENABLE_REDIS_WORKERS === 'true') {
         ...generateServiceConfig('redis-worker', { gpu }).env,
         STANDALONE_MODE: 'true',
         WORKER_ID: `${process.env.WORKER_ID || 'basic-machine'}-gpu${gpu}`,
-        USE_LOCAL_WORKER: 'true'
+        USE_LOCAL_WORKER: 'true',
+        // Map ComfyUI port for this GPU to worker connector environment
+        WORKER_COMFYUI_PORT: parseInt(process.env.COMFYUI_PORT_START || '8188') + gpu
       }
     });
   }
@@ -122,27 +124,30 @@ apps.push({
   }
 });
 
-// ComfyUI Installer Service (runs once when enabled)
-if (process.env.ENABLE_COMFYUI === 'true') {
-  apps.push({
-    ...generateServiceConfig('comfyui-installer'),
-    script: '/service-manager/src/services/standalone-wrapper.js',
-    interpreter: 'node',
-    args: ['comfyui-installer'],
-    max_memory_restart: '1G',
-    autorestart: false, // Run once for installation
-    env: {
-      ...generateServiceConfig('comfyui-installer').env,
-      STANDALONE_MODE: 'true',
-      COMFYUI_REPO_URL: process.env.COMFYUI_REPO_URL,
-      COMFYUI_BRANCH: process.env.COMFYUI_BRANCH,
-      COMFYUI_COMMIT: process.env.COMFYUI_COMMIT,
-      COMFYUI_PORT_START: process.env.COMFYUI_PORT_START,
-      WORKSPACE_PATH: process.env.WORKSPACE_PATH || '/workspace'
-    }
-  });
+// ComfyUI Installer Service - DISABLED (now runs at build-time)
+// Custom nodes and ComfyUI are pre-installed in the Docker image
+// if (process.env.ENABLE_COMFYUI === 'true') {
+//   apps.push({
+//     ...generateServiceConfig('comfyui-installer'),
+//     script: '/service-manager/src/services/standalone-wrapper.js',
+//     interpreter: 'node',
+//     args: ['comfyui-installer'],
+//     max_memory_restart: '1G',
+//     autorestart: false, // Run once for installation
+//     env: {
+//       ...generateServiceConfig('comfyui-installer').env,
+//       STANDALONE_MODE: 'true',
+//       COMFYUI_REPO_URL: process.env.COMFYUI_REPO_URL,
+//       COMFYUI_BRANCH: process.env.COMFYUI_BRANCH,
+//       COMFYUI_COMMIT: process.env.COMFYUI_COMMIT,
+//       COMFYUI_PORT_START: process.env.COMFYUI_PORT_START,
+//       WORKSPACE_PATH: process.env.WORKSPACE_PATH || '/workspace'
+//     }
+//   });
+// }
 
-  // ComfyUI Service Instances (per GPU)
+// ComfyUI Service Instances (per GPU) - only if ComfyUI is enabled
+if (process.env.ENABLE_COMFYUI === 'true') {
   for (let gpu = 0; gpu < gpuCount; gpu++) {
     const basePort = parseInt(process.env.COMFYUI_PORT_START || '8188');
     apps.push({

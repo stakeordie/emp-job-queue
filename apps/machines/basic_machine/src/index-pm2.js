@@ -36,6 +36,9 @@ async function main() {
     // Initialize Redis startup notifier
     await startupNotifier.connect();
 
+    // Notify machine startup beginning
+    await startupNotifier.notifyMachineStartup('starting');
+
     // Check if we're running under PM2
     const isPM2 = process.env.PM2_HOME || process.env.pm_id !== undefined;
     if (!isPM2) {
@@ -44,17 +47,25 @@ async function main() {
 
     // Start PM2 services from ecosystem config
     logger.info('Starting PM2 services from ecosystem config...');
+    await startupNotifier.notifyStep('services_starting', { phase: 'Starting PM2 services' });
     await startPM2Services();
     
     // Verify services are running and healthy
+    await startupNotifier.notifyStep('services_verification', { phase: 'Verifying service health' });
     await verifyPM2Services();
 
     // Start health check server
     startHealthServer();
 
+    // Notify machine is configuring (services started, now verifying)
+    await startupNotifier.notifyMachineStartup('configuring');
+    
     // Notify startup complete
     const startupTime = Date.now() - startTime;
     logger.info(`Basic Machine ready in PM2 mode (${startupTime}ms)`);
+    
+    // Notify machine is fully ready
+    await startupNotifier.notifyMachineStartup('ready');
     await startupNotifier.notifyStartupComplete();
 
   } catch (error) {
@@ -74,11 +85,14 @@ async function startPM2Services() {
     // Start PM2 daemon
     await pm2Manager.pm2Exec('ping');
     logger.info('PM2 daemon started');
+    await startupNotifier.notifyServiceStarted('pm2-daemon', { status: 'PM2 daemon running' });
     
     // Start services from ecosystem config in proper order: shared-setup -> comfyui-installer -> workers
     // First start shared setup
+    await startupNotifier.notifyStep('shared_setup_starting', { service: 'shared-setup', phase: 'Starting shared directory setup' });
     await pm2Manager.pm2Exec('start /workspace/pm2-ecosystem.config.cjs --only shared-setup');
     logger.info('Shared setup service started');
+    await startupNotifier.notifyServiceStarted('shared-setup', { status: 'Shared directories configured' });
     
     // Wait for shared setup to complete
     await new Promise(resolve => setTimeout(resolve, 3000));
@@ -86,13 +100,16 @@ async function startPM2Services() {
     // Start ComfyUI installer if enabled
     const enableComfyUI = process.env.ENABLE_COMFYUI === 'true';
     if (enableComfyUI) {
+      await startupNotifier.notifyStep('comfyui_install_starting', { phase: 'Installing ComfyUI and custom nodes' });
       await pm2Manager.pm2Exec('start /workspace/pm2-ecosystem.config.cjs --only comfyui-installer');
       logger.info('ComfyUI installer service started');
+      await startupNotifier.notifyServiceStarted('comfyui-installer', { status: 'ComfyUI installation in progress' });
       
       // Wait for ComfyUI installation to complete
       await new Promise(resolve => setTimeout(resolve, 10000));
       
       // Start ComfyUI service instances (per GPU)
+      await startupNotifier.notifyStep('comfyui_services_starting', { phase: 'Starting ComfyUI service instances' });
       const gpuCount = parseInt(process.env.NUM_GPUS || '2');
       const comfyuiServices = [];
       for (let gpu = 0; gpu < gpuCount; gpu++) {
@@ -102,12 +119,21 @@ async function startPM2Services() {
       if (comfyuiServices.length > 0) {
         await pm2Manager.pm2Exec(`start /workspace/pm2-ecosystem.config.cjs --only ${comfyuiServices.join(',')}`);
         logger.info(`ComfyUI service instances started: ${comfyuiServices.join(', ')}`);
+        
+        for (const service of comfyuiServices) {
+          await startupNotifier.notifyServiceStarted(service, { gpu: service.replace('comfyui-gpu', ''), status: 'ComfyUI instance running' });
+        }
       }
     }
     
     // Start worker services
+    await startupNotifier.notifyStep('workers_starting', { phase: 'Starting Redis worker processes' });
     await pm2Manager.pm2Exec('start /workspace/pm2-ecosystem.config.cjs --only redis-worker-gpu0,redis-worker-gpu1');
     logger.info('Worker services started from ecosystem config');
+    
+    // Notify individual worker services started
+    await startupNotifier.notifyServiceStarted('redis-worker-gpu0', { gpu: '0', status: 'Redis worker connecting' });
+    await startupNotifier.notifyServiceStarted('redis-worker-gpu1', { gpu: '1', status: 'Redis worker connecting' });
     
     // Save process list
     await pm2Manager.pm2Exec('save');
@@ -223,6 +249,56 @@ function startHealthServer() {
           } else {
             res.statusCode = 400;
             res.end(JSON.stringify({ error: 'Service name required' }));
+          }
+          break;
+
+        case '/comfyui/logs':
+          const gpu = url.searchParams.get('gpu') || '0';
+          const logType = url.searchParams.get('type') || 'server';
+          const logLines = parseInt(url.searchParams.get('lines') || '100');
+          
+          try {
+            let logPath;
+            switch (logType) {
+              case 'server':
+                logPath = `/workspace/ComfyUI/user/comfyui_8188.log`;
+                break;
+              case 'output':
+                logPath = `/workspace/ComfyUI/logs/output-gpu${gpu}.log`;
+                break;
+              case 'error':
+                logPath = `/workspace/logs/comfyui-gpu${gpu}-error.log`;
+                break;
+              default:
+                logPath = `/workspace/ComfyUI/user/comfyui_8188.log`;
+            }
+            
+            const { spawn } = await import('child_process');
+            const tail = spawn('tail', ['-n', logLines.toString(), '-f', logPath]);
+            
+            res.statusCode = 200;
+            res.setHeader('Content-Type', 'text/plain');
+            res.setHeader('Transfer-Encoding', 'chunked');
+            
+            tail.stdout.on('data', (data) => {
+              res.write(data);
+            });
+            
+            tail.stderr.on('data', (data) => {
+              res.write(`Error: ${data}`);
+            });
+            
+            tail.on('error', (error) => {
+              res.write(`Tail error: ${error.message}\n`);
+              res.end();
+            });
+            
+            req.on('close', () => {
+              tail.kill();
+            });
+          } catch (error) {
+            res.statusCode = 500;
+            res.end(JSON.stringify({ error: `Failed to read ComfyUI logs: ${error.message}` }));
           }
           break;
 

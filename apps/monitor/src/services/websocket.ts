@@ -134,7 +134,13 @@ export class EventStreamService {
         
         // Handle monitor events from the event broadcaster
         if (this.isMonitorEvent(data)) {
-          console.log('[EventStream] Processing monitor event:', data.type);
+          // Log full_state_snapshot data for debugging
+          if (data.type === 'full_state_snapshot') {
+            console.log('[EventStream] Processing monitor event:', data.type);
+            console.log('[EventStream] Full state snapshot data:', JSON.stringify(data, null, 2));
+          } else {
+            console.log('[EventStream] Processing monitor event:', data.type);
+          }
           this.handleMonitorEvent(data as MonitorEvent);
         } else {
           console.log('[EventStream] Handling as legacy message:', data.type);

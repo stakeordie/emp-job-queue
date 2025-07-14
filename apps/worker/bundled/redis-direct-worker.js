@@ -24341,7 +24341,7 @@ var require_websocket_server = __commonJS({
 });
 
 // node_modules/.pnpm/ws@8.18.3/node_modules/ws/wrapper.mjs
-var import_stream, import_receiver, import_sender, import_websocket, import_websocket_server;
+var import_stream, import_receiver, import_sender, import_websocket, import_websocket_server, wrapper_default;
 var init_wrapper = __esm({
   "node_modules/.pnpm/ws@8.18.3/node_modules/ws/wrapper.mjs"() {
     import_stream = __toESM(require_stream3(), 1);
@@ -24349,6 +24349,7 @@ var init_wrapper = __esm({
     import_sender = __toESM(require_sender(), 1);
     import_websocket = __toESM(require_websocket(), 1);
     import_websocket_server = __toESM(require_websocket_server(), 1);
+    wrapper_default = import_websocket.default;
   }
 });
 
@@ -24376,39 +24377,285 @@ var init_dist = __esm({
   }
 });
 
+// apps/worker/src/connectors/base-connector.ts
+var base_connector_exports = {};
+__export(base_connector_exports, {
+  BaseConnector: () => BaseConnector
+});
+var import_ioredis4, BaseConnector;
+var init_base_connector = __esm({
+  "apps/worker/src/connectors/base-connector.ts"() {
+    init_dist();
+    import_ioredis4 = __toESM(require_built3(), 1);
+    BaseConnector = class {
+      // Required interface properties  
+      connector_id = "";
+      service_type = "";
+      version = "";
+      // Redis connection for status reporting
+      redis;
+      workerId;
+      machineId;
+      hubRedisUrl;
+      // Status tracking
+      currentStatus = "starting";
+      lastReportedStatus;
+      statusReportingInterval;
+      startTime = Date.now();
+      jobsProcessed = 0;
+      // Configuration
+      config;
+      constructor(connectorId, config) {
+        this.connector_id = connectorId;
+        this.config = {
+          connector_id: this.connector_id,
+          service_type: this.service_type,
+          base_url: process.env.SERVICE_BASE_URL || "http://localhost",
+          timeout_seconds: parseInt(process.env.SERVICE_TIMEOUT_SECONDS || "60"),
+          retry_attempts: parseInt(process.env.SERVICE_RETRY_ATTEMPTS || "3"),
+          retry_delay_seconds: parseInt(process.env.SERVICE_RETRY_DELAY_SECONDS || "1"),
+          health_check_interval_seconds: parseInt(process.env.SERVICE_HEALTH_CHECK_INTERVAL || "30"),
+          max_concurrent_jobs: parseInt(process.env.SERVICE_MAX_CONCURRENT_JOBS || "5"),
+          ...config
+        };
+      }
+      // ============================================================================
+      // Redis Connection and Status Reporting (Core BaseConnector functionality)
+      // ============================================================================
+      /**
+       * Inject Redis connection from worker for status reporting
+       * This replaces the need for connectors to create their own Redis connections
+       */
+      setRedisConnection(redis, workerId, machineId) {
+        this.redis = redis;
+        this.workerId = workerId;
+        this.machineId = machineId;
+        logger.info(
+          `${this.service_type} connector ${this.connector_id} received Redis connection injection`
+        );
+      }
+      async initializeRedisConnection() {
+        this.hubRedisUrl = process.env.HUB_REDIS_URL || "redis://localhost:6379";
+        this.workerId = process.env.WORKER_ID || "unknown-worker";
+        try {
+          this.redis = new import_ioredis4.default(this.hubRedisUrl, {
+            enableReadyCheck: true,
+            maxRetriesPerRequest: 10,
+            lazyConnect: false,
+            connectTimeout: 1e4,
+            commandTimeout: 5e3
+          });
+          logger.info(
+            `${this.service_type} connector ${this.connector_id} connected to Redis for status reporting`
+          );
+        } catch (error) {
+          logger.warn(
+            `Failed to connect to Redis for connector ${this.connector_id} status reporting:`,
+            error
+          );
+          throw error;
+        }
+      }
+      async cleanupRedisConnection() {
+        this.stopStatusReportingInternal();
+        if (this.redis) {
+          try {
+            await this.reportStatus("offline");
+            await this.redis.quit();
+            this.redis = void 0;
+            logger.info(`${this.service_type} connector ${this.connector_id} disconnected from Redis`);
+          } catch (error) {
+            logger.warn(`Error disconnecting Redis for connector ${this.connector_id}:`, error);
+          }
+        }
+      }
+      startStatusReportingInternal() {
+        if (!this.redis) {
+          logger.warn(`Cannot start status reporting for ${this.connector_id} - no Redis connection`);
+          return;
+        }
+        this.reportStatus(this.currentStatus);
+        logger.info(
+          `${this.service_type} connector ${this.connector_id} started event-driven status reporting`
+        );
+      }
+      stopStatusReportingInternal() {
+        if (this.statusReportingInterval) {
+          clearInterval(this.statusReportingInterval);
+          this.statusReportingInterval = void 0;
+        }
+      }
+      async reportStatus(status, errorMessage) {
+        if (!this.redis || !this.workerId) {
+          return;
+        }
+        try {
+          const newStatus = status || this.currentStatus;
+          if (this.lastReportedStatus === newStatus && !errorMessage) {
+            logger.debug(
+              `${this.service_type} connector ${this.connector_id} status unchanged (${newStatus}), skipping report`
+            );
+            return;
+          }
+          const serviceInfo = await this.getServiceInfo();
+          const now = (/* @__PURE__ */ new Date()).toISOString();
+          const statusReport = {
+            connector_id: this.connector_id,
+            service_type: this.service_type,
+            worker_id: this.workerId,
+            status: newStatus,
+            service_info: serviceInfo,
+            timestamp: now,
+            last_health_check: Date.now(),
+            status_changed: this.lastReportedStatus !== void 0,
+            previous_status: this.lastReportedStatus,
+            error_message: errorMessage,
+            jobs_processed: this.jobsProcessed,
+            uptime_seconds: Math.floor((Date.now() - this.startTime) / 1e3)
+          };
+          await this.redis.publish(
+            `connector_status:${this.service_type}`,
+            JSON.stringify(statusReport)
+          );
+          await this.redis.hset(`connector_status:${this.workerId}:${this.service_type}`, {
+            status: statusReport.status,
+            last_update: statusReport.timestamp,
+            service_info: JSON.stringify(statusReport.service_info),
+            error_message: statusReport.error_message || "",
+            jobs_processed: statusReport.jobs_processed?.toString() || "0",
+            uptime_seconds: statusReport.uptime_seconds?.toString() || "0"
+          });
+          await this.redis.hset(`service_index:${this.service_type}`, {
+            [`${this.workerId}:${this.connector_id}`]: JSON.stringify({
+              worker_id: this.workerId,
+              connector_id: this.connector_id,
+              status: statusReport.status,
+              last_update: statusReport.timestamp
+            })
+          });
+          const previousStatus = this.lastReportedStatus;
+          this.lastReportedStatus = newStatus;
+          this.currentStatus = newStatus;
+          logger.info(
+            `${this.service_type} connector ${this.connector_id} reported ${previousStatus ? "changed" : "initial"} status: ${statusReport.status}${errorMessage ? ` (${errorMessage})` : ""}`
+          );
+        } catch (error) {
+          logger.error(`Failed to report status for connector ${this.connector_id}:`, error);
+        }
+      }
+      /**
+       * Manually trigger a status check and report (for event-driven updates)
+       */
+      async checkAndReportStatus() {
+        try {
+          const isHealthy = await this.checkHealth();
+          const newStatus = isHealthy ? "idle" : "error";
+          await this.reportStatus(newStatus);
+        } catch (error) {
+          await this.reportStatus("error", error instanceof Error ? error.message : "Health check failed");
+        }
+      }
+      // Public interface methods (required by ConnectorInterface)
+      startStatusReporting() {
+        this.startStatusReportingInternal();
+      }
+      stopStatusReporting() {
+        this.stopStatusReportingInternal();
+      }
+      /**
+       * Report status change due to job processing
+       */
+      async reportJobStatusChange(isProcessing) {
+        if (isProcessing) {
+          await this.reportStatus("active");
+        } else {
+          this.jobsProcessed++;
+          await this.reportStatus("idle");
+        }
+      }
+      // ============================================================================
+      // ConnectorInterface Implementation (Abstract methods for subclasses)
+      // ============================================================================
+      async initialize() {
+        logger.info(`Initializing ${this.service_type} connector ${this.connector_id}`);
+        try {
+          this.currentStatus = "starting";
+          if (!this.redis) {
+            logger.warn(`${this.service_type} connector ${this.connector_id} - No Redis connection injected, creating own connection`);
+            await this.initializeRedisConnection();
+          }
+          await this.initializeService();
+          if (this.redis) {
+            this.startStatusReportingInternal();
+          } else {
+            logger.warn(`${this.service_type} connector ${this.connector_id} - No Redis connection, status reporting disabled`);
+          }
+          this.currentStatus = "idle";
+          await this.reportStatus("idle");
+          logger.info(`${this.service_type} connector ${this.connector_id} initialized successfully`);
+        } catch (error) {
+          this.currentStatus = "error";
+          await this.reportStatus("error", error instanceof Error ? error.message : "Initialization failed");
+          logger.warn(`${this.service_type} connector ${this.connector_id} initialization failed but connector will be registered:`, error);
+        }
+      }
+      async cleanup() {
+        logger.info(`Cleaning up ${this.service_type} connector ${this.connector_id}`);
+        try {
+          await this.cleanupService();
+        } catch (error) {
+          logger.warn(`Error in service cleanup for ${this.connector_id}:`, error);
+        }
+        await this.cleanupRedisConnection();
+      }
+      async processJob(jobData, progressCallback) {
+        const startTime = Date.now();
+        try {
+          await this.reportJobStatusChange(true);
+          const result = await this.processJobImpl(jobData, progressCallback);
+          await this.reportJobStatusChange(false);
+          return result;
+        } catch (error) {
+          await this.reportStatus("error", error instanceof Error ? error.message : "Job processing failed");
+          await this.reportJobStatusChange(false);
+          return {
+            success: false,
+            error: error instanceof Error ? error.message : "Unknown job processing error",
+            processing_time_ms: Date.now() - startTime,
+            service_metadata: {
+              service_version: this.version
+            }
+          };
+        }
+      }
+    };
+  }
+});
+
 // apps/worker/src/connectors/simulation-connector.ts
 var simulation_connector_exports = {};
 __export(simulation_connector_exports, {
   SimulationConnector: () => SimulationConnector
 });
-var import_ioredis4, SimulationConnector;
+var SimulationConnector;
 var init_simulation_connector = __esm({
   "apps/worker/src/connectors/simulation-connector.ts"() {
     init_dist();
-    import_ioredis4 = __toESM(require_built3(), 1);
-    SimulationConnector = class {
-      connector_id;
+    init_base_connector();
+    SimulationConnector = class extends BaseConnector {
       service_type = "simulation";
       version = "1.0.0";
-      config;
       processingTimeMs;
       steps;
       failureRate;
       progressIntervalMs;
-      redis;
-      statusReportingInterval;
-      workerId;
-      lastReportedStatus;
-      // Track last reported status to prevent duplicates
       constructor(connectorId) {
-        this.connector_id = connectorId;
-        this.processingTimeMs = parseInt(process.env.WORKER_SIMULATION_PROCESSING_TIME || "5") * 1e3;
-        this.steps = parseInt(process.env.WORKER_SIMULATION_STEPS || "10");
-        this.failureRate = parseFloat(process.env.WORKER_SIMULATION_FAILURE_RATE || "0.1");
-        this.progressIntervalMs = parseInt(process.env.WORKER_SIMULATION_PROGRESS_INTERVAL_MS || "200");
-        this.config = {
-          connector_id: this.connector_id,
-          service_type: this.service_type,
+        const processingTimeMs = parseInt(process.env.WORKER_SIMULATION_PROCESSING_TIME || "5") * 1e3;
+        const steps = parseInt(process.env.WORKER_SIMULATION_STEPS || "10");
+        const failureRate = parseFloat(process.env.WORKER_SIMULATION_FAILURE_RATE || "0.1");
+        const progressIntervalMs = parseInt(process.env.WORKER_SIMULATION_PROGRESS_INTERVAL_MS || "200");
+        super(connectorId, {
+          service_type: "simulation",
           base_url: "http://simulation",
           timeout_seconds: 60,
           retry_attempts: 3,
@@ -24416,37 +24663,25 @@ var init_simulation_connector = __esm({
           health_check_interval_seconds: 30,
           max_concurrent_jobs: 5,
           settings: {
-            min_processing_time_ms: this.processingTimeMs,
-            max_processing_time_ms: this.processingTimeMs,
-            failure_rate: this.failureRate,
-            progress_update_interval_ms: this.progressIntervalMs
+            min_processing_time_ms: processingTimeMs,
+            max_processing_time_ms: processingTimeMs,
+            failure_rate: failureRate,
+            progress_update_interval_ms: progressIntervalMs
           }
-        };
+        });
+        this.connector_id = connectorId;
+        this.processingTimeMs = processingTimeMs;
+        this.steps = steps;
+        this.failureRate = failureRate;
+        this.progressIntervalMs = progressIntervalMs;
       }
-      async initialize() {
-        logger.info(`Initializing Simulation connector ${this.connector_id}`);
+      // BaseConnector implementation methods
+      async initializeService() {
         logger.info(
           `Simulation settings: ${this.processingTimeMs}ms processing, ${this.steps} steps, ${this.failureRate} failure rate`
         );
-        const redisUrl = process.env.HUB_REDIS_URL || "redis://localhost:6379";
-        this.workerId = process.env.WORKER_ID || "unknown-worker";
-        try {
-          this.redis = new import_ioredis4.default(redisUrl);
-          this.startStatusReporting();
-          logger.info(
-            `Simulation connector ${this.connector_id} connected to Redis and started status reporting`
-          );
-        } catch (error) {
-          logger.warn(`Failed to connect to Redis for status reporting: ${error}`);
-        }
       }
-      async cleanup() {
-        logger.info(`Cleaning up Simulation connector ${this.connector_id}`);
-        this.stopStatusReporting();
-        if (this.redis) {
-          await this.redis.quit();
-          this.redis = void 0;
-        }
+      async cleanupService() {
       }
       async checkHealth() {
         return true;
@@ -24471,7 +24706,7 @@ var init_simulation_connector = __esm({
       async canProcessJob(jobData) {
         return jobData.type === "simulation" || jobData.type === this.service_type;
       }
-      async processJob(jobData, progressCallback) {
+      async processJobImpl(jobData, progressCallback) {
         const startTime = Date.now();
         logger.info(`Starting simulation job ${jobData.id}`);
         try {
@@ -24487,7 +24722,7 @@ var init_simulation_connector = __esm({
               message: `Processing step ${step}/${this.steps}`,
               current_step: `Step ${step}`,
               total_steps: this.steps,
-              estimated_completion_ms: step < this.steps ? (this.steps - step) * stepDuration : 0
+              estimated_completion_ms: step < this.steps ? (this.steps - step) * Number(stepDuration) : 0
             });
             if (step < this.steps) {
               await this.sleep(stepDuration);
@@ -24551,67 +24786,1537 @@ var init_simulation_connector = __esm({
       async sleep(ms) {
         return new Promise((resolve) => setTimeout(resolve, ms));
       }
-      // Status reporting methods - now event-driven instead of periodic
-      startStatusReporting() {
-        if (!this.redis) {
-          return;
+      // Status reporting is now handled by BaseConnector
+      // The checkAndReportStatus method is inherited from BaseConnector
+    };
+  }
+});
+
+// apps/worker/src/connectors/hybrid-connector.ts
+var HybridConnector;
+var init_hybrid_connector = __esm({
+  "apps/worker/src/connectors/hybrid-connector.ts"() {
+    init_dist();
+    init_base_connector();
+    init_wrapper();
+    HybridConnector = class extends BaseConnector {
+      hybridConfig;
+      // WebSocket connection
+      ws;
+      isWebSocketConnected = false;
+      reconnectAttempts = 0;
+      reconnectTimeout;
+      heartbeatInterval;
+      pingInterval;
+      // HTTP client settings
+      httpBaseUrl;
+      httpHeaders = {};
+      // Job tracking
+      pendingJobs = /* @__PURE__ */ new Map();
+      messageHandlers = /* @__PURE__ */ new Map();
+      constructor(connectorId, config) {
+        super(connectorId, config);
+        this.hybridConfig = this.config;
+        if (!this.hybridConfig.settings) {
+          this.hybridConfig.settings = {
+            websocket_url: "ws://localhost:8188/ws",
+            heartbeat_interval_ms: 3e4,
+            reconnect_delay_ms: 5e3,
+            max_reconnect_attempts: 5,
+            message_timeout_ms: 3e5,
+            ping_interval_ms: 1e4,
+            use_http_for_submission: true,
+            use_websocket_for_progress: true,
+            use_websocket_for_results: true,
+            headers: {
+              "Content-Type": "application/json",
+              "Accept": "application/json"
+            },
+            body_format: "json"
+          };
         }
-        this.reportStatus();
-        logger.info(`${this.service_type} connector ${this.connector_id} using event-driven status reporting`);
+        this.httpBaseUrl = this.hybridConfig.settings.http_base_url || this.hybridConfig.base_url;
+        this.httpHeaders = { ...this.hybridConfig.settings.headers };
       }
-      stopStatusReporting() {
-        if (this.statusReportingInterval) {
-          clearInterval(this.statusReportingInterval);
-          this.statusReportingInterval = void 0;
-        }
-      }
-      async reportStatus() {
-        if (!this.redis || !this.workerId) {
-          return;
+      async initializeService() {
+        this.setupHttpClient();
+        if (this.hybridConfig.settings.use_websocket_for_progress || this.hybridConfig.settings.use_websocket_for_results) {
+          await this.connectWebSocket();
         }
         try {
-          const isHealthy = await this.checkHealth();
-          const currentStatus = isHealthy ? "active" : "error";
-          if (this.lastReportedStatus === currentStatus) {
-            logger.debug(`${this.service_type} connector ${this.connector_id} status unchanged (${currentStatus}), skipping report`);
-            return;
+          const healthCheck = await this.checkHealth();
+          if (!healthCheck) {
+            logger.warn(`Hybrid service at ${this.httpBaseUrl} failed initial health check`);
           }
-          const serviceInfo = await this.getServiceInfo();
-          const statusReport = {
-            connector_id: this.connector_id,
-            service_type: this.service_type,
-            worker_id: this.workerId,
-            status: currentStatus,
-            service_info: serviceInfo,
-            timestamp: (/* @__PURE__ */ new Date()).toISOString(),
-            last_health_check: Date.now(),
-            status_changed: this.lastReportedStatus !== void 0,
-            // true if this is a status change, false for initial report
-            previous_status: this.lastReportedStatus
-          };
-          await this.redis.publish(
-            `connector_status:${this.service_type}`,
-            JSON.stringify(statusReport)
-          );
-          await this.redis.hset(`connector_status:${this.workerId}:${this.service_type}`, {
-            status: statusReport.status,
-            last_update: statusReport.timestamp,
-            service_info: JSON.stringify(statusReport.service_info)
-          });
-          this.lastReportedStatus = currentStatus;
-          logger.info(
-            `Simulation connector ${this.connector_id} reported ${this.lastReportedStatus === statusReport.previous_status ? "initial" : "changed"} status: ${statusReport.status}`
-          );
         } catch (error) {
-          logger.error(`Failed to report status for connector ${this.connector_id}:`, error);
+          logger.warn(`Failed to perform initial health check for ${this.connector_id}:`, error);
+        }
+        logger.info(`Hybrid connector ${this.connector_id} initialized`);
+      }
+      async cleanupService() {
+        if (this.reconnectTimeout) {
+          clearTimeout(this.reconnectTimeout);
+          this.reconnectTimeout = void 0;
+        }
+        if (this.heartbeatInterval) {
+          clearInterval(this.heartbeatInterval);
+          this.heartbeatInterval = void 0;
+        }
+        if (this.pingInterval) {
+          clearInterval(this.pingInterval);
+          this.pingInterval = void 0;
+        }
+        for (const [jobId, pendingJob] of this.pendingJobs) {
+          pendingJob.reject(new Error("Connector shutting down"));
+        }
+        this.pendingJobs.clear();
+        await this.disconnectWebSocket();
+      }
+      async checkHealth() {
+        try {
+          const healthEndpoint = this.getHealthEndpoint();
+          const response = await this.makeHttpRequest("GET", healthEndpoint);
+          return response.status >= 200 && response.status < 300;
+        } catch (error) {
+          logger.debug(`Health check failed for ${this.connector_id}:`, error);
+          return false;
         }
       }
-      /**
-       * Manually trigger a status check (for event-driven updates)
-       * This can be called when connector state might have changed
-       */
-      async checkAndReportStatus() {
-        await this.reportStatus();
+      async processJobImpl(jobData, progressCallback) {
+        const startTime = Date.now();
+        return new Promise((resolve, reject) => {
+          const jobId = jobData.id;
+          this.pendingJobs.set(jobId, {
+            jobData,
+            progressCallback,
+            resolve,
+            reject,
+            startTime
+          });
+          const timeout = setTimeout(() => {
+            this.pendingJobs.delete(jobId);
+            reject(new Error(`Hybrid job ${jobId} timed out`));
+          }, this.hybridConfig.settings.message_timeout_ms || 3e5);
+          const originalResolve = resolve;
+          const originalReject = reject;
+          const wrappedResolve = (result) => {
+            clearTimeout(timeout);
+            this.pendingJobs.delete(jobId);
+            originalResolve(result);
+          };
+          const wrappedReject = (error) => {
+            clearTimeout(timeout);
+            this.pendingJobs.delete(jobId);
+            originalReject(error);
+          };
+          const pendingJob = this.pendingJobs.get(jobId);
+          if (pendingJob) {
+            pendingJob.resolve = wrappedResolve;
+            pendingJob.reject = wrappedReject;
+          }
+          this.submitJob(jobData).catch((error) => {
+            wrappedReject(error);
+          });
+        });
+      }
+      async submitJob(jobData) {
+        if (this.hybridConfig.settings.use_http_for_submission) {
+          await this.submitJobViaHttp(jobData);
+        } else {
+          await this.submitJobViaWebSocket(jobData);
+        }
+      }
+      async submitJobViaHttp(jobData) {
+        try {
+          const endpoint = this.getJobSubmissionEndpoint();
+          const payload = this.prepareHttpJobPayload(jobData);
+          const response = await this.makeHttpRequest("POST", endpoint, payload);
+          if (!response.ok) {
+            throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+          }
+          const responseData = await this.parseHttpResponse(response);
+          const pendingJob = this.pendingJobs.get(jobData.id);
+          if (pendingJob) {
+            pendingJob.submittedViaHttp = true;
+          }
+          await this.handleHttpSubmissionResponse(jobData, responseData);
+        } catch (error) {
+          const pendingJob = this.pendingJobs.get(jobData.id);
+          if (pendingJob) {
+            pendingJob.reject(error instanceof Error ? error : new Error("HTTP submission failed"));
+          }
+        }
+      }
+      async submitJobViaWebSocket(jobData) {
+        if (!this.isWebSocketConnected || !this.ws) {
+          throw new Error("WebSocket not connected for job submission");
+        }
+        try {
+          const message = this.prepareWebSocketJobMessage(jobData);
+          this.sendWebSocketMessage(message);
+        } catch (error) {
+          const pendingJob = this.pendingJobs.get(jobData.id);
+          if (pendingJob) {
+            pendingJob.reject(error instanceof Error ? error : new Error("WebSocket submission failed"));
+          }
+        }
+      }
+      async cancelJob(jobId) {
+        const pendingJob = this.pendingJobs.get(jobId);
+        if (!pendingJob) return;
+        try {
+          if (pendingJob.submittedViaHttp) {
+            const cancelEndpoint = this.getCancelEndpoint(jobId);
+            if (cancelEndpoint) {
+              await this.makeHttpRequest("DELETE", cancelEndpoint);
+            }
+          }
+          if (this.isWebSocketConnected && this.ws) {
+            const cancelMessage = this.prepareWebSocketCancelMessage(jobId);
+            this.sendWebSocketMessage(cancelMessage);
+          }
+          logger.info(`Cancelled hybrid job ${jobId}`);
+        } catch (error) {
+          logger.warn(`Failed to cancel job ${jobId}:`, error);
+        }
+        pendingJob.reject(new Error("Job cancelled"));
+      }
+      // ============================================================================
+      // HTTP Methods
+      // ============================================================================
+      setupHttpClient() {
+        if (this.hybridConfig.auth) {
+          this.addAuthHeaders();
+        }
+      }
+      async makeHttpRequest(method, endpoint, data) {
+        const url2 = new URL(endpoint, this.httpBaseUrl);
+        const options = {
+          method,
+          headers: { ...this.httpHeaders }
+        };
+        if (data && method !== "GET") {
+          if (this.hybridConfig.settings.body_format === "json") {
+            options.body = JSON.stringify(data);
+            options.headers["Content-Type"] = "application/json";
+          }
+        }
+        logger.debug(`Making ${method} request to ${url2.toString()}`);
+        return fetch(url2.toString(), options);
+      }
+      async parseHttpResponse(response) {
+        const contentType = response.headers.get("content-type") || "";
+        if (contentType.includes("application/json")) {
+          return await response.json();
+        } else if (contentType.includes("text/")) {
+          return await response.text();
+        } else {
+          return await response.arrayBuffer();
+        }
+      }
+      addAuthHeaders() {
+        if (!this.hybridConfig.auth) return;
+        switch (this.hybridConfig.auth.type) {
+          case "basic":
+            if (this.hybridConfig.auth.username && this.hybridConfig.auth.password) {
+              const credentials = btoa(`${this.hybridConfig.auth.username}:${this.hybridConfig.auth.password}`);
+              this.httpHeaders["Authorization"] = `Basic ${credentials}`;
+            }
+            break;
+          case "bearer":
+            if (this.hybridConfig.auth.token) {
+              this.httpHeaders["Authorization"] = `Bearer ${this.hybridConfig.auth.token}`;
+            }
+            break;
+          case "api_key":
+            if (this.hybridConfig.auth.api_key) {
+              this.httpHeaders["X-API-Key"] = this.hybridConfig.auth.api_key;
+            }
+            break;
+        }
+      }
+      // ============================================================================
+      // Service Health Polling
+      // ============================================================================
+      async waitForServiceHealth() {
+        const maxWaitMs = 6e4;
+        const pollIntervalMs = 2e3;
+        const startTime = Date.now();
+        await this.reportStatus("waiting_for_service");
+        logger.info(`Waiting for service health check at ${this.httpBaseUrl} before connecting WebSocket`);
+        while (Date.now() - startTime < maxWaitMs) {
+          try {
+            const isHealthy = await this.checkHealth();
+            if (isHealthy) {
+              logger.info(`Service health check passed for ${this.connector_id}, proceeding with WebSocket connection`);
+              return;
+            }
+          } catch (error) {
+            logger.debug(`Health check attempt failed for ${this.connector_id}:`, error);
+          }
+          await new Promise((resolve) => setTimeout(resolve, pollIntervalMs));
+        }
+        const errorMsg = `Timed out waiting for service health at ${this.httpBaseUrl} after ${maxWaitMs}ms`;
+        logger.error(errorMsg);
+        await this.reportStatus("error", errorMsg);
+        throw new Error(errorMsg);
+      }
+      // ============================================================================
+      // WebSocket Methods
+      // ============================================================================
+      async connectWebSocket() {
+        if (this.ws) {
+          await this.disconnectWebSocket();
+        }
+        await this.waitForServiceHealth();
+        await this.reportStatus("connecting");
+        return new Promise((resolve, reject) => {
+          try {
+            const wsUrl = this.hybridConfig.settings.websocket_url;
+            const protocol = this.hybridConfig.settings.protocol;
+            logger.debug(`Connecting to WebSocket: ${wsUrl}`);
+            this.ws = new wrapper_default(wsUrl, protocol);
+            this.ws.on("open", async () => {
+              logger.info(`Hybrid connector ${this.connector_id} WebSocket connected to ${wsUrl}`);
+              this.isWebSocketConnected = true;
+              this.reconnectAttempts = 0;
+              await this.reportStatus("active");
+              this.startHeartbeat();
+              this.startPing();
+              this.setupMessageHandlers();
+              this.onWebSocketConnected();
+              resolve();
+            });
+            this.ws.on("message", (data) => {
+              try {
+                const message = this.parseWebSocketMessage(data);
+                this.handleWebSocketMessage(message);
+              } catch (error) {
+                logger.error(`Failed to parse WebSocket message:`, error);
+              }
+            });
+            this.ws.on("close", (code, reason) => {
+              logger.warn(`WebSocket connection closed: ${code} ${reason.toString()}`);
+              this.isWebSocketConnected = false;
+              this.onWebSocketDisconnected();
+              if (this.reconnectAttempts < (this.hybridConfig.settings.max_reconnect_attempts || 5)) {
+                this.scheduleWebSocketReconnect();
+              } else {
+                logger.error(`Max WebSocket reconnection attempts reached for ${this.connector_id}`);
+              }
+            });
+            this.ws.on("error", (error) => {
+              logger.error(`WebSocket error for ${this.connector_id}:`, error);
+              if (!this.isWebSocketConnected) {
+                reject(error);
+              }
+            });
+          } catch (error) {
+            reject(error);
+          }
+        });
+      }
+      async disconnectWebSocket() {
+        if (this.ws) {
+          this.ws.removeAllListeners();
+          if (this.ws.readyState === wrapper_default.OPEN) {
+            this.ws.close();
+          }
+          this.ws = void 0;
+        }
+        this.isWebSocketConnected = false;
+      }
+      scheduleWebSocketReconnect() {
+        if (this.reconnectTimeout) {
+          clearTimeout(this.reconnectTimeout);
+        }
+        const delay = this.hybridConfig.settings.reconnect_delay_ms || 5e3;
+        logger.info(`Scheduling WebSocket reconnection attempt ${this.reconnectAttempts + 1} in ${delay}ms`);
+        this.reconnectTimeout = setTimeout(async () => {
+          this.reconnectAttempts++;
+          try {
+            await this.connectWebSocket();
+          } catch (error) {
+            logger.error(`WebSocket reconnection attempt ${this.reconnectAttempts} failed:`, error);
+          }
+        }, delay);
+      }
+      setupMessageHandlers() {
+        this.messageHandlers.set("job_progress", (message) => this.handleJobProgress(message));
+        this.messageHandlers.set("job_complete", (message) => this.handleJobComplete(message));
+        this.messageHandlers.set("job_failed", (message) => this.handleJobFailed(message));
+        this.messageHandlers.set("error", (message) => this.handleWebSocketError(message));
+        this.setupCustomMessageHandlers();
+      }
+      handleWebSocketMessage(message) {
+        logger.debug(`Received WebSocket message: ${message.type}`);
+        const handler = this.messageHandlers.get(message.type);
+        if (handler) {
+          handler(message);
+        } else {
+          this.handleUnknownWebSocketMessage(message);
+        }
+      }
+      handleJobProgress(message) {
+        const jobId = this.extractJobIdFromWebSocketMessage(message);
+        const pendingJob = this.pendingJobs.get(jobId);
+        if (pendingJob) {
+          const progress = this.extractProgressFromWebSocketMessage(message);
+          pendingJob.progressCallback({
+            job_id: pendingJob.jobData.id,
+            progress: progress.progress,
+            message: progress.message,
+            current_step: progress.current_step,
+            total_steps: progress.total_steps,
+            estimated_completion_ms: progress.estimated_completion_ms
+          });
+        }
+      }
+      handleJobComplete(message) {
+        const jobId = this.extractJobIdFromWebSocketMessage(message);
+        const pendingJob = this.pendingJobs.get(jobId);
+        if (pendingJob) {
+          const result = this.extractResultFromWebSocketMessage(message);
+          pendingJob.resolve({
+            success: true,
+            data: result,
+            processing_time_ms: Date.now() - pendingJob.startTime,
+            service_metadata: {
+              service_version: this.version
+            }
+          });
+        }
+      }
+      handleJobFailed(message) {
+        const jobId = this.extractJobIdFromWebSocketMessage(message);
+        const pendingJob = this.pendingJobs.get(jobId);
+        if (pendingJob) {
+          const error = this.extractErrorFromWebSocketMessage(message);
+          pendingJob.reject(new Error(error));
+        }
+      }
+      handleWebSocketError(message) {
+        logger.error(`WebSocket error message:`, message);
+      }
+      sendWebSocketMessage(message) {
+        if (!this.ws || this.ws.readyState !== wrapper_default.OPEN) {
+          throw new Error("WebSocket not connected");
+        }
+        const messageStr = JSON.stringify(message);
+        this.ws.send(messageStr);
+        logger.debug(`Sent WebSocket message: ${message.type}`);
+      }
+      parseWebSocketMessage(data) {
+        try {
+          return JSON.parse(data.toString());
+        } catch (error) {
+          throw new Error(`Failed to parse WebSocket message: ${error}`);
+        }
+      }
+      startHeartbeat() {
+        if (this.heartbeatInterval) {
+          clearInterval(this.heartbeatInterval);
+        }
+        const interval = this.hybridConfig.settings.heartbeat_interval_ms || 3e4;
+        this.heartbeatInterval = setInterval(() => {
+          if (this.isWebSocketConnected) {
+            try {
+              const heartbeatMessage = this.prepareWebSocketHeartbeatMessage();
+              this.sendWebSocketMessage(heartbeatMessage);
+            } catch (error) {
+              logger.warn(`Failed to send heartbeat:`, error);
+            }
+          }
+        }, interval);
+      }
+      startPing() {
+        if (this.pingInterval) {
+          clearInterval(this.pingInterval);
+        }
+        const interval = this.hybridConfig.settings.ping_interval_ms || 1e4;
+        this.pingInterval = setInterval(() => {
+          if (this.ws && this.ws.readyState === wrapper_default.OPEN) {
+            this.ws.ping();
+          }
+        }, interval);
+      }
+    };
+  }
+});
+
+// apps/worker/src/connectors/comfyui-connector.ts
+var comfyui_connector_exports = {};
+__export(comfyui_connector_exports, {
+  ComfyUIConnector: () => ComfyUIConnector
+});
+var ComfyUIConnector;
+var init_comfyui_connector = __esm({
+  "apps/worker/src/connectors/comfyui-connector.ts"() {
+    init_dist();
+    init_hybrid_connector();
+    ComfyUIConnector = class extends HybridConnector {
+      service_type = "comfyui";
+      version = "1.0.0";
+      activeJobs = /* @__PURE__ */ new Map();
+      // Don't declare messageHandlers - it's inherited from HybridConnector
+      // Store A1111-specific settings as instance properties
+      workflowTimeoutSeconds;
+      imageFormat;
+      imageQuality;
+      saveWorkflow;
+      constructor(connectorId) {
+        const host = process.env.WORKER_COMFYUI_HOST || "localhost";
+        const port = parseInt(process.env.WORKER_COMFYUI_PORT || "8188");
+        const username = process.env.WORKER_COMFYUI_USERNAME;
+        const password = process.env.WORKER_COMFYUI_PASSWORD;
+        const config = {
+          service_type: "comfyui",
+          base_url: `http://${host}:${port}`,
+          auth: username && password ? {
+            type: "basic",
+            username,
+            password
+          } : { type: "none" },
+          timeout_seconds: parseInt(process.env.WORKER_COMFYUI_TIMEOUT_SECONDS || "300"),
+          retry_attempts: 3,
+          retry_delay_seconds: 2,
+          health_check_interval_seconds: 30,
+          max_concurrent_jobs: parseInt(process.env.WORKER_COMFYUI_MAX_CONCURRENT_JOBS || "1"),
+          settings: {
+            // HTTP settings
+            http_base_url: `http://${host}:${port}`,
+            headers: {
+              "Content-Type": "application/json",
+              "Accept": "application/json"
+            },
+            body_format: "json",
+            // WebSocket settings
+            websocket_url: username && password ? `ws://${encodeURIComponent(username)}:${encodeURIComponent(password)}@${host}:${port}/ws` : `ws://${host}:${port}/ws`,
+            heartbeat_interval_ms: 3e4,
+            reconnect_delay_ms: 5e3,
+            max_reconnect_attempts: 5,
+            message_timeout_ms: parseInt(process.env.WORKER_COMFYUI_WORKFLOW_TIMEOUT_SECONDS || "600") * 1e3,
+            ping_interval_ms: 1e4,
+            // Hybrid configuration - ComfyUI uses HTTP for submission, WebSocket for progress
+            use_http_for_submission: true,
+            use_websocket_for_progress: true,
+            use_websocket_for_results: false
+            // Results retrieved via HTTP API
+            // ComfyUI-specific settings stored in base settings
+            // ComfyUI-specific settings will be stored elsewhere
+          }
+        };
+        super(connectorId, config);
+        this.workflowTimeoutSeconds = parseInt(process.env.WORKER_COMFYUI_WORKFLOW_TIMEOUT_SECONDS || "600");
+        this.imageFormat = process.env.WORKER_COMFYUI_IMAGE_FORMAT || "png";
+        this.imageQuality = parseInt(process.env.WORKER_COMFYUI_IMAGE_QUALITY || "95");
+        this.saveWorkflow = process.env.WORKER_COMFYUI_SAVE_WORKFLOW !== "false";
+      }
+      // HybridConnector overrides
+      async checkHealth() {
+        try {
+          const response = await this.makeHttpRequest("GET", "/system_stats");
+          return response.status >= 200 && response.status < 300;
+        } catch (error) {
+          logger.debug(`ComfyUI health check failed:`, error);
+          return false;
+        }
+      }
+      async getAvailableModels() {
+        try {
+          const response = await this.makeHttpRequest("GET", "/object_info");
+          const objectInfo = await this.parseHttpResponse(response);
+          const checkpoints = objectInfo?.CheckpointLoaderSimple?.input?.required?.ckpt_name?.[0] || [];
+          logger.info(`Found ${checkpoints.length} models in ComfyUI`);
+          return checkpoints;
+        } catch (error) {
+          logger.error("Failed to get ComfyUI models:", error);
+          return [];
+        }
+      }
+      async getServiceInfo() {
+        try {
+          const systemStatsResponse = await this.makeHttpRequest("GET", "/system_stats");
+          const systemStats = await this.parseHttpResponse(systemStatsResponse);
+          await this.makeHttpRequest("GET", "/object_info");
+          return {
+            service_name: "ComfyUI",
+            service_version: "unknown",
+            // ComfyUI doesn't expose version in API
+            base_url: this.config.base_url,
+            status: "online",
+            capabilities: {
+              supported_formats: ["png", "jpg", "webp"],
+              supported_models: await this.getAvailableModels(),
+              features: ["workflow_processing", "progress_tracking", "websocket_updates", "hybrid_connectivity"],
+              concurrent_jobs: this.config.max_concurrent_jobs
+            },
+            resource_usage: {
+              cpu_usage: systemStats?.cpu_usage || 0,
+              memory_usage_mb: systemStats?.memory_usage_mb || 0,
+              ...systemStats
+            }
+          };
+        } catch (error) {
+          logger.error("Failed to get ComfyUI service info:", error);
+          throw error;
+        }
+      }
+      async canProcessJob(jobData) {
+        return jobData.type === "comfyui" && jobData.payload?.workflow !== void 0;
+      }
+      // Override processJobImpl from BaseConnector to customize ComfyUI job processing
+      async processJobImpl(jobData, progressCallback) {
+        const startTime = Date.now();
+        logger.info(`Starting ComfyUI job ${jobData.id}`);
+        try {
+          const workflow = jobData.payload.workflow;
+          if (!workflow) {
+            throw new Error("No workflow provided in job payload");
+          }
+          this.activeJobs.set(jobData.id, { jobData, progressCallback });
+          const promptId = await this.submitWorkflow(workflow);
+          logger.info(`ComfyUI job ${jobData.id} submitted with prompt ID: ${promptId}`);
+          const activeJob = this.activeJobs.get(jobData.id);
+          if (activeJob) {
+            activeJob.promptId = promptId;
+            this.activeJobs.set(jobData.id, activeJob);
+          }
+          const result = await this.waitForCompletion(jobData.id, promptId, progressCallback);
+          const processingTime = Date.now() - startTime;
+          logger.info(`ComfyUI job ${jobData.id} completed in ${processingTime}ms`);
+          return {
+            success: true,
+            data: result,
+            processing_time_ms: processingTime,
+            service_metadata: {
+              service_version: this.version,
+              model_used: this.extractModelFromWorkflow(workflow),
+              processing_stats: {
+                prompt_id: promptId,
+                workflow_nodes: Object.keys(workflow).length
+              }
+            }
+          };
+        } catch (error) {
+          const processingTime = Date.now() - startTime;
+          logger.error(`ComfyUI job ${jobData.id} failed:`, error);
+          return {
+            success: false,
+            error: error instanceof Error ? error.message : "ComfyUI processing failed",
+            processing_time_ms: processingTime,
+            service_metadata: {
+              service_version: this.version
+            }
+          };
+        } finally {
+          this.activeJobs.delete(jobData.id);
+        }
+      }
+      async cancelJob(jobId) {
+        logger.info(`Cancelling ComfyUI job ${jobId}`);
+        this.activeJobs.delete(jobId);
+      }
+      async submitWorkflow(workflow) {
+        try {
+          const payload = {
+            prompt: workflow,
+            extra_data: {
+              client_id: this.connector_id
+            }
+          };
+          const response = await this.makeHttpRequest("POST", "/prompt", payload);
+          const responseData = await this.parseHttpResponse(response);
+          const promptId = responseData.prompt_id;
+          if (!promptId) {
+            throw new Error("No prompt ID returned from ComfyUI");
+          }
+          return promptId;
+        } catch (error) {
+          logger.error("Failed to submit workflow to ComfyUI:", error);
+          throw error;
+        }
+      }
+      async waitForCompletion(jobId, promptId, progressCallback) {
+        return new Promise((resolve, reject) => {
+          const timeout = setTimeout(
+            () => {
+              reject(
+                new Error(
+                  `ComfyUI job ${jobId} timed out after ${this.config.settings.workflow_timeout_seconds} seconds`
+                )
+              );
+            },
+            this.workflowTimeoutSeconds * 1e3
+          );
+          const originalJob = this.activeJobs.get(jobId);
+          if (originalJob) {
+            this.activeJobs.set(jobId, {
+              ...originalJob,
+              progressCallback: async (progress) => {
+                await progressCallback(progress);
+                if (progress.progress >= 100) {
+                  clearTimeout(timeout);
+                  try {
+                    const result = await this.getJobResult(promptId);
+                    resolve(result);
+                  } catch (error) {
+                    reject(error);
+                  }
+                }
+              }
+            });
+          }
+        });
+      }
+      async getJobResult(promptId) {
+        try {
+          const historyResponse = await this.makeHttpRequest("GET", `/history/${promptId}`);
+          const historyData = await this.parseHttpResponse(historyResponse);
+          const history = historyData[promptId];
+          if (!history) {
+            throw new Error(`No history found for prompt ${promptId}`);
+          }
+          const outputs = history.outputs || {};
+          const images = [];
+          for (const nodeId of Object.keys(outputs)) {
+            const nodeOutput = outputs[nodeId];
+            if (nodeOutput.images) {
+              for (const image of nodeOutput.images) {
+                const imageUrl = `${this.config.base_url}/view?filename=${image.filename}&subfolder=${image.subfolder || ""}&type=${image.type || "output"}`;
+                images.push(imageUrl);
+              }
+            }
+          }
+          return {
+            prompt_id: promptId,
+            outputs,
+            images,
+            execution_time: history.execution_time,
+            status: history.status
+          };
+        } catch (error) {
+          logger.error(`Failed to get ComfyUI job result for prompt ${promptId}:`, error);
+          throw error;
+        }
+      }
+      // HybridConnector abstract method implementations
+      handleUnknownWebSocketMessage(message) {
+        logger.debug(`Unhandled ComfyUI WebSocket message type: ${message.type}`);
+      }
+      setupCustomMessageHandlers() {
+        const messageHandlers = this.messageHandlers;
+        messageHandlers.set("progress", (message) => this.handleProgressMessage(message.data));
+        messageHandlers.set("executing", (message) => this.handleExecutingMessage(message.data));
+        messageHandlers.set("executed", (message) => this.handleExecutedMessage(message.data));
+      }
+      handleComfyUIMessage(message) {
+        const { type, data } = message;
+        switch (type) {
+          case "progress":
+            this.handleProgressMessage(data);
+            break;
+          case "executing":
+            this.handleExecutingMessage(data);
+            break;
+          case "executed":
+            this.handleExecutedMessage(data);
+            break;
+          default:
+            logger.debug(`Unhandled ComfyUI WebSocket message type: ${type}`);
+        }
+      }
+      async handleProgressMessage(data) {
+        const progressData = data;
+        const { value, max } = progressData;
+        const progress = max > 0 ? Math.round(value / max * 100) : 0;
+        for (const [jobId, jobInfo] of this.activeJobs) {
+          try {
+            await jobInfo.progressCallback({
+              job_id: jobId,
+              progress,
+              message: `Processing: ${value}/${max}`,
+              current_step: `Step ${value}`,
+              total_steps: max
+            });
+          } catch (error) {
+            logger.error(`Failed to update progress for job ${jobId}:`, error);
+          }
+        }
+      }
+      async handleExecutingMessage(_data) {
+        for (const [jobId, jobInfo] of this.activeJobs) {
+          try {
+            await jobInfo.progressCallback({
+              job_id: jobId,
+              progress: 10,
+              message: "Execution started",
+              current_step: "Starting workflow"
+            });
+          } catch (error) {
+            logger.error(`Failed to update execution status for job ${jobId}:`, error);
+          }
+        }
+      }
+      async handleExecutedMessage(_data) {
+        for (const [jobId, jobInfo] of this.activeJobs) {
+          try {
+            await jobInfo.progressCallback({
+              job_id: jobId,
+              progress: 100,
+              message: "Execution completed",
+              current_step: "Workflow finished"
+            });
+          } catch (error) {
+            logger.error(`Failed to update completion status for job ${jobId}:`, error);
+          }
+        }
+      }
+      extractModelFromWorkflow(workflow) {
+        for (const nodeId of Object.keys(workflow)) {
+          const node = workflow[nodeId];
+          if (node?.class_type === "CheckpointLoaderSimple") {
+            const inputs = node.inputs;
+            return typeof inputs?.ckpt_name === "string" ? inputs.ckpt_name : "unknown";
+          }
+        }
+        return "unknown";
+      }
+      // HybridConnector abstract implementations for ComfyUI
+      getHealthEndpoint() {
+        return "/system_stats";
+      }
+      getJobSubmissionEndpoint() {
+        return "/prompt";
+      }
+      getCancelEndpoint(jobId) {
+        return null;
+      }
+      prepareHttpJobPayload(jobData) {
+        return {
+          prompt: jobData.payload.workflow,
+          extra_data: {
+            client_id: this.connector_id
+          }
+        };
+      }
+      async handleHttpSubmissionResponse(jobData, responseData) {
+        const promptId = responseData.prompt_id;
+        if (!promptId) {
+          throw new Error("No prompt ID returned from ComfyUI");
+        }
+        const activeJob = this.activeJobs.get(jobData.id);
+        if (activeJob) {
+          activeJob.promptId = promptId;
+          this.activeJobs.set(jobData.id, activeJob);
+        }
+      }
+      prepareWebSocketJobMessage(jobData) {
+        return {
+          type: "job_submit",
+          id: jobData.id,
+          data: jobData.payload
+        };
+      }
+      prepareWebSocketCancelMessage(jobId) {
+        return {
+          type: "cancel",
+          id: jobId
+        };
+      }
+      prepareWebSocketHeartbeatMessage() {
+        return {
+          type: "ping",
+          timestamp: Date.now()
+        };
+      }
+      extractJobIdFromWebSocketMessage(message) {
+        return message.id || "";
+      }
+      extractProgressFromWebSocketMessage(message) {
+        const data = message.data;
+        const { value, max } = data;
+        const progress = max > 0 ? Math.round(value / max * 100) : 0;
+        return {
+          progress,
+          message: `Processing: ${value}/${max}`,
+          current_step: `Step ${value}`,
+          total_steps: max
+        };
+      }
+      extractResultFromWebSocketMessage(message) {
+        return message.data;
+      }
+      extractErrorFromWebSocketMessage(message) {
+        return message.error || "ComfyUI processing failed";
+      }
+      onWebSocketConnected() {
+        logger.info(`ComfyUI WebSocket connected for connector ${this.connector_id}`);
+      }
+      onWebSocketDisconnected() {
+        logger.warn(`ComfyUI WebSocket disconnected for connector ${this.connector_id}`);
+      }
+      async updateConfiguration(config) {
+        this.config = { ...this.config, ...config };
+        if (config.base_url || config.settings?.http_base_url) {
+          this.httpBaseUrl = config.settings?.http_base_url || config.base_url || this.httpBaseUrl;
+          this.setupHttpClient();
+        }
+        logger.info(`Updated configuration for ComfyUI connector ${this.connector_id}`);
+      }
+      getConfiguration() {
+        return { ...this.config };
+      }
+    };
+  }
+});
+
+// apps/worker/src/connectors/rest-connector.ts
+var RestConnector;
+var init_rest_connector = __esm({
+  "apps/worker/src/connectors/rest-connector.ts"() {
+    init_dist();
+    init_base_connector();
+    RestConnector = class extends BaseConnector {
+      restConfig;
+      abortController;
+      constructor(connectorId, config) {
+        super(connectorId, config);
+        this.restConfig = this.config;
+        if (!this.restConfig.settings) {
+          this.restConfig.settings = {
+            method: "POST",
+            response_format: "json",
+            polling_interval_ms: 1e3,
+            headers: {
+              "Content-Type": "application/json",
+              "Accept": "application/json"
+            },
+            body_format: "json"
+          };
+        }
+      }
+      async initializeService() {
+        if (!this.restConfig.base_url) {
+          throw new Error(`REST connector ${this.connector_id} missing base_url`);
+        }
+        try {
+          const healthCheck = await this.checkHealth();
+          if (!healthCheck) {
+            logger.warn(`REST service at ${this.restConfig.base_url} failed initial health check`);
+          }
+        } catch (error) {
+          logger.warn(`Failed to perform initial health check for ${this.connector_id}:`, error);
+        }
+        logger.info(`REST connector ${this.connector_id} initialized for ${this.restConfig.base_url}`);
+      }
+      async cleanupService() {
+        if (this.abortController) {
+          this.abortController.abort();
+          this.abortController = void 0;
+        }
+      }
+      async checkHealth() {
+        try {
+          const healthEndpoint = this.getHealthEndpoint();
+          const response = await this.makeRequest("GET", healthEndpoint);
+          return response.status >= 200 && response.status < 300;
+        } catch (error) {
+          logger.debug(`Health check failed for ${this.connector_id}:`, error);
+          return false;
+        }
+      }
+      async processJobImpl(jobData, progressCallback) {
+        const startTime = Date.now();
+        try {
+          this.abortController = new AbortController();
+          const jobEndpoint = this.getJobEndpoint();
+          const payload = this.prepareJobPayload(jobData);
+          const response = await this.makeRequest(
+            this.restConfig.settings.method,
+            jobEndpoint,
+            payload,
+            this.abortController.signal
+          );
+          if (!response.ok) {
+            throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+          }
+          const responseData = await this.parseResponse(response);
+          if (this.isAsyncJob(responseData)) {
+            return await this.handleAsyncJob(jobData, responseData, progressCallback, startTime);
+          } else {
+            return await this.handleSyncJob(jobData, responseData, startTime);
+          }
+        } catch (error) {
+          return {
+            success: false,
+            error: error instanceof Error ? error.message : "Unknown REST processing error",
+            processing_time_ms: Date.now() - startTime,
+            service_metadata: {
+              service_version: this.version
+            }
+          };
+        } finally {
+          this.abortController = void 0;
+        }
+      }
+      async cancelJob(jobId) {
+        if (this.abortController) {
+          this.abortController.abort();
+        }
+        try {
+          const cancelEndpoint = this.getCancelEndpoint(jobId);
+          if (cancelEndpoint) {
+            await this.makeRequest("DELETE", cancelEndpoint);
+            logger.info(`Cancelled REST job ${jobId}`);
+          }
+        } catch (error) {
+          logger.warn(`Failed to cancel job ${jobId} via REST endpoint:`, error);
+        }
+      }
+      // ============================================================================
+      // HTTP Request Handling
+      // ============================================================================
+      async makeRequest(method, endpoint, data, signal) {
+        const url2 = new URL(endpoint, this.restConfig.base_url);
+        const headers = {
+          ...this.restConfig.settings.headers
+        };
+        if (this.restConfig.auth) {
+          this.addAuthHeaders(headers);
+        }
+        const options = {
+          method,
+          headers,
+          signal
+        };
+        if (data && method !== "GET") {
+          if (this.restConfig.settings.body_format === "json") {
+            options.body = JSON.stringify(data);
+            headers["Content-Type"] = "application/json";
+          } else if (this.restConfig.settings.body_format === "form") {
+            const formData = new URLSearchParams();
+            if (typeof data === "object" && data !== null) {
+              Object.entries(data).forEach(([key, value]) => {
+                formData.append(key, String(value));
+              });
+            }
+            options.body = formData;
+            headers["Content-Type"] = "application/x-www-form-urlencoded";
+          }
+        }
+        logger.debug(`Making ${method} request to ${url2.toString()}`);
+        return fetch(url2.toString(), options);
+      }
+      async parseResponse(response) {
+        const contentType = response.headers.get("content-type") || "";
+        if (this.restConfig.settings.response_format === "json" || contentType.includes("application/json")) {
+          return await response.json();
+        } else if (this.restConfig.settings.response_format === "text" || contentType.includes("text/")) {
+          return await response.text();
+        } else {
+          return await response.arrayBuffer();
+        }
+      }
+      addAuthHeaders(headers) {
+        if (!this.restConfig.auth) return;
+        switch (this.restConfig.auth.type) {
+          case "basic":
+            if (this.restConfig.auth.username && this.restConfig.auth.password) {
+              const credentials = btoa(`${this.restConfig.auth.username}:${this.restConfig.auth.password}`);
+              headers["Authorization"] = `Basic ${credentials}`;
+            }
+            break;
+          case "bearer":
+            if (this.restConfig.auth.token) {
+              headers["Authorization"] = `Bearer ${this.restConfig.auth.token}`;
+            }
+            break;
+          case "api_key":
+            if (this.restConfig.auth.api_key) {
+              headers["X-API-Key"] = this.restConfig.auth.api_key;
+            }
+            break;
+        }
+      }
+      // ============================================================================
+      // Async Job Handling
+      // ============================================================================
+      async handleAsyncJob(jobData, responseData, progressCallback, startTime) {
+        const jobId = this.extractJobId(responseData);
+        let progress = 0;
+        logger.info(`Started async REST job ${jobId} for ${jobData.id}`);
+        while (progress < 100) {
+          await this.sleep(this.restConfig.settings.polling_interval_ms || 1e3);
+          try {
+            const statusEndpoint = this.getStatusEndpoint(jobId);
+            const statusResponse = await this.makeRequest("GET", statusEndpoint);
+            const statusData = await this.parseResponse(statusResponse);
+            const jobStatus = this.extractJobStatus(statusData);
+            progress = this.extractJobProgress(statusData);
+            await progressCallback({
+              job_id: jobData.id,
+              progress: Math.min(progress, 99),
+              // Don't report 100% until we have results
+              message: `Processing via REST API (${progress}%)`,
+              current_step: jobStatus,
+              estimated_completion_ms: this.estimateCompletion(progress, startTime)
+            });
+            if (this.isJobComplete(statusData)) {
+              const result = this.extractJobResult(statusData);
+              return {
+                success: true,
+                data: result,
+                processing_time_ms: Date.now() - startTime,
+                service_metadata: {
+                  service_version: this.version
+                }
+              };
+            }
+            if (this.isJobFailed(statusData)) {
+              const error = this.extractJobError(statusData);
+              throw new Error(`REST job failed: ${error}`);
+            }
+          } catch (error) {
+            logger.error(`Error polling async job ${jobId}:`, error);
+            throw error;
+          }
+        }
+        throw new Error("Async job polling timed out");
+      }
+      async handleSyncJob(jobData, responseData, startTime) {
+        return {
+          success: true,
+          data: responseData,
+          processing_time_ms: Date.now() - startTime,
+          service_metadata: {
+            service_version: this.version
+          }
+        };
+      }
+      estimateCompletion(progress, startTime) {
+        if (progress <= 0) return 0;
+        const elapsed = Date.now() - startTime;
+        const total = elapsed * 100 / progress;
+        return Math.max(0, total - elapsed);
+      }
+      async sleep(ms) {
+        return new Promise((resolve) => setTimeout(resolve, ms));
+      }
+    };
+  }
+});
+
+// apps/worker/src/connectors/a1111-connector.ts
+var a1111_connector_exports = {};
+__export(a1111_connector_exports, {
+  A1111Connector: () => A1111Connector
+});
+var A1111Connector;
+var init_a1111_connector = __esm({
+  "apps/worker/src/connectors/a1111-connector.ts"() {
+    init_dist();
+    init_rest_connector();
+    A1111Connector = class extends RestConnector {
+      service_type = "a1111";
+      version = "1.0.0";
+      constructor(connectorId) {
+        const host = process.env.WORKER_A1111_HOST || "localhost";
+        const port = parseInt(process.env.WORKER_A1111_PORT || "7860");
+        const username = process.env.WORKER_A1111_USERNAME;
+        const password = process.env.WORKER_A1111_PASSWORD;
+        const config = {
+          service_type: "a1111",
+          base_url: `http://${host}:${port}`,
+          auth: username && password ? {
+            type: "basic",
+            username,
+            password
+          } : { type: "none" },
+          timeout_seconds: parseInt(process.env.WORKER_A1111_TIMEOUT_SECONDS || "300"),
+          retry_attempts: 3,
+          retry_delay_seconds: 2,
+          health_check_interval_seconds: 30,
+          max_concurrent_jobs: parseInt(process.env.WORKER_A1111_MAX_CONCURRENT_JOBS || "1"),
+          settings: {
+            method: "POST",
+            response_format: "json",
+            headers: {
+              "Content-Type": "application/json",
+              "Accept": "application/json"
+            },
+            body_format: "json",
+            polling_interval_ms: 1e3
+          }
+        };
+        super(connectorId, config);
+      }
+      // RestConnector overrides
+      async checkHealth() {
+        try {
+          const response = await this.makeRequest("GET", "/sdapi/v1/options");
+          return response.status >= 200 && response.status < 300;
+        } catch (error) {
+          logger.debug(`A1111 health check failed:`, error);
+          return false;
+        }
+      }
+      async getAvailableModels() {
+        try {
+          const response = await this.makeRequest("GET", "/sdapi/v1/sd-models");
+          const models = await this.parseResponse(response) || [];
+          const modelNames = models.map((model) => model.title || model.model_name || "unknown");
+          logger.info(`Found ${modelNames.length} models in A1111`);
+          return modelNames;
+        } catch (error) {
+          logger.error("Failed to get A1111 models:", error);
+          return [];
+        }
+      }
+      async getServiceInfo() {
+        try {
+          const [optionsResponse, modelsResponse, progressResponse] = await Promise.allSettled([
+            this.makeRequest("GET", "/sdapi/v1/options"),
+            this.makeRequest("GET", "/sdapi/v1/sd-models"),
+            this.makeRequest("GET", "/sdapi/v1/progress")
+          ]);
+          const options = optionsResponse.status === "fulfilled" ? await this.parseResponse(optionsResponse.value) : {};
+          const models = modelsResponse.status === "fulfilled" ? await this.parseResponse(modelsResponse.value) : [];
+          const progress = progressResponse.status === "fulfilled" ? await this.parseResponse(progressResponse.value) : {};
+          return {
+            service_name: "Automatic1111",
+            service_version: "unknown",
+            // A1111 doesn't expose version easily
+            base_url: this.config.base_url,
+            status: "online",
+            capabilities: {
+              supported_formats: ["png", "jpg", "webp"],
+              max_resolution: {
+                width: options.img2img_max_width || 2048,
+                height: options.img2img_max_height || 2048
+              },
+              supported_models: models.map((m) => m.title || m.model_name),
+              features: ["txt2img", "img2img", "inpainting", "extras", "async_processing"],
+              concurrent_jobs: this.config.max_concurrent_jobs
+            },
+            queue_info: {
+              pending_jobs: 0,
+              // A1111 doesn't expose queue info
+              processing_jobs: progress.active ? 1 : 0,
+              average_processing_time: 0
+            }
+          };
+        } catch (error) {
+          logger.error("Failed to get A1111 service info:", error);
+          throw error;
+        }
+      }
+      async canProcessJob(jobData) {
+        return jobData.type === "a1111" && (jobData.payload?.prompt !== void 0 || jobData.payload?.init_images !== void 0);
+      }
+      // Override processJobImpl from BaseConnector to customize A1111 job processing
+      async processJobImpl(jobData, progressCallback) {
+        const startTime = Date.now();
+        logger.info(`Starting A1111 job ${jobData.id}`);
+        try {
+          const jobType = this.determineJobType(jobData.payload);
+          let result;
+          switch (jobType) {
+            case "txt2img":
+              result = await this.processTxt2Img(jobData, progressCallback);
+              break;
+            case "img2img":
+              result = await this.processImg2Img(jobData, progressCallback);
+              break;
+            default:
+              throw new Error(`Unsupported A1111 job type: ${jobType}`);
+          }
+          const processingTime = Date.now() - startTime;
+          logger.info(`A1111 job ${jobData.id} completed in ${processingTime}ms`);
+          return {
+            success: true,
+            data: result,
+            processing_time_ms: processingTime,
+            output_files: result.images?.map((img, index) => ({
+              filename: `image_${index}.png`,
+              path: `output/${jobData.id}/image_${index}.png`,
+              type: "image",
+              size_bytes: Math.round(img.length * 0.75),
+              // Estimate from base64
+              mime_type: "image/png"
+            })) || [],
+            service_metadata: {
+              service_version: this.version,
+              model_used: result.info?.sd_model_checkpoint || "unknown",
+              processing_stats: {
+                job_type: jobType,
+                seed: result.info?.seed,
+                steps: result.info?.steps,
+                cfg_scale: result.info?.cfg_scale,
+                sampler: result.info?.sampler_name
+              }
+            }
+          };
+        } catch (error) {
+          const processingTime = Date.now() - startTime;
+          logger.error(`A1111 job ${jobData.id} failed:`, error);
+          return {
+            success: false,
+            error: error instanceof Error ? error.message : "A1111 processing failed",
+            processing_time_ms: processingTime,
+            service_metadata: {
+              service_version: this.version
+            }
+          };
+        }
+      }
+      async cancelJob(jobId) {
+        logger.info(`Cancelling A1111 job ${jobId}`);
+        try {
+          await this.makeRequest("POST", "/sdapi/v1/interrupt");
+          logger.info(`Sent interrupt request for job ${jobId}`);
+        } catch (error) {
+          logger.error(`Failed to cancel A1111 job ${jobId}:`, error);
+        }
+      }
+      determineJobType(payload) {
+        if (Array.isArray(payload.init_images) && payload.init_images.length > 0) {
+          return "img2img";
+        } else if (payload.prompt) {
+          return "txt2img";
+        } else {
+          throw new Error("Cannot determine A1111 job type from payload");
+        }
+      }
+      async processTxt2Img(jobData, progressCallback) {
+        const payload = {
+          prompt: jobData.payload.prompt || "",
+          negative_prompt: jobData.payload.negative_prompt || "",
+          steps: jobData.payload.steps || 20,
+          sampler_name: jobData.payload.sampler_name || "Euler a",
+          cfg_scale: jobData.payload.cfg_scale || 7,
+          width: jobData.payload.width || 512,
+          height: jobData.payload.height || 512,
+          seed: jobData.payload.seed || -1,
+          batch_size: jobData.payload.batch_size || 1,
+          n_iter: jobData.payload.n_iter || 1,
+          ...jobData.payload
+          // Allow override of any parameter
+        };
+        await progressCallback({
+          job_id: jobData.id,
+          progress: 10,
+          message: "Starting txt2img generation",
+          current_step: "Initializing"
+        });
+        const response = await this.makeRequest("POST", "/sdapi/v1/txt2img", payload);
+        if (!response.ok) {
+          throw new Error(`A1111 txt2img request failed with status ${response.status}`);
+        }
+        const steps = typeof payload.steps === "number" ? payload.steps : 20;
+        await this.pollForProgress(jobData.id, steps, progressCallback);
+        return await this.parseResponse(response);
+      }
+      async processImg2Img(jobData, progressCallback) {
+        const payload = {
+          init_images: jobData.payload.init_images || [],
+          prompt: jobData.payload.prompt || "",
+          negative_prompt: jobData.payload.negative_prompt || "",
+          steps: jobData.payload.steps || 20,
+          sampler_name: jobData.payload.sampler_name || "Euler a",
+          cfg_scale: jobData.payload.cfg_scale || 7,
+          denoising_strength: jobData.payload.denoising_strength || 0.75,
+          seed: jobData.payload.seed || -1,
+          batch_size: jobData.payload.batch_size || 1,
+          n_iter: jobData.payload.n_iter || 1,
+          ...jobData.payload
+          // Allow override of any parameter
+        };
+        await progressCallback({
+          job_id: jobData.id,
+          progress: 10,
+          message: "Starting img2img generation",
+          current_step: "Initializing"
+        });
+        const response = await this.makeRequest("POST", "/sdapi/v1/img2img", payload);
+        if (!response.ok) {
+          throw new Error(`A1111 img2img request failed with status ${response.status}`);
+        }
+        const steps = typeof payload.steps === "number" ? payload.steps : 20;
+        await this.pollForProgress(jobData.id, steps, progressCallback);
+        return await this.parseResponse(response);
+      }
+      async pollForProgress(jobId, totalSteps, progressCallback) {
+        const restConfig = this.config;
+        const pollInterval = restConfig.settings.polling_interval_ms || 1e3;
+        const maxPolls = restConfig.settings.a1111_max_polling_attempts || 300;
+        let polls = 0;
+        while (polls < maxPolls) {
+          try {
+            const progressResponse = await this.makeRequest("GET", "/sdapi/v1/progress");
+            const progressData = await this.parseResponse(progressResponse);
+            if (progressData.active) {
+              const progress = Math.round((progressData.progress || 0) * 100);
+              const currentStep = Math.round((progressData.progress || 0) * totalSteps);
+              await progressCallback({
+                job_id: jobId,
+                progress,
+                message: `Generating... Step ${currentStep}/${totalSteps}`,
+                current_step: `Step ${currentStep}`,
+                total_steps: totalSteps,
+                estimated_completion_ms: progressData.eta_relative ? progressData.eta_relative * 1e3 : void 0
+              });
+              if (progress >= 100) {
+                break;
+              }
+            } else {
+              await progressCallback({
+                job_id: jobId,
+                progress: 100,
+                message: "Generation completed",
+                current_step: "Finished"
+              });
+              break;
+            }
+            await new Promise((resolve) => setTimeout(resolve, pollInterval));
+            polls++;
+          } catch (error) {
+            logger.error(`Failed to poll A1111 progress for job ${jobId}:`, error);
+            break;
+          }
+        }
+        if (polls >= maxPolls) {
+          throw new Error(
+            `A1111 job ${jobId} timed out after ${maxPolls * pollInterval / 1e3} seconds`
+          );
+        }
+      }
+      // Use sleep method from BaseConnector
+      async updateConfiguration(config) {
+        this.config = { ...this.config, ...config };
+        logger.info(`Updated configuration for A1111 connector ${this.connector_id}`);
+      }
+      getConfiguration() {
+        return { ...this.config };
+      }
+      // RestConnector abstract method implementations
+      getHealthEndpoint() {
+        return "/sdapi/v1/options";
+      }
+      getJobEndpoint() {
+        return "/sdapi/v1/txt2img";
+      }
+      getStatusEndpoint() {
+        return "/sdapi/v1/progress";
+      }
+      getCancelEndpoint(jobId) {
+        return "/sdapi/v1/interrupt";
+      }
+      getCompletionEndpoint(jobId) {
+        return null;
+      }
+      prepareJobPayload(jobData) {
+        const jobType = this.determineJobType(jobData.payload);
+        if (jobType === "txt2img") {
+          return {
+            prompt: jobData.payload.prompt || "",
+            negative_prompt: jobData.payload.negative_prompt || "",
+            steps: jobData.payload.steps || 20,
+            sampler_name: jobData.payload.sampler_name || "Euler a",
+            cfg_scale: jobData.payload.cfg_scale || 7,
+            width: jobData.payload.width || 512,
+            height: jobData.payload.height || 512,
+            seed: jobData.payload.seed || -1,
+            batch_size: jobData.payload.batch_size || 1,
+            n_iter: jobData.payload.n_iter || 1,
+            ...jobData.payload
+          };
+        } else if (jobType === "img2img") {
+          return {
+            init_images: jobData.payload.init_images || [],
+            prompt: jobData.payload.prompt || "",
+            negative_prompt: jobData.payload.negative_prompt || "",
+            steps: jobData.payload.steps || 20,
+            sampler_name: jobData.payload.sampler_name || "Euler a",
+            cfg_scale: jobData.payload.cfg_scale || 7,
+            denoising_strength: jobData.payload.denoising_strength || 0.75,
+            seed: jobData.payload.seed || -1,
+            batch_size: jobData.payload.batch_size || 1,
+            n_iter: jobData.payload.n_iter || 1,
+            ...jobData.payload
+          };
+        }
+        return jobData.payload;
+      }
+      handleJobSubmissionResponse(jobData, responseData) {
+        return Promise.resolve();
+      }
+      async checkJobCompletion(jobData) {
+        try {
+          const progressResponse = await this.makeRequest("GET", "/sdapi/v1/progress");
+          const progressData = await this.parseResponse(progressResponse);
+          if (!progressData.active) {
+            return { completed: true };
+          }
+          return { completed: false };
+        } catch (error) {
+          logger.error(`Failed to check A1111 job completion:`, error);
+          return { completed: false };
+        }
+      }
+      extractProgressFromStatusResponse(responseData, jobData) {
+        const progressData = responseData;
+        const steps = jobData.payload.steps || 20;
+        const progress = Math.round((progressData.progress || 0) * 100);
+        const currentStep = Math.round((progressData.progress || 0) * steps);
+        return {
+          progress,
+          message: `Generating... Step ${currentStep}/${steps}`,
+          current_step: `Step ${currentStep}`,
+          total_steps: steps,
+          estimated_completion_ms: progressData.eta_relative ? progressData.eta_relative * 1e3 : void 0
+        };
+      }
+      isJobCompleted(responseData) {
+        const progressData = responseData;
+        return !progressData.active;
+      }
+      extractResultFromResponse(responseData) {
+        return responseData;
+      }
+      isAsyncJob(jobData) {
+        return true;
+      }
+      extractJobId(responseData) {
+        return "";
+      }
+      extractJobStatus(responseData) {
+        const progressData = responseData;
+        return progressData.active ? "running" : "completed";
+      }
+      extractJobProgress(responseData) {
+        const progressData = responseData;
+        return Math.round((progressData.progress || 0) * 100);
+      }
+      extractJobResult(responseData) {
+        return responseData;
+      }
+      handleAsyncJobSubmission(jobData, responseData) {
+        return Promise.resolve(jobData.id);
+      }
+      createProgressFromAsyncResponse(responseData, jobData) {
+        return this.extractProgressFromStatusResponse(responseData, jobData);
+      }
+      isJobComplete(responseData) {
+        const progressData = responseData;
+        return !progressData.active;
+      }
+      isJobFailed(responseData) {
+        return false;
+      }
+      extractJobError(responseData) {
+        const errorData = responseData;
+        return errorData.error || "Unknown A1111 error";
       }
     };
   }
@@ -39213,716 +40918,6 @@ var init_axios2 = __esm({
   }
 });
 
-// apps/worker/src/connectors/comfyui-connector.ts
-var comfyui_connector_exports = {};
-__export(comfyui_connector_exports, {
-  ComfyUIConnector: () => ComfyUIConnector
-});
-var ComfyUIConnector;
-var init_comfyui_connector = __esm({
-  "apps/worker/src/connectors/comfyui-connector.ts"() {
-    init_wrapper();
-    init_axios2();
-    init_dist();
-    ComfyUIConnector = class {
-      connector_id;
-      service_type = "comfyui";
-      version = "1.0.0";
-      config;
-      httpClient;
-      websocket = null;
-      isConnected = false;
-      activeJobs = /* @__PURE__ */ new Map();
-      constructor(connectorId) {
-        this.connector_id = connectorId;
-        const host = process.env.WORKER_COMFYUI_HOST || "localhost";
-        const port = parseInt(process.env.WORKER_COMFYUI_PORT || "8188");
-        const username = process.env.WORKER_COMFYUI_USERNAME;
-        const password = process.env.WORKER_COMFYUI_PASSWORD;
-        this.config = {
-          connector_id: this.connector_id,
-          service_type: this.service_type,
-          base_url: `http://${host}:${port}`,
-          auth: username && password ? {
-            type: "basic",
-            username,
-            password
-          } : { type: "none" },
-          timeout_seconds: parseInt(process.env.WORKER_COMFYUI_TIMEOUT_SECONDS || "300"),
-          retry_attempts: 3,
-          retry_delay_seconds: 2,
-          health_check_interval_seconds: 30,
-          max_concurrent_jobs: parseInt(process.env.WORKER_COMFYUI_MAX_CONCURRENT_JOBS || "1"),
-          settings: {
-            websocket_url: username && password ? `ws://${encodeURIComponent(username)}:${encodeURIComponent(password)}@${host}:${port}/ws` : `ws://${host}:${port}/ws`,
-            workflow_timeout_seconds: parseInt(
-              process.env.WORKER_COMFYUI_WORKFLOW_TIMEOUT_SECONDS || "600"
-            ),
-            image_format: process.env.WORKER_COMFYUI_IMAGE_FORMAT || "png",
-            image_quality: parseInt(process.env.WORKER_COMFYUI_IMAGE_QUALITY || "95"),
-            save_workflow: process.env.WORKER_COMFYUI_SAVE_WORKFLOW !== "false"
-          }
-        };
-        this.httpClient = axios_default.create({
-          baseURL: this.config.base_url,
-          timeout: this.config.timeout_seconds * 1e3,
-          auth: this.config.auth?.type === "basic" && this.config.auth.username && this.config.auth.password ? {
-            username: this.config.auth.username,
-            password: this.config.auth.password
-          } : void 0
-        });
-      }
-      async initialize() {
-        logger.info(`Initializing ComfyUI connector ${this.connector_id} at ${this.config.base_url}`);
-        await this.checkHealth();
-        await this.connectWebSocket();
-        logger.info(`ComfyUI connector ${this.connector_id} initialized successfully`);
-      }
-      async cleanup() {
-        logger.info(`Cleaning up ComfyUI connector ${this.connector_id}`);
-        if (this.websocket) {
-          this.websocket.close();
-          this.websocket = null;
-        }
-        this.isConnected = false;
-        this.activeJobs.clear();
-      }
-      async checkHealth() {
-        try {
-          const response = await this.httpClient.get("/system_stats");
-          return response.status === 200;
-        } catch (error) {
-          logger.error(`ComfyUI health check failed:`, error);
-          return false;
-        }
-      }
-      async getAvailableModels() {
-        try {
-          const response = await this.httpClient.get("/object_info");
-          const objectInfo = response.data;
-          const checkpoints = objectInfo?.CheckpointLoaderSimple?.input?.required?.ckpt_name?.[0] || [];
-          logger.info(`Found ${checkpoints.length} models in ComfyUI`);
-          return checkpoints;
-        } catch (error) {
-          logger.error("Failed to get ComfyUI models:", error);
-          return [];
-        }
-      }
-      async getServiceInfo() {
-        try {
-          const systemStats = await this.httpClient.get("/system_stats");
-          const _objectInfo = await this.httpClient.get("/object_info");
-          return {
-            service_name: "ComfyUI",
-            service_version: "unknown",
-            // ComfyUI doesn't expose version in API
-            base_url: this.config.base_url,
-            status: "online",
-            capabilities: {
-              supported_formats: ["png", "jpg", "webp"],
-              supported_models: await this.getAvailableModels(),
-              features: ["workflow_processing", "progress_tracking", "websocket_updates"],
-              concurrent_jobs: this.config.max_concurrent_jobs
-            },
-            resource_usage: systemStats.data
-          };
-        } catch (error) {
-          logger.error("Failed to get ComfyUI service info:", error);
-          throw error;
-        }
-      }
-      async canProcessJob(jobData) {
-        return jobData.type === "comfyui" && jobData.payload?.workflow !== void 0;
-      }
-      async processJob(jobData, progressCallback) {
-        const startTime = Date.now();
-        logger.info(`Starting ComfyUI job ${jobData.id}`);
-        try {
-          const workflow = jobData.payload.workflow;
-          if (!workflow) {
-            throw new Error("No workflow provided in job payload");
-          }
-          this.activeJobs.set(jobData.id, { jobData, progressCallback });
-          const promptId = await this.submitWorkflow(workflow);
-          logger.info(`ComfyUI job ${jobData.id} submitted with prompt ID: ${promptId}`);
-          const result = await this.waitForCompletion(jobData.id, promptId, progressCallback);
-          const processingTime = Date.now() - startTime;
-          logger.info(`ComfyUI job ${jobData.id} completed in ${processingTime}ms`);
-          return {
-            success: true,
-            data: result,
-            processing_time_ms: processingTime,
-            service_metadata: {
-              service_version: this.version,
-              model_used: this.extractModelFromWorkflow(workflow),
-              processing_stats: {
-                prompt_id: promptId,
-                workflow_nodes: Object.keys(workflow).length
-              }
-            }
-          };
-        } catch (error) {
-          const processingTime = Date.now() - startTime;
-          logger.error(`ComfyUI job ${jobData.id} failed:`, error);
-          return {
-            success: false,
-            error: error instanceof Error ? error.message : "ComfyUI processing failed",
-            processing_time_ms: processingTime,
-            service_metadata: {
-              service_version: this.version
-            }
-          };
-        } finally {
-          this.activeJobs.delete(jobData.id);
-        }
-      }
-      async cancelJob(jobId) {
-        logger.info(`Cancelling ComfyUI job ${jobId}`);
-        this.activeJobs.delete(jobId);
-      }
-      async connectWebSocket() {
-        return new Promise((resolve, reject) => {
-          try {
-            const websocketUrl = this.config.settings.websocket_url;
-            if (!websocketUrl) {
-              reject(new Error("WebSocket URL not configured"));
-              return;
-            }
-            this.websocket = new import_websocket.default(websocketUrl);
-            this.websocket.on("open", () => {
-              this.isConnected = true;
-              logger.info(`ComfyUI WebSocket connected to ${this.config.settings.websocket_url}`);
-              resolve();
-            });
-            this.websocket.on("message", (data) => {
-              try {
-                const message = JSON.parse(data.toString());
-                this.handleWebSocketMessage(message);
-              } catch (error) {
-                logger.error("Failed to parse ComfyUI WebSocket message:", error);
-              }
-            });
-            this.websocket.on("error", (error) => {
-              logger.error("ComfyUI WebSocket error:", error);
-              this.isConnected = false;
-              reject(error);
-            });
-            this.websocket.on("close", () => {
-              logger.warn("ComfyUI WebSocket disconnected");
-              this.isConnected = false;
-            });
-            setTimeout(() => {
-              if (!this.isConnected) {
-                reject(new Error("ComfyUI WebSocket connection timeout"));
-              }
-            }, 1e4);
-          } catch (error) {
-            reject(error);
-          }
-        });
-      }
-      async submitWorkflow(workflow) {
-        try {
-          const response = await this.httpClient.post("/prompt", {
-            prompt: workflow,
-            extra_data: {
-              client_id: this.connector_id
-            }
-          });
-          const promptId = response.data.prompt_id;
-          if (!promptId) {
-            throw new Error("No prompt ID returned from ComfyUI");
-          }
-          return promptId;
-        } catch (error) {
-          logger.error("Failed to submit workflow to ComfyUI:", error);
-          throw error;
-        }
-      }
-      async waitForCompletion(jobId, promptId, progressCallback) {
-        return new Promise((resolve, reject) => {
-          const timeout = setTimeout(
-            () => {
-              reject(
-                new Error(
-                  `ComfyUI job ${jobId} timed out after ${this.config.settings.workflow_timeout_seconds} seconds`
-                )
-              );
-            },
-            (this.config.settings.workflow_timeout_seconds || 600) * 1e3
-          );
-          const originalJob = this.activeJobs.get(jobId);
-          if (originalJob) {
-            this.activeJobs.set(jobId, {
-              ...originalJob,
-              progressCallback: async (progress) => {
-                await progressCallback(progress);
-                if (progress.progress >= 100) {
-                  clearTimeout(timeout);
-                  try {
-                    const result = await this.getJobResult(promptId);
-                    resolve(result);
-                  } catch (error) {
-                    reject(error);
-                  }
-                }
-              }
-            });
-          }
-        });
-      }
-      async getJobResult(promptId) {
-        try {
-          const historyResponse = await this.httpClient.get(`/history/${promptId}`);
-          const history = historyResponse.data[promptId];
-          if (!history) {
-            throw new Error(`No history found for prompt ${promptId}`);
-          }
-          const outputs = history.outputs || {};
-          const images = [];
-          for (const nodeId of Object.keys(outputs)) {
-            const nodeOutput = outputs[nodeId];
-            if (nodeOutput.images) {
-              for (const image of nodeOutput.images) {
-                const imageUrl = `${this.config.base_url}/view?filename=${image.filename}&subfolder=${image.subfolder || ""}&type=${image.type || "output"}`;
-                images.push(imageUrl);
-              }
-            }
-          }
-          return {
-            prompt_id: promptId,
-            outputs,
-            images,
-            execution_time: history.execution_time,
-            status: history.status
-          };
-        } catch (error) {
-          logger.error(`Failed to get ComfyUI job result for prompt ${promptId}:`, error);
-          throw error;
-        }
-      }
-      handleWebSocketMessage(message) {
-        const { type, data } = message;
-        switch (type) {
-          case "progress":
-            this.handleProgressMessage(data);
-            break;
-          case "executing":
-            this.handleExecutingMessage(data);
-            break;
-          case "executed":
-            this.handleExecutedMessage(data);
-            break;
-          default:
-            logger.debug(`Unhandled ComfyUI WebSocket message type: ${type}`);
-        }
-      }
-      async handleProgressMessage(data) {
-        const progressData = data;
-        const { value, max } = progressData;
-        const progress = max > 0 ? Math.round(value / max * 100) : 0;
-        for (const [jobId, jobInfo] of this.activeJobs) {
-          try {
-            await jobInfo.progressCallback({
-              job_id: jobId,
-              progress,
-              message: `Processing: ${value}/${max}`,
-              current_step: `Step ${value}`,
-              total_steps: max
-            });
-          } catch (error) {
-            logger.error(`Failed to update progress for job ${jobId}:`, error);
-          }
-        }
-      }
-      async handleExecutingMessage(_data) {
-        for (const [jobId, jobInfo] of this.activeJobs) {
-          try {
-            await jobInfo.progressCallback({
-              job_id: jobId,
-              progress: 10,
-              message: "Execution started",
-              current_step: "Starting workflow"
-            });
-          } catch (error) {
-            logger.error(`Failed to update execution status for job ${jobId}:`, error);
-          }
-        }
-      }
-      async handleExecutedMessage(_data) {
-        for (const [jobId, jobInfo] of this.activeJobs) {
-          try {
-            await jobInfo.progressCallback({
-              job_id: jobId,
-              progress: 100,
-              message: "Execution completed",
-              current_step: "Workflow finished"
-            });
-          } catch (error) {
-            logger.error(`Failed to update completion status for job ${jobId}:`, error);
-          }
-        }
-      }
-      extractModelFromWorkflow(workflow) {
-        for (const nodeId of Object.keys(workflow)) {
-          const node = workflow[nodeId];
-          if (node?.class_type === "CheckpointLoaderSimple") {
-            const inputs = node.inputs;
-            return typeof inputs?.ckpt_name === "string" ? inputs.ckpt_name : "unknown";
-          }
-        }
-        return "unknown";
-      }
-      async updateConfiguration(config) {
-        this.config = { ...this.config, ...config };
-        if (config.base_url) {
-          this.httpClient = axios_default.create({
-            baseURL: this.config.base_url,
-            timeout: this.config.timeout_seconds * 1e3,
-            auth: this.config.auth?.type === "basic" && this.config.auth.username && this.config.auth.password ? {
-              username: this.config.auth.username,
-              password: this.config.auth.password
-            } : void 0
-          });
-        }
-        logger.info(`Updated configuration for ComfyUI connector ${this.connector_id}`);
-      }
-      getConfiguration() {
-        return { ...this.config };
-      }
-    };
-  }
-});
-
-// apps/worker/src/connectors/a1111-connector.ts
-var a1111_connector_exports = {};
-__export(a1111_connector_exports, {
-  A1111Connector: () => A1111Connector
-});
-var A1111Connector;
-var init_a1111_connector = __esm({
-  "apps/worker/src/connectors/a1111-connector.ts"() {
-    init_axios2();
-    init_dist();
-    A1111Connector = class {
-      connector_id;
-      service_type = "a1111";
-      version = "1.0.0";
-      config;
-      httpClient;
-      constructor(connectorId) {
-        this.connector_id = connectorId;
-        const host = process.env.WORKER_A1111_HOST || "localhost";
-        const port = parseInt(process.env.WORKER_A1111_PORT || "7860");
-        const username = process.env.WORKER_A1111_USERNAME;
-        const password = process.env.WORKER_A1111_PASSWORD;
-        this.config = {
-          connector_id: this.connector_id,
-          service_type: this.service_type,
-          base_url: `http://${host}:${port}`,
-          auth: username && password ? {
-            type: "basic",
-            username,
-            password
-          } : { type: "none" },
-          timeout_seconds: parseInt(process.env.WORKER_A1111_TIMEOUT_SECONDS || "300"),
-          retry_attempts: 3,
-          retry_delay_seconds: 2,
-          health_check_interval_seconds: 30,
-          max_concurrent_jobs: parseInt(process.env.WORKER_A1111_MAX_CONCURRENT_JOBS || "1"),
-          settings: {
-            enable_api: process.env.WORKER_A1111_ENABLE_API !== "false",
-            save_images: process.env.WORKER_A1111_SAVE_IMAGES !== "false",
-            save_grid: process.env.WORKER_A1111_SAVE_GRID !== "false",
-            image_format: process.env.WORKER_A1111_IMAGE_FORMAT || "png",
-            jpeg_quality: parseInt(process.env.WORKER_A1111_JPEG_QUALITY || "95"),
-            png_compression: parseInt(process.env.WORKER_A1111_PNG_COMPRESSION || "6")
-          }
-        };
-        this.httpClient = axios_default.create({
-          baseURL: this.config.base_url,
-          timeout: this.config.timeout_seconds * 1e3,
-          headers: this.getAuthHeaders()
-        });
-      }
-      getAuthHeaders() {
-        const headers = {
-          "Content-Type": "application/json"
-        };
-        if (this.config.auth?.type === "basic" && this.config.auth.username && this.config.auth.password) {
-          const credentials = Buffer.from(
-            `${this.config.auth.username}:${this.config.auth.password}`
-          ).toString("base64");
-          headers["Authorization"] = `Basic ${credentials}`;
-        }
-        return headers;
-      }
-      async initialize() {
-        logger.info(`Initializing A1111 connector ${this.connector_id} at ${this.config.base_url}`);
-        await this.checkHealth();
-        logger.info(`A1111 connector ${this.connector_id} initialized successfully`);
-      }
-      async cleanup() {
-        logger.info(`Cleaning up A1111 connector ${this.connector_id}`);
-      }
-      async checkHealth() {
-        try {
-          const response = await this.httpClient.get("/sdapi/v1/options");
-          return response.status === 200;
-        } catch (error) {
-          logger.error(`A1111 health check failed:`, error);
-          return false;
-        }
-      }
-      async getAvailableModels() {
-        try {
-          const response = await this.httpClient.get("/sdapi/v1/sd-models");
-          const models = response.data || [];
-          const modelNames = models.map((model) => model.title || model.model_name || "unknown");
-          logger.info(`Found ${modelNames.length} models in A1111`);
-          return modelNames;
-        } catch (error) {
-          logger.error("Failed to get A1111 models:", error);
-          return [];
-        }
-      }
-      async getServiceInfo() {
-        try {
-          const [optionsResponse, modelsResponse, progressResponse] = await Promise.allSettled([
-            this.httpClient.get("/sdapi/v1/options"),
-            this.httpClient.get("/sdapi/v1/sd-models"),
-            this.httpClient.get("/sdapi/v1/progress")
-          ]);
-          const options = optionsResponse.status === "fulfilled" ? optionsResponse.value.data : {};
-          const models = modelsResponse.status === "fulfilled" ? modelsResponse.value.data : [];
-          const progress = progressResponse.status === "fulfilled" ? progressResponse.value.data : {};
-          return {
-            service_name: "Automatic1111",
-            service_version: "unknown",
-            // A1111 doesn't expose version easily
-            base_url: this.config.base_url,
-            status: "online",
-            capabilities: {
-              supported_formats: ["png", "jpg", "webp"],
-              max_resolution: {
-                width: options.img2img_max_width || 2048,
-                height: options.img2img_max_height || 2048
-              },
-              supported_models: models.map((m) => m.title || m.model_name),
-              features: ["txt2img", "img2img", "inpainting", "extras"],
-              concurrent_jobs: this.config.max_concurrent_jobs
-            },
-            queue_info: {
-              pending_jobs: 0,
-              // A1111 doesn't expose queue info
-              processing_jobs: progress.active ? 1 : 0,
-              average_processing_time: 0
-            }
-          };
-        } catch (error) {
-          logger.error("Failed to get A1111 service info:", error);
-          throw error;
-        }
-      }
-      async canProcessJob(jobData) {
-        return jobData.type === "a1111" && (jobData.payload?.prompt !== void 0 || jobData.payload?.init_images !== void 0);
-      }
-      async processJob(jobData, progressCallback) {
-        const startTime = Date.now();
-        logger.info(`Starting A1111 job ${jobData.id}`);
-        try {
-          const jobType = this.determineJobType(jobData.payload);
-          let result;
-          switch (jobType) {
-            case "txt2img":
-              result = await this.processTxt2Img(jobData, progressCallback);
-              break;
-            case "img2img":
-              result = await this.processImg2Img(jobData, progressCallback);
-              break;
-            default:
-              throw new Error(`Unsupported A1111 job type: ${jobType}`);
-          }
-          const processingTime = Date.now() - startTime;
-          logger.info(`A1111 job ${jobData.id} completed in ${processingTime}ms`);
-          return {
-            success: true,
-            data: result,
-            processing_time_ms: processingTime,
-            output_files: result.images?.map((img, index) => ({
-              filename: `image_${index}.png`,
-              path: `output/${jobData.id}/image_${index}.png`,
-              type: "image",
-              size_bytes: Math.round(img.length * 0.75),
-              // Estimate from base64
-              mime_type: "image/png"
-            })) || [],
-            service_metadata: {
-              service_version: this.version,
-              model_used: result.info?.sd_model_checkpoint || "unknown",
-              processing_stats: {
-                job_type: jobType,
-                seed: result.info?.seed,
-                steps: result.info?.steps,
-                cfg_scale: result.info?.cfg_scale,
-                sampler: result.info?.sampler_name
-              }
-            }
-          };
-        } catch (error) {
-          const processingTime = Date.now() - startTime;
-          logger.error(`A1111 job ${jobData.id} failed:`, error);
-          return {
-            success: false,
-            error: error instanceof Error ? error.message : "A1111 processing failed",
-            processing_time_ms: processingTime,
-            service_metadata: {
-              service_version: this.version
-            }
-          };
-        }
-      }
-      async cancelJob(jobId) {
-        logger.info(`Cancelling A1111 job ${jobId}`);
-        try {
-          await this.httpClient.post("/sdapi/v1/interrupt");
-          logger.info(`Sent interrupt request for job ${jobId}`);
-        } catch (error) {
-          logger.error(`Failed to cancel A1111 job ${jobId}:`, error);
-        }
-      }
-      determineJobType(payload) {
-        if (Array.isArray(payload.init_images) && payload.init_images.length > 0) {
-          return "img2img";
-        } else if (payload.prompt) {
-          return "txt2img";
-        } else {
-          throw new Error("Cannot determine A1111 job type from payload");
-        }
-      }
-      async processTxt2Img(jobData, progressCallback) {
-        const payload = {
-          prompt: jobData.payload.prompt || "",
-          negative_prompt: jobData.payload.negative_prompt || "",
-          steps: jobData.payload.steps || 20,
-          sampler_name: jobData.payload.sampler_name || "Euler a",
-          cfg_scale: jobData.payload.cfg_scale || 7,
-          width: jobData.payload.width || 512,
-          height: jobData.payload.height || 512,
-          seed: jobData.payload.seed || -1,
-          batch_size: jobData.payload.batch_size || 1,
-          n_iter: jobData.payload.n_iter || 1,
-          ...jobData.payload
-          // Allow override of any parameter
-        };
-        await progressCallback({
-          job_id: jobData.id,
-          progress: 10,
-          message: "Starting txt2img generation",
-          current_step: "Initializing"
-        });
-        const response = await this.httpClient.post("/sdapi/v1/txt2img", payload);
-        if (response.status !== 200) {
-          throw new Error(`A1111 txt2img request failed with status ${response.status}`);
-        }
-        const steps = typeof payload.steps === "number" ? payload.steps : 20;
-        await this.pollForProgress(jobData.id, steps, progressCallback);
-        return response.data;
-      }
-      async processImg2Img(jobData, progressCallback) {
-        const payload = {
-          init_images: jobData.payload.init_images || [],
-          prompt: jobData.payload.prompt || "",
-          negative_prompt: jobData.payload.negative_prompt || "",
-          steps: jobData.payload.steps || 20,
-          sampler_name: jobData.payload.sampler_name || "Euler a",
-          cfg_scale: jobData.payload.cfg_scale || 7,
-          denoising_strength: jobData.payload.denoising_strength || 0.75,
-          seed: jobData.payload.seed || -1,
-          batch_size: jobData.payload.batch_size || 1,
-          n_iter: jobData.payload.n_iter || 1,
-          ...jobData.payload
-          // Allow override of any parameter
-        };
-        await progressCallback({
-          job_id: jobData.id,
-          progress: 10,
-          message: "Starting img2img generation",
-          current_step: "Initializing"
-        });
-        const response = await this.httpClient.post("/sdapi/v1/img2img", payload);
-        if (response.status !== 200) {
-          throw new Error(`A1111 img2img request failed with status ${response.status}`);
-        }
-        const steps = typeof payload.steps === "number" ? payload.steps : 20;
-        await this.pollForProgress(jobData.id, steps, progressCallback);
-        return response.data;
-      }
-      async pollForProgress(jobId, totalSteps, progressCallback) {
-        const pollInterval = 1e3;
-        const maxPolls = 300;
-        let polls = 0;
-        while (polls < maxPolls) {
-          try {
-            const progressResponse = await this.httpClient.get("/sdapi/v1/progress");
-            const progressData = progressResponse.data;
-            if (progressData.active) {
-              const progress = Math.round((progressData.progress || 0) * 100);
-              const currentStep = Math.round((progressData.progress || 0) * totalSteps);
-              await progressCallback({
-                job_id: jobId,
-                progress,
-                message: `Generating... Step ${currentStep}/${totalSteps}`,
-                current_step: `Step ${currentStep}`,
-                total_steps: totalSteps,
-                estimated_completion_ms: progressData.eta_relative ? progressData.eta_relative * 1e3 : void 0
-              });
-              if (progress >= 100) {
-                break;
-              }
-            } else {
-              await progressCallback({
-                job_id: jobId,
-                progress: 100,
-                message: "Generation completed",
-                current_step: "Finished"
-              });
-              break;
-            }
-            await this.sleep(pollInterval);
-            polls++;
-          } catch (error) {
-            logger.error(`Failed to poll A1111 progress for job ${jobId}:`, error);
-            break;
-          }
-        }
-        if (polls >= maxPolls) {
-          throw new Error(
-            `A1111 job ${jobId} timed out after ${maxPolls * pollInterval / 1e3} seconds`
-          );
-        }
-      }
-      async sleep(ms) {
-        return new Promise((resolve) => setTimeout(resolve, ms));
-      }
-      async updateConfiguration(config) {
-        this.config = { ...this.config, ...config };
-        if (config.base_url || config.auth) {
-          this.httpClient = axios_default.create({
-            baseURL: this.config.base_url,
-            timeout: this.config.timeout_seconds * 1e3,
-            headers: this.getAuthHeaders()
-          });
-        }
-        logger.info(`Updated configuration for A1111 connector ${this.connector_id}`);
-      }
-      getConfiguration() {
-        return { ...this.config };
-      }
-    };
-  }
-});
-
 // apps/worker/src/connectors/rest-sync-connector.ts
 var rest_sync_connector_exports = {};
 __export(rest_sync_connector_exports, {
@@ -40131,6 +41126,10 @@ var init_rest_sync_connector = __esm({
       }
       getConfiguration() {
         return { ...this.config };
+      }
+      // Redis connection injection (required by ConnectorInterface)
+      setRedisConnection(redis, workerId, machineId) {
+        logger.debug(`REST Sync connector ${this.connector_id} received Redis connection (not used)`);
       }
     };
   }
@@ -40417,6 +41416,10 @@ var init_rest_async_connector = __esm({
       getConfiguration() {
         return { ...this.config };
       }
+      // Redis connection injection (required by ConnectorInterface)
+      setRedisConnection(redis, workerId, machineId) {
+        logger.debug(`REST Async connector ${this.connector_id} received Redis connection (not used)`);
+      }
     };
   }
 });
@@ -40431,20 +41434,17 @@ var init_websocket_connector = __esm({
   "apps/worker/src/connectors/websocket-connector.ts"() {
     init_wrapper();
     init_dist();
-    WebSocketConnector = class {
-      connector_id;
+    init_base_connector();
+    WebSocketConnector = class extends BaseConnector {
       service_type = "websocket";
       version = "1.0.0";
-      config;
       websocket = null;
       isConnected = false;
       reconnectAttempts = 0;
       maxReconnectAttempts = 5;
       constructor(connectorId) {
-        this.connector_id = connectorId;
-        this.config = {
-          connector_id: this.connector_id,
-          service_type: this.service_type,
+        super(connectorId, {
+          service_type: "websocket",
           base_url: process.env.WORKER_WEBSOCKET_BASE_URL || "ws://localhost:8080",
           timeout_seconds: parseInt(process.env.WORKER_WEBSOCKET_TIMEOUT_SECONDS || "60"),
           retry_attempts: parseInt(process.env.WORKER_WEBSOCKET_RETRY_ATTEMPTS || "3"),
@@ -40462,17 +41462,18 @@ var init_websocket_connector = __esm({
               process.env.WORKER_WEBSOCKET_MAX_RECONNECT_ATTEMPTS || "5"
             )
           }
-        };
+        });
+        this.connector_id = connectorId;
       }
-      async initialize() {
+      // BaseConnector implementation methods
+      async initializeService() {
+        const wsConfig = this.config;
         logger.info(
-          `Initializing WebSocket connector ${this.connector_id} to ${this.config.settings.websocket_url}`
+          `WebSocket connector ${this.connector_id} connecting to ${wsConfig.settings.websocket_url}`
         );
         await this.connectWebSocket();
-        logger.info(`WebSocket connector ${this.connector_id} initialized successfully`);
       }
-      async cleanup() {
-        logger.info(`Cleaning up WebSocket connector ${this.connector_id}`);
+      async cleanupService() {
         if (this.websocket) {
           this.websocket.close(1e3, "Connector cleanup");
           this.websocket = null;
@@ -40486,10 +41487,11 @@ var init_websocket_connector = __esm({
         return ["websocket-generic"];
       }
       async getServiceInfo() {
+        const wsConfig = this.config;
         return {
           service_name: "WebSocket Service",
           service_version: this.version,
-          base_url: this.config.settings.websocket_url,
+          base_url: wsConfig.settings.websocket_url,
           status: this.isConnected ? "online" : "offline",
           capabilities: {
             supported_formats: ["json", "text", "binary"],
@@ -40502,7 +41504,7 @@ var init_websocket_connector = __esm({
       async canProcessJob(jobData) {
         return jobData.type === "websocket" || jobData.type === this.service_type || jobData.payload?.websocket === true;
       }
-      async processJob(jobData, progressCallback) {
+      async processJobImpl(jobData, progressCallback) {
         const startTime = Date.now();
         logger.info(`Starting WebSocket job ${jobData.id}`);
         try {
@@ -40569,12 +41571,13 @@ var init_websocket_connector = __esm({
       async connectWebSocket() {
         return new Promise((resolve, reject) => {
           try {
-            const wsUrl = this.config.settings.websocket_url;
+            const wsConfig = this.config;
+            const wsUrl = wsConfig.settings.websocket_url;
             if (!wsUrl) {
               reject(new Error("WebSocket URL not configured"));
               return;
             }
-            const protocol = this.config.settings.protocol;
+            const protocol = wsConfig.settings.protocol;
             this.websocket = new import_websocket.default(wsUrl, protocol ? [protocol] : void 0);
             this.websocket.on("open", () => {
               this.isConnected = true;
@@ -40602,7 +41605,7 @@ var init_websocket_connector = __esm({
               this.isConnected = false;
               reject(error);
             });
-            if (this.config.settings.heartbeat_interval_ms) {
+            if (wsConfig.settings.heartbeat_interval_ms) {
               this.setupHeartbeat();
             }
             setTimeout(() => {
@@ -40684,7 +41687,8 @@ var init_websocket_connector = __esm({
         }
       }
       setupHeartbeat() {
-        const interval = this.config.settings.heartbeat_interval_ms || 3e4;
+        const wsConfig = this.config;
+        const interval = wsConfig.settings.heartbeat_interval_ms || 3e4;
         setInterval(() => {
           if (this.isConnected && this.websocket) {
             try {
@@ -40705,7 +41709,8 @@ var init_websocket_connector = __esm({
           return;
         }
         this.reconnectAttempts++;
-        const delay = (this.config.settings.reconnect_delay_ms || 5e3) * Math.pow(2, this.reconnectAttempts - 1);
+        const wsConfig = this.config;
+        const delay = (wsConfig.settings.reconnect_delay_ms || 5e3) * Math.pow(2, this.reconnectAttempts - 1);
         logger.info(
           `Attempting WebSocket reconnection ${this.reconnectAttempts}/${this.maxReconnectAttempts} in ${delay}ms`
         );
@@ -40720,11 +41725,12 @@ var init_websocket_connector = __esm({
         }, delay);
       }
       async updateConfiguration(config) {
-        const oldUrl = this.config.settings.websocket_url;
+        const oldConfig = this.config;
+        const oldUrl = oldConfig.settings?.websocket_url;
         this.config = { ...this.config, ...config };
         if (config.settings?.websocket_url && config.settings.websocket_url !== oldUrl) {
-          await this.cleanup();
-          await this.connectWebSocket();
+          await this.cleanupService();
+          await this.initializeService();
         }
         logger.info(`Updated configuration for WebSocket connector ${this.connector_id}`);
       }
@@ -40818,6 +41824,7 @@ var RedisDirectWorkerClient = class {
       timestamp: Date.now()
     };
     await this.redis.publish("worker:events", JSON.stringify(workerDisconnectedEvent));
+    await this.publishWorkerStatus("offline", capabilities);
     await this.redis.srem("workers:active", this.workerId);
     await this.redis.del(`worker:${this.workerId}`);
     await this.redis.del(`worker:${this.workerId}:heartbeat`);
@@ -40873,9 +41880,12 @@ var RedisDirectWorkerClient = class {
     };
     logger.info(`\u{1F4CB} Publishing worker_connected for worker ${this.workerId}:`);
     logger.info(`\u{1F4CB}   - capabilities.services: ${JSON.stringify(capabilities.services)}`);
-    logger.info(`\u{1F4CB}   - capabilities object: ${JSON.stringify(capabilities, null, 2).substring(0, 500)}...`);
+    logger.info(
+      `\u{1F4CB}   - capabilities object: ${JSON.stringify(capabilities, null, 2).substring(0, 500)}...`
+    );
     logger.info(`\u{1F4CB}   - event services field: ${JSON.stringify(capabilities.services || [])}`);
     await this.redis.publish("worker:events", JSON.stringify(workerConnectedEvent));
+    await this.publishWorkerStatus("idle", capabilities);
     logger.info(
       `Worker ${this.workerId} registered capabilities in Redis and published connected event`
     );
@@ -40893,6 +41903,45 @@ var RedisDirectWorkerClient = class {
       );
     } catch (error) {
       logger.error(`Failed to update connector statuses for worker ${this.workerId}:`, error);
+    }
+  }
+  /**
+   * Publish worker status to Redis for API discovery
+   */
+  async publishWorkerStatus(status, capabilities) {
+    try {
+      if (!capabilities) {
+        const workerData = await this.redis.hgetall(`worker:${this.workerId}`);
+        if (workerData.capabilities) {
+          capabilities = JSON.parse(workerData.capabilities);
+        }
+      }
+      if (!capabilities) {
+        logger.warn(`Cannot publish worker status for ${this.workerId} - no capabilities available`);
+        return;
+      }
+      const workerStatusReport = {
+        worker_id: this.workerId,
+        machine_id: capabilities.machine_id || "unknown",
+        status,
+        capabilities: {
+          services: capabilities.services || [],
+          hardware: capabilities.hardware || {},
+          performance: capabilities.performance || {},
+          customer_access: capabilities.customer_access || {},
+          models: capabilities.models || {}
+        },
+        timestamp: (/* @__PURE__ */ new Date()).toISOString(),
+        last_heartbeat: Date.now(),
+        connected_at: capabilities.connected_at || (/* @__PURE__ */ new Date()).toISOString()
+      };
+      await this.redis.publish(
+        `worker_status:${this.workerId}`,
+        JSON.stringify(workerStatusReport)
+      );
+      logger.debug(`Published worker status for ${this.workerId}: ${status}`);
+    } catch (error) {
+      logger.error(`Failed to publish worker status for ${this.workerId}:`, error);
     }
   }
   /**
@@ -40950,6 +41999,7 @@ var RedisDirectWorkerClient = class {
         timestamp: Date.now()
       };
       await this.redis.publish("worker_status", JSON.stringify(statusEvent));
+      await this.publishWorkerStatus(status);
       logger.info(
         `\u{1F504} Worker ${this.workerId} status changed to: ${status}${currentJobId ? ` (job: ${currentJobId})` : ""}`
       );
@@ -41438,7 +42488,9 @@ var RedisDirectWorkerClient = class {
         payload_size: eventJson.length
       });
       const result = await this.redis.publish("machine:startup:events", eventJson);
-      logger.info(`\u2705 Machine event published successfully: ${event.event_type} for ${event.machine_id} (${result} subscribers received it)`);
+      logger.info(
+        `\u2705 Machine event published successfully: ${event.event_type} for ${event.machine_id} (${result} subscribers received it)`
+      );
     } catch (error) {
       logger.error(`\u274C Failed to publish machine event:`, error);
       throw error;
@@ -41461,6 +42513,12 @@ var RedisDirectWorkerClient = class {
       logger.warn(`Failed to parse JSON: ${trimmed}`, error);
       return defaultValue;
     }
+  }
+  /**
+   * Get the Redis connection for injection into connectors
+   */
+  getRedisConnection() {
+    return this.isConnectedFlag ? this.redis : void 0;
   }
   /**
    * Mask Redis URL for logging (hide password)
@@ -41638,8 +42696,15 @@ var RedisDirectBaseWorker = class {
     }
     try {
       logger.info(`Starting Redis-direct worker ${this.workerId}...`);
-      await this.connectorManager.loadConnectors();
       await this.redisClient.connect(this.capabilities);
+      const redis = this.redisClient.getRedisConnection();
+      if (redis) {
+        this.connectorManager.setRedisConnection(redis, this.workerId, this.machineId);
+        logger.info(`Injected Redis connection into ConnectorManager for worker ${this.workerId}`);
+      } else {
+        logger.warn(`No Redis connection available for ConnectorManager in worker ${this.workerId}`);
+      }
+      await this.connectorManager.loadConnectors();
       const connectors = this.connectorManager.getAllConnectors();
       const models = {};
       for (const connector of connectors) {
@@ -41951,7 +43016,10 @@ var RedisDirectBaseWorker = class {
         await this.redisClient.updateConnectorStatuses(connectorStatuses);
         logger.info(`Sent initial connector statuses for worker ${this.workerId}`);
       } catch (error) {
-        logger.warn(`Failed to send initial connector statuses for worker ${this.workerId}:`, error);
+        logger.warn(
+          `Failed to send initial connector statuses for worker ${this.workerId}:`,
+          error
+        );
       }
     };
     sendInitialConnectorStatus();
@@ -41964,7 +43032,19 @@ init_dist();
 var ConnectorManager = class {
   connectors = /* @__PURE__ */ new Map();
   connectorsByServiceType = /* @__PURE__ */ new Map();
+  redis;
+  workerId;
+  machineId;
   constructor() {
+  }
+  /**
+   * Set Redis connection details to be injected into all connectors
+   */
+  setRedisConnection(redis, workerId, machineId) {
+    this.redis = redis;
+    this.workerId = workerId;
+    this.machineId = machineId;
+    logger.info(`ConnectorManager received Redis connection for worker ${workerId}`);
   }
   async loadConnectors() {
     const connectorsEnv = process.env.WORKER_CONNECTORS || process.env.CONNECTORS || "";
@@ -41982,6 +43062,72 @@ var ConnectorManager = class {
       }
     }
     logger.info(`Successfully loaded ${this.connectors.size} connectors`);
+  }
+  /**
+   * Create an offline stub connector for services that failed to initialize
+   */
+  async createOfflineConnector(connectorId, originalError) {
+    const { BaseConnector: BaseConnector2 } = await Promise.resolve().then(() => (init_base_connector(), base_connector_exports));
+    const serviceType = connectorId.toLowerCase();
+    class OfflineStubConnector extends BaseConnector2 {
+      service_type = serviceType;
+      version = "1.0.0-offline";
+      constructor() {
+        super(connectorId, {
+          connector_id: connectorId,
+          service_type: serviceType,
+          base_url: "http://offline",
+          timeout_seconds: 30,
+          retry_attempts: 0,
+          retry_delay_seconds: 1,
+          health_check_interval_seconds: 60,
+          max_concurrent_jobs: 0
+        });
+        this.currentStatus = "offline";
+      }
+      async initializeService() {
+        this.currentStatus = "offline";
+      }
+      async checkHealth() {
+        return false;
+      }
+      async getAvailableModels() {
+        return [];
+      }
+      async getServiceInfo() {
+        return {
+          service_name: `${serviceType} (Offline)`,
+          service_version: "offline",
+          base_url: "http://offline",
+          status: "offline",
+          capabilities: {
+            supported_formats: [],
+            supported_models: [],
+            features: []
+          }
+        };
+      }
+      async canProcessJob() {
+        return false;
+      }
+      async processJob() {
+        throw new Error(`${serviceType} service is offline: ${originalError}`);
+      }
+      async cancelJob() {
+      }
+      async updateConfiguration() {
+      }
+      getConfiguration() {
+        return this.config;
+      }
+      // Required abstract methods from BaseConnector
+      async cleanupService() {
+      }
+      async processJobImpl() {
+        throw new Error(`${serviceType} service is offline: ${originalError}`);
+      }
+    }
+    return new OfflineStubConnector();
   }
   async loadConnector(connectorId) {
     let ConnectorClass;
@@ -42015,12 +43161,24 @@ var ConnectorManager = class {
           throw new Error(`Unknown connector type: ${connectorId}`);
       }
       const connector = new ConnectorClass(connectorId);
-      await connector.initialize();
+      if (this.redis && this.workerId) {
+        connector.setRedisConnection(this.redis, this.workerId, this.machineId);
+        logger.info(`Injected Redis connection into connector ${connectorId}`);
+      } else {
+        logger.warn(`No Redis connection available for connector ${connectorId} - status reporting may be limited`);
+      }
       this.registerConnector(connector);
+      await connector.initialize();
       logger.info(`Loaded connector: ${connectorId} (${connector.service_type})`);
     } catch (error) {
       logger.error(`Failed to load connector ${connectorId}:`, error);
-      throw error;
+      try {
+        const OfflineConnector = await this.createOfflineConnector(connectorId, error);
+        this.registerConnector(OfflineConnector);
+        logger.warn(`Registered offline stub connector for ${connectorId} due to initialization failure`);
+      } catch (stubError) {
+        logger.error(`Failed to create offline stub connector for ${connectorId}:`, stubError);
+      }
     }
   }
   // ConnectorRegistry implementation

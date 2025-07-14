@@ -115,6 +115,9 @@ export class RedisDirectWorkerClient {
 
     await this.redis.publish('worker:events', JSON.stringify(workerDisconnectedEvent));
 
+    // Publish offline status to worker_status channel
+    await this.publishWorkerStatus('offline', capabilities);
+
     // Remove worker from active set
     await this.redis.srem('workers:active', this.workerId);
     await this.redis.del(`worker:${this.workerId}`);
@@ -189,6 +192,9 @@ export class RedisDirectWorkerClient {
     logger.info(`📋   - event services field: ${JSON.stringify(capabilities.services || [])}`);
 
     await this.redis.publish('worker:events', JSON.stringify(workerConnectedEvent));
+
+    // Also publish to worker_status channel for API discovery
+    await this.publishWorkerStatus('idle', capabilities);
     logger.info(
       `Worker ${this.workerId} registered capabilities in Redis and published connected event`
     );
@@ -209,6 +215,52 @@ export class RedisDirectWorkerClient {
       );
     } catch (error) {
       logger.error(`Failed to update connector statuses for worker ${this.workerId}:`, error);
+    }
+  }
+
+  /**
+   * Publish worker status to Redis for API discovery
+   */
+  private async publishWorkerStatus(status: 'idle' | 'busy' | 'offline' | 'error', capabilities?: WorkerCapabilities): Promise<void> {
+    try {
+      // Get current worker data if capabilities not provided
+      if (!capabilities) {
+        const workerData = await this.redis.hgetall(`worker:${this.workerId}`);
+        if (workerData.capabilities) {
+          capabilities = JSON.parse(workerData.capabilities);
+        }
+      }
+
+      if (!capabilities) {
+        logger.warn(`Cannot publish worker status for ${this.workerId} - no capabilities available`);
+        return;
+      }
+
+      const workerStatusReport = {
+        worker_id: this.workerId,
+        machine_id: capabilities.machine_id || 'unknown',
+        status: status,
+        capabilities: {
+          services: capabilities.services || [],
+          hardware: capabilities.hardware || {},
+          performance: capabilities.performance || {},
+          customer_access: capabilities.customer_access || {},
+          models: capabilities.models || {}
+        },
+        timestamp: new Date().toISOString(),
+        last_heartbeat: Date.now(),
+        connected_at: capabilities.connected_at || new Date().toISOString()
+      };
+
+      // Publish to worker_status channel for API discovery
+      await this.redis.publish(
+        `worker_status:${this.workerId}`,
+        JSON.stringify(workerStatusReport)
+      );
+
+      logger.debug(`Published worker status for ${this.workerId}: ${status}`);
+    } catch (error) {
+      logger.error(`Failed to publish worker status for ${this.workerId}:`, error);
     }
   }
 
@@ -282,6 +334,9 @@ export class RedisDirectWorkerClient {
       };
 
       await this.redis.publish('worker_status', JSON.stringify(statusEvent));
+
+      // Also publish full worker status for API discovery
+      await this.publishWorkerStatus(status);
 
       logger.info(
         `🔄 Worker ${this.workerId} status changed to: ${status}${currentJobId ? ` (job: ${currentJobId})` : ''}`
@@ -919,6 +974,13 @@ export class RedisDirectWorkerClient {
       logger.warn(`Failed to parse JSON: ${trimmed}`, error);
       return defaultValue;
     }
+  }
+
+  /**
+   * Get the Redis connection for injection into connectors
+   */
+  getRedisConnection(): Redis | undefined {
+    return this.isConnectedFlag ? this.redis : undefined;
   }
 
   /**

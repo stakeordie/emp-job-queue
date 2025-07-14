@@ -136,7 +136,25 @@
       "Bash(docker image rm:*)",
       "Bash(docker system:*)",
       "Bash(kill:*)",
-      "Bash(docker start:*)"
+      "Bash(docker start:*)",
+      "Bash(docker restart:*)",
+      "Bash(REDIS_URL=redis://localhost:6379 pnpm dev:api)",
+      "mcp__playwright__browser_navigate",
+      "mcp__playwright__browser_click",
+      "mcp__playwright__browser_network_requests",
+      "mcp__playwright__browser_snapshot",
+      "mcp__playwright__browser_take_screenshot",
+      "mcp__playwright__browser_console_messages",
+      "mcp__playwright__browser_wait_for",
+      "Bash(/opt/homebrew/bin/redis-cli CONFIG GET logfile)",
+      "Bash(/usr/local/bin/redis-cli:*)",
+      "Bash(echo $PATH)",
+      "Bash(./scripts/dev-full-stack.sh:*)",
+      "Bash(/opt/homebrew/bin/redis-cli keys:*)",
+      "Bash(/opt/homebrew/bin/redis-cli:*)",
+      "mcp__playwright__browser_install",
+      "Bash(./scripts/dev-full-stack-status.sh:*)",
+      "Bash(./scripts/dev-full-stack-stop.sh:*)"
     ],
     "deny": []
   }

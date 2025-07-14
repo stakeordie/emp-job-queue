@@ -12,7 +12,7 @@ import {
 } from '@emp/core';
 import Redis from 'ioredis';
 
-export type ConnectorStatus = 'starting' | 'idle' | 'active' | 'error' | 'offline';
+export type ConnectorStatus = 'starting' | 'waiting_for_service' | 'connecting' | 'idle' | 'active' | 'error' | 'offline';
 
 export interface StatusReport {
   connector_id: string;
@@ -38,6 +38,7 @@ export abstract class BaseConnector implements ConnectorInterface {
   // Redis connection for status reporting
   protected redis?: Redis;
   protected workerId?: string;
+  protected machineId?: string;
   protected hubRedisUrl?: string;
 
   // Status tracking
@@ -70,6 +71,20 @@ export abstract class BaseConnector implements ConnectorInterface {
   // ============================================================================
   // Redis Connection and Status Reporting (Core BaseConnector functionality)
   // ============================================================================
+
+  /**
+   * Inject Redis connection from worker for status reporting
+   * This replaces the need for connectors to create their own Redis connections
+   */
+  setRedisConnection(redis: Redis, workerId: string, machineId?: string): void {
+    this.redis = redis;
+    this.workerId = workerId;
+    this.machineId = machineId;
+    
+    logger.info(
+      `${this.service_type} connector ${this.connector_id} received Redis connection injection`
+    );
+  }
 
   protected async initializeRedisConnection(): Promise<void> {
     this.hubRedisUrl = process.env.HUB_REDIS_URL || 'redis://localhost:6379';
@@ -259,14 +274,21 @@ export abstract class BaseConnector implements ConnectorInterface {
     try {
       this.currentStatus = 'starting';
       
-      // Initialize Redis connection first
-      await this.initializeRedisConnection();
+      // If Redis connection was injected, use it; otherwise create own connection
+      if (!this.redis) {
+        logger.warn(`${this.service_type} connector ${this.connector_id} - No Redis connection injected, creating own connection`);
+        await this.initializeRedisConnection();
+      }
       
       // Call subclass initialization
       await this.initializeService();
       
-      // Start status reporting
-      this.startStatusReportingInternal();
+      // Start status reporting (only if we have Redis connection)
+      if (this.redis) {
+        this.startStatusReportingInternal();
+      } else {
+        logger.warn(`${this.service_type} connector ${this.connector_id} - No Redis connection, status reporting disabled`);
+      }
       
       // Update status to idle after successful initialization
       this.currentStatus = 'idle';
@@ -276,7 +298,9 @@ export abstract class BaseConnector implements ConnectorInterface {
     } catch (error) {
       this.currentStatus = 'error';
       await this.reportStatus('error', error instanceof Error ? error.message : 'Initialization failed');
-      throw error;
+      
+      // Don't throw error - according to plan, register connector even if service is offline
+      logger.warn(`${this.service_type} connector ${this.connector_id} initialization failed but connector will be registered:`, error);
     }
   }
 

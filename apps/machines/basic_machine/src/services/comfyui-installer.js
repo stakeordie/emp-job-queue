@@ -499,3 +499,35 @@ export default class ComfyUIInstallerService extends BaseService {
     }
   }
 }
+
+// Command line execution for build-time installation
+if (process.argv.includes('--build-time')) {
+  console.log('🔧 Running ComfyUI installer in build-time mode...');
+  
+  // Create minimal config for build-time
+  const buildConfig = {
+    services: {
+      'comfyui-installer': {
+        repo_url: process.env.COMFYUI_REPO_URL || 'https://github.com/stakeordie/ComfyUI.git',
+        branch: process.env.COMFYUI_BRANCH || 'forward',
+        commit: process.env.COMFYUI_COMMIT || null,
+        port_start: '8188'
+      }
+    }
+  };
+  
+  // Override config path to use the copied config_nodes.json
+  const installer = new ComfyUIInstallerService({}, buildConfig);
+  installer.configPath = '/workspace/config_nodes.json'; // Use the copied config
+  
+  // Run installation
+  installer.onStart()
+    .then(() => {
+      console.log('✅ ComfyUI build-time installation completed successfully');
+      process.exit(0);
+    })
+    .catch((error) => {
+      console.error('❌ ComfyUI build-time installation failed:', error);
+      process.exit(1);
+    });
+}

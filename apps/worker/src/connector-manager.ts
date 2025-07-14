@@ -2,12 +2,26 @@
 // Direct port from Python worker/connector_loader.py functionality
 
 import { ConnectorInterface, ConnectorRegistry, ConnectorFactory, logger } from '@emp/core';
+import Redis from 'ioredis';
 
 export class ConnectorManager implements ConnectorRegistry, ConnectorFactory {
   private connectors = new Map<string, ConnectorInterface>();
   private connectorsByServiceType = new Map<string, ConnectorInterface[]>();
+  private redis?: Redis;
+  private workerId?: string;
+  private machineId?: string;
 
   constructor() {}
+
+  /**
+   * Set Redis connection details to be injected into all connectors
+   */
+  setRedisConnection(redis: Redis, workerId: string, machineId?: string): void {
+    this.redis = redis;
+    this.workerId = workerId;
+    this.machineId = machineId;
+    logger.info(`ConnectorManager received Redis connection for worker ${workerId}`);
+  }
 
   async loadConnectors(): Promise<void> {
     // Get connector list from environment (matches Python pattern)
@@ -35,6 +49,96 @@ export class ConnectorManager implements ConnectorRegistry, ConnectorFactory {
     }
 
     logger.info(`Successfully loaded ${this.connectors.size} connectors`);
+  }
+
+  /**
+   * Create an offline stub connector for services that failed to initialize
+   */
+  private async createOfflineConnector(connectorId: string, originalError: unknown): Promise<ConnectorInterface> {
+    // Import BaseConnector to create a minimal stub
+    const { BaseConnector } = await import('./connectors/base-connector.js');
+    
+    // Determine service type from connector ID
+    const serviceType = connectorId.toLowerCase();
+    
+    class OfflineStubConnector extends BaseConnector {
+      public service_type = serviceType;
+      public version = '1.0.0-offline';
+      
+      constructor() {
+        super(connectorId, {
+          connector_id: connectorId,
+          service_type: serviceType,
+          base_url: 'http://offline',
+          timeout_seconds: 30,
+          retry_attempts: 0,
+          retry_delay_seconds: 1,
+          health_check_interval_seconds: 60,
+          max_concurrent_jobs: 0
+        });
+        
+        // Set to offline status
+        this.currentStatus = 'offline';
+      }
+
+      async initializeService(): Promise<void> {
+        // Do nothing - service is offline
+        this.currentStatus = 'offline';
+      }
+
+      async checkHealth(): Promise<boolean> {
+        return false;
+      }
+
+      async getAvailableModels(): Promise<string[]> {
+        return [];
+      }
+
+      async getServiceInfo(): Promise<any> {
+        return {
+          service_name: `${serviceType} (Offline)`,
+          service_version: 'offline',
+          base_url: 'http://offline',
+          status: 'offline',
+          capabilities: {
+            supported_formats: [],
+            supported_models: [],
+            features: []
+          }
+        };
+      }
+
+      async canProcessJob(): Promise<boolean> {
+        return false;
+      }
+
+      async processJob(): Promise<any> {
+        throw new Error(`${serviceType} service is offline: ${originalError}`);
+      }
+
+      async cancelJob(): Promise<void> {
+        // Do nothing
+      }
+
+      async updateConfiguration(): Promise<void> {
+        // Do nothing
+      }
+
+      getConfiguration(): any {
+        return this.config;
+      }
+
+      // Required abstract methods from BaseConnector
+      async cleanupService(): Promise<void> {
+        // Do nothing - service is offline
+      }
+
+      async processJobImpl(): Promise<any> {
+        throw new Error(`${serviceType} service is offline: ${originalError}`);
+      }
+    }
+
+    return new OfflineStubConnector();
   }
 
   private async loadConnector(connectorId: string): Promise<void> {
@@ -74,16 +178,33 @@ export class ConnectorManager implements ConnectorRegistry, ConnectorFactory {
       // Create connector instance
       const connector = new ConnectorClass(connectorId);
 
-      // Initialize the connector
-      await connector.initialize();
+      // Inject Redis connection if available
+      if (this.redis && this.workerId) {
+        connector.setRedisConnection(this.redis, this.workerId, this.machineId);
+        logger.info(`Injected Redis connection into connector ${connectorId}`);
+      } else {
+        logger.warn(`No Redis connection available for connector ${connectorId} - status reporting may be limited`);
+      }
 
-      // Register the connector
+      // Always register the connector first (graceful failure handling)
       this.registerConnector(connector);
+
+      // Initialize the connector (may fail, but connector is already registered)
+      await connector.initialize();
 
       logger.info(`Loaded connector: ${connectorId} (${connector.service_type})`);
     } catch (error) {
       logger.error(`Failed to load connector ${connectorId}:`, error);
-      throw error;
+      
+      // Graceful failure handling: Create offline stub connector
+      try {
+        const OfflineConnector = await this.createOfflineConnector(connectorId, error);
+        this.registerConnector(OfflineConnector);
+        logger.warn(`Registered offline stub connector for ${connectorId} due to initialization failure`);
+      } catch (stubError) {
+        logger.error(`Failed to create offline stub connector for ${connectorId}:`, stubError);
+        // Even stub creation failed - still don't throw, just log
+      }
     }
   }
 

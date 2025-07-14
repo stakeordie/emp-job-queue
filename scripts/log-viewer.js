@@ -12,12 +12,14 @@ const rootDir = join(__dirname, '..');
 
 // Available log files
 const logFiles = {
-  api: 'apps/api/logs/dev.log',
-  worker: 'apps/worker/logs/dev.log',
-  monitor: 'apps/monitor/logs/dev.log',
-  docs: 'apps/docs/logs/dev.log',
-  machines: 'logs/machines/dev.log',
-  'local-redis': 'logs/local-redis.log'
+  api: 'logs/api.log',
+  worker: 'logs/worker.log',
+  monitor: 'logs/monitor.log',
+  docs: 'logs/docs.log',
+  machines: 'logs/machine.log',
+  'api-redis': 'logs/api-redis.log',
+  redis: '/opt/homebrew/var/log/redis.log',
+  monitorEventStream: 'logs/monitorEventStream.log'
 };
 
 // Colors for different components
@@ -27,12 +29,17 @@ const colors = {
   monitor: '\x1b[35m',  // Magenta
   docs: '\x1b[36m',     // Cyan
   machines: '\x1b[33m', // Yellow
-  'local-redis': '\x1b[31m', // Red
+  'api-redis': '\x1b[92m', // Bright Green
+  redis: '\x1b[31m',    // Red
+  monitorEventStream: '\x1b[90m', // Gray
   reset: '\x1b[0m'
 };
 
 function createLogDirs() {
   Object.values(logFiles).forEach(logPath => {
+    // Skip absolute paths (like Homebrew Redis logs)
+    if (logPath.startsWith('/')) return;
+    
     const fullPath = join(rootDir, logPath);
     const dir = dirname(fullPath);
     if (!existsSync(dir)) {
@@ -82,10 +89,16 @@ function tailLog(component) {
     process.exit(1);
   }
 
-  const fullPath = join(rootDir, logPath);
+  // Handle absolute paths (like Homebrew Redis logs)
+  const fullPath = logPath.startsWith('/') ? logPath : join(rootDir, logPath);
   
   // Check if log file exists, if not create the directory structure
   if (!existsSync(fullPath)) {
+    if (logPath.startsWith('/')) {
+      console.error(`❌ System log file not found: ${fullPath}`);
+      console.error(`💡 Make sure Redis is installed via Homebrew and has been started at least once`);
+      process.exit(1);
+    }
     console.log(`📝 Log file not found, will be created when component starts: ${fullPath}`);
     createLogDirs();
     // Create empty file so tail doesn't fail
@@ -93,7 +106,9 @@ function tailLog(component) {
   }
 
   console.log(`📖 Tailing ${colors[component] || colors.reset}${component}${colors.reset} logs: ${fullPath}`);
-  console.log('💡 Start the component with: pnpm dev:' + component);
+  if (!logPath.startsWith('/')) {
+    console.log('💡 Start the component with: pnpm dev:' + component);
+  }
   console.log('Press Ctrl+C to stop\n');
 
   const tail = spawn('tail', ['-f', fullPath], { stdio: 'inherit' });
@@ -111,8 +126,17 @@ function tailAllLogs() {
   createLogDirs();
 
   const tailProcesses = Object.entries(logFiles).map(([name, path]) => {
-    const fullPath = join(rootDir, path);
+    // Handle absolute paths (like Homebrew Redis logs)
+    const fullPath = path.startsWith('/') ? path : join(rootDir, path);
     const color = colors[name] || colors.reset;
+    
+    // Skip files that don't exist (especially system files)
+    if (!existsSync(fullPath)) {
+      if (path.startsWith('/')) {
+        console.log(`${color}[${name.toUpperCase()}]${colors.reset} System log not available: ${fullPath}`);
+        return null;
+      }
+    }
     
     const tail = spawn('tail', ['-f', fullPath]);
     
@@ -128,7 +152,7 @@ function tailAllLogs() {
     });
 
     return { name, tail };
-  });
+  }).filter(Boolean);
 
   process.on('SIGINT', () => {
     tailProcesses.forEach(({ tail }) => tail.kill());

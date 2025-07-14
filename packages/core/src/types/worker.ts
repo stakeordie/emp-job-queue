@@ -82,7 +82,7 @@ export interface WorkerInfo {
 
 export interface ConnectorStatus {
   connector_id: string;
-  status: 'active' | 'inactive' | 'error';
+  status: 'active' | 'inactive' | 'error' | 'waiting_for_service' | 'connecting';
   version?: string;
   health_check_at?: string;
   error_message?: string;

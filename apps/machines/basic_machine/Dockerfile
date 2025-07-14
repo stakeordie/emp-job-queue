@@ -72,6 +72,57 @@ ENV NODE_ENV=production \
 COPY scripts/pm2-ecosystem.config.cjs /workspace/pm2-ecosystem.config.cjs
 # PM2 manager is now copied with the src directory
 
+# Build arguments for secrets (ComfyUI custom nodes)
+ARG AWS_ACCESS_KEY_ID
+ARG AWS_SECRET_ACCESS_KEY_ENCODED
+ARG AWS_DEFAULT_REGION
+ARG GOOGLE_APPLICATION_CREDENTIALS
+ARG AZURE_STORAGE_ACCOUNT
+ARG AZURE_STORAGE_KEY
+ARG CLOUD_STORAGE_CONTAINER
+ARG CLOUD_MODELS_CONTAINER
+ARG CLOUD_STORAGE_TEST_CONTAINER
+ARG CLOUD_PROVIDER
+ARG STATIC_MODELS
+ARG EMPROPS_DEBUG_LOGGING
+ARG HF_TOKEN
+ARG CIVITAI_TOKEN
+ARG OLLAMA_HOST
+ARG OLLAMA_PORT
+ARG OLLAMA_DEFAULT_MODEL
+ARG OPENAI_API_KEY
+
+# Cache-busting for custom nodes
+ARG CUSTOM_NODES_CACHE_BUST=default
+ENV CUSTOM_NODES_CACHE_BUST=${CUSTOM_NODES_CACHE_BUST}
+
+# Copy custom nodes configuration
+COPY config_nodes.json /workspace/config_nodes.json
+
+# Install ComfyUI and custom nodes at build time
+RUN echo "Cache bust: $CUSTOM_NODES_CACHE_BUST" && \
+    # Set environment variables for the installer
+    export AWS_ACCESS_KEY_ID="$AWS_ACCESS_KEY_ID" && \
+    export AWS_SECRET_ACCESS_KEY_ENCODED="$AWS_SECRET_ACCESS_KEY_ENCODED" && \
+    export AWS_DEFAULT_REGION="$AWS_DEFAULT_REGION" && \
+    export GOOGLE_APPLICATION_CREDENTIALS="$GOOGLE_APPLICATION_CREDENTIALS" && \
+    export AZURE_STORAGE_ACCOUNT="$AZURE_STORAGE_ACCOUNT" && \
+    export AZURE_STORAGE_KEY="$AZURE_STORAGE_KEY" && \
+    export CLOUD_STORAGE_CONTAINER="$CLOUD_STORAGE_CONTAINER" && \
+    export CLOUD_MODELS_CONTAINER="$CLOUD_MODELS_CONTAINER" && \
+    export CLOUD_STORAGE_TEST_CONTAINER="$CLOUD_STORAGE_TEST_CONTAINER" && \
+    export CLOUD_PROVIDER="$CLOUD_PROVIDER" && \
+    export STATIC_MODELS="$STATIC_MODELS" && \
+    export EMPROPS_DEBUG_LOGGING="$EMPROPS_DEBUG_LOGGING" && \
+    export HF_TOKEN="$HF_TOKEN" && \
+    export CIVITAI_TOKEN="$CIVITAI_TOKEN" && \
+    export OLLAMA_HOST="$OLLAMA_HOST" && \
+    export OLLAMA_PORT="$OLLAMA_PORT" && \
+    export OLLAMA_DEFAULT_MODEL="$OLLAMA_DEFAULT_MODEL" && \
+    export OPENAI_API_KEY="$OPENAI_API_KEY" && \
+    # Run ComfyUI installer in build mode
+    node /service-manager/src/services/comfyui-installer.js --build-time
+
 # Create startup script that runs our Node.js app as PID 1
 RUN echo '#!/bin/bash\n\
 set -e\n\

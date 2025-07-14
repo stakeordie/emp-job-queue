@@ -144,6 +144,21 @@ Redis Functions are **expanding**, not being removed:
 
 ## DEBUGGING & MONITORING
 
+### Standard Testing Procedures
+**ALWAYS** follow standardized testing procedures documented in `docs/TESTING_PROCEDURES.md`
+
+**Local Development Setup:**
+```bash
+pnpm dev:local-redis          # Start local Redis + API (logs to apps/api/logs/dev.log)
+tail -f apps/api/logs/dev.log  # Monitor all API activity
+```
+
+**Machine Registration Testing:**
+```bash
+pnpm machines:basic:local:up:build   # Start machine (auto-cleans first via :down)
+docker logs basic-machine-local -f  # Watch machine startup events
+```
+
 ### Event Flow Issues
 ```bash
 cd tools && pnpm debug:full    # Test entire event chain

@@ -647,9 +647,9 @@ export const useMonitorStore = create<MonitorStore>()(
             const updatedWorkers = [...new Set([...existingMachine.workers, worker.worker_id])];
             updateMachine(machineId, {
               workers: updatedWorkers,
-              // Only set to ready if machine is not offline from shutdown
-              // Offline machines should only go online via proper startup sequence
-              status: existingMachine.status === 'offline' ? 'offline' : 'ready',
+              // Worker connection indicates machine is ready
+              // If a worker can connect, the machine is operational
+              status: 'ready',
               last_activity: new Date().toISOString(),
             });
             
@@ -701,6 +701,13 @@ export const useMonitorStore = create<MonitorStore>()(
               level: 'debug',
               category: 'connector',
               message: `Connector ${connectorEvent.service_type} for worker ${connectorEvent.worker_id}: ${connectorEvent.status}`,
+              source: 'websocket',
+            });
+          } else {
+            addLog({
+              level: 'warn',
+              category: 'connector',
+              message: `Worker ${connectorEvent.worker_id} not found for connector ${connectorEvent.service_type} status update`,
               source: 'websocket',
             });
           }
@@ -756,23 +763,29 @@ export const useMonitorStore = create<MonitorStore>()(
           const workerEvent = event as {
             type: 'worker_status_changed';
             worker_id: string;
-            old_status: string;
-            new_status: string;
-            current_job_id?: string;
+            machine_id?: string;
+            status: 'idle' | 'busy' | 'offline' | 'error';
+            capabilities: WorkerCapabilities;
             timestamp: number;
+            // Legacy fields for backward compatibility
+            old_status?: string;
+            new_status?: string;
+            current_job_id?: string;
           };
-          // console.log(`changing card state to ${workerEvent.new_status} for worker ${workerEvent.worker_id}`);
+          
+          // Use new format if available, fall back to legacy format
+          const status = workerEvent.status || workerEvent.new_status as WorkerStatus || 'idle';
           
           // Check if worker exists, if not create it
           const { workers } = get();
           const existingWorker = workers.find(w => w.worker_id === workerEvent.worker_id);
           
           if (!existingWorker) {
-            // console.log(`Creating new worker ${workerEvent.worker_id} from status change event`);
+            // Create new worker with full capabilities from event
             addWorker({
               worker_id: workerEvent.worker_id,
-              status: workerEvent.new_status as WorkerStatus,
-              capabilities: {
+              status: status,
+              capabilities: workerEvent.capabilities || {
                 worker_id: workerEvent.worker_id,
                 services: [],
                 hardware: {
@@ -797,8 +810,10 @@ export const useMonitorStore = create<MonitorStore>()(
               uptime: 0
             });
           } else {
+            // Update existing worker
             updateWorker(workerEvent.worker_id, {
-              status: workerEvent.new_status as WorkerStatus,
+              status: status,
+              capabilities: workerEvent.capabilities || existingWorker.capabilities,
               current_jobs: workerEvent.current_job_id ? [workerEvent.current_job_id] : [],
               last_heartbeat: new Date().toISOString()
             });

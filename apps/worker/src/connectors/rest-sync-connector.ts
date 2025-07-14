@@ -269,4 +269,11 @@ export class RestSyncConnector implements ConnectorInterface {
   getConfiguration(): RestConnectorConfig {
     return { ...this.config };
   }
+
+  // Redis connection injection (required by ConnectorInterface)
+  setRedisConnection(redis: any, workerId: string, machineId?: string): void {
+    // REST sync connector doesn't use Redis for status reporting
+    // This is a no-op implementation to satisfy the interface
+    logger.debug(`REST Sync connector ${this.connector_id} received Redis connection (not used)`);
+  }
 }

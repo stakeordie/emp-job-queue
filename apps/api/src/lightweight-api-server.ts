@@ -1451,13 +1451,13 @@ export class LightweightAPIServer {
 
     // Map the event types to machine events
     switch (eventData.event_type) {
-      case 'startup_begin':
+      case 'machine_startup':
         logger.info(`🚀 Broadcasting machine startup for: ${machineId}`);
 
         // Create machine record in Redis
         const machineData = {
           machine_id: machineId,
-          status: 'starting',
+          status: eventData.phase || 'starting',
           started_at: new Date().toISOString(),
           last_activity: new Date().toISOString(),
           hostname: eventData.machine_config?.hostname || 'unknown',
@@ -1645,13 +1645,25 @@ export class LightweightAPIServer {
               `🔌 [PMESSAGE] Received connector status: ${statusData.service_type} connector for worker ${statusData.worker_id} is ${statusData.status}`
             );
 
+            // Map connector status to monitor format
+            const mapConnectorStatusToMonitor = (status: string): 'active' | 'inactive' | 'error' => {
+              switch (status) {
+                case 'active': return 'active';
+                case 'idle': return 'inactive';
+                case 'starting': return 'inactive';
+                case 'offline': return 'inactive';
+                case 'error': return 'error';
+                default: return 'inactive';
+              }
+            };
+
             // Broadcast connector status change to monitors
             const connectorStatusEvent: ConnectorStatusChangedEvent = {
               type: 'connector_status_changed',
               connector_id: statusData.connector_id,
               service_type: statusData.service_type,
               worker_id: statusData.worker_id,
-              status: statusData.status,
+              status: mapConnectorStatusToMonitor(statusData.status),
               service_info: statusData.service_info,
               timestamp: Date.now(),
             };
@@ -1662,6 +1674,47 @@ export class LightweightAPIServer {
             );
           } catch (error) {
             logger.error('Error processing connector status message from pmessage:', error);
+          }
+        }
+        // Handle worker status updates
+        else if (pattern === 'worker_status:*' && channel.startsWith('worker_status:')) {
+          try {
+            const workerStatusData = JSON.parse(message);
+            logger.info(
+              `👷 [PMESSAGE] Received worker status: worker ${workerStatusData.worker_id} is ${workerStatusData.status}`
+            );
+
+            // Store worker data in Redis for full state snapshots
+            await this.redis.hmset(`worker:${workerStatusData.worker_id}`, {
+              worker_id: workerStatusData.worker_id,
+              machine_id: workerStatusData.machine_id,
+              status: workerStatusData.status,
+              capabilities: JSON.stringify(workerStatusData.capabilities),
+              connected_at: workerStatusData.connected_at,
+              last_heartbeat: new Date().toISOString(),
+              total_jobs_completed: '0',
+              total_jobs_failed: '0',
+            });
+
+            // Update heartbeat TTL
+            await this.redis.setex(`worker:${workerStatusData.worker_id}:heartbeat`, 60, new Date().toISOString());
+
+            // Broadcast worker status change to monitors
+            const workerStatusEvent: WorkerStatusChangedEvent = {
+              type: 'worker_status_changed',
+              worker_id: workerStatusData.worker_id,
+              machine_id: workerStatusData.machine_id,
+              status: workerStatusData.status as 'idle' | 'busy' | 'offline' | 'error',
+              capabilities: workerStatusData.capabilities,
+              timestamp: Date.now(),
+            };
+
+            this.broadcastToMonitors(workerStatusEvent);
+            logger.info(
+              `📢 [PMESSAGE] Broadcasted worker status change: ${workerStatusData.worker_id} -> ${workerStatusData.status}`
+            );
+          } catch (error) {
+            logger.error('Error processing worker status message from pmessage:', error);
           }
         }
         // Handle keyspace notifications
@@ -1710,6 +1763,10 @@ export class LightweightAPIServer {
     // Subscribe to connector status updates
     await this.progressSubscriber.psubscribe('connector_status:*');
     logger.info('✅ Subscribed to: connector_status:* (pattern)');
+
+    // Subscribe to worker status updates
+    await this.progressSubscriber.psubscribe('worker_status:*');
+    logger.info('✅ Subscribed to: worker_status:* (pattern)');
 
     // Subscribe to machine startup events
     logger.info('🔌 Subscribing to Redis channel: machine:startup:events');

@@ -46,19 +46,36 @@ export const SimpleWorkerCard = memo(function SimpleWorkerCard({ worker }: Simpl
           <div className="flex flex-wrap gap-1">
             {worker.capabilities?.services?.map((service: string) => {
               const connectorStatus = worker.connector_statuses?.[service];
-              const isHealthy = connectorStatus?.status === 'active';
-              const hasError = connectorStatus?.status === 'error';
+              const status = connectorStatus?.status;
+              
+              // Determine badge variant and color based on connector status
+              const getBadgeConfig = (status?: string) => {
+                switch (status) {
+                  case 'active':
+                    return { variant: 'default' as const, color: 'bg-green-500', label: 'Active' };
+                  case 'inactive':
+                    return { variant: 'secondary' as const, color: 'bg-blue-500', label: 'Idle' };
+                  case 'waiting_for_service':
+                    return { variant: 'secondary' as const, color: 'bg-yellow-500', label: 'Waiting' };
+                  case 'connecting':
+                    return { variant: 'secondary' as const, color: 'bg-orange-500', label: 'Connecting' };
+                  case 'error':
+                    return { variant: 'destructive' as const, color: 'bg-red-500', label: 'Error' };
+                  default:
+                    return { variant: 'outline' as const, color: 'bg-gray-400', label: 'Unknown' };
+                }
+              };
+              
+              const config = getBadgeConfig(status);
               
               return (
                 <Badge
                   key={service}
-                  variant={isHealthy ? "default" : hasError ? "destructive" : "outline"}
+                  variant={config.variant}
                   className="text-xs px-2 py-0.5 h-5"
-                  title={connectorStatus?.error_message || `Status: ${connectorStatus?.status || 'unknown'}`}
+                  title={connectorStatus?.error_message || `Status: ${status || 'unknown'} (${config.label})`}
                 >
-                  <div className={`w-1.5 h-1.5 rounded-full mr-1 ${
-                    isHealthy ? 'bg-green-500' : hasError ? 'bg-red-500' : 'bg-gray-400'
-                  }`} />
+                  <div className={`w-1.5 h-1.5 rounded-full mr-1 ${config.color}`} />
                   {service}
                 </Badge>
               );
@@ -100,19 +117,32 @@ export const SimpleWorkerCard = memo(function SimpleWorkerCard({ worker }: Simpl
                 <div className="flex flex-wrap gap-1">
                   {worker.capabilities?.services?.map((service: string) => {
                     const connectorStatus = worker.connector_statuses?.[service];
-                    const isHealthy = connectorStatus?.status === 'active';
-                    const hasError = connectorStatus?.status === 'error';
+                    const status = connectorStatus?.status;
+                    
+                    // Determine badge variant and color based on connector status
+                    const getBadgeConfig = (status?: string) => {
+                      switch (status) {
+                        case 'active':
+                          return { variant: 'default' as const, color: 'bg-green-500', label: 'Active' };
+                        case 'inactive':
+                          return { variant: 'secondary' as const, color: 'bg-blue-500', label: 'Idle' };
+                        case 'error':
+                          return { variant: 'destructive' as const, color: 'bg-red-500', label: 'Error' };
+                        default:
+                          return { variant: 'outline' as const, color: 'bg-gray-400', label: 'Unknown' };
+                      }
+                    };
+                    
+                    const config = getBadgeConfig(status);
                     
                     return (
                       <Badge 
                         key={service} 
-                        variant={isHealthy ? "default" : hasError ? "destructive" : "outline"} 
+                        variant={config.variant}
                         className="text-xs"
-                        title={connectorStatus?.error_message || `Status: ${connectorStatus?.status || 'unknown'}`}
+                        title={connectorStatus?.error_message || `Status: ${status || 'unknown'} (${config.label})`}
                       >
-                        <div className={`w-2 h-2 rounded-full mr-1 ${
-                          isHealthy ? 'bg-green-500' : hasError ? 'bg-red-500' : 'bg-gray-400'
-                        }`} />
+                        <div className={`w-2 h-2 rounded-full mr-1 ${config.color}`} />
                         {service}
                       </Badge>
                     );

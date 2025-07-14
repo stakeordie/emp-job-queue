@@ -257,11 +257,20 @@ export class RedisDirectBaseWorker {
     try {
       logger.info(`Starting Redis-direct worker ${this.workerId}...`);
 
-      // Load and initialize connectors FIRST to populate capabilities.services
-      await this.connectorManager.loadConnectors();
-
-      // Connect to Redis and register (with populated capabilities)
+      // Connect to Redis first to establish connection
       await this.redisClient.connect(this.capabilities);
+
+      // Pass Redis connection to ConnectorManager
+      const redis = this.redisClient.getRedisConnection();
+      if (redis) {
+        this.connectorManager.setRedisConnection(redis, this.workerId, this.machineId);
+        logger.info(`Injected Redis connection into ConnectorManager for worker ${this.workerId}`);
+      } else {
+        logger.warn(`No Redis connection available for ConnectorManager in worker ${this.workerId}`);
+      }
+
+      // Load and initialize connectors AFTER Redis injection
+      await this.connectorManager.loadConnectors();
 
       // Update capabilities with model information from connectors
       const connectors = this.connectorManager.getAllConnectors();

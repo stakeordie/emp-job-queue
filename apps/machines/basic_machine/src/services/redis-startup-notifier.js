@@ -125,6 +125,138 @@ export class RedisStartupNotifier {
 
 
   /**
+   * Notify a startup step (e.g., phase_0_begin, phase_1_complete)
+   */
+  async notifyStep(stepName, stepData = {}) {
+    if (!this.isConnected) {
+      logger.warn(`⚠️ Redis not connected, skipping step notification: ${stepName}`);
+      return;
+    }
+
+    const step = {
+      step_name: stepName,
+      timestamp: Date.now(),
+      elapsed_ms: Date.now() - this.startupStartTime,
+      ...stepData
+    };
+
+    this.startupSteps.push(step);
+
+    const stepEvent = {
+      worker_id: this.workerId,
+      machine_id: this.config.machine.id,
+      event_type: 'startup_step',
+      timestamp: new Date().toISOString(),
+      step_name: stepName,
+      step_data: stepData,
+      elapsed_ms: step.elapsed_ms,
+      machine_config: {
+        machine_id: this.config.machine.id,
+        hostname: os.hostname()
+      }
+    };
+
+    await this.publishStartupEvent(stepEvent);
+    logger.info(`📍 Startup step: ${stepName} (${step.elapsed_ms}ms)`, stepData);
+  }
+
+  /**
+   * Notify that a service has started successfully
+   */
+  async notifyServiceStarted(serviceName, serviceData = {}) {
+    if (!this.isConnected) {
+      logger.warn(`⚠️ Redis not connected, skipping service started notification: ${serviceName}`);
+      return;
+    }
+
+    const serviceEvent = {
+      worker_id: this.workerId,
+      machine_id: this.config.machine.id,
+      event_type: 'service_started',
+      timestamp: new Date().toISOString(),
+      service_name: serviceName,
+      service_data: serviceData,
+      elapsed_ms: Date.now() - this.startupStartTime,
+      machine_config: {
+        machine_id: this.config.machine.id,
+        hostname: os.hostname()
+      }
+    };
+
+    await this.publishStartupEvent(serviceEvent);
+    logger.info(`✅ Service started: ${serviceName}`, serviceData);
+  }
+
+  /**
+   * Notify that a service failed to start
+   */
+  async notifyServiceFailed(serviceName, error, serviceData = {}) {
+    if (!this.isConnected) {
+      logger.warn(`⚠️ Redis not connected, skipping service failed notification: ${serviceName}`);
+      return;
+    }
+
+    const serviceEvent = {
+      worker_id: this.workerId,
+      machine_id: this.config.machine.id,
+      event_type: 'service_failed',
+      timestamp: new Date().toISOString(),
+      service_name: serviceName,
+      service_data: serviceData,
+      error: error?.message || error,
+      error_stack: error?.stack,
+      elapsed_ms: Date.now() - this.startupStartTime,
+      machine_config: {
+        machine_id: this.config.machine.id,
+        hostname: os.hostname()
+      }
+    };
+
+    await this.publishStartupEvent(serviceEvent);
+    logger.error(`❌ Service failed: ${serviceName}`, { error: error?.message || error, ...serviceData });
+  }
+
+  /**
+   * Notify machine initial startup (before any services)
+   */
+  async notifyMachineStartup(phase = 'starting') {
+    if (!this.isConnected) {
+      logger.warn(`⚠️ Redis not connected, skipping machine startup notification`);
+      return;
+    }
+
+    const startupEvent = {
+      worker_id: this.workerId,
+      machine_id: this.config.machine.id,
+      event_type: 'machine_startup',
+      timestamp: new Date().toISOString(),
+      phase: phase, // 'starting', 'configuring', 'ready'
+      elapsed_ms: Date.now() - this.startupStartTime,
+      host_info: {
+        hostname: os.hostname(),
+        os: os.platform(),
+        cpu_cores: os.cpus().length,
+        total_ram_gb: Math.round(os.totalmem() / (1024 * 1024 * 1024)),
+        gpu_count: this.config.machine.gpu.count,
+        gpu_models: [this.config.machine.gpu.model]
+      },
+      machine_config: {
+        machine_id: this.config.machine.id,
+        gpu_count: this.config.machine.gpu.count,
+        gpu_memory: this.config.machine.gpu.memoryGB,
+        gpu_model: this.config.machine.gpu.model,
+        hostname: os.hostname(),
+        services: Object.entries(this.config.services)
+          .filter(([_, service]) => service.enabled)
+          .map(([name]) => name)
+      }
+    };
+
+    await this.publishStartupEvent(startupEvent);
+    logger.info(`🚀 Machine startup phase: ${phase}`);
+  }
+
+  /**
    * Notify that startup has completed successfully
    */
   async notifyStartupComplete() {

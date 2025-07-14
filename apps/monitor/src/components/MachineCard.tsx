@@ -107,10 +107,18 @@ export const MachineCard = memo(function MachineCard({ machine, workers, onDelet
   };
 
   // Build log stream URL for react-logviewer
-  const getLogUrl = (serviceName: string) => {
+  const getLogUrl = (serviceName: string, logType?: string) => {
     const healthUrl = getHealthUrl();
     if (!healthUrl) return null;
     
+    // Use ComfyUI-specific logs for ComfyUI services
+    if (serviceName.startsWith('comfyui-gpu')) {
+      const gpu = serviceName.replace('comfyui-gpu', '');
+      const type = logType || 'server';
+      return `${healthUrl}/comfyui/logs?gpu=${gpu}&type=${type}&lines=1000`;
+    }
+    
+    // Use PM2 logs for other services
     return `${healthUrl}/pm2/logs?service=${serviceName}&lines=1000&stream=true`;
   };
 
@@ -434,43 +442,99 @@ export const MachineCard = memo(function MachineCard({ machine, workers, onDelet
                         </div>
                       </div>
                       <div className="flex-1 border rounded h-full">
-                        {getLogUrl(service.name) ? (
-                          <ScrollFollow
-                            startFollowing={true}
-                            render={({ follow, onScroll }) => {
-                              const logUrl = getLogUrl(service.name);
-                              if (!logUrl) return null;
-                              
-                              return (
-                                <LazyLog
-                                  url={logUrl}
-                                  stream
-                                  follow={follow}
-                                  onScroll={onScroll}
-                                  enableSearch={false}
-                                  selectableLines={false}
-                                  style={{
-                                    backgroundColor: 'hsl(var(--background))',
-                                    color: 'hsl(var(--foreground))',
-                                    fontFamily: 'ui-monospace, SFMono-Regular, "SF Mono", Monaco, Consolas, "Liberation Mono", "Courier New", monospace',
-                                    fontSize: '13px',
-                                    lineHeight: '1.4'
-                                  }}
-                                  formatPart={(text) => {
-                                    // Simple ANSI color stripping and basic formatting
-                                    return text.replace(/\x1b\[[0-9;]*m/g, '');
-                                  }}
-                                />
-                              );
-                            }}
-                          />
-                        ) : (
-                          <div className="flex items-center justify-center h-full text-muted-foreground">
-                            <div className="text-center">
-                              <Monitor className="h-8 w-8 mx-auto mb-2 opacity-50" />
-                              <p>Log URL not available</p>
+                        {service.name.startsWith('comfyui-gpu') ? (
+                          // ComfyUI services get sub-tabs for different log types
+                          <Tabs defaultValue="server" className="h-full flex flex-col">
+                            <div className="border-b px-2 pt-2">
+                              <TabsList className="grid w-full grid-cols-3">
+                                <TabsTrigger value="server" className="text-xs">Server</TabsTrigger>
+                                <TabsTrigger value="output" className="text-xs">Output</TabsTrigger>
+                                <TabsTrigger value="error" className="text-xs">Error</TabsTrigger>
+                              </TabsList>
                             </div>
-                          </div>
+                            {['server', 'output', 'error'].map((logType) => (
+                              <TabsContent key={logType} value={logType} className="flex-1 m-0 p-0">
+                                {getLogUrl(service.name, logType) ? (
+                                  <ScrollFollow
+                                    startFollowing={true}
+                                    render={({ follow, onScroll }) => {
+                                      const logUrl = getLogUrl(service.name, logType);
+                                      if (!logUrl) return null;
+                                      
+                                      return (
+                                        <LazyLog
+                                          url={logUrl}
+                                          stream
+                                          follow={follow}
+                                          onScroll={onScroll}
+                                          enableSearch={false}
+                                          selectableLines={false}
+                                          style={{
+                                            backgroundColor: 'hsl(var(--background))',
+                                            color: 'hsl(var(--foreground))',
+                                            fontFamily: 'ui-monospace, SFMono-Regular, "SF Mono", Monaco, Consolas, "Liberation Mono", "Courier New", monospace',
+                                            fontSize: '13px',
+                                            lineHeight: '1.4'
+                                          }}
+                                          formatPart={(text) => {
+                                            // Simple ANSI color stripping and basic formatting
+                                            return text.replace(/\x1b\[[0-9;]*m/g, '');
+                                          }}
+                                        />
+                                      );
+                                    }}
+                                  />
+                                ) : (
+                                  <div className="flex items-center justify-center h-full text-muted-foreground">
+                                    <div className="text-center">
+                                      <Monitor className="h-8 w-8 mx-auto mb-2 opacity-50" />
+                                      <p>{logType} logs not available</p>
+                                    </div>
+                                  </div>
+                                )}
+                              </TabsContent>
+                            ))}
+                          </Tabs>
+                        ) : (
+                          // Other services use standard PM2 logs
+                          getLogUrl(service.name) ? (
+                            <ScrollFollow
+                              startFollowing={true}
+                              render={({ follow, onScroll }) => {
+                                const logUrl = getLogUrl(service.name);
+                                if (!logUrl) return null;
+                                
+                                return (
+                                  <LazyLog
+                                    url={logUrl}
+                                    stream
+                                    follow={follow}
+                                    onScroll={onScroll}
+                                    enableSearch={false}
+                                    selectableLines={false}
+                                    style={{
+                                      backgroundColor: 'hsl(var(--background))',
+                                      color: 'hsl(var(--foreground))',
+                                      fontFamily: 'ui-monospace, SFMono-Regular, "SF Mono", Monaco, Consolas, "Liberation Mono", "Courier New", monospace',
+                                      fontSize: '13px',
+                                      lineHeight: '1.4'
+                                    }}
+                                    formatPart={(text) => {
+                                      // Simple ANSI color stripping and basic formatting
+                                      return text.replace(/\x1b\[[0-9;]*m/g, '');
+                                    }}
+                                  />
+                                );
+                              }}
+                            />
+                          ) : (
+                            <div className="flex items-center justify-center h-full text-muted-foreground">
+                              <div className="text-center">
+                                <Monitor className="h-8 w-8 mx-auto mb-2 opacity-50" />
+                                <p>Log URL not available</p>
+                              </div>
+                            </div>
+                          )
                         )}
                       </div>
                     </div>

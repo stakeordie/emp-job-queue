@@ -7,6 +7,9 @@ export interface ConnectorInterface {
   service_type: string;
   version: string;
 
+  // Redis connection injection for status reporting
+  setRedisConnection(redis: any, workerId: string, machineId?: string): void;
+
   // Lifecycle methods
   initialize(): Promise<void>;
   cleanup(): Promise<void>;

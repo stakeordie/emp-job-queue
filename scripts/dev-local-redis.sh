@@ -10,13 +10,18 @@ echo "📋 Stopping existing Redis instances..."
 pkill redis-server || true
 sleep 2
 
-# Start Redis server in background
+# Start Redis server in background with logging
 echo "🚀 Starting fresh Redis server on port 6379..."
-redis-server --daemonize yes --port 6379
+# Check if Homebrew Redis config exists and use it for logging
+if [ -f /opt/homebrew/etc/redis.conf ]; then
+    /opt/homebrew/bin/redis-server /opt/homebrew/etc/redis.conf --daemonize yes
+else
+    /opt/homebrew/bin/redis-server --daemonize yes --port 6379 --logfile /opt/homebrew/var/log/redis.log
+fi
 
 # Wait for Redis to be ready
 echo "⏳ Waiting for Redis to be ready..."
-until redis-cli ping > /dev/null 2>&1; do
+until /opt/homebrew/bin/redis-cli ping > /dev/null 2>&1; do
   sleep 1
 done
 echo "✅ Redis is ready"
@@ -47,4 +52,4 @@ EOF
 echo "🚀 Starting API server with local Redis..."
 mkdir -p ../../logs
 cd apps/api
-REDIS_URL=redis://localhost:6379 pnpm dev 2>&1 | tee ../../logs/local-redis.log
+REDIS_URL=redis://localhost:6379 pnpm dev 2>&1 | tee ../../logs/api-redis.log

@@ -360,6 +360,41 @@ export abstract class HybridConnector extends BaseConnector {
   }
 
   // ============================================================================
+  // Service Health Polling
+  // ============================================================================
+
+  private async waitForServiceHealth(): Promise<void> {
+    const maxWaitMs = 60000; // 60 seconds max wait
+    const pollIntervalMs = 2000; // Check every 2 seconds
+    const startTime = Date.now();
+    
+    // Update status to indicate we're waiting for service
+    await this.reportStatus('waiting_for_service');
+    logger.info(`Waiting for service health check at ${this.httpBaseUrl} before connecting WebSocket`);
+    
+    while (Date.now() - startTime < maxWaitMs) {
+      try {
+        const isHealthy = await this.checkHealth();
+        if (isHealthy) {
+          logger.info(`Service health check passed for ${this.connector_id}, proceeding with WebSocket connection`);
+          return;
+        }
+      } catch (error) {
+        logger.debug(`Health check attempt failed for ${this.connector_id}:`, error);
+      }
+      
+      // Wait before next poll
+      await new Promise(resolve => setTimeout(resolve, pollIntervalMs));
+    }
+    
+    // If we get here, we timed out waiting for health
+    const errorMsg = `Timed out waiting for service health at ${this.httpBaseUrl} after ${maxWaitMs}ms`;
+    logger.error(errorMsg);
+    await this.reportStatus('error', errorMsg);
+    throw new Error(errorMsg);
+  }
+
+  // ============================================================================
   // WebSocket Methods
   // ============================================================================
 
@@ -367,6 +402,12 @@ export abstract class HybridConnector extends BaseConnector {
     if (this.ws) {
       await this.disconnectWebSocket();
     }
+
+    // First, wait for the service to be healthy before attempting WebSocket connection
+    await this.waitForServiceHealth();
+
+    // Update status to connecting now that service is healthy
+    await this.reportStatus('connecting');
 
     return new Promise((resolve, reject) => {
       try {
@@ -376,10 +417,11 @@ export abstract class HybridConnector extends BaseConnector {
         logger.debug(`Connecting to WebSocket: ${wsUrl}`);
         this.ws = new WebSocket(wsUrl, protocol);
 
-        this.ws.on('open', () => {
+        this.ws.on('open', async () => {
           logger.info(`Hybrid connector ${this.connector_id} WebSocket connected to ${wsUrl}`);
           this.isWebSocketConnected = true;
           this.reconnectAttempts = 0;
+          await this.reportStatus('active'); // Successfully connected
           this.startHeartbeat();
           this.startPing();
           this.setupMessageHandlers();
