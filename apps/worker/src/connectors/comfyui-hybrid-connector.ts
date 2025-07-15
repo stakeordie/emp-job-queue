@@ -94,9 +94,28 @@ export class ComfyUIConnector extends HybridConnector {
   async checkHealth(): Promise<boolean> {
     try {
       const response = await this.makeHttpRequest('GET', '/system_stats');
-      return response.status >= 200 && response.status < 300;
+      const isHealthy = response.status >= 200 && response.status < 300;
+
+      // Trigger immediate status update if health status changed
+      const newStatus = isHealthy ? 'idle' : 'error';
+      if (this.currentStatus !== newStatus) {
+        await this.setStatus(newStatus, isHealthy ? undefined : 'Health check failed');
+        logger.info(`ComfyUI health status changed: ${this.currentStatus} → ${newStatus}`);
+      }
+
+      return isHealthy;
     } catch (error) {
       logger.debug(`ComfyUI health check failed:`, error);
+
+      // Trigger immediate status update to error state
+      if (this.currentStatus !== 'error') {
+        await this.setStatus(
+          'error',
+          error instanceof Error ? error.message : 'Health check failed'
+        );
+        logger.info(`ComfyUI health status changed to error: ${error}`);
+      }
+
       return false;
     }
   }
@@ -263,37 +282,87 @@ export class ComfyUIConnector extends HybridConnector {
     promptId: string,
     progressCallback: ProgressCallback
   ): Promise<Record<string, unknown>> {
-    return new Promise((resolve, reject) => {
+    return new Promise(async (resolve, reject) => {
       const timeout = setTimeout(() => {
         reject(
           new Error(`ComfyUI job ${jobId} timed out after ${this.workflowTimeoutSeconds} seconds`)
         );
       }, this.workflowTimeoutSeconds * 1000);
 
-      // Store completion handlers
-      const originalJob = this.activeJobs.get(jobId);
-      if (originalJob) {
-        this.activeJobs.set(jobId, {
-          ...originalJob,
-          progressCallback: async (progress: JobProgress) => {
-            await progressCallback(progress);
+      try {
+        // RACE CONDITION FIX: Check if job already completed before waiting for WebSocket
+        logger.info(`Checking if ComfyUI job ${jobId} (prompt ${promptId}) already completed...`);
 
-            // Check for completion
-            if (progress.progress >= 100) {
-              clearTimeout(timeout);
+        // Small delay to allow ComfyUI to process and update history
+        await new Promise(resolve => setTimeout(resolve, 100));
 
-              // Get the results
-              try {
-                const result = await this.getJobResult(promptId);
-                resolve(result);
-              } catch (error) {
-                reject(error);
+        const existingResult = await this.checkJobCompletion(promptId);
+        if (existingResult) {
+          logger.info(
+            `ComfyUI job ${jobId} already completed (cached result), returning immediately`
+          );
+          clearTimeout(timeout);
+          resolve(existingResult);
+          return;
+        }
+
+        logger.info(`ComfyUI job ${jobId} not yet completed, waiting for WebSocket progress...`);
+
+        // Store completion handlers for WebSocket monitoring
+        const originalJob = this.activeJobs.get(jobId);
+        if (originalJob) {
+          this.activeJobs.set(jobId, {
+            ...originalJob,
+            progressCallback: async (progress: JobProgress) => {
+              await progressCallback(progress);
+
+              // Check for completion
+              if (progress.progress >= 100) {
+                clearTimeout(timeout);
+
+                // Get the results
+                try {
+                  const result = await this.getJobResult(promptId);
+                  resolve(result);
+                } catch (error) {
+                  reject(error);
+                }
               }
-            }
-          },
-        });
+            },
+          });
+        }
+      } catch (error) {
+        logger.error(`Error during job completion check for ${jobId}:`, error);
+        // Continue with normal WebSocket monitoring if check fails
       }
     });
+  }
+
+  private async checkJobCompletion(promptId: string): Promise<Record<string, unknown> | null> {
+    try {
+      // Check ComfyUI history to see if job already completed
+      const historyResponse = await this.makeHttpRequest('GET', `/history/${promptId}`);
+      const historyData = await this.parseHttpResponse(historyResponse);
+      const history = (historyData as any)[promptId];
+
+      if (!history) {
+        // No history yet, job probably still pending/running
+        return null;
+      }
+
+      // Check if execution is completed
+      if (history.status && history.status.completed === true) {
+        logger.info(`ComfyUI prompt ${promptId} found completed in history`);
+        return this.extractResultFromHistory(promptId, history);
+      }
+
+      // Job exists in history but not completed yet
+      return null;
+    } catch (error) {
+      // If history check fails, assume job not completed yet
+      logger.debug(`History check failed for prompt ${promptId}, assuming not completed:`, error);
+      return null;
+    }
   }
 
   private async getJobResult(promptId: string): Promise<Record<string, unknown>> {
@@ -307,32 +376,36 @@ export class ComfyUIConnector extends HybridConnector {
         throw new Error(`No history found for prompt ${promptId}`);
       }
 
-      // Extract outputs from the execution
-      const outputs = history.outputs || {};
-      const images: string[] = [];
-
-      // Process any image outputs
-      for (const nodeId of Object.keys(outputs)) {
-        const nodeOutput = outputs[nodeId];
-        if (nodeOutput.images) {
-          for (const image of nodeOutput.images) {
-            const imageUrl = `${this.config.base_url}/view?filename=${image.filename}&subfolder=${image.subfolder || ''}&type=${image.type || 'output'}`;
-            images.push(imageUrl);
-          }
-        }
-      }
-
-      return {
-        prompt_id: promptId,
-        outputs,
-        images,
-        execution_time: history.execution_time,
-        status: history.status,
-      };
+      return this.extractResultFromHistory(promptId, history);
     } catch (error) {
       logger.error(`Failed to get ComfyUI job result for prompt ${promptId}:`, error);
       throw error;
     }
+  }
+
+  private extractResultFromHistory(promptId: string, history: any): Record<string, unknown> {
+    // Extract outputs from the execution
+    const outputs = history.outputs || {};
+    const images: string[] = [];
+
+    // Process any image outputs
+    for (const nodeId of Object.keys(outputs)) {
+      const nodeOutput = outputs[nodeId];
+      if (nodeOutput.images) {
+        for (const image of nodeOutput.images) {
+          const imageUrl = `${this.config.base_url}/view?filename=${image.filename}&subfolder=${image.subfolder || ''}&type=${image.type || 'output'}`;
+          images.push(imageUrl);
+        }
+      }
+    }
+
+    return {
+      prompt_id: promptId,
+      outputs,
+      images,
+      execution_time: history.execution_time,
+      status: history.status,
+    };
   }
 
   // HybridConnector abstract method implementations

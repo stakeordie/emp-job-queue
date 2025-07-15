@@ -1,7 +1,13 @@
 // Connector Manager - dynamic loading and management of service connectors
 // Direct port from Python worker/connector_loader.py functionality
 
-import { ConnectorInterface, ConnectorRegistry, ConnectorFactory, ConnectorStatus, logger } from '@emp/core';
+import {
+  ConnectorInterface,
+  ConnectorRegistry,
+  ConnectorFactory,
+  ConnectorStatus,
+  logger,
+} from '@emp/core';
 import Redis from 'ioredis';
 
 export class ConnectorManager implements ConnectorRegistry, ConnectorFactory {
@@ -10,6 +16,7 @@ export class ConnectorManager implements ConnectorRegistry, ConnectorFactory {
   private redis?: Redis;
   private workerId?: string;
   private machineId?: string;
+  private parentWorker?: any; // Reference to parent worker for immediate status updates
 
   constructor() {}
 
@@ -21,6 +28,22 @@ export class ConnectorManager implements ConnectorRegistry, ConnectorFactory {
     this.workerId = workerId;
     this.machineId = machineId;
     logger.info(`ConnectorManager received Redis connection for worker ${workerId}`);
+  }
+
+  /**
+   * Set parent worker reference for immediate status updates
+   */
+  setParentWorker(worker: any): void {
+    this.parentWorker = worker;
+
+    // Update all existing connectors with parent worker reference
+    for (const connector of this.connectors.values()) {
+      if ('setParentWorker' in connector && typeof connector.setParentWorker === 'function') {
+        (connector as any).setParentWorker(worker);
+      }
+    }
+
+    logger.debug('ConnectorManager received parent worker reference');
   }
 
   async loadConnectors(): Promise<void> {
@@ -219,6 +242,11 @@ export class ConnectorManager implements ConnectorRegistry, ConnectorFactory {
   registerConnector(connector: ConnectorInterface): void {
     this.connectors.set(connector.connector_id, connector);
 
+    // Set parent worker reference for immediate status updates (if connector supports it)
+    if ('setParentWorker' in connector && typeof connector.setParentWorker === 'function') {
+      (connector as any).setParentWorker(this.parentWorker);
+    }
+
     // Also index by service type
     if (!this.connectorsByServiceType.has(connector.service_type)) {
       this.connectorsByServiceType.set(connector.service_type, []);
@@ -387,13 +415,13 @@ export class ConnectorManager implements ConnectorRegistry, ConnectorFactory {
 
   // Status management for real-time updates
   async updateConnectorStatus(
-    serviceType: string, 
-    status: string, 
+    serviceType: string,
+    status: string,
     errorMessage?: string
   ): Promise<void> {
     // Find connectors for this service type
     const serviceConnectors = this.connectorsByServiceType.get(serviceType);
-    
+
     if (!serviceConnectors || serviceConnectors.length === 0) {
       logger.warn(`No connectors found for service type: ${serviceType}`);
       return;

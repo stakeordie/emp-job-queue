@@ -273,7 +273,11 @@ export class RedisDirectBaseWorker {
         );
       }
 
-      // Load and initialize connectors AFTER Redis injection
+      // Set parent worker reference for immediate status updates
+      this.connectorManager.setParentWorker(this);
+      logger.info(`Set parent worker reference in ConnectorManager for worker ${this.workerId}`);
+
+      // Load and initialize connectors AFTER Redis injection and parent worker setup
       await this.connectorManager.loadConnectors();
 
       // Update capabilities with model information from connectors
@@ -729,13 +733,13 @@ export class RedisDirectBaseWorker {
     // Send initial status immediately
     this.sendConnectorStatusUpdate();
 
-    // Start periodic status monitoring (every 15 seconds)
+    // Start periodic status monitoring (every 3 seconds for real-time monitoring)
     this.connectorStatusInterval = setInterval(async () => {
       await this.sendConnectorStatusUpdate();
-    }, 15000);
+    }, 3000);
 
     logger.info(
-      `Started periodic connector status reporting for worker ${this.workerId} (15s interval)`
+      `Started periodic connector status reporting for worker ${this.workerId} (3s interval)`
     );
   }
 
@@ -830,5 +834,14 @@ export class RedisDirectBaseWorker {
     } catch (error) {
       logger.warn(`Failed to update connector status for ${serviceType}:`, error);
     }
+  }
+
+  /**
+   * Force an immediate connector status update (for event-driven updates)
+   * Call this when a connector health status changes
+   */
+  public async forceConnectorStatusUpdate(): Promise<void> {
+    logger.debug(`Force updating connector statuses for worker ${this.workerId}`);
+    await this.sendConnectorStatusUpdate();
   }
 }

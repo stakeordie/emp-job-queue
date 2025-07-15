@@ -47,6 +47,7 @@ export abstract class BaseConnector implements ConnectorInterface {
   protected workerId?: string;
   protected machineId?: string;
   protected hubRedisUrl?: string;
+  protected parentWorker?: any; // Reference to parent worker for immediate updates
 
   // Status tracking
   protected currentStatus: ConnectorStatus = 'starting';
@@ -91,6 +92,13 @@ export abstract class BaseConnector implements ConnectorInterface {
     logger.info(
       `${this.service_type} connector ${this.connector_id} received Redis connection injection`
     );
+  }
+
+  /**
+   * Set reference to parent worker for immediate status updates
+   */
+  setParentWorker(worker: any): void {
+    this.parentWorker = worker;
   }
 
   protected async initializeRedisConnection(): Promise<void> {
@@ -268,6 +276,15 @@ export abstract class BaseConnector implements ConnectorInterface {
       this.currentStatus = status;
       await this.reportStatus(status, errorMessage);
       logger.debug(`${this.service_type} connector ${this.connector_id} status set to: ${status}`);
+
+      // Trigger immediate parent worker status update for real-time monitoring
+      if (this.parentWorker && typeof this.parentWorker.forceConnectorStatusUpdate === 'function') {
+        try {
+          await this.parentWorker.forceConnectorStatusUpdate();
+        } catch (error) {
+          logger.warn(`Failed to trigger parent worker status update:`, error);
+        }
+      }
     }
   }
 

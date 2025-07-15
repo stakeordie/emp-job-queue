@@ -2,6 +2,34 @@
 
 ## [Unreleased]
 
+## [2025-07-15] - Real-time Connector Status Updates and Machine ID Fix
+
+### Fixed
+- **Machine ID Consistency**: Fixed inconsistent MACHINE_ID environment variables causing worker-machine association issues
+  - Added explicit `MACHINE_ID=${CONTAINER_NAME}` to docker-compose.yml environment
+  - Resolves issue where some workers reported `"machine_id": "unknown"` while others reported correct machine ID
+  - Ensures all workers from same machine properly group under machine cards in monitor UI
+
+### Added
+- **Real-time Connector Status Updates**: Implemented immediate status change propagation
+  - Enhanced BaseConnector with parent worker reference system for instant status updates
+  - Added ConnectorManager.setParentWorker() to propagate parent worker to all connectors
+  - Modified RedisDirectBaseWorker to set itself as parent during initialization
+  - Connector status changes now trigger immediate Redis pub/sub events instead of waiting for periodic updates
+  - Reduced effective status update latency from 15 seconds to real-time
+
+### Enhanced
+- **Connector Status Event Chain**: Complete end-to-end real-time status propagation
+  - BaseConnector.setStatus() → forceConnectorStatusUpdate() → Redis pub/sub → Monitor UI
+  - Maintains backward compatibility with existing 3-second periodic updates
+  - ComfyUI health checks now trigger immediate status updates when health status changes
+
+### Technical Details
+- **Parent Worker Pattern**: Connectors can call parent worker methods for immediate status broadcasting
+- **Dual Update Strategy**: Both periodic (3s) and event-driven status updates for maximum reliability
+- **Machine Association**: Fixed worker grouping in monitor UI by ensuring consistent machine_id values
+- **Advances North Star**: Real-time status visibility supports efficient pool management and job routing
+
 ## [2025-07-14] - ComfyUI Connector Refactoring and Docker Optimization
 
 ### Changed
