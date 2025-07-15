@@ -303,18 +303,22 @@ export class EventBroadcaster {
 
     // Extract capabilities from nested WorkerCapabilities structure
     const rawCapabilities = workerData.capabilities as Record<string, unknown>;
+    const hardware = (rawCapabilities?.hardware as Record<string, unknown>) || {};
+    const customerAccess = (rawCapabilities?.customer_access as Record<string, unknown>) || {};
+    const performance = (rawCapabilities?.performance as Record<string, unknown>) || {};
+    const models = (rawCapabilities?.models as Record<string, unknown>) || {};
 
     // Map nested WorkerCapabilities to flat structure expected by monitor
     const capabilities = {
       gpu_count: 1, // Default to 1 GPU
-      gpu_memory_gb: rawCapabilities?.hardware?.gpu_memory_gb || 0,
-      gpu_model: rawCapabilities?.hardware?.gpu_model || 'Unknown',
+      gpu_memory_gb: (hardware.gpu_memory_gb as number) || 0,
+      gpu_model: (hardware.gpu_model as string) || 'Unknown',
       cpu_cores: 1, // Default to 1 CPU core
-      ram_gb: rawCapabilities?.hardware?.ram_gb || 1,
-      services: rawCapabilities?.services || [], // ← CRITICAL FIX: Extract services from root level
-      models: Object.keys(rawCapabilities?.models || {}), // Extract model keys
-      customer_access: rawCapabilities?.customer_access?.isolation || 'none',
-      max_concurrent_jobs: rawCapabilities?.performance?.concurrent_jobs || 1,
+      ram_gb: (hardware.ram_gb as number) || 1,
+      services: (rawCapabilities?.services as string[]) || [], // ← CRITICAL FIX: Extract services from root level
+      models: Object.keys(models), // Extract model keys
+      customer_access: (customerAccess.isolation as string) || 'none',
+      max_concurrent_jobs: (performance.concurrent_jobs as number) || 1,
     };
 
     const event: WorkerConnectedEvent = {
