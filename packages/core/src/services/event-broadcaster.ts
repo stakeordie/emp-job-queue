@@ -302,14 +302,14 @@ export class EventBroadcaster {
     const machineId = (workerData.machine_id as string) || 'unknown-machine';
 
     // Extract capabilities from nested WorkerCapabilities structure
-    const rawCapabilities = workerData.capabilities as any;
-    
+    const rawCapabilities = workerData.capabilities as Record<string, unknown>;
+
     // Map nested WorkerCapabilities to flat structure expected by monitor
     const capabilities = {
       gpu_count: 1, // Default to 1 GPU
       gpu_memory_gb: rawCapabilities?.hardware?.gpu_memory_gb || 0,
       gpu_model: rawCapabilities?.hardware?.gpu_model || 'Unknown',
-      cpu_cores: 1, // Default to 1 CPU core  
+      cpu_cores: 1, // Default to 1 CPU core
       ram_gb: rawCapabilities?.hardware?.ram_gb || 1,
       services: rawCapabilities?.services || [], // ← CRITICAL FIX: Extract services from root level
       models: Object.keys(rawCapabilities?.models || {}), // Extract model keys

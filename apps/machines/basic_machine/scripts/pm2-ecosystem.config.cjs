@@ -56,20 +56,10 @@ function generateServiceConfig(serviceName, serviceOptions = {}) {
 // Build apps configuration
 const apps = [];
 
-// Main orchestrator - now just monitors PM2 services
-apps.push({
-  ...generateServiceConfig('orchestrator'),
-  script: '/service-manager/src/index-pm2.js',
-  max_memory_restart: '2G',
-  env: {
-    ...generateServiceConfig('orchestrator').env,
-    PM2_MODE: 'true'
-  }
-});
+// NOTE: No orchestrator service needed - index-pm2.js IS the orchestrator
+// and runs as the main container process (PID 1)
 
 // Add services based on configuration
-// Note: In PM2 mode, these services will be managed by PM2 directly
-// rather than through the orchestrator
 
 // Redis Worker Services (per GPU) - disabled for testing PM2 without dependencies
 const gpuCount = parseInt(process.env.NUM_GPUS || process.env.WORKER_NUM_GPUS || '1');
@@ -124,6 +114,9 @@ apps.push({
   }
 });
 
+// NOTE: runtime-env-creator is now run in the entrypoint script before PM2 starts
+// This ensures .env files are created before any services that need them
+
 // ComfyUI Installer Service - DISABLED (now runs at build-time)
 // Custom nodes and ComfyUI are pre-installed in the Docker image
 // if (process.env.ENABLE_COMFYUI === 'true') {
@@ -165,6 +158,35 @@ if (process.env.ENABLE_COMFYUI === 'true') {
     });
   }
 }
+
+// Simulation Service - ComfyUI-compatible simulation server
+console.log('ENABLE_SIMULATION check:',
+process.env.ENABLE_SIMULATION, 'type:',
+typeof process.env.ENABLE_SIMULATION);
+if (process.env.ENABLE_SIMULATION === 'true') {
+  const simulationPort = parseInt(process.env.SIMULATION_PORT || '8299');
+  console.log('Adding simulation service to PM2 apps, port:', simulationPort);
+  const simulationConfig = {
+    ...generateServiceConfig('simulation'),
+    script: '/service-manager/src/services/standalone-wrapper.js',
+    interpreter: 'node',
+    args: ['simulation'],
+    max_memory_restart: '1G',
+    env: {
+      ...generateServiceConfig('simulation').env,
+      STANDALONE_MODE: 'true',
+      SIMULATION_PORT: simulationPort,
+      SIMULATION_HOST: process.env.SIMULATION_HOST || 'localhost'
+    }
+  };
+  console.log('Simulation service config:', JSON.stringify(simulationConfig, null, 2));
+  apps.push(simulationConfig);
+} else {
+  console.log('Simulation service NOT enabled. ENABLE_SIMULATION =', process.env.ENABLE_SIMULATION);
+}
+
+console.log('Total PM2 apps configured:', apps.length);
+console.log('App names:', apps.map(app => app.name));
 
 module.exports = {
   apps: apps

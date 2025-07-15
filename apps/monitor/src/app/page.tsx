@@ -23,7 +23,7 @@ import {
   SelectValue 
 } from "@/components/ui/select"
 import { Progress } from "@/components/ui/progress"
-import { Play, Square, RefreshCw, X, TestTube } from "lucide-react"
+import { Play, Square, RefreshCw, X, TestTube, Target } from "lucide-react"
 import { MachineCard } from "@/components/MachineCard"
 import { JobDetailsModal } from "@/components/JobDetailsModal"
 import { useMonitorStore } from "@/store"
@@ -186,11 +186,17 @@ function Home() {
         </div>
         
         {/* Navigation */}
-        <div className="flex justify-center">
+        <div className="flex justify-center gap-4">
           <Link href="/client-test">
             <Button variant="outline" className="flex items-center gap-2">
               <TestTube className="h-4 w-4" />
               Client Test Page
+            </Button>
+          </Link>
+          <Link href="/northstar">
+            <Button variant="outline" className="flex items-center gap-2">
+              <Target className="h-4 w-4" />
+              North Star Progress
             </Button>
           </Link>
         </div>

@@ -23,7 +23,9 @@ const serviceModules = {
   'hello-world': './hello-world-service.js',
   'shared-setup': './shared-setup-service.js',
   'comfyui': './comfyui-service.js',
-  'comfyui-installer': './comfyui-installer.js'
+  'comfyui-installer': './comfyui-installer.js',
+  'simulation': './simulation-service.js',
+  'runtime-env-creator': './runtime-env-creator.js'
 };
 
 async function runStandaloneService() {

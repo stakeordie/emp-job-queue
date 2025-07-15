@@ -308,9 +308,11 @@ export default class ComfyUIInstallerService extends BaseService {
         }
       }
 
-      // Create .env file if env configuration is provided
-      if (nodeConfig.env && typeof nodeConfig.env === 'object') {
+      // Create .env file if env configuration is provided (unless --skip-env flag is set)
+      if (nodeConfig.env && typeof nodeConfig.env === 'object' && !this.skipEnv) {
         await this.createEnvFile(nodeName, nodeConfig.env, nodePath);
+      } else if (this.skipEnv) {
+        this.logger.info(`Skipping .env file creation for ${nodeName} (--skip-env flag set)`);
       }
 
       // Install node dependencies based on requirements flag
@@ -518,7 +520,8 @@ export default class ComfyUIInstallerService extends BaseService {
 // Command line execution for build-time installation
 if (process.argv.includes('--build-time')) {
   const customNodesOnly = process.argv.includes('--custom-nodes-only');
-  console.log(`🔧 Running ComfyUI installer in build-time mode${customNodesOnly ? ' (custom nodes only)' : ''}...`);
+  const skipEnv = process.argv.includes('--skip-env');
+  console.log(`🔧 Running ComfyUI installer in build-time mode${customNodesOnly ? ' (custom nodes only)' : ''}${skipEnv ? ' (skip .env files)' : ''}...`);
   
   // Create minimal config for build-time
   const buildConfig = {
@@ -535,6 +538,7 @@ if (process.argv.includes('--build-time')) {
   // Override config path to use the copied config_nodes.json
   const installer = new ComfyUIInstallerService({}, buildConfig);
   installer.configPath = '/workspace/config_nodes.json'; // Use the copied config
+  installer.skipEnv = skipEnv; // Set the skip env flag
   
   // Run appropriate installation based on flags
   const installPromise = customNodesOnly ? 

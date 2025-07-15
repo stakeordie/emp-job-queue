@@ -3,8 +3,6 @@
 FROM node:18-slim AS node-deps
 WORKDIR /app
 RUN npm install -g pnpm
-COPY package.json pnpm-lock.yaml* ./
-RUN pnpm install --prod --no-frozen-lockfile
 
 # Stage 2: AI services base (using existing PyTorch image)
 FROM pytorch/pytorch:2.7.0-cuda12.8-cudnn9-devel AS ai-base
@@ -54,25 +52,7 @@ RUN mkdir -p \
 # Stage 3: Final image
 FROM ai-base
 
-# Build arguments for secrets (ComfyUI custom nodes)
-ARG AWS_ACCESS_KEY_ID
-ARG AWS_SECRET_ACCESS_KEY_ENCODED
-ARG AWS_DEFAULT_REGION
-ARG GOOGLE_APPLICATION_CREDENTIALS
-ARG AZURE_STORAGE_ACCOUNT
-ARG AZURE_STORAGE_KEY
-ARG CLOUD_STORAGE_CONTAINER
-ARG CLOUD_MODELS_CONTAINER
-ARG CLOUD_STORAGE_TEST_CONTAINER
-ARG CLOUD_PROVIDER
-ARG STATIC_MODELS
-ARG EMPROPS_DEBUG_LOGGING
-ARG HF_TOKEN
-ARG CIVITAI_TOKEN
-ARG OLLAMA_HOST
-ARG OLLAMA_PORT
-ARG OLLAMA_DEFAULT_MODEL
-ARG OPENAI_API_KEY
+# No build-time environment variables needed - all handled at runtime
 
 # Cache layer 1: Install ComfyUI base (this rarely changes) 
 RUN echo "Installing ComfyUI base..." && \
@@ -86,35 +66,17 @@ COPY config_nodes.json /workspace/config_nodes.json
 
 # Cache layer 3: Copy minimal files needed for custom nodes installation
 COPY src/ /service-manager/src/
-COPY package.json /service-manager/package.json
-COPY --from=node-deps /app/node_modules /service-manager/node_modules
+COPY package.json pnpm-lock.yaml* /service-manager/
+RUN cd /service-manager && pnpm install --prod --no-frozen-lockfile
 
 # Cache layer 4: Install custom nodes (this layer will cache if config_nodes.json doesn't change)
 ARG CUSTOM_NODES_CACHE_BUST=default
 ENV CUSTOM_NODES_CACHE_BUST=${CUSTOM_NODES_CACHE_BUST}
 
 RUN echo "Installing custom nodes (cache bust: $CUSTOM_NODES_CACHE_BUST)" && \
-    # Set environment variables for the installer
-    export AWS_ACCESS_KEY_ID="$AWS_ACCESS_KEY_ID" && \
-    export AWS_SECRET_ACCESS_KEY_ENCODED="$AWS_SECRET_ACCESS_KEY_ENCODED" && \
-    export AWS_DEFAULT_REGION="$AWS_DEFAULT_REGION" && \
-    export GOOGLE_APPLICATION_CREDENTIALS="$GOOGLE_APPLICATION_CREDENTIALS" && \
-    export AZURE_STORAGE_ACCOUNT="$AZURE_STORAGE_ACCOUNT" && \
-    export AZURE_STORAGE_KEY="$AZURE_STORAGE_KEY" && \
-    export CLOUD_STORAGE_CONTAINER="$CLOUD_STORAGE_CONTAINER" && \
-    export CLOUD_MODELS_CONTAINER="$CLOUD_MODELS_CONTAINER" && \
-    export CLOUD_STORAGE_TEST_CONTAINER="$CLOUD_STORAGE_TEST_CONTAINER" && \
-    export CLOUD_PROVIDER="$CLOUD_PROVIDER" && \
-    export STATIC_MODELS="$STATIC_MODELS" && \
-    export EMPROPS_DEBUG_LOGGING="$EMPROPS_DEBUG_LOGGING" && \
-    export HF_TOKEN="$HF_TOKEN" && \
-    export CIVITAI_TOKEN="$CIVITAI_TOKEN" && \
-    export OLLAMA_HOST="$OLLAMA_HOST" && \
-    export OLLAMA_PORT="$OLLAMA_PORT" && \
-    export OLLAMA_DEFAULT_MODEL="$OLLAMA_DEFAULT_MODEL" && \
-    export OPENAI_API_KEY="$OPENAI_API_KEY" && \
-    # Run ComfyUI custom nodes installer only
-    node /service-manager/src/services/comfyui-installer.js --build-time --custom-nodes-only
+    # Install custom nodes WITHOUT environment variables (no .env files created)
+    # Environment variables and .env files will be processed at runtime
+    node /service-manager/src/services/comfyui-installer.js --build-time --custom-nodes-only --skip-env
 
 # Cache layer 5: Copy remaining application files
 COPY scripts/ /service-manager/scripts/
@@ -140,8 +102,15 @@ export PM2_HOME=/workspace/.pm2\n\
 export SERVICE_MANAGER_PATH=/service-manager\n\
 export WORKSPACE_PATH=/workspace\n\
 \n\
-# Change to service manager directory and run our Node.js app directly\n\
+# Change to service manager directory\n\
 cd /service-manager\n\
+pnpm install\n\
+\n\
+# Create runtime .env files for custom nodes before starting services\n\
+echo "Creating runtime .env files for custom nodes..."\n\
+node src/services/runtime-env-creator.js\n\
+\n\
+# Start the main application\n\
 exec node src/index-pm2.js' > /entrypoint.sh && \
     chmod +x /entrypoint.sh
 

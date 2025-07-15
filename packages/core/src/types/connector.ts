@@ -8,7 +8,7 @@ export interface ConnectorInterface {
   version: string;
 
   // Redis connection injection for status reporting
-  setRedisConnection(redis: any, workerId: string, machineId?: string): void;
+  setRedisConnection(redis: unknown, workerId: string, machineId?: string): void;
 
   // Lifecycle methods
   initialize(): Promise<void>;
@@ -99,7 +99,7 @@ export interface JobData {
 
 export interface JobResult {
   success: boolean;
-  data?;
+  data?: unknown;
   error?: string;
   metadata?: Record<string, unknown>;
   processing_time_ms: number;

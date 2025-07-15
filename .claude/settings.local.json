@@ -161,7 +161,10 @@
       "Bash(if [ -d .git ])",
       "Bash(then git remote -v)",
       "Bash(else echo \"Not a git repository or no .git directory found\")",
-      "Bash(fi)"
+      "Bash(fi)",
+      "Bash(git restore:*)",
+      "Bash(ping:*)",
+      "Bash(docker cp:*)"
     ],
     "deny": []
   }

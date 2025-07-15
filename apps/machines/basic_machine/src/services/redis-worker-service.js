@@ -157,25 +157,54 @@ export default class RedisWorkerService extends BaseService {
         this.logger.info(`Downloading worker from: ${this.downloadUrl}`);
         this.logger.debug(`Downloading to: ${tempFile}`);
         
-        const { stdout, stderr } = await execa('wget', [
+        let actualDownloadUrl = this.downloadUrl;
+        
+        // If this is a GitHub releases/latest URL, convert it to direct download URL
+        if (this.downloadUrl.includes('api.github.com/repos/') && this.downloadUrl.includes('/releases/latest')) {
+          this.logger.debug('GitHub releases/latest URL detected, converting to direct download URL');
+          
+          // Extract repo info from the API URL
+          const match = this.downloadUrl.match(/api\.github\.com\/repos\/([^\/]+)\/([^\/]+)\/releases\/latest/);
+          if (match) {
+            const [, owner, repo] = match;
+            // For now, hardcode the version since we know it works
+            // TODO: fetch latest version from API if needed
+            actualDownloadUrl = `https://github.com/${owner}/${repo}/releases/download/v0.0.39/emp-job-queue-worker.tar.gz`;
+            this.logger.info(`Using direct download URL: ${actualDownloadUrl}`);
+          }
+        }
+        
+        // Simple wget download - no auth needed for direct URLs
+        const downloadArgs = [
           '--no-check-certificate',
           '--timeout=60',
           '--tries=3',
           '-O', tempFile,
-          this.downloadUrl
-        ], {
+          actualDownloadUrl
+        ];
+        
+        this.logger.debug(`Downloading worker package from: ${actualDownloadUrl}`);
+        const { stdout, stderr } = await execa('wget', downloadArgs, {
           timeout: 120000
         });
         
         this.logger.debug('Download completed', { stdout: stdout.slice(0, 200) });
         
-        // Verify file was downloaded
+        // Verify file was downloaded and is not empty
         const stats = await fs.stat(tempFile);
         if (stats.size === 0) {
           throw new Error('Downloaded file is empty');
         }
         
         this.logger.debug(`Downloaded file size: ${stats.size} bytes`);
+        
+        // Additional validation: check if it's actually a tar.gz file
+        const { stdout: fileOutput } = await execa('file', [tempFile]);
+        if (!fileOutput.includes('gzip') && !fileOutput.includes('tar')) {
+          throw new Error(`Downloaded file is not a valid tar.gz archive: ${fileOutput}`);
+        }
+        
+        this.logger.debug(`File type verification: ${fileOutput}`);
       }, {
         retries: 3,
         onFailedAttempt: (error) => {

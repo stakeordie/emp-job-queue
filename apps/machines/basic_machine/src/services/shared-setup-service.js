@@ -1,5 +1,6 @@
 import { BaseService } from './base-service.js';
 import { setupBaseSharedDirectories } from '../../scripts/setup-shared-directories-v2.js';
+import { execa } from 'execa';
 
 export default class SharedSetupService extends BaseService {
   constructor(options, config) {
@@ -9,12 +10,16 @@ export default class SharedSetupService extends BaseService {
   }
 
   async onStart() {
-    this.logger.info('Setting up base_machine compatible shared directories...');
+    this.logger.info('Setting up base_machine compatible shared directories and emprops_shared...');
     
     try {
-      await setupBaseSharedDirectories();
+      // Run the full setup script (includes emprops_shared clone)
+      await execa('node', ['/service-manager/scripts/setup-shared-directories-v2.js'], {
+        stdio: 'inherit'
+      });
+      
       this.setupComplete = true;
-      this.logger.info('Base_machine compatible shared directory setup completed');
+      this.logger.info('Complete shared directory setup completed (including emprops_shared)');
     } catch (error) {
       this.logger.error('Failed to setup shared directories:', error);
       throw error;

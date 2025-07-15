@@ -131,6 +131,14 @@ async function startPM2Services() {
     await pm2Manager.pm2Exec('start /workspace/pm2-ecosystem.config.cjs --only redis-worker-gpu0,redis-worker-gpu1');
     logger.info('Worker services started from ecosystem config');
     
+    // Start simulation service if enabled
+    if (process.env.ENABLE_SIMULATION === 'true') {
+      await startupNotifier.notifyStep('simulation_starting', { phase: 'Starting simulation service' });
+      await pm2Manager.pm2Exec('start /workspace/pm2-ecosystem.config.cjs --only simulation');
+      logger.info('Simulation service started');
+      await startupNotifier.notifyServiceStarted('simulation', { status: 'Simulation server running' });
+    }
+    
     // Notify individual worker services started
     await startupNotifier.notifyServiceStarted('redis-worker-gpu0', { gpu: '0', status: 'Redis worker connecting' });
     await startupNotifier.notifyServiceStarted('redis-worker-gpu1', { gpu: '1', status: 'Redis worker connecting' });

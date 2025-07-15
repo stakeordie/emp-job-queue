@@ -58,6 +58,10 @@ const schema = Joi.object({
       enabled: Joi.boolean().default(true),
       port: Joi.number().port().default(11434),
       models: Joi.array().items(Joi.string()).default(['llama3'])
+    }),
+    simulation: Joi.object({
+      enabled: Joi.boolean().default(false),
+      port: Joi.number().port().default(8299)
     })
   }),
   
@@ -92,6 +96,7 @@ const schema = Joi.object({
 });
 
 // Build configuration from environment variables
+// GPU configuration will be auto-detected at runtime
 function buildConfig() {
   const config = {
     machine: {
@@ -134,6 +139,10 @@ function buildConfig() {
         enabled: process.env.ENABLE_OLLAMA === 'true',
         port: parseInt(process.env.OLLAMA_PORT || '11434'),
         models: process.env.OLLAMA_MODELS?.split(',').map(s => s.trim())
+      },
+      simulation: {
+        enabled: process.env.ENABLE_SIMULATION === 'true',
+        port: parseInt(process.env.SIMULATION_PORT || '8299')
       }
     },
     logging: {

@@ -19,6 +19,7 @@ export default class ComfyUIService extends BaseService {
     this.logFile = path.join(this.workDir, 'logs', `output-gpu${this.gpu}.log`);
     this.testMode = process.env.TEST_MODE === 'true';
     this.mockGpu = process.env.MOCK_GPU === '1'; // Legacy support
+    this.cpuMode = process.env.COMFYUI_CPU_MODE === 'true';
     this.comfyArgs = process.env.COMFY_ARGS || '';
   }
 
@@ -207,8 +208,8 @@ export default class ComfyUIService extends BaseService {
     ];
 
     // Add mode-specific args
-    if (this.testMode || this.mockGpu) {
-      this.logger.info(`Adding --cpu flag (Test Mode: ${this.testMode})`);
+    if (this.testMode || this.mockGpu || this.cpuMode) {
+      this.logger.info(`Adding --cpu flag (Test Mode: ${this.testMode}, CPU Mode: ${this.cpuMode})`);
       cmd.push('--cpu');
     }
 

@@ -11,7 +11,7 @@ import {
 } from "@/components/ui/dialog";
 import { SimpleWorkerCard } from "@/components/SimpleWorkerCard";
 import { Machine, Worker } from "@/types";
-import { useState, memo, useEffect } from "react";
+import { useState, memo, useEffect, useCallback } from "react";
 import { Monitor, Server, Activity, AlertTriangle, X, RefreshCw, RotateCcw } from "lucide-react";
 import { LazyLog, ScrollFollow } from "@melloware/react-logviewer";
 
@@ -64,7 +64,7 @@ export const MachineCard = memo(function MachineCard({ machine, workers, onDelet
   const activeJobs = workers.filter(w => w.current_jobs.length > 0).length;
 
   // Extract health check URL from machine health_url
-  const getHealthUrl = () => {
+  const getHealthUrl = useCallback(() => {
     if (machine.health_url) {
       return machine.health_url.replace('/health', '');
     }
@@ -75,10 +75,10 @@ export const MachineCard = memo(function MachineCard({ machine, workers, onDelet
     }
     
     return null;
-  };
+  }, [machine.health_url, machine.machine_id]);
 
   // Fetch PM2 services list
-  const fetchPM2Services = async () => {
+  const fetchPM2Services = useCallback(async () => {
     const healthUrl = getHealthUrl();
     console.log('Machine health_url:', machine.health_url);
     console.log('Extracted health URL:', healthUrl);
@@ -104,7 +104,7 @@ export const MachineCard = memo(function MachineCard({ machine, workers, onDelet
     } catch (error) {
       console.error('Failed to fetch PM2 services:', error);
     }
-  };
+  }, [machine.health_url, getHealthUrl]);
 
   // Build log stream URL for react-logviewer
   const getLogUrl = (serviceName: string, logType?: string) => {
@@ -186,7 +186,7 @@ export const MachineCard = memo(function MachineCard({ machine, workers, onDelet
       setPm2Services([]);
       setActiveTab('overview');
     }
-  }, [showLogs, machine.status]);
+  }, [showLogs, machine.status, fetchPM2Services]);
 
   return (
     <>

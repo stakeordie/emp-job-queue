@@ -44,6 +44,13 @@ export class ServiceOrchestrator extends EventEmitter {
       }
       await this.startupNotifier.notifyStep('phase_1_complete', { phase: 'core_infrastructure' });
 
+      // Phase 1.5: Create runtime .env files for custom nodes
+      logger.info('Phase 1.5: Creating runtime .env files for custom nodes');
+      await this.startupNotifier.notifyStep('runtime_env_begin', { phase: 'runtime_env_creation' });
+      await this.startService('runtime-env-creator');
+      await this.startupNotifier.notifyServiceStarted('runtime-env-creator');
+      await this.startupNotifier.notifyStep('runtime_env_complete', { phase: 'runtime_env_creation' });
+
       // Phase 2: AI Services (parallel per GPU)
       logger.info(`Phase 2: Starting AI services for ${config.machine.gpu.count} GPUs`);
       if (config.machine.testMode) {
@@ -86,6 +93,12 @@ export class ServiceOrchestrator extends EventEmitter {
         await this.startupNotifier.notifyServiceStarted('ollama');
       } else {
         await this.startupNotifier.notifyStep('ollama_skipped', { reason: 'disabled' });
+      }
+      if (config.services.simulation.enabled) {
+        await this.startService('simulation');
+        await this.startupNotifier.notifyServiceStarted('simulation');
+      } else {
+        await this.startupNotifier.notifyStep('simulation_skipped', { reason: 'disabled' });
       }
       await this.startupNotifier.notifyStep('phase_3_complete', { phase: 'supporting_services' });
 
@@ -176,11 +189,13 @@ export class ServiceOrchestrator extends EventEmitter {
   async loadServiceClass(serviceName) {
     const serviceModules = {
       'shared-setup': './services/shared-setup-service.js',
+      'runtime-env-creator': './services/runtime-env-creator.js',
       'nginx': './services/nginx-service.js',
       'comfyui': './services/comfyui-service.js',
       'automatic1111': './services/a1111-service.js',
       'redis-worker': './services/redis-worker-service.js',
-      'ollama': './services/ollama-service.js'
+      'ollama': './services/ollama-service.js',
+      'simulation': './services/simulation-service.js'
     };
 
     const modulePath = serviceModules[serviceName];

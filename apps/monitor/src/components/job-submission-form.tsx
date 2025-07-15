@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
@@ -362,7 +362,7 @@ export function JobSubmissionForm() {
   };
 
   // Update payload based on job type and CPU mode
-  const updatePayloadForJobType = (jobType: string) => {
+  const updatePayloadForJobType = useCallback((jobType: string) => {
     let payloadKey = jobType;
     
     // Use CPU-specific payload for ComfyUI when CPU mode is enabled
@@ -374,7 +374,7 @@ export function JobSubmissionForm() {
     if (payload) {
       setValue('payload', JSON.stringify(payload, null, 2));
     }
-  };
+  }, [useCpuMode, setValue]);
 
   // Watch for job_type changes to keep dropdown in sync
   const watchedJobType = watch('job_type');
@@ -387,7 +387,7 @@ export function JobSubmissionForm() {
   // Update payload when CPU mode is toggled
   useEffect(() => {
     updatePayloadForJobType(selectedJobType);
-  }, [useCpuMode]);
+  }, [useCpuMode, selectedJobType, updatePayloadForJobType]);
 
   const onSubmit = async (data: JobSubmissionData) => {
     try {

@@ -306,6 +306,9 @@ docker exec basic-machine-local wget -q -O- host.docker.internal:6379 2>/dev/nul
 # PM2 service status
 docker exec basic-machine-local pm2 jlist | jq '.[] | {name: .name, status: .pm2_env.status}'
 
+# Simulation service health check
+curl -s http://localhost:8299/health | jq || echo "Simulation service unreachable"
+
 # Container health
 docker inspect basic-machine-local | jq '.[0].State.Health.Status'
 ```

@@ -2,6 +2,37 @@
 
 ## [Unreleased]
 
+## [2025-07-15] - Simulation Service Integration and Build Error Fixes
+
+### Added
+- **Simulation Service Integration**: Complete integration of simulation service into development workflow
+  - Added simulation service (port 8299) to services display in `dev-full-stack.sh`
+  - Added `pnpm machines:basic:local:simulation` script for health check testing
+  - Updated port checking scripts to include simulation port 8299
+  - Enhanced testing procedures documentation with simulation health check commands
+  - Simulation service properly exposed and documented for local development
+
+### Fixed
+- **TypeScript/ESLint Build Errors**: Resolved all compilation errors in northstar visualization components
+  - Fixed unused imports and variables across all northstar components
+  - Resolved React useCallback hook dependency warnings in MachineCard and job-submission-form
+  - Fixed TypeScript type assertion errors using `as const` for literal types
+  - Fixed dynamic object access with proper `as keyof typeof` type guards
+  - Fixed component interface mismatches and removed non-existent props
+  - Build now completes successfully with no errors
+
+### Enhanced
+- **Development Workflow**: Improved service discovery and testing capabilities
+  - Simulation service now properly integrated into full-stack development environment
+  - All services consistently displayed and tested through standardized scripts
+  - Enhanced debugging capabilities with comprehensive service health checks
+
+### Technical Details
+- **Service Port Mapping**: Simulation service properly mapped from container port 8299 to host
+- **Testing Integration**: Health checks and status verification integrated into testing procedures
+- **Code Quality**: All TypeScript strict mode violations resolved, proper React hook patterns implemented
+- **Advances North Star**: Simulation service supports testing of specialized machine pools and job routing patterns
+
 ## [2025-07-15] - Real-time Connector Status Updates and Machine ID Fix
 
 ### Fixed
