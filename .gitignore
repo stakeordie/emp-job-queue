@@ -24,6 +24,8 @@ build/
 # Machine environment files with secrets
 apps/machines/basic_machine/.env.local.dev
 apps/machines/basic_machine/.env.local.prod
+apps/machines/basic_machine/.env.local.machine*
+apps/machines/basic_machine/config_nodes_archive.json
 
 # Runtime data
 pids/
@@ -113,6 +115,7 @@ debug-*.sh
 test-*.sh
 monitor-*.png
 screenshot-*.png
+x.json
 
 # Generated Docker overrides
 docker-compose.override.yml
