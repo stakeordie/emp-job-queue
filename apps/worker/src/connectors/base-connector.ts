@@ -260,6 +260,18 @@ export abstract class BaseConnector implements ConnectorInterface {
   }
 
   /**
+   * Set connector status externally (for job-based status updates)
+   * This allows the worker to update connector status when jobs start/complete
+   */
+  async setStatus(status: ConnectorStatus, errorMessage?: string): Promise<void> {
+    if (this.currentStatus !== status) {
+      this.currentStatus = status;
+      await this.reportStatus(status, errorMessage);
+      logger.debug(`${this.service_type} connector ${this.connector_id} status set to: ${status}`);
+    }
+  }
+
+  /**
    * Report status change due to job processing
    */
   protected async reportJobStatusChange(isProcessing: boolean): Promise<void> {

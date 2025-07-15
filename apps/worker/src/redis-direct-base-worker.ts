@@ -20,6 +20,7 @@ import {
   PerformanceConfig,
   Job,
   JobProgress,
+  ConnectorStatus,
   logger,
 } from '@emp/core';
 import { WorkerDashboard } from './worker-dashboard.js';
@@ -38,6 +39,7 @@ export class RedisDirectBaseWorker {
   private running = false;
   private jobTimeoutCheckInterval?: NodeJS.Timeout;
   private connectorStatusInterval?: NodeJS.Timeout;
+  private lastConnectorStatuses: Record<string, ConnectorStatus> = {};
   private pollIntervalMs: number;
   private maxConcurrentJobs: number;
   private jobTimeoutMinutes: number;
@@ -442,6 +444,9 @@ export class RedisDirectBaseWorker {
     // Update job status to IN_PROGRESS when processing begins
     await this.redisClient.startJobProcessing(job.id);
 
+    // Update connector to 'active' when job starts
+    await this.updateConnectorStatus(job.service_required, 'active');
+
     // Set up progress callback
     const onProgress = async (progress: JobProgress) => {
       await this.redisClient.sendJobProgress(job.id, progress);
@@ -472,8 +477,17 @@ export class RedisDirectBaseWorker {
 
   private async completeJob(jobId: string, result: unknown): Promise<void> {
     try {
+      // Get job info before completing to update connector status
+      const job = this.currentJobs.get(jobId);
+
       await this.redisClient.completeJob(jobId, result);
       this.finishJob(jobId);
+
+      // Update connector to 'idle' when job completes
+      if (job) {
+        await this.updateConnectorStatus(job.service_required, 'idle');
+      }
+
       logger.info(`Worker ${this.workerId} completed job ${jobId}`);
     } catch (error) {
       logger.error(`Worker ${this.workerId} failed to complete job ${jobId}:`, error);
@@ -483,8 +497,17 @@ export class RedisDirectBaseWorker {
 
   private async failJob(jobId: string, error: string, canRetry = true): Promise<void> {
     try {
+      // Get job info before failing to update connector status
+      const job = this.currentJobs.get(jobId);
+
       await this.redisClient.failJob(jobId, error, canRetry);
       this.finishJob(jobId);
+
+      // Update connector to 'error' when job fails
+      if (job) {
+        await this.updateConnectorStatus(job.service_required, 'error', error);
+      }
+
       logger.error(`Worker ${this.workerId} failed job ${jobId}: ${error}`);
     } catch (err) {
       logger.error(`Worker ${this.workerId} failed to fail job ${jobId}:`, err);
@@ -703,24 +726,109 @@ export class RedisDirectBaseWorker {
   }
 
   private startConnectorStatusUpdates(): void {
-    // Event-driven connector status updates - only send initial status
-    // Individual connectors will report their own status changes via event-driven mechanisms
-    const sendInitialConnectorStatus = async () => {
-      try {
-        const connectorStatuses = await this.connectorManager.getConnectorStatuses();
-        await this.redisClient.updateConnectorStatuses(connectorStatuses);
-        logger.info(`Sent initial connector statuses for worker ${this.workerId}`);
-      } catch (error) {
-        logger.warn(
-          `Failed to send initial connector statuses for worker ${this.workerId}:`,
-          error
+    // Send initial status immediately
+    this.sendConnectorStatusUpdate();
+
+    // Start periodic status monitoring (every 15 seconds)
+    this.connectorStatusInterval = setInterval(async () => {
+      await this.sendConnectorStatusUpdate();
+    }, 15000);
+
+    logger.info(
+      `Started periodic connector status reporting for worker ${this.workerId} (15s interval)`
+    );
+  }
+
+  private async sendConnectorStatusUpdate(): Promise<void> {
+    try {
+      const currentStatuses = await this.connectorManager.getConnectorStatuses();
+
+      // Check if any status changed
+      if (this.hasStatusChanged(currentStatuses)) {
+        await this.redisClient.updateConnectorStatuses(currentStatuses);
+
+        // Publish real-time events for changed statuses
+        await this.publishStatusChanges(currentStatuses);
+
+        logger.debug(
+          `Updated connector statuses for worker ${this.workerId}:`,
+          Object.keys(currentStatuses)
+            .map(key => `${key}:${currentStatuses[key].status}`)
+            .join(', ')
         );
       }
-    };
 
-    // Send initial status and then rely on event-driven updates
-    sendInitialConnectorStatus();
+      this.lastConnectorStatuses = currentStatuses;
+    } catch (error) {
+      logger.warn(`Failed to send connector status update for worker ${this.workerId}:`, error);
+    }
+  }
 
-    logger.debug(`Started event-driven connector status reporting for worker ${this.workerId}`);
+  private hasStatusChanged(currentStatuses: Record<string, ConnectorStatus>): boolean {
+    // If no previous statuses, this is the first update
+    if (Object.keys(this.lastConnectorStatuses).length === 0) {
+      return true;
+    }
+
+    return Object.keys(currentStatuses).some(connectorId => {
+      const current = currentStatuses[connectorId];
+      const last = this.lastConnectorStatuses[connectorId];
+
+      return (
+        !last || current.status !== last.status || current.error_message !== last.error_message
+      );
+    });
+  }
+
+  private async publishStatusChanges(
+    currentStatuses: Record<string, ConnectorStatus>
+  ): Promise<void> {
+    for (const [connectorId, status] of Object.entries(currentStatuses)) {
+      const lastStatus = this.lastConnectorStatuses[connectorId];
+
+      // Only publish if status actually changed
+      if (!lastStatus || status.status !== lastStatus.status) {
+        try {
+          const statusData = {
+            connector_id: connectorId,
+            service_type: connectorId, // Assuming connector_id is the service type
+            worker_id: this.workerId,
+            machine_id: this.machineId,
+            status: status.status,
+            timestamp: Date.now(),
+            error_message: status.error_message,
+          };
+
+          const redis = this.redisClient.getRedisConnection();
+          if (redis) {
+            await redis.publish(`connector_status:${connectorId}`, JSON.stringify(statusData));
+          }
+
+          logger.debug(
+            `Published status change for ${connectorId}: ${lastStatus?.status || 'none'} → ${status.status}`
+          );
+        } catch (error) {
+          logger.warn(`Failed to publish status change for ${connectorId}:`, error);
+        }
+      }
+    }
+  }
+
+  private async updateConnectorStatus(
+    serviceType: string,
+    status: string,
+    errorMessage?: string
+  ): Promise<void> {
+    try {
+      // Update local connector manager
+      await this.connectorManager.updateConnectorStatus(serviceType, status, errorMessage);
+
+      // Immediately publish to Redis (this will trigger sendConnectorStatusUpdate)
+      await this.sendConnectorStatusUpdate();
+
+      logger.debug(`Updated connector ${serviceType} status to ${status}`);
+    } catch (error) {
+      logger.warn(`Failed to update connector status for ${serviceType}:`, error);
+    }
   }
 }

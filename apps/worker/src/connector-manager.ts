@@ -1,7 +1,7 @@
 // Connector Manager - dynamic loading and management of service connectors
 // Direct port from Python worker/connector_loader.py functionality
 
-import { ConnectorInterface, ConnectorRegistry, ConnectorFactory, logger } from '@emp/core';
+import { ConnectorInterface, ConnectorRegistry, ConnectorFactory, ConnectorStatus, logger } from '@emp/core';
 import Redis from 'ioredis';
 
 export class ConnectorManager implements ConnectorRegistry, ConnectorFactory {
@@ -304,24 +304,23 @@ export class ConnectorManager implements ConnectorRegistry, ConnectorFactory {
     return health;
   }
 
-  async getConnectorStatuses(): Promise<
-    Record<string, { status: 'active' | 'inactive' | 'error'; error_message?: string }>
-  > {
-    const statuses: Record<
-      string,
-      { status: 'active' | 'inactive' | 'error'; error_message?: string }
-    > = {};
+  async getConnectorStatuses(): Promise<Record<string, ConnectorStatus>> {
+    const statuses: Record<string, ConnectorStatus> = {};
 
     for (const [connectorId, connector] of this.connectors) {
       try {
         const isHealthy = await connector.checkHealth();
         statuses[connectorId] = {
+          connector_id: connectorId,
           status: isHealthy ? 'active' : 'inactive',
+          health_check_at: new Date().toISOString(),
         };
       } catch (error) {
         logger.warn(`Health check failed for connector ${connectorId}:`, error);
         statuses[connectorId] = {
+          connector_id: connectorId,
           status: 'error',
+          health_check_at: new Date().toISOString(),
           error_message: error instanceof Error ? error.message : 'Unknown error',
         };
       }
@@ -384,6 +383,35 @@ export class ConnectorManager implements ConnectorRegistry, ConnectorFactory {
 
     await Promise.all(healthPromises);
     return health;
+  }
+
+  // Status management for real-time updates
+  async updateConnectorStatus(
+    serviceType: string, 
+    status: string, 
+    errorMessage?: string
+  ): Promise<void> {
+    // Find connectors for this service type
+    const serviceConnectors = this.connectorsByServiceType.get(serviceType);
+    
+    if (!serviceConnectors || serviceConnectors.length === 0) {
+      logger.warn(`No connectors found for service type: ${serviceType}`);
+      return;
+    }
+
+    // Update status on all connectors for this service type
+    for (const connector of serviceConnectors) {
+      try {
+        // Check if connector supports setStatus (like BaseConnector)
+        if ('setStatus' in connector && typeof connector.setStatus === 'function') {
+          await (connector as any).setStatus(status, errorMessage);
+        } else {
+          logger.debug(`Connector ${connector.connector_id} does not support setStatus`);
+        }
+      } catch (error) {
+        logger.warn(`Failed to update status for connector ${connector.connector_id}:`, error);
+      }
+    }
   }
 
   // Statistics
