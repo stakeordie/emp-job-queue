@@ -98,14 +98,18 @@ tail_logs() {
     echo -e "${CYAN}=== ComfyUI Output Logs (Live) ===${NC}"
     echo ""
     
-    # Use docker exec to tail logs with prefixes
+    # Use docker exec to tail logs with timestamps and prefixes
     (
         if [[ "$gpu0_exists" == "true" ]]; then
-            docker exec "$CONTAINER_NAME" tail -f "$GPU0_LOG" 2>/dev/null | sed "s/^/$(echo -e "${GREEN}[GPU0]${NC}") /" &
+            docker exec "$CONTAINER_NAME" tail -f "$GPU0_LOG" 2>/dev/null | while read line; do
+                echo -e "$(date '+%H:%M:%S') ${GREEN}[GPU0]${NC} $line"
+            done &
         fi
         
         if [[ "$gpu1_exists" == "true" ]]; then
-            docker exec "$CONTAINER_NAME" tail -f "$GPU1_LOG" 2>/dev/null | sed "s/^/$(echo -e "${BLUE}[GPU1]${NC}") /" &
+            docker exec "$CONTAINER_NAME" tail -f "$GPU1_LOG" 2>/dev/null | while read line; do
+                echo -e "$(date '+%H:%M:%S') ${BLUE}[GPU1]${NC} $line"
+            done &
         fi
         
         # Wait for all background processes
