@@ -48,6 +48,7 @@ interface MonitorStore {
   // Event-driven state management
   handleFullState: (state: unknown) => void;
   handleEvent: (event: MonitorEvent) => void;
+  
 }
 
 export const useMonitorStore = create<MonitorStore>()(
@@ -387,6 +388,8 @@ export const useMonitorStore = create<MonitorStore>()(
           }
         });
       }
+      
+      // Note: Connector status reconciliation disabled for now - relies on real-time events
     },
 
     handleEvent: (event: MonitorEvent) => {
@@ -670,7 +673,9 @@ export const useMonitorStore = create<MonitorStore>()(
             connector_id: string;
             service_type: string;
             worker_id: string;
-            status: 'active' | 'inactive' | 'error';
+            machine_id?: string;
+            status: 'active' | 'inactive' | 'error' | 'waiting_for_service' | 'connecting';
+            error_message?: string;
             service_info?: Record<string, unknown>;
             timestamp: number;
           };
@@ -690,6 +695,7 @@ export const useMonitorStore = create<MonitorStore>()(
             worker.connector_statuses[connectorEvent.service_type] = {
               connector_id: connectorEvent.connector_id,
               status: connectorEvent.status,
+              error_message: connectorEvent.error_message,
               service_info: connectorEvent.service_info
             };
             
@@ -700,7 +706,7 @@ export const useMonitorStore = create<MonitorStore>()(
             addLog({
               level: 'debug',
               category: 'connector',
-              message: `Connector ${connectorEvent.service_type} for worker ${connectorEvent.worker_id}: ${connectorEvent.status}`,
+              message: `Connector ${connectorEvent.service_type} for worker ${connectorEvent.worker_id}: ${connectorEvent.status}${connectorEvent.error_message ? ` (${connectorEvent.error_message})` : ''}`,
               source: 'websocket',
             });
           } else {
@@ -1222,6 +1228,7 @@ export const useMonitorStore = create<MonitorStore>()(
         failed_at: Date.now()
       });
     },
+
   }))
 );
 

@@ -24397,6 +24397,8 @@ var init_base_connector = __esm({
       workerId;
       machineId;
       hubRedisUrl;
+      parentWorker;
+      // Reference to parent worker for immediate updates
       // Status tracking
       currentStatus = "starting";
       lastReportedStatus;
@@ -24433,6 +24435,12 @@ var init_base_connector = __esm({
         logger.info(
           `${this.service_type} connector ${this.connector_id} received Redis connection injection`
         );
+      }
+      /**
+       * Set reference to parent worker for immediate status updates
+       */
+      setParentWorker(worker) {
+        this.parentWorker = worker;
       }
       async initializeRedisConnection() {
         this.hubRedisUrl = process.env.HUB_REDIS_URL || "redis://localhost:6379";
@@ -24564,6 +24572,24 @@ var init_base_connector = __esm({
       }
       stopStatusReporting() {
         this.stopStatusReportingInternal();
+      }
+      /**
+       * Set connector status externally (for job-based status updates)
+       * This allows the worker to update connector status when jobs start/complete
+       */
+      async setStatus(status, errorMessage) {
+        if (this.currentStatus !== status) {
+          this.currentStatus = status;
+          await this.reportStatus(status, errorMessage);
+          logger.debug(`${this.service_type} connector ${this.connector_id} status set to: ${status}`);
+          if (this.parentWorker && typeof this.parentWorker.forceConnectorStatusUpdate === "function") {
+            try {
+              await this.parentWorker.forceConnectorStatusUpdate();
+            } catch (error) {
+              logger.warn(`Failed to trigger parent worker status update:`, error);
+            }
+          }
+        }
       }
       /**
        * Report status change due to job processing
@@ -25346,9 +25372,19 @@ var init_comfyui_hybrid_connector = __esm({
       async checkHealth() {
         try {
           const response = await this.makeHttpRequest("GET", "/system_stats");
-          return response.status >= 200 && response.status < 300;
+          const isHealthy = response.status >= 200 && response.status < 300;
+          const newStatus = isHealthy ? "idle" : "error";
+          if (this.currentStatus !== newStatus) {
+            await this.setStatus(newStatus, isHealthy ? void 0 : "Health check failed");
+            logger.info(`ComfyUI health status changed: ${this.currentStatus} \u2192 ${newStatus}`);
+          }
+          return isHealthy;
         } catch (error) {
           logger.debug(`ComfyUI health check failed:`, error);
+          if (this.currentStatus !== "error") {
+            await this.setStatus("error", error instanceof Error ? error.message : "Health check failed");
+            logger.info(`ComfyUI health status changed to error: ${error}`);
+          }
           return false;
         }
       }
@@ -25473,31 +25509,63 @@ var init_comfyui_hybrid_connector = __esm({
         }
       }
       async waitForCompletion(jobId, promptId, progressCallback) {
-        return new Promise((resolve, reject) => {
+        return new Promise(async (resolve, reject) => {
           const timeout = setTimeout(() => {
             reject(
               new Error(`ComfyUI job ${jobId} timed out after ${this.workflowTimeoutSeconds} seconds`)
             );
           }, this.workflowTimeoutSeconds * 1e3);
-          const originalJob = this.activeJobs.get(jobId);
-          if (originalJob) {
-            this.activeJobs.set(jobId, {
-              ...originalJob,
-              progressCallback: async (progress) => {
-                await progressCallback(progress);
-                if (progress.progress >= 100) {
-                  clearTimeout(timeout);
-                  try {
-                    const result = await this.getJobResult(promptId);
-                    resolve(result);
-                  } catch (error) {
-                    reject(error);
+          try {
+            logger.info(`Checking if ComfyUI job ${jobId} (prompt ${promptId}) already completed...`);
+            await new Promise((resolve2) => setTimeout(resolve2, 100));
+            const existingResult = await this.checkJobCompletion(promptId);
+            if (existingResult) {
+              logger.info(`ComfyUI job ${jobId} already completed (cached result), returning immediately`);
+              clearTimeout(timeout);
+              resolve(existingResult);
+              return;
+            }
+            logger.info(`ComfyUI job ${jobId} not yet completed, waiting for WebSocket progress...`);
+            const originalJob = this.activeJobs.get(jobId);
+            if (originalJob) {
+              this.activeJobs.set(jobId, {
+                ...originalJob,
+                progressCallback: async (progress) => {
+                  await progressCallback(progress);
+                  if (progress.progress >= 100) {
+                    clearTimeout(timeout);
+                    try {
+                      const result = await this.getJobResult(promptId);
+                      resolve(result);
+                    } catch (error) {
+                      reject(error);
+                    }
                   }
                 }
-              }
-            });
+              });
+            }
+          } catch (error) {
+            logger.error(`Error during job completion check for ${jobId}:`, error);
           }
         });
+      }
+      async checkJobCompletion(promptId) {
+        try {
+          const historyResponse = await this.makeHttpRequest("GET", `/history/${promptId}`);
+          const historyData = await this.parseHttpResponse(historyResponse);
+          const history = historyData[promptId];
+          if (!history) {
+            return null;
+          }
+          if (history.status && history.status.completed === true) {
+            logger.info(`ComfyUI prompt ${promptId} found completed in history`);
+            return this.extractResultFromHistory(promptId, history);
+          }
+          return null;
+        } catch (error) {
+          logger.debug(`History check failed for prompt ${promptId}, assuming not completed:`, error);
+          return null;
+        }
       }
       async getJobResult(promptId) {
         try {
@@ -25507,28 +25575,31 @@ var init_comfyui_hybrid_connector = __esm({
           if (!history) {
             throw new Error(`No history found for prompt ${promptId}`);
           }
-          const outputs = history.outputs || {};
-          const images = [];
-          for (const nodeId of Object.keys(outputs)) {
-            const nodeOutput = outputs[nodeId];
-            if (nodeOutput.images) {
-              for (const image of nodeOutput.images) {
-                const imageUrl = `${this.config.base_url}/view?filename=${image.filename}&subfolder=${image.subfolder || ""}&type=${image.type || "output"}`;
-                images.push(imageUrl);
-              }
-            }
-          }
-          return {
-            prompt_id: promptId,
-            outputs,
-            images,
-            execution_time: history.execution_time,
-            status: history.status
-          };
+          return this.extractResultFromHistory(promptId, history);
         } catch (error) {
           logger.error(`Failed to get ComfyUI job result for prompt ${promptId}:`, error);
           throw error;
         }
+      }
+      extractResultFromHistory(promptId, history) {
+        const outputs = history.outputs || {};
+        const images = [];
+        for (const nodeId of Object.keys(outputs)) {
+          const nodeOutput = outputs[nodeId];
+          if (nodeOutput.images) {
+            for (const image of nodeOutput.images) {
+              const imageUrl = `${this.config.base_url}/view?filename=${image.filename}&subfolder=${image.subfolder || ""}&type=${image.type || "output"}`;
+              images.push(imageUrl);
+            }
+          }
+        }
+        return {
+          prompt_id: promptId,
+          outputs,
+          images,
+          execution_time: history.execution_time,
+          status: history.status
+        };
       }
       // HybridConnector abstract method implementations
       handleUnknownWebSocketMessage(message) {
@@ -42595,6 +42666,7 @@ var RedisDirectBaseWorker = class {
   running = false;
   jobTimeoutCheckInterval;
   connectorStatusInterval;
+  lastConnectorStatuses = {};
   pollIntervalMs;
   maxConcurrentJobs;
   jobTimeoutMinutes;
@@ -42749,6 +42821,8 @@ var RedisDirectBaseWorker = class {
           `No Redis connection available for ConnectorManager in worker ${this.workerId}`
         );
       }
+      this.connectorManager.setParentWorker(this);
+      logger.info(`Set parent worker reference in ConnectorManager for worker ${this.workerId}`);
       await this.connectorManager.loadConnectors();
       const connectors = this.connectorManager.getAllConnectors();
       const models = {};
@@ -42862,6 +42936,7 @@ var RedisDirectBaseWorker = class {
       throw new Error(`No connector available for service: ${job.service_required}`);
     }
     await this.redisClient.startJobProcessing(job.id);
+    await this.updateConnectorStatus(job.service_required, "active");
     const onProgress = async (progress) => {
       await this.redisClient.sendJobProgress(job.id, progress);
     };
@@ -42882,8 +42957,12 @@ var RedisDirectBaseWorker = class {
   }
   async completeJob(jobId, result) {
     try {
+      const job = this.currentJobs.get(jobId);
       await this.redisClient.completeJob(jobId, result);
       this.finishJob(jobId);
+      if (job) {
+        await this.updateConnectorStatus(job.service_required, "idle");
+      }
       logger.info(`Worker ${this.workerId} completed job ${jobId}`);
     } catch (error) {
       logger.error(`Worker ${this.workerId} failed to complete job ${jobId}:`, error);
@@ -42892,8 +42971,12 @@ var RedisDirectBaseWorker = class {
   }
   async failJob(jobId, error, canRetry = true) {
     try {
+      const job = this.currentJobs.get(jobId);
       await this.redisClient.failJob(jobId, error, canRetry);
       this.finishJob(jobId);
+      if (job) {
+        await this.updateConnectorStatus(job.service_required, "error", error);
+      }
       logger.error(`Worker ${this.workerId} failed job ${jobId}: ${error}`);
     } catch (err) {
       logger.error(`Worker ${this.workerId} failed to fail job ${jobId}:`, err);
@@ -43055,20 +43138,84 @@ var RedisDirectBaseWorker = class {
     return summary;
   }
   startConnectorStatusUpdates() {
-    const sendInitialConnectorStatus = async () => {
-      try {
-        const connectorStatuses = await this.connectorManager.getConnectorStatuses();
-        await this.redisClient.updateConnectorStatuses(connectorStatuses);
-        logger.info(`Sent initial connector statuses for worker ${this.workerId}`);
-      } catch (error) {
-        logger.warn(
-          `Failed to send initial connector statuses for worker ${this.workerId}:`,
-          error
+    this.sendConnectorStatusUpdate();
+    this.connectorStatusInterval = setInterval(async () => {
+      await this.sendConnectorStatusUpdate();
+    }, 3e3);
+    logger.info(
+      `Started periodic connector status reporting for worker ${this.workerId} (3s interval)`
+    );
+  }
+  async sendConnectorStatusUpdate() {
+    try {
+      const currentStatuses = await this.connectorManager.getConnectorStatuses();
+      if (this.hasStatusChanged(currentStatuses)) {
+        await this.redisClient.updateConnectorStatuses(currentStatuses);
+        await this.publishStatusChanges(currentStatuses);
+        logger.debug(
+          `Updated connector statuses for worker ${this.workerId}:`,
+          Object.keys(currentStatuses).map((key) => `${key}:${currentStatuses[key].status}`).join(", ")
         );
       }
-    };
-    sendInitialConnectorStatus();
-    logger.debug(`Started event-driven connector status reporting for worker ${this.workerId}`);
+      this.lastConnectorStatuses = currentStatuses;
+    } catch (error) {
+      logger.warn(`Failed to send connector status update for worker ${this.workerId}:`, error);
+    }
+  }
+  hasStatusChanged(currentStatuses) {
+    if (Object.keys(this.lastConnectorStatuses).length === 0) {
+      return true;
+    }
+    return Object.keys(currentStatuses).some((connectorId) => {
+      const current = currentStatuses[connectorId];
+      const last = this.lastConnectorStatuses[connectorId];
+      return !last || current.status !== last.status || current.error_message !== last.error_message;
+    });
+  }
+  async publishStatusChanges(currentStatuses) {
+    for (const [connectorId, status] of Object.entries(currentStatuses)) {
+      const lastStatus = this.lastConnectorStatuses[connectorId];
+      if (!lastStatus || status.status !== lastStatus.status) {
+        try {
+          const statusData = {
+            connector_id: connectorId,
+            service_type: connectorId,
+            // Assuming connector_id is the service type
+            worker_id: this.workerId,
+            machine_id: this.machineId,
+            status: status.status,
+            timestamp: Date.now(),
+            error_message: status.error_message
+          };
+          const redis = this.redisClient.getRedisConnection();
+          if (redis) {
+            await redis.publish(`connector_status:${connectorId}`, JSON.stringify(statusData));
+          }
+          logger.debug(
+            `Published status change for ${connectorId}: ${lastStatus?.status || "none"} \u2192 ${status.status}`
+          );
+        } catch (error) {
+          logger.warn(`Failed to publish status change for ${connectorId}:`, error);
+        }
+      }
+    }
+  }
+  async updateConnectorStatus(serviceType, status, errorMessage) {
+    try {
+      await this.connectorManager.updateConnectorStatus(serviceType, status, errorMessage);
+      await this.sendConnectorStatusUpdate();
+      logger.debug(`Updated connector ${serviceType} status to ${status}`);
+    } catch (error) {
+      logger.warn(`Failed to update connector status for ${serviceType}:`, error);
+    }
+  }
+  /**
+   * Force an immediate connector status update (for event-driven updates)
+   * Call this when a connector health status changes
+   */
+  async forceConnectorStatusUpdate() {
+    logger.debug(`Force updating connector statuses for worker ${this.workerId}`);
+    await this.sendConnectorStatusUpdate();
   }
 };
 
@@ -43080,6 +43227,8 @@ var ConnectorManager = class {
   redis;
   workerId;
   machineId;
+  parentWorker;
+  // Reference to parent worker for immediate status updates
   constructor() {
   }
   /**
@@ -43090,6 +43239,18 @@ var ConnectorManager = class {
     this.workerId = workerId;
     this.machineId = machineId;
     logger.info(`ConnectorManager received Redis connection for worker ${workerId}`);
+  }
+  /**
+   * Set parent worker reference for immediate status updates
+   */
+  setParentWorker(worker) {
+    this.parentWorker = worker;
+    for (const connector of this.connectors.values()) {
+      if ("setParentWorker" in connector && typeof connector.setParentWorker === "function") {
+        connector.setParentWorker(worker);
+      }
+    }
+    logger.debug("ConnectorManager received parent worker reference");
   }
   async loadConnectors() {
     const connectorsEnv = process.env.WORKER_CONNECTORS || process.env.CONNECTORS || "";
@@ -43233,6 +43394,9 @@ var ConnectorManager = class {
   // ConnectorRegistry implementation
   registerConnector(connector) {
     this.connectors.set(connector.connector_id, connector);
+    if ("setParentWorker" in connector && typeof connector.setParentWorker === "function") {
+      connector.setParentWorker(this.parentWorker);
+    }
     if (!this.connectorsByServiceType.has(connector.service_type)) {
       this.connectorsByServiceType.set(connector.service_type, []);
     }
@@ -43301,12 +43465,16 @@ var ConnectorManager = class {
       try {
         const isHealthy = await connector.checkHealth();
         statuses[connectorId] = {
-          status: isHealthy ? "active" : "inactive"
+          connector_id: connectorId,
+          status: isHealthy ? "active" : "inactive",
+          health_check_at: (/* @__PURE__ */ new Date()).toISOString()
         };
       } catch (error) {
         logger.warn(`Health check failed for connector ${connectorId}:`, error);
         statuses[connectorId] = {
+          connector_id: connectorId,
           status: "error",
+          health_check_at: (/* @__PURE__ */ new Date()).toISOString(),
           error_message: error instanceof Error ? error.message : "Unknown error"
         };
       }
@@ -43354,6 +43522,25 @@ var ConnectorManager = class {
     );
     await Promise.all(healthPromises);
     return health;
+  }
+  // Status management for real-time updates
+  async updateConnectorStatus(serviceType, status, errorMessage) {
+    const serviceConnectors = this.connectorsByServiceType.get(serviceType);
+    if (!serviceConnectors || serviceConnectors.length === 0) {
+      logger.warn(`No connectors found for service type: ${serviceType}`);
+      return;
+    }
+    for (const connector of serviceConnectors) {
+      try {
+        if ("setStatus" in connector && typeof connector.setStatus === "function") {
+          await connector.setStatus(status, errorMessage);
+        } else {
+          logger.debug(`Connector ${connector.connector_id} does not support setStatus`);
+        }
+      } catch (error) {
+        logger.warn(`Failed to update status for connector ${connector.connector_id}:`, error);
+      }
+    }
   }
   // Statistics
   getConnectorStatistics() {

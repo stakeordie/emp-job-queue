@@ -407,3 +407,283 @@ After implementation, BOTH monitor flows must show:
 5. **Stale Data Test**: Verify old status data gets refreshed
 
 This comprehensive fix addresses the root causes in the data flow while maintaining the north star architecture goals of reliable, real-time system monitoring.
+
+## CRITICAL BUG: Job Timeout Race Condition Corrupts Worker State
+
+### Discovery Date: 2025-07-15T01:17:00Z
+
+### Problem Summary
+Worker disappears from monitor after ComfyUI job completion. Job gets submitted, processes normally, but never transitions out of "pending" state in monitor. After page refresh, worker-1 completely vanishes from monitor display.
+
+### Root Cause: REST Submission + WebSocket Progress Race Condition  
+
+**The Real Issue**: ComfyUI hybrid connector architecture flaw:
+1. Submit job via **REST** → ComfyUI processes
+2. Connect **WebSocket** for progress → Race condition window!
+3. If job completes **instantly** (cached) → WebSocket connects to finished job
+4. Worker waits **forever** for progress updates that will never come
+
+**The Smoking Gun**: Worker-1 lost its machine_id during job processing race condition:
+
+```bash
+# Redis investigation reveals the corruption:
+$ redis-cli HGETALL "worker:basic-machine-local-worker-0"
+machine_id: basic-machine-local                    ✅ CORRECT
+
+$ redis-cli HGETALL "worker:basic-machine-local-worker-1"  
+machine_id: unknown                                ❌ CORRUPTED
+
+$ redis-cli HGET "worker:basic-machine-local-worker-1" "capabilities" | jq '.machine_id'
+null                                               ❌ MISSING FROM CAPABILITIES
+```
+
+### The Race Condition Timeline
+
+**Job**: `10e834f7-2544-4055-9fe9-8ba67c564908` (ComfyUI job)
+**Duration**: ~10 minutes total, but **ComfyUI wasn't even running!**
+**ACTUAL Timeline** (REST + WebSocket race condition):
+- `00:45:11` - Job submitted to worker-1 
+- `00:45:12` - Worker submits via **REST** to ComfyUI
+- `00:45:12` - ComfyUI executes in **0.06 seconds** (cached result!)
+- `00:45:12` - Worker attempts **WebSocket** connection for progress
+- `00:45:12` - **RACE CONDITION**: WebSocket connects to already-finished job
+- `00:45:12` - Worker waits for progress updates that will never come
+- `00:55:12` - Worker timeout (10 minutes of waiting for nothing!)
+- `00:55:13` - Timeout logic finally realizes job was done
+
+```bash
+# 1. Job starts normally
+{"gpu":1,"timestamp":"2025-07-15T00:45:11.560Z","message":"Worker basic-machine-local-worker-1 starting job 10e834f7-2544-4055-9fe9-8ba67c564908 (comfyui)"}
+
+# 2. Job processing continues for ~10 minutes...
+
+# 3. TIMEOUT TRIGGERED (exactly at 600 seconds)
+{"gpu":1,"timestamp":"2025-07-15T00:55:12.180Z","message":"ComfyUI job 10e834f7-2544-4055-9fe9-8ba67c564908 failed: ComfyUI job 10e834f7-2544-4055-9fe9-8ba67c564908 timed out after 600 seconds"}
+
+# 4. BUT JOB ACTUALLY COMPLETED 1 second later
+{"gpu":1,"timestamp":"2025-07-15T00:55:13.428Z","message":"🎉 Worker basic-machine-local-worker-1 completing job 10e834f7-2544-4055-9fe9-8ba67c564908"}
+{"gpu":1,"timestamp":"2025-07-15T00:55:13.430Z","message":"✅ Worker basic-machine-local-worker-1 updated job:10e834f7-2544-4055-9fe9-8ba67c564908 status to COMPLETED"}
+```
+
+### Redis State Corruption Evidence
+
+The job shows conflicting state in Redis:
+```bash
+$ redis-cli HGETALL "job:10e834f7-2544-4055-9fe9-8ba67c564908"
+status: completed                    # ✅ Job marked as completed
+started_at: 2025-07-15T00:45:11.593Z
+completed_at: 2025-07-15T00:55:13.428Z  # ✅ Completion timestamp exists
+worker_id: basic-machine-local-worker-1  # ✅ Worker assignment correct
+```
+
+But the worker that completed it has corrupted state:
+```bash
+$ redis-cli HGET "worker:basic-machine-local-worker-1" "last_status_change"
+2025-07-15T00:55:13.442Z             # ✅ Matches job completion time
+
+$ redis-cli HGET "worker:basic-machine-local-worker-1" "connected_at"  
+2025-07-15T00:55:13.470Z             # 🚨 RECONNECTED during completion!
+```
+
+### The Corruption Mechanism
+
+**Location**: `apps/worker/src/redis-direct-worker-client.ts:127-140`
+```typescript
+private async registerWorker(capabilities: WorkerCapabilities): Promise<void> {
+  await this.redis.hmset(`worker:${this.workerId}`, {
+    worker_id: this.workerId,
+    machine_id: capabilities.machine_id || 'unknown',  // 🚨 FALLBACK TRIGGERED
+    capabilities: JSON.stringify(capabilities),
+    // ... other fields
+  });
+}
+```
+
+**What Happened**:
+1. Job timeout handler tried to fail the job and potentially reconnect
+2. At the same moment, job actually completed successfully  
+3. Race condition caused worker to re-register with corrupted/empty capabilities
+4. `capabilities.machine_id` was `undefined/null` → fell back to `'unknown'`
+5. Worker capabilities object stored without `machine_id` field
+6. API filters out workers with `machine_id: unknown` from monitor display
+
+### Monitor Impact
+
+The monitor logic likely filters workers by valid machine_id:
+```typescript
+// Somewhere in API server machine grouping logic
+if (worker.machine_id === 'unknown' || !worker.machine_id) {
+  // Worker gets filtered out of machine display
+  continue;
+}
+```
+
+Result: Worker-1 processes jobs successfully but becomes invisible to monitoring.
+
+### Fix Complexity Assessment
+
+This is a **HIGH COMPLEXITY** fix involving:
+
+1. **Race Condition Prevention**: 
+   - Job timeout and completion handlers stepping on each other
+   - Worker re-registration during active job processing
+   - Concurrent Redis operations corrupting state
+
+2. **State Recovery Mechanisms**:
+   - Detect corrupted worker state and auto-repair
+   - Preserve worker capabilities during re-connection
+   - Validate machine_id before storing
+
+3. **Monitoring Integration**:
+   - API should show workers with corrupted state (maybe with warning)
+   - Monitor should indicate worker state issues
+   - Provide admin tools to fix corrupted workers
+
+### Immediate Workaround
+
+```bash
+# Manual fix for current corrupted worker:
+redis-cli HSET "worker:basic-machine-local-worker-1" "machine_id" "basic-machine-local"
+
+# Update capabilities object:
+redis-cli HGET "worker:basic-machine-local-worker-1" "capabilities" | \
+jq '.machine_id = "basic-machine-local"' | \
+redis-cli HSET "worker:basic-machine-local-worker-1" "capabilities" -
+```
+
+### Long-term Fix Strategy
+
+1. **Phase A**: Add worker state validation and auto-repair
+2. **Phase B**: Fix job timeout/completion race condition  
+3. **Phase C**: Add monitoring alerts for corrupted worker state
+4. **Phase D**: Implement graceful worker re-registration that preserves state
+
+**Priority**: HIGH - This corruption can happen to any worker during long-running jobs, making the monitoring system unreliable for production use.
+
+## ADDITIONAL RACE CONDITION: ComfyUI Cached Results
+
+### Problem: Ultra-Fast Job Completion vs Monitor Event Processing
+
+**ComfyUI behavior**: When receiving an identical workflow, ComfyUI returns cached results **instantly** (milliseconds)
+
+**Potential race condition timeline**:
+```
+T+0ms:    Job submitted to worker
+T+1ms:    Worker sends "job started" event  
+T+2ms:    Worker submits to ComfyUI
+T+3ms:    ComfyUI returns cached result (instant!)
+T+4ms:    Worker sends "job completed" event
+T+10ms:   Monitor processes "job started" event
+T+15ms:   Monitor processes "job completed" event
+```
+
+**Result**: Monitor shows job stuck in "pending" because completion happened before start event was processed.
+
+**CONFIRMED EVIDENCE**: ComfyUI cached job completing in 0.06 seconds:
+```bash
+# Real timeline from logs (21:41:33):
+21:41:33 [GPU0] got prompt                    # ✅ ComfyUI receives job
+21:41:33 [GPU0] Prompt executed in 0.06 seconds  # ✅ Job completed instantly!
+
+# But worker never detected completion - race condition confirmed
+```
+
+**Mitigation strategies**:
+1. **Event ordering guarantees**: Ensure events are processed in sequence
+2. **Minimum job duration**: Add artificial delay for cached results  
+3. **Event batching**: Batch rapid start/complete events for same job
+4. **Cache detection**: ComfyUI should indicate when returning cached results
+
+### IMPLEMENTED FIX: Defensive Job Completion Check
+
+**Location**: `apps/worker/src/connectors/comfyui-hybrid-connector.ts:273-287`
+
+**Strategy**: After submitting job via REST, immediately check if it already completed before waiting for WebSocket:
+
+```typescript
+// RACE CONDITION FIX: Check if job already completed before waiting for WebSocket
+logger.info(`Checking if ComfyUI job ${jobId} (prompt ${promptId}) already completed...`);
+
+// Small delay to allow ComfyUI to process and update history
+await new Promise(resolve => setTimeout(resolve, 100));
+
+const existingResult = await this.checkJobCompletion(promptId);
+if (existingResult) {
+  logger.info(`ComfyUI job ${jobId} already completed (cached result), returning immediately`);
+  clearTimeout(timeout);
+  resolve(existingResult);
+  return;
+}
+```
+
+**How it works**:
+1. Submit job via REST → get prompt_id
+2. Connect WebSocket for progress monitoring  
+3. **Immediately check `/history/{prompt_id}` API**
+4. If completed → extract results and return immediately
+5. If not completed → proceed with normal WebSocket monitoring
+
+**Expected result**: Ultra-fast cached jobs (0.06 seconds) will be detected and completed instantly instead of timing out after 10 minutes.
+
+### Immediate Fix Required: Aggressive Timeout Settings
+
+**Current timeout settings are COMPLETELY WRONG**:
+
+```bash
+# Current (BROKEN) settings:
+WORKER_JOB_TIMEOUT_MINUTES=30              # 🚨 30 MINUTES?!
+WORKER_COMFYUI_WORKFLOW_TIMEOUT_SECONDS=600 # 🚨 10 MINUTES?!
+```
+
+**Correct timeout strategy**:
+```bash
+# Aggressive service health monitoring
+WORKER_COMFYUI_WORKFLOW_TIMEOUT_SECONDS=30    # ✅ 30 seconds max
+WORKER_JOB_TIMEOUT_MINUTES=2                  # ✅ 2 minutes absolute max
+WORKER_SERVICE_HEALTH_CHECK_INTERVAL=5        # ✅ Check every 5 seconds
+WORKER_JOB_PROGRESS_TIMEOUT_SECONDS=30        # ✅ Return job if no progress in 30s
+```
+
+**Rationale**: 
+- ComfyUI sends **constant WebSocket progress updates** during processing
+- If no progress update received for 30 seconds → WebSocket broken or ComfyUI frozen
+- **Progress timeout ≠ Job timeout**: Job can run for hours if continuously sending progress
+- Worker should return job to queue immediately when progress stops
+- Another worker might have working ComfyUI instance
+
+**Current Broken Logic**:
+```typescript
+// apps/worker/src/connectors/comfyui-hybrid-connector.ts:488
+return new Promise((resolve, reject) => {
+  const timeout = setTimeout(() => {
+    reject(new Error(`ComfyUI job ${jobId} timed out after ${this.workflowTimeoutSeconds} seconds`));
+  }, this.workflowTimeoutSeconds * 1000);  // 🚨 10 MINUTE TOTAL TIMEOUT
+  
+  // Waits for progress via WebSocket but no progress-based timeout!
+```
+
+**Correct Logic Needed**:
+```typescript
+// Need progress-based timeout that resets on each WebSocket message
+private lastProgressUpdate: number = Date.now();
+
+private setupProgressTimeout(jobId: string, callback: () => void): NodeJS.Timeout {
+  return setInterval(() => {
+    const sinceLastProgress = Date.now() - this.lastProgressUpdate;
+    if (sinceLastProgress > 30000) { // 30 seconds without progress
+      logger.warn(`ComfyUI job ${jobId} - no progress for ${sinceLastProgress}ms, returning to queue`);
+      callback(); // Return job to queue
+    }
+  }, 5000); // Check every 5 seconds
+}
+
+private onProgressUpdate(progress: JobProgress): void {
+  this.lastProgressUpdate = Date.now(); // Reset timeout on every progress update
+  this.progressCallback(progress);
+}
+```
+
+**Implementation locations**:
+1. `apps/worker/src/connectors/comfyui-hybrid-connector.ts:488` - Replace total timeout with progress timeout
+2. `apps/worker/src/connectors/comfyui-hybrid-connector.ts:360` - Track progress timestamps
+3. Add WebSocket connection health monitoring with automatic job return

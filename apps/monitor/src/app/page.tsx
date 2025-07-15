@@ -23,12 +23,12 @@ import {
   SelectValue 
 } from "@/components/ui/select"
 import { Progress } from "@/components/ui/progress"
-import { Play, Square, RefreshCw, X } from "lucide-react"
-import { JobSubmissionForm } from "@/components/job-submission-form"
+import { Play, Square, RefreshCw, X, TestTube } from "lucide-react"
 import { MachineCard } from "@/components/MachineCard"
 import { JobDetailsModal } from "@/components/JobDetailsModal"
 import { useMonitorStore } from "@/store"
 import { useState, useMemo, useEffect } from "react"
+import Link from "next/link"
 import type { Job } from "@/types/job"
 
 // Environment presets
@@ -177,11 +177,23 @@ function Home() {
 
   return (
     <main className="container mx-auto p-6 space-y-6">
-      <div className="text-center space-y-2">
-        <h1 className="text-2xl font-bold">Job Queue Monitor</h1>
-        <p className="text-sm text-muted-foreground">
-          Real-time monitoring and job submission
-        </p>
+      <div className="space-y-4">
+        <div className="text-center space-y-2">
+          <h1 className="text-2xl font-bold">Job Queue Monitor</h1>
+          <p className="text-sm text-muted-foreground">
+            Real-time system monitoring and machine status
+          </p>
+        </div>
+        
+        {/* Navigation */}
+        <div className="flex justify-center">
+          <Link href="/client-test">
+            <Button variant="outline" className="flex items-center gap-2">
+              <TestTube className="h-4 w-4" />
+              Client Test Page
+            </Button>
+          </Link>
+        </div>
       </div>
 
       {/* Connection Controls */}
@@ -315,15 +327,8 @@ function Home() {
         )}
       </div>
 
-      {/* Main Content - Job Focused Layout */}
-      <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
-        {/* Left Side - Compact Job Submission (1/4 width) */}
-        <div className="lg:col-span-1">
-          <JobSubmissionForm />
-        </div>
-
-        {/* Right Side - Job Monitoring (3/4 width) */}
-        <div className="lg:col-span-3 space-y-6">
+      {/* Main Content - Job Monitoring */}
+      <div className="space-y-6">
           {/* Job Queues - Two Column Layout */}
           <div className="grid grid-cols-2 gap-4">
             {/* Active Jobs (Left) */}
@@ -521,7 +526,6 @@ function Home() {
             </CardContent>
           </Card>
         </div>
-      </div>
 
       {/* Cancel Job Confirmation Dialog */}
       <AlertDialog open={!!cancelJobId} onOpenChange={() => setCancelJobId(null)}>
