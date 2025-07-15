@@ -941,10 +941,35 @@ export class LightweightAPIServer {
               const caps = capabilities as CapabilitiesData;
 
               // Parse connector statuses if available
+              interface ConnectorStatusObj {
+                status: string;
+                timestamp: number;
+                error_message?: string;
+                [key: string]: unknown;
+              }
+
               let connectorStatuses: Record<string, unknown> = {};
               try {
                 if (data.connector_statuses) {
                   connectorStatuses = JSON.parse(data.connector_statuses as string);
+
+                  // Validate timestamps and mark stale statuses
+                  for (const [serviceType, status] of Object.entries(connectorStatuses)) {
+                    if (status && typeof status === 'object' && 'timestamp' in status) {
+                      const statusObj = status as ConnectorStatusObj;
+                      const ageSeconds = (Date.now() - statusObj.timestamp) / 1000;
+
+                      if (ageSeconds > 90) {
+                        // Stale if older than 90 seconds (15s interval + buffer)
+                        logger.warn(
+                          `Stale connector status for ${workerId}:${serviceType}, age: ${Math.round(ageSeconds)}s`
+                        );
+                        statusObj.status = 'unknown';
+                        statusObj.error_message = `Status stale (${Math.round(ageSeconds)}s old)`;
+                        statusObj.timestamp = Date.now(); // Update timestamp to prevent repeated warnings
+                      }
+                    }
+                  }
                 }
               } catch (error) {
                 logger.debug(`Failed to parse connector statuses for worker ${workerId}:`, error);
@@ -1199,10 +1224,35 @@ export class LightweightAPIServer {
               const caps = capabilities as CapabilitiesData;
 
               // Parse connector statuses if available
+              interface ConnectorStatusObj {
+                status: string;
+                timestamp: number;
+                error_message?: string;
+                [key: string]: unknown;
+              }
+
               let connectorStatuses: Record<string, unknown> = {};
               try {
                 if (data.connector_statuses) {
                   connectorStatuses = JSON.parse(data.connector_statuses as string);
+
+                  // Validate timestamps and mark stale statuses
+                  for (const [serviceType, status] of Object.entries(connectorStatuses)) {
+                    if (status && typeof status === 'object' && 'timestamp' in status) {
+                      const statusObj = status as ConnectorStatusObj;
+                      const ageSeconds = (Date.now() - statusObj.timestamp) / 1000;
+
+                      if (ageSeconds > 90) {
+                        // Stale if older than 90 seconds (15s interval + buffer)
+                        logger.warn(
+                          `Stale connector status for ${workerId}:${serviceType}, age: ${Math.round(ageSeconds)}s`
+                        );
+                        statusObj.status = 'unknown';
+                        statusObj.error_message = `Status stale (${Math.round(ageSeconds)}s old)`;
+                        statusObj.timestamp = Date.now(); // Update timestamp to prevent repeated warnings
+                      }
+                    }
+                  }
                 }
               } catch (error) {
                 logger.debug(`Failed to parse connector statuses for worker ${workerId}:`, error);
