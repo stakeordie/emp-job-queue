@@ -6,22 +6,28 @@ Every component in the monorepo now logs to its own `logs/dev.log` file when run
 
 ## Log Files
 
-Each component creates its own log file:
-- `apps/api/logs/dev.log` - API server logs
-- `apps/worker/logs/dev.log` - Worker service logs  
-- `apps/monitor/logs/dev.log` - Monitor UI logs
-- `apps/docs/logs/dev.log` - Documentation site logs
-- `logs/local-redis.log` - Local Redis development logs
+Centralized logging system with all logs in `/logs` directory:
+- `logs/api-redis.log` - API server logs (when connected to local Redis)
+- `logs/redis.log` - Actual Redis server logs (symlink to Redis install)
+- `logs/monitor.log` - Monitor UI server logs
+- `logs/machine.log` - Machine container build and startup logs
+- `logs/monitorEventStream.log` - Raw SSE events from `/api/events/monitor`
+- `logs/api.log` - API server only (when run individually)
+- `logs/worker.log` - Worker service logs (when run individually)
+- `logs/docs.log` - Documentation site logs
 
 ## Log Viewer Commands
 
 ### Individual Component Logs
 ```bash
-pnpm logs:api         # Tail API logs
-pnpm logs:worker      # Tail worker logs
-pnpm logs:monitor     # Tail monitor logs
-pnpm logs:docs        # Tail docs logs
-pnpm logs:local-redis # Tail local Redis logs
+pnpm logs:api-redis          # API server (when connected to local Redis)
+pnpm logs:redis              # Actual Redis server logs
+pnpm logs:monitor            # Monitor UI logs
+pnpm logs:machines           # Machine container logs
+pnpm logs:monitorEventStream # Raw event stream
+pnpm logs:api               # API only
+pnpm logs:worker            # Worker only
+pnpm logs:docs              # Documentation site logs
 ```
 
 ### All Components
@@ -37,10 +43,11 @@ pnpm logs             # Show help message
 
 ## Development Workflow
 
-1. **Start a component**: `pnpm dev:api` (automatically logs to `apps/api/logs/dev.log`)
-2. **Monitor logs**: `pnpm logs:api` (in another terminal)
-3. **Switch between logs**: `Ctrl+C` to stop current tail, then `pnpm logs:worker`
-4. **Monitor all**: `pnpm logs:all` (shows all components with colored prefixes)
+1. **Start full stack**: `pnpm dev:full-stack` (starts Redis + API + Monitor + Machine with centralized logging)
+2. **Monitor logs**: `pnpm logs:all` (shows all components with colored prefixes)
+3. **Switch between logs**: `Ctrl+C` to stop current tail, then `pnpm logs:monitor`
+4. **Check service status**: `pnpm dev:full-stack:status` (shows what's running)
+5. **Clean shutdown**: `pnpm dev:full-stack:stop` (stops all services)
 
 ## Log Format
 
@@ -71,17 +78,23 @@ The log viewer uses different colors for each component:
 ## Examples
 
 ```bash
-# Start API and monitor logs
-pnpm dev:api &
-pnpm logs:api
+# Start full development stack
+pnpm dev:full-stack
 
-# Start multiple components and monitor all
-pnpm dev:api &
-pnpm dev:worker &
-pnpm dev:monitor &
+# In another terminal, monitor all logs
 pnpm logs:all
 
-# Clear logs and start fresh
-pnpm logs:clear
+# Start just Redis + API for testing
 pnpm dev:local-redis
+pnpm logs:api-redis
+
+# Clear all logs and start fresh
+pnpm logs:clear
+pnpm dev:full-stack
+
+# Check what's running
+pnpm dev:full-stack:status
+
+# Clean shutdown
+pnpm dev:full-stack:stop
 ```

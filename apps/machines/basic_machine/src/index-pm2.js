@@ -97,6 +97,20 @@ async function startPM2Services() {
     // Wait for shared setup to complete
     await new Promise(resolve => setTimeout(resolve, 3000));
     
+    // Clear any existing worker downloads to ensure fresh packages
+    logger.info('Cleaning worker cache to prevent stale package downloads...');
+    try {
+      const { execa } = await import('execa');
+      await execa('sh', ['-c', 'rm -rf /tmp/worker_gpu*']);
+      logger.info('Worker cache cleaned successfully');
+    } catch (error) {
+      logger.warn('Failed to clean worker cache:', error.message);
+      // Continue anyway - not critical for startup
+    }
+    
+    // Get GPU count for all services
+    const gpuCount = parseInt(process.env.NUM_GPUS || '2');
+    
     // Start ComfyUI installer if enabled
     const enableComfyUI = process.env.ENABLE_COMFYUI === 'true';
     if (enableComfyUI) {
@@ -110,7 +124,6 @@ async function startPM2Services() {
       
       // Start ComfyUI service instances (per GPU)
       await startupNotifier.notifyStep('comfyui_services_starting', { phase: 'Starting ComfyUI service instances' });
-      const gpuCount = parseInt(process.env.NUM_GPUS || '2');
       const comfyuiServices = [];
       for (let gpu = 0; gpu < gpuCount; gpu++) {
         comfyuiServices.push(`comfyui-gpu${gpu}`);
@@ -126,10 +139,23 @@ async function startPM2Services() {
       }
     }
     
-    // Start worker services
+    // Start worker services (per GPU)
     await startupNotifier.notifyStep('workers_starting', { phase: 'Starting Redis worker processes' });
-    await pm2Manager.pm2Exec('start /workspace/pm2-ecosystem.config.cjs --only redis-worker-gpu0,redis-worker-gpu1');
-    logger.info('Worker services started from ecosystem config');
+    const workerServices = [];
+    for (let gpu = 0; gpu < gpuCount; gpu++) {
+      workerServices.push(`redis-worker-gpu${gpu}`);
+    }
+    
+    if (workerServices.length > 0) {
+      await pm2Manager.pm2Exec(`start /workspace/pm2-ecosystem.config.cjs --only ${workerServices.join(',')}`);
+      logger.info(`Worker services started: ${workerServices.join(', ')}`);
+      
+      // Notify individual worker services started
+      for (const service of workerServices) {
+        const gpu = service.replace('redis-worker-gpu', '');
+        await startupNotifier.notifyServiceStarted(service, { gpu, status: 'Redis worker connecting' });
+      }
+    }
     
     // Start simulation service if enabled
     if (process.env.ENABLE_SIMULATION === 'true') {
@@ -138,10 +164,6 @@ async function startPM2Services() {
       logger.info('Simulation service started');
       await startupNotifier.notifyServiceStarted('simulation', { status: 'Simulation server running' });
     }
-    
-    // Notify individual worker services started
-    await startupNotifier.notifyServiceStarted('redis-worker-gpu0', { gpu: '0', status: 'Redis worker connecting' });
-    await startupNotifier.notifyServiceStarted('redis-worker-gpu1', { gpu: '1', status: 'Redis worker connecting' });
     
     // Save process list
     await pm2Manager.pm2Exec('save');

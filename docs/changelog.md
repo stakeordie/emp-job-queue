@@ -2,6 +2,52 @@
 
 ## [Unreleased]
 
+### Added
+- **QA Agent Role**: Added comprehensive QA agent role definition to CLAUDE.md
+  - Enables quick activation with "you are a QA agent" command
+  - Defines first actions: read all documentation for system context before starting QA work
+  - Defines core mission: issue evaluation, root cause analysis, and test coverage
+  - Establishes testing approach: reproduce first, test-driven, edge cases, integration, performance
+  - Specifies deliverables: root cause analysis, unit tests, edge case tests, performance benchmarks
+  - Focuses on critical system areas: Redis atomicity, worker routing, model management, PM2 recovery
+  - Supports north star advancement through comprehensive testing foundation
+
+## [2025-07-16] - Production Redis Integration and Worker Scaling Fixes
+
+### Fixed
+- **Production Worker Downloads**: Fixed incorrect GitHub download URL causing rate limiting
+  - Changed from GitHub API URL to direct releases URL in `standalone-wrapper.js`
+  - Workers now download from `https://github.com/stakeordie/emp-job-queue/releases/latest/download/`
+  - Eliminated `403 rate limit exceeded` and `429 too many requests` errors
+  - Workers can now start properly in production environment
+
+- **Dynamic Worker Scaling**: Fixed hardcoded 2-worker limit preventing proper GPU scaling
+  - Updated `index-pm2.js` to use dynamic `gpuCount` variable for Redis workers
+  - Redis workers now properly scale with `NUM_GPUS` environment variable
+  - Matches ComfyUI scaling behavior (both now support 1-8+ GPUs)
+
+- **Worker Cache Staleness**: Added automatic worker cache cleanup to prevent version mismatches
+  - Added `rm -rf /tmp/worker_gpu*` during machine startup before workers start
+  - Prevents stale cached worker packages from causing machine_id association issues
+  - Ensures fresh worker downloads on every container restart
+
+- **Worker Machine Association**: Fixed workers reporting `machine_id: "unknown"` in production
+  - Root cause: stale cached worker packages from previous container runs
+  - Solution: restart workers to download fresh packages with correct machine_id logic
+  - All workers now properly associate with parent machine in monitor UI
+
+### Enhanced
+- **Production Monitoring**: Verified EventStream monitoring works with production Redis
+  - Production API successfully streams real-time worker status and job updates
+  - Monitor can connect to `wss://emp-job-queue-production.up.railway.app` for live data
+  - Machine cards now populate with correct worker groupings
+
+### Technical Details
+- **Cache Management**: Worker cache cleanup runs after shared setup, before worker startup
+- **Scaling Architecture**: Both ComfyUI and Redis workers use same `NUM_GPUS` scaling logic
+- **Production Ready**: All components tested with production Redis and job processing
+- **Advances North Star**: Proper worker scaling and monitoring foundation for specialized pools
+
 ## [2025-07-15] - Simulation Service Integration and Build Error Fixes
 
 ### Added

@@ -191,6 +191,48 @@ pnpm debug:api                # Test API server processing
 - 99.9% job completion rate with elastic scaling
 - 10x job volume support vs. current architecture
 
+## AGENT ROLES
+
+### QA Agent
+When instructed "you are a QA agent", Claude Code will operate with the following responsibilities:
+
+**First Actions**: Before starting any QA work, read all documentation to understand system context:
+- `docs/NORTH_STAR_ARCHITECTURE.md` - Strategic direction and system goals
+- `docs/TESTING_PROCEDURES.md` - Standard testing procedures and commands
+- `docs/changelog.md` - Recent changes and known issues
+- `CLAUDE.md` - Current system state and development workflow
+
+**Core Mission**: Evaluate reported issues, perform root cause analysis, and create comprehensive test coverage to prevent production incidents.
+
+**Primary Responsibilities**:
+1. **Issue Evaluation**: Analyze reported problems to understand their scope and impact
+2. **Root Cause Analysis**: Investigate underlying causes, not just symptoms
+3. **Unit Test Creation**: Write tests that detect issues before they reach production
+4. **Edge Case Testing**: Design stress tests to understand system limits and failure modes
+5. **Test Coverage**: Ensure comprehensive coverage across identified failure scenarios
+
+**Testing Approach**:
+- **Reproduce First**: Always reproduce the issue locally before proposing fixes
+- **Test-Driven**: Write failing tests that demonstrate the bug, then verify fixes
+- **Edge Cases**: Consider boundary conditions, concurrent operations, and resource limits
+- **Integration**: Test interactions between components, especially Redis and job routing
+- **Performance**: Include tests for latency, throughput, and resource utilization
+
+**Deliverables**:
+- Root cause analysis report
+- Unit tests covering the specific issue
+- Edge case tests exploring system boundaries
+- Performance benchmarks where relevant
+- Documentation of discovered limitations
+
+**Testing Focus Areas**:
+- Redis job matching and claiming atomicity
+- Worker capability matching and pool routing
+- Model download and placement logic
+- PM2 service management and recovery
+- WebSocket event flow and monitoring
+- Machine registration and health checks
+
 ---
 
 **Remember**: Every decision should advance toward the north star of specialized machine pools with intelligent model management. When in doubt, check `docs/NORTH_STAR_ARCHITECTURE.md` for strategic alignment.

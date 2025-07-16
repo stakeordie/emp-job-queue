@@ -74,7 +74,7 @@ async function runStandaloneService() {
         }
       },
       worker: {
-        downloadUrl: process.env.WORKER_DOWNLOAD_URL || 'https://api.github.com/repos/stakeordie/emp-job-queue/releases/latest',
+        downloadUrl: process.env.WORKER_DOWNLOAD_URL || 'https://github.com/stakeordie/emp-job-queue/releases/latest/download/emp-job-queue-worker.tar.gz',
         useLocalPath: process.env.WORKER_LOCAL_PATH,
         connectors: (process.env.WORKER_CONNECTORS || 'simulation').split(',').map(s => s.trim()).filter(s => s.length > 0)
       },

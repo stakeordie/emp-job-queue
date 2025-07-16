@@ -386,3 +386,81 @@ pnpm dev:full-stack:stop
 - API server events are the source of truth for system state
 - Event order matters - machine must register before workers can be associated
 - All logs are persistent and can be reviewed after services stop
+
+---
+
+## RECENT SYSTEM IMPROVEMENTS (2025-07-16)
+
+### Production Fixes Affecting Testing
+Recent infrastructure fixes have improved testing reliability:
+
+#### Worker Download Reliability
+- **Fixed**: GitHub download rate limiting preventing worker startup
+- **Impact**: Workers now consistently download and start without authentication issues
+- **Testing**: Worker download phase should complete successfully every time
+
+#### Dynamic Worker Scaling
+- **Fixed**: Redis workers hardcoded to 2 instead of scaling with NUM_GPUS
+- **Impact**: Redis workers now properly match ComfyUI scaling (1-8+ workers)
+- **Testing**: Verify `NUM_GPUS=4` creates 4 Redis workers AND 4 ComfyUI instances
+
+#### Worker Cache Management
+- **Fixed**: Stale cached worker packages causing machine_id association issues
+- **Impact**: Workers always download fresh packages with correct machine_id
+- **Testing**: All workers should show correct machine_id in monitor, no "unknown" values
+
+#### Monitor Scalability Foundation
+- **Enhanced**: Added comprehensive scalable architecture plan for 100+ machines
+- **Impact**: Clear roadmap for supporting production-scale monitoring
+- **Testing**: Current testing procedures remain valid, scalability improvements are architectural
+
+### Updated Testing Expectations
+
+#### Worker Registration (Enhanced)
+```bash
+# Verify correct number of workers are created
+curl -s http://localhost:3331/api/monitor/state | jq '.data.workers | length'
+# Should match NUM_GPUS setting (e.g., 4 workers for NUM_GPUS=4)
+
+# Verify all workers have correct machine_id
+curl -s http://localhost:3331/api/monitor/state | jq '.data.workers[] | {worker_id: .worker_id, machine_id: .machine_id}'
+# Should show all workers with machine_id: "basic-machine-local", no "unknown" values
+```
+
+#### Worker Download Verification
+```bash
+# Check worker download success in container logs
+docker logs basic-machine-local | grep -i "download"
+# Should show successful downloads, no rate limiting errors
+
+# Verify worker cache cleanup
+docker logs basic-machine-local | grep "Worker cache cleaned"
+# Should show cache cleanup before worker startup
+```
+
+#### Service Scaling Verification
+```bash
+# Check PM2 service count matches GPU count
+docker exec basic-machine-local pm2 jlist | jq '.[] | select(.name | contains("redis-worker")) | .name'
+# Should show redis-worker-gpu0, redis-worker-gpu1, etc. matching NUM_GPUS
+
+docker exec basic-machine-local pm2 jlist | jq '.[] | select(.name | contains("comfyui")) | .name'  
+# Should show comfyui-gpu0, comfyui-gpu1, etc. matching NUM_GPUS
+```
+
+### Testing Reliability Improvements
+- **Consistent Worker Startup**: Workers now start reliably without download failures
+- **Predictable Scaling**: Service count matches GPU configuration every time
+- **Accurate Machine Association**: All workers properly associated with parent machine
+- **Clean State**: No stale cache interference between test runs
+
+### Success Criteria Updates
+Updated success criteria for testing workflow:
+
+1. **Worker Download**: 100% success rate, no GitHub rate limiting
+2. **Service Scaling**: Service count exactly matches NUM_GPUS setting
+3. **Machine Association**: All workers show correct machine_id, no "unknown" values
+4. **Cache Management**: Fresh worker packages downloaded every startup
+5. **Monitor Stability**: Real-time updates work reliably with proper worker association
+
+**Note**: These improvements make the testing procedures more reliable and predictable, supporting confident production deployment.

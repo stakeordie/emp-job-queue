@@ -42,8 +42,6 @@ services:
       - WORKER_CONNECTORS=${WORKER_CONNECTORS}
       - WORKER_WEBSOCKET_AUTH_TOKEN=${WORKER_WEBSOCKET_AUTH_TOKEN}
       - WORKER_ID_PREFIX=${WORKER_ID_PREFIX}
-      # No WORKER_LOCAL_PATH = triggers GitHub release download
-      - GITHUB_TOKEN=${GITHUB_TOKEN}
       
       # Service toggles
       - ENABLE_NGINX=${ENABLE_NGINX:-false}
@@ -98,7 +96,7 @@ services:
       - CLOUD_STORAGE_TEST_CONTAINER=emprops-share-test
       - STORAGE_TEST_MODE=${STORAGE_TEST_MODE:-true}
       - SKIP_STORAGE_SYNC=${SKIP_STORAGE_SYNC:-true}
-      - STATIC_MODELS=${STATIC_MODELS}
+      # - STATIC_MODELS=${STATIC_MODELS}
       
       # Ollama (if enabled)
       - OLLAMA_HOST=${OLLAMA_HOST}

@@ -560,6 +560,50 @@ redis-cli HSET "worker:basic-machine-local-worker-1" "capabilities" -
 
 **Priority**: HIGH - This corruption can happen to any worker during long-running jobs, making the monitoring system unreliable for production use.
 
+---
+
+## RECENT FIXES IMPLEMENTED (2025-07-16)
+
+### ✅ FIXED: GitHub Download Rate Limiting
+- **Issue**: Workers failing to download packages due to GitHub API rate limiting
+- **Solution**: Changed download URL from `https://api.github.com/repos/.../releases/latest` to `https://github.com/.../releases/latest/download/emp-job-queue-worker.tar.gz`
+- **Location**: `apps/machines/basic_machine/src/services/standalone-wrapper.js`
+- **Impact**: Workers now download successfully without authentication requirements
+
+### ✅ FIXED: Redis Workers Hardcoded to 2 GPUs
+- **Issue**: Only 2 Redis workers created regardless of NUM_GPUS setting
+- **Solution**: Made Redis workers use same dynamic scaling as ComfyUI services
+- **Location**: `apps/machines/basic_machine/src/index-pm2.js:144-147`
+- **Impact**: Redis workers now properly scale with NUM_GPUS (1-8+ workers)
+
+### ✅ FIXED: Worker Cache Staleness
+- **Issue**: Workers using cached packages from previous runs, causing machine_id association issues
+- **Solution**: Added automatic cache cleanup (`rm -rf /tmp/worker_gpu*`) before worker startup
+- **Location**: `apps/machines/basic_machine/src/index-pm2.js:100-109`
+- **Impact**: Workers always download fresh packages with correct machine_id
+
+### ✅ ENHANCED: Scalable Monitor Architecture Documentation
+- **Issue**: Monitor EventStream failing under load (100+ machines)
+- **Solution**: Added comprehensive scalable architecture plan to North Star documentation
+- **Location**: `docs/NORTH_STAR_ARCHITECTURE.md:318-369`
+- **Impact**: Clear roadmap for supporting 100+ machines without connection drops
+
+### 🔄 IN PROGRESS: Real-Time Connector Status Updates
+The comprehensive fix plan outlined in this document is partially implemented:
+- **Cache cleanup**: ✅ Completed
+- **Worker scaling**: ✅ Completed  
+- **Download fixes**: ✅ Completed
+- **Status reporting**: Still needs implementation of periodic status updates in worker
+- **Job-based updates**: Still needs connector status changes on job start/complete
+
+### Next Priority Items
+1. **Implement periodic status updates** in `apps/worker/src/redis-direct-base-worker.ts:721`
+2. **Add job-based status transitions** in `apps/worker/src/redis-direct-worker-client.ts`
+3. **Fix API full state snapshot accuracy** in `apps/api/src/lightweight-api-server.ts`
+4. **Implement scalable monitor architecture** for 100+ machine support
+
+**Current Status**: Core infrastructure fixes completed, real-time status reporting improvements still needed for full monitor reliability.
+
 ## ADDITIONAL RACE CONDITION: ComfyUI Cached Results
 
 ### Problem: Ultra-Fast Job Completion vs Monitor Event Processing

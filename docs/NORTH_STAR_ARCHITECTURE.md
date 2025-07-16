@@ -315,6 +315,58 @@
   - 99.9% uptime and reliability
   - Cost optimization vs. current architecture
 
+  Scalable Monitoring & Operations System
+
+  Monitor Architecture for 100+ Machine Scale
+
+  Current Challenge: EventStream monitoring fails at scale (100 machines × 4 workers = 400+ connections)
+
+  Scalable Monitor Requirements:
+  - Support 100+ machines with 400+ workers simultaneously
+  - Handle thousands of status updates per minute
+  - Provide real-time monitoring without connection drops
+  - Enable focused monitoring on specific machine pools
+  - Graceful degradation during high load periods
+
+  Proposed Architecture:
+
+  Hybrid Polling + WebSocket System:
+  ```typescript
+  interface ScalableMonitor {
+    // Paginated machine management
+    getMachines(page: number, limit: number, pool?: PoolType): Promise<Machine[]>
+    
+    // Selective real-time monitoring
+    watchMachines(machineIds: string[]): WebSocket
+    
+    // Aggregated system health
+    getSystemStats(): Promise<SystemStats>
+    
+    // Pool-specific views
+    getPoolStatus(poolType: PoolType): Promise<PoolStats>
+  }
+  ```
+
+  Implementation Strategy:
+  1. **Event Aggregation**: Batch updates every 5-10 seconds instead of individual events
+  2. **Pagination**: 20-50 machines per page with filtering by pool type
+  3. **Selective Streaming**: Only stream events for machines currently visible
+  4. **Connection Pooling**: Multiple WebSocket connections for different data types
+  5. **State Snapshots**: Periodic full state vs continuous event deltas
+  6. **Auto-reconnect**: Handle connection drops seamlessly
+
+  Monitoring Tiers:
+  - **System Overview**: Aggregated pool statistics and health metrics
+  - **Pool View**: Detailed view of Fast Lane/Standard/Heavy pool machines
+  - **Machine Detail**: Individual machine monitoring with worker breakdown
+  - **Job Flow**: Real-time job routing and completion tracking
+
+  Performance Targets:
+  - Support 100+ machines without connection timeouts
+  - <2 second response time for page navigation
+  - <5 second update latency for critical status changes
+  - 99.9% monitoring uptime during peak load
+
   Key Metrics & Monitoring
 
   Performance Metrics
@@ -337,6 +389,7 @@
   - System Health: Machine availability, service uptime
   - Model Management: Download success rate, eviction efficiency
   - Scaling Metrics: Pool sizing effectiveness, demand vs. capacity
+  - Monitor Performance: Connection stability, update latency, system responsiveness
 
   Migration Strategy
 
