@@ -97,7 +97,8 @@ export class ComfyUIConnector extends RestConnector {
   }
 
   async canProcessJob(jobData: JobData): Promise<boolean> {
-    return jobData.type === 'comfyui' && jobData.payload?.workflow !== undefined;
+    // Accept either payload.workflow or payload directly
+    return jobData.type === 'comfyui' && (jobData.payload?.workflow !== undefined || jobData.payload !== undefined);
   }
 
   // ============================================================================
@@ -122,7 +123,8 @@ export class ComfyUIConnector extends RestConnector {
   }
 
   protected prepareJobPayload(jobData: JobData): unknown {
-    const workflow = jobData.payload.workflow;
+    // Accept either payload.workflow or payload directly
+    const workflow = jobData.payload.workflow || jobData.payload;
     if (!workflow) {
       throw new Error('No workflow provided in job payload');
     }

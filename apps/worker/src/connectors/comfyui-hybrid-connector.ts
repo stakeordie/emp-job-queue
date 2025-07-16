@@ -174,7 +174,8 @@ export class ComfyUIConnector extends HybridConnector {
   }
 
   async canProcessJob(jobData: JobData): Promise<boolean> {
-    return jobData.type === 'comfyui' && jobData.payload?.workflow !== undefined;
+    // Accept either payload.workflow or payload directly
+    return jobData.type === 'comfyui' && (jobData.payload?.workflow !== undefined || jobData.payload !== undefined);
   }
 
   // Override processJobImpl from BaseConnector to customize ComfyUI job processing
@@ -186,8 +187,8 @@ export class ComfyUIConnector extends HybridConnector {
     logger.info(`Starting ComfyUI job ${jobData.id}`);
 
     try {
-      // Validate workflow
-      const workflow = jobData.payload.workflow;
+      // Validate workflow - accept either payload.workflow or payload directly
+      const workflow = jobData.payload.workflow || jobData.payload;
       if (!workflow) {
         throw new Error('No workflow provided in job payload');
       }

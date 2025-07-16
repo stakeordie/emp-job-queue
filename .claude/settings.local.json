@@ -164,7 +164,10 @@
       "Bash(fi)",
       "Bash(git restore:*)",
       "Bash(ping:*)",
-      "Bash(docker cp:*)"
+      "Bash(docker cp:*)",
+      "Bash(npx vitest run:*)",
+      "Bash(npm test)",
+      "Bash(railway login:*)"
     ],
     "deny": []
   }

@@ -91,7 +91,12 @@
     "machines:basic:prod-test:up:build": "pnpm machines:basic:prod-test:down && cd apps/machines/basic_machine && cp .env.local.prod-test .env.local && docker compose -f docker-compose.prod-test.yml --env-file .env.local.prod-test --project-name basic-machine-prod-test up --build",
     "machines:basic:prod-test:down": "cd apps/machines/basic_machine && docker compose -f docker-compose.prod-test.yml --env-file .env.local.prod-test --project-name basic-machine-prod-test down",
     "machines:basic:prod-test:logs": "docker compose -f apps/machines/basic_machine/docker-compose.prod-test.yml --env-file apps/machines/basic_machine/.env.local.prod-test --project-name basic-machine-prod-test logs -f",
-    "machines:basic:prod-test:status": "echo '🔍 Production-Test Machine Status Check (port 9099)' && curl -s http://localhost:9099/health | jq || echo '❌ Health check failed'"
+    "machines:basic:prod-test:status": "echo '🔍 Production-Test Machine Status Check (port 9099)' && curl -s http://localhost:9099/health | jq || echo '❌ Health check failed'",
+    "machines:basic:prod:up": "pnpm machines:basic:prod-test:down && cd apps/machines/basic_machine && docker compose -f docker-compose.prod.yml --env-file .env.local.prod --project-name basic-machine-production up",
+    "machines:basic:prod:up:build": "pnpm machines:basic:prod:down && cd apps/machines/basic_machine && docker compose -f docker-compose.prod.yml --env-file .env.local.prod --project-name basic-machine-production up --build",
+    "machines:basic:prod:down": "cd apps/machines/basic_machine && docker compose -f docker-compose.prod.yml --env-file .env.local.prod --project-name basic-machine-production down",
+    "machines:basic:prod:build": "pnpm machines:basic:prod:down && cd apps/machines/basic_machine && docker compose -f docker-compose.prod.yml --env-file .env.local.prod --project-name basic-machine-production build",
+    "machines:basic:prod:push": "cd apps/machines/basic_machine && docker push emprops/basic-machine-production:latest"
   },
   "devDependencies": {
     "playwright": "^1.53.2",
