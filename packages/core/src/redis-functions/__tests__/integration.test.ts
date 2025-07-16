@@ -1,7 +1,7 @@
 // Integration tests for Redis Functions - Job/Worker capability matching
 // Tests the complete orchestration system end-to-end
 
-import { describe, it, expect, beforeAll, afterAll, beforeEach, afterEach } from '@jest/globals';
+import { describe, it, expect, beforeAll, afterAll, beforeEach, afterEach } from 'vitest';
 import Redis from 'ioredis';
 import { v4 as uuidv4 } from 'uuid';
 import { RedisFunctionInstaller } from '../installer.js';

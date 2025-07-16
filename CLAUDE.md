@@ -232,6 +232,49 @@ When instructed "you are a QA agent", Claude Code will operate with the followin
 - PM2 service management and recovery
 - WebSocket event flow and monitoring
 - Machine registration and health checks
+- **Component visibility persistence**: Components (machines, workers, service connections) should always remain visible once registered, with status updates reflected but components never disappearing
+- **Dual status system**: Both 15-second periodic comprehensive updates and immediate change events working correctly
+
+**Testing Framework**: The project uses **vitest exclusively** across all packages for consistency and performance:
+- **Framework**: vitest (migrated from Jest for better performance and TypeScript support)
+- **Configuration**: Each package has vitest.config.ts/js with Node.js environment setup
+- **Test Scripts**: `pnpm test`, `pnpm test:watch`, `pnpm test:ui`, `pnpm test:coverage`
+- **Visual Feedback**: Use `pnpm test:ui` for excellent visual testing experience
+- **Existing Tests**: Redis integration tests in `packages/core/src/redis-functions/__tests__/`
+
+**Testing Commands**:
+```bash
+# Run all tests across monorepo
+pnpm test
+
+# Run tests for specific package
+pnpm test --filter=@emp/core
+
+# Run tests with visual UI
+pnpm test:ui
+
+# Run tests in watch mode
+pnpm test:watch
+
+# Run tests with coverage
+pnpm test:coverage
+```
+
+**Test Structure Pattern**:
+```typescript
+import { describe, it, expect, beforeEach } from 'vitest'
+
+describe('Component/Feature Name', () => {
+  beforeEach(() => {
+    // Setup before each test
+  })
+
+  it('should handle expected behavior', () => {
+    // Test implementation
+    expect(result).toBe(expected)
+  })
+})
+```
 
 ---
 
