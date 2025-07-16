@@ -1,4 +1,4 @@
-import { vi } from 'vitest'
+import { vi, beforeEach, afterEach } from 'vitest';
 
 // Mock console methods for cleaner test output
 vi.mock('console', () => ({
@@ -7,7 +7,7 @@ vi.mock('console', () => ({
   warn: vi.fn(),
   info: vi.fn(),
   debug: vi.fn(),
-}))
+}));
 
 // Mock express for testing
 vi.mock('express', () => ({
@@ -19,15 +19,15 @@ vi.mock('express', () => ({
     delete: vi.fn(),
     listen: vi.fn(),
   })),
-}))
+}));
 
 // Global test setup
 beforeEach(() => {
   // Reset all mocks before each test
-  vi.clearAllMocks()
-})
+  vi.clearAllMocks();
+});
 
 afterEach(() => {
   // Clean up after each test
-  vi.restoreAllMocks()
-})
+  vi.restoreAllMocks();
+});
