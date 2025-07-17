@@ -190,6 +190,10 @@ export class MachineStatusAggregator {
           this.currentStatus.workers[worker_id].status = data.status;
           this.currentStatus.workers[worker_id].current_job_id = data.current_job_id;
           this.currentStatus.workers[worker_id].last_activity = Date.now();
+          this.currentStatus.workers[worker_id].is_connected = data.is_connected;
+          // Store version info to verify latest code is running
+          this.currentStatus.workers[worker_id].version = data.version;
+          this.currentStatus.workers[worker_id].build_info = data.build_info;
           await this.publishStatus('event_driven');
         }
         break;

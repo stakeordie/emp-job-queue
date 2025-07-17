@@ -330,12 +330,14 @@ export class RedisDirectBaseWorker {
       this.status = WorkerStatus.IDLE;
       this.running = true;
 
-      // Send worker connected event
+      // Send worker connected event with version info
       await this.sendMachineEvent('worker_status_changed', {
         status: 'idle',
         is_connected: true,
         current_job_id: null,
         last_activity: Date.now(),
+        version: `bundled-${Date.now()}`, // Timestamp to prove latest version
+        build_info: 'status-events-v2'
       });
 
       // Start job polling
@@ -476,6 +478,8 @@ export class RedisDirectBaseWorker {
       is_connected: true,
       current_job_id: job.id,
       last_activity: Date.now(),
+      version: `bundled-${Date.now()}`,
+      build_info: 'status-events-v2'
     });
 
     // Set job timeout
@@ -622,6 +626,8 @@ export class RedisDirectBaseWorker {
         is_connected: true,
         current_job_id: this.currentJobs.size > 0 ? Array.from(this.currentJobs.keys())[0] : null,
         last_activity: Date.now(),
+        version: `bundled-${Date.now()}`,
+        build_info: 'status-events-v2'
       });
     }
 
