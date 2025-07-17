@@ -31,7 +31,7 @@ interface HomeProps {
 }
 
 function Home({ isJobPanelOpen }: HomeProps) {
-  const { jobs, workers, machines, syncJobState, cancelJob, deleteMachine, finishedJobsPagination, setFinishedJobsPagination, refreshMonitor } = useMonitorStore();
+  const { jobs, workers, machines, syncJobState, cancelJob, deleteMachine, finishedJobsPagination, setFinishedJobsPagination, refreshJobsOnly } = useMonitorStore();
   const [cancelJobId, setCancelJobId] = useState<string | null>(null);
   const [selectedJob, setSelectedJob] = useState<Job | null>(null);
   const [deleteMachineId, setDeleteMachineId] = useState<string | null>(null);
@@ -136,7 +136,7 @@ function Home({ isJobPanelOpen }: HomeProps) {
   // Handle page change for finished jobs
   const handleFinishedJobsPageChange = (page: number) => {
     setFinishedJobsPagination({ page });
-    refreshMonitor();
+    refreshJobsOnly(); // Only refresh job data, preserve worker/machine state
   };
 
   return (

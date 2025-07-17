@@ -23,6 +23,13 @@
   - Model intelligence shows "Not Implemented" with TODO indicators for required work
   - Provides clear roadmap of what data collection is needed for real North Star progress tracking
 
+### Fixed
+- **Pagination Worker Status Loss**: Fixed workers losing status and version data during pagination navigation
+  - Root cause: Pagination triggered full state refresh that overwrote real-time worker data
+  - Solution: Added `refreshJobsOnly()` method that preserves worker/machine state during pagination
+  - Pagination now only updates job data, preserving worker version and status from real-time events
+  - Workers maintain their status, version, and capabilities metadata across page navigation
+
 - **QA Agent Role**: Added comprehensive QA agent role definition to CLAUDE.md
   - Enables quick activation with "you are a QA agent" command
   - Defines first actions: read all documentation for system context before starting QA work

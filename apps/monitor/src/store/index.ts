@@ -92,6 +92,7 @@ interface MonitorStore {
   connect: (url?: string) => void;
   disconnect: () => void;
   refreshMonitor: () => void;
+  refreshJobsOnly: () => void;
   submitJob: (jobData: Record<string, unknown>) => void;
   syncJobState: (jobId?: string) => void;
   cancelJob: (jobId: string) => void;
@@ -1517,6 +1518,19 @@ export const useMonitorStore = create<MonitorStore>()(
           pageSize: finishedJobsPagination.pageSize
         }
       });
+    },
+    
+    refreshJobsOnly: () => {
+      const { addLog } = get();
+      addLog({
+        level: 'info',
+        category: 'websocket',
+        message: 'Refreshing jobs only - pagination change, preserving worker/machine state',
+        source: 'store',
+      });
+      // For pagination changes, we don't need to request full state
+      // The server will automatically send updated job data based on pagination state
+      // This preserves worker status and version data that came from real-time events
     },
     
     deleteMachine: async (machineId: string) => {
