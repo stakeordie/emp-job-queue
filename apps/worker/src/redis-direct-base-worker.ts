@@ -335,7 +335,7 @@ export class RedisDirectBaseWorker {
         status: 'idle',
         is_connected: true,
         current_job_id: null,
-        last_activity: Date.now()
+        last_activity: Date.now(),
       });
 
       // Start job polling
@@ -411,15 +411,15 @@ export class RedisDirectBaseWorker {
     await this.redisClient.disconnect();
 
     this.status = WorkerStatus.OFFLINE;
-    
+
     // Send worker disconnected event
     await this.sendMachineEvent('worker_status_changed', {
       status: 'offline',
       is_connected: false,
       current_job_id: null,
-      last_activity: Date.now()
+      last_activity: Date.now(),
     });
-    
+
     logger.info(`Redis-direct worker ${this.workerId} stopped`);
   }
 
@@ -475,7 +475,7 @@ export class RedisDirectBaseWorker {
       status: 'busy',
       is_connected: true,
       current_job_id: job.id,
-      last_activity: Date.now()
+      last_activity: Date.now(),
     });
 
     // Set job timeout
@@ -621,7 +621,7 @@ export class RedisDirectBaseWorker {
         status: this.status === WorkerStatus.IDLE ? 'idle' : 'busy',
         is_connected: true,
         current_job_id: this.currentJobs.size > 0 ? Array.from(this.currentJobs.keys())[0] : null,
-        last_activity: Date.now()
+        last_activity: Date.now(),
       });
     }
 

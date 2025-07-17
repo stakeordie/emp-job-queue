@@ -15,15 +15,15 @@ interface UnifiedMachineStatus {
   structure: {
     gpu_count: number;
     capabilities: string[];
-    workers: Record<string, any>;
+    workers: Record<string, unknown>;
   };
   status: {
     machine: {
       phase: string;
       uptime_ms: number;
     };
-    workers: Record<string, any>;
-    services: Record<string, any>;
+    workers: Record<string, unknown>;
+    services: Record<string, unknown>;
   };
 }
 
@@ -42,7 +42,7 @@ const processUnifiedMachineStatus = (unifiedStatus: UnifiedMachineStatus): Omit<
     machine_id: unifiedStatus.machine_id,
     status: machinePhase as 'ready' | 'starting' | 'offline',
     workers: workerIds,
-    services: servicesData,
+    services: servicesData as { [serviceName: string]: { status: string; health: string; pm2_status: string; } },
     host_info: {
       gpu_count: unifiedStatus.structure?.gpu_count
     }
