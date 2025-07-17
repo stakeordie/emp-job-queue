@@ -70,7 +70,7 @@ services:
       - LOG_LEVEL=${LOG_LEVEL}
       # Unified Machine Status Configuration
       - UNIFIED_MACHINE_STATUS=true
-      - MACHINE_STATUS_UPDATE_INTERVAL_SECONDS=15
+      - MACHINE_STATUS_UPDATE_INTERVAL_SECONDS=10
       # ComfyUI Configuration
       - ENABLE_COMFYUI=${ENABLE_COMFYUI}
       - COMFYUI_CPU_ONLY=${COMFYUI_CPU_ONLY}
