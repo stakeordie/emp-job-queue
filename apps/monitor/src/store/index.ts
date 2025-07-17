@@ -749,6 +749,124 @@ export const useMonitorStore = create<MonitorStore>()(
               });
             });
           }
+          
+          // Create/update workers using structure for basic info and status for version
+          const structureData = updateEvent.status_data.structure as { workers?: Record<string, unknown> };
+          const statusData = updateEvent.status_data.status as { workers?: Record<string, unknown> };
+          
+          console.log('[Store] Processing workers from machine_update:', {
+            hasStructureWorkers: !!structureData?.workers,
+            hasStatusWorkers: !!statusData?.workers,
+            structureWorkerIds: structureData?.workers ? Object.keys(structureData.workers) : [],
+            statusWorkerIds: statusData?.workers ? Object.keys(statusData.workers) : []
+          });
+          
+          if (structureData?.workers && statusData?.workers) {
+            const { addWorker, updateWorker } = get();
+            const structureWorkers = structureData.workers as Record<string, {
+              worker_id: string;
+              gpu_id: number;
+              services: string[];
+            }>;
+            const statusWorkers = statusData.workers as Record<string, {
+              is_connected: boolean;
+              status: string;
+              current_job_id: string | null;
+              last_activity: number | null;
+              version?: string;
+              build_timestamp?: number;
+              build_info?: string;
+            }>;
+            
+            Object.entries(structureWorkers).forEach(([workerId, structureInfo]) => {
+              const statusInfo = statusWorkers[workerId];
+              const existingWorker = get().workers.find(w => w.worker_id === workerId);
+              
+              console.log(`[Store] Processing worker ${workerId}:`, {
+                statusVersion: statusInfo?.version,
+                existingWorker: !!existingWorker,
+                structureInfo: structureInfo,
+                statusInfo: statusInfo
+              });
+              
+              // Create capabilities object with version from status (not structure)
+              const capabilities: WorkerCapabilities = {
+                worker_id: workerId,
+                machine_id: updateEvent.machine_id,
+                services: structureInfo.services || [],
+                hardware: {
+                  gpu_memory_gb: 8, // Default values
+                  gpu_model: 'unknown',
+                  ram_gb: 8,
+                },
+                performance: {
+                  concurrent_jobs: 1,
+                  quality_levels: ['balanced']
+                },
+                customer_access: {
+                  isolation: 'loose'
+                },
+                metadata: {
+                  version: statusInfo?.version || null, // Version from status data
+                  node_version: 'unknown',
+                  platform: 'unknown',
+                  arch: 'unknown'
+                }
+              };
+              
+              if (!existingWorker) {
+                // Create new worker with version info from status
+                const newWorker = {
+                  worker_id: workerId,
+                  status: (statusInfo?.status as WorkerStatus) || 'unknown',
+                  capabilities,
+                  current_jobs: statusInfo?.current_job_id ? [statusInfo.current_job_id] : [],
+                  connected_at: new Date().toISOString(),
+                  last_heartbeat: statusInfo?.last_activity ? new Date(statusInfo.last_activity).toISOString() : new Date().toISOString(),
+                  total_jobs_completed: 0,
+                  total_jobs_failed: 0,
+                  average_processing_time: 0, // Required fields
+                  uptime: 0
+                };
+                console.log(`[Store] Creating new worker ${workerId} with version:`, {
+                  version: newWorker.capabilities.metadata?.version,
+                  fullCapabilities: newWorker.capabilities
+                });
+                addWorker(newWorker);
+              } else {
+                // Update existing worker with version info from status
+                const updates = {
+                  status: (statusInfo?.status as WorkerStatus) || existingWorker.status,
+                  capabilities: {
+                    ...existingWorker.capabilities,
+                    metadata: {
+                      ...existingWorker.capabilities.metadata,
+                      version: statusInfo?.version || existingWorker.capabilities.metadata?.version
+                    }
+                  },
+                  current_jobs: statusInfo?.current_job_id ? [statusInfo.current_job_id] : [],
+                  last_heartbeat: statusInfo?.last_activity ? new Date(statusInfo.last_activity).toISOString() : existingWorker.last_heartbeat
+                };
+                console.log(`[Store] Updating existing worker ${workerId} with version:`, {
+                  version: updates.capabilities.metadata?.version,
+                  fullCapabilities: updates.capabilities
+                });
+                updateWorker(workerId, updates);
+              }
+            });
+            
+            // Log current worker state after processing
+            const currentWorkers = get().workers;
+            console.log('[Store] Current workers after machine_update processing:', 
+              currentWorkers.map(w => ({
+                worker_id: w.worker_id,
+                status: w.status,
+                version: w.capabilities?.metadata?.version,
+                hasMetadata: !!w.capabilities?.metadata
+              }))
+            );
+          }
+          
           break;
         }
         

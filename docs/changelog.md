@@ -3,6 +3,19 @@
 ## [Unreleased]
 
 ### Added
+- **Worker Version Display**: Added Git version tracking and display in monitor UI
+  - Workers now report actual Git release versions (e.g., v0.0.42-6-g4a13e67) in status events
+  - Monitor UI displays worker versions in machine cards under capabilities metadata
+  - Version flows from worker status events through machine aggregator to UI
+  - Enables real-time visibility into which worker versions are running across the fleet
+
+- **EmProps Open API Test Mode**: Added test implementation for EmProps URL prediction in JobResultModal
+  - Created EmProps test tab with side-by-side comparison of actual vs predicted results
+  - Implemented URL prediction logic following EmProps pattern: `{baseUrl}/{userId}/{sessionId}/{randomUUID}.{ext}`
+  - Added Switch component toggle for EmProps mode testing
+  - Enables testing EmProps approach without modifying API or changing result handling
+  - Validates whether predictable URL construction works with current job system
+
 - **QA Agent Role**: Added comprehensive QA agent role definition to CLAUDE.md
   - Enables quick activation with "you are a QA agent" command
   - Defines first actions: read all documentation for system context before starting QA work
