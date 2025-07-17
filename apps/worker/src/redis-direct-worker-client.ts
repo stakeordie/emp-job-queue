@@ -135,8 +135,17 @@ export class RedisDirectWorkerClient {
 
   /**
    * Register worker capabilities directly in Redis
+   * DISABLED when using unified machine status reporting
    */
   private async registerWorker(capabilities: WorkerCapabilities): Promise<void> {
+    // Skip individual worker registration if unified machine status is enabled
+    if (process.env.UNIFIED_MACHINE_STATUS === 'true') {
+      logger.info(
+        `Skipping individual worker registration for ${this.workerId} - using unified machine status`
+      );
+      return;
+    }
+
     const now = new Date().toISOString();
 
     // Store worker capabilities

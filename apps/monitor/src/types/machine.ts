@@ -1,6 +1,6 @@
 export interface Machine {
   machine_id: string;
-  status: 'starting' | 'ready' | 'stopping' | 'offline';
+  status: 'starting' | 'ready' | 'stopping' | 'offline' | 'disconnected';
   workers: string[]; // Array of worker IDs
   logs: MachineLog[];
   started_at?: string;

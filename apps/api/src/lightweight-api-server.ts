@@ -1,6 +1,6 @@
 // Lightweight API Server - Phase 1C Implementation
 // Replaces hub orchestration with simple HTTP + WebSocket API
-// Supports both legacy WebSocket clients and modern HTTP+SSE clients
+// WebSocket-only communication for real-time updates
 
 import express, { Request, Response } from 'express';
 import { createServer, Server as HTTPServer } from 'http';
@@ -28,12 +28,6 @@ interface LightweightAPIConfig {
   port: number;
   redisUrl: string;
   corsOrigins?: string[];
-}
-
-interface SSEConnection {
-  response: Response;
-  jobId: string;
-  clientId: string;
 }
 
 interface WebSocketConnection {
@@ -64,9 +58,13 @@ export class LightweightAPIServer {
   private config: LightweightAPIConfig;
 
   // Connection tracking
-  private sseConnections = new Map<string, SSEConnection>();
   private wsConnections = new Map<string, WebSocketConnection>();
   private monitorConnections = new Map<string, MonitorConnection>();
+
+  // Machine status tracking
+  private machineLastSeen = new Map<string, number>();
+  private unifiedMachineStatus = new Map<string, unknown>();
+  private staleMachineCheckInterval?: NodeJS.Timeout;
   private clientConnections = new Map<string, ClientConnection>();
   private progressSubscriber: Redis;
   // Track which client submitted which job
@@ -182,46 +180,6 @@ export class LightweightAPIServer {
       }
     });
 
-    // Job progress streaming (Server-Sent Events)
-    this.app.get('/api/jobs/:jobId/progress', (req: Request, res: Response) => {
-      const { jobId } = req.params;
-      const clientId = uuidv4();
-
-      // Set SSE headers
-      res.writeHead(200, {
-        'Content-Type': 'text/event-stream',
-        'Cache-Control': 'no-cache',
-        Connection: 'keep-alive',
-        'Access-Control-Allow-Origin': '*',
-        'Access-Control-Allow-Headers': 'Cache-Control',
-      });
-
-      // Send initial connection event
-      res.write(
-        `data: ${JSON.stringify({
-          type: 'connected',
-          job_id: jobId,
-          client_id: clientId,
-          timestamp: new Date().toISOString(),
-        })}\n\n`
-      );
-
-      // Store SSE connection
-      this.sseConnections.set(clientId, {
-        response: res,
-        jobId,
-        clientId,
-      });
-
-      logger.info(`SSE client ${clientId} connected for job ${jobId}`);
-
-      // Handle client disconnect
-      req.on('close', () => {
-        this.sseConnections.delete(clientId);
-        logger.info(`SSE client ${clientId} disconnected from job ${jobId}`);
-      });
-    });
-
     // Job list endpoint
     this.app.get('/api/jobs', async (req: Request, res: Response) => {
       try {
@@ -246,63 +204,6 @@ export class LightweightAPIServer {
           timestamp: new Date().toISOString(),
         });
       }
-    });
-
-    // Monitor events streaming (Server-Sent Events)
-    this.app.get('/api/events/monitor', (req: Request, res: Response) => {
-      const monitorId = `monitor-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
-
-      // Parse token from query parameters
-      const token = req.query.token as string;
-
-      // Validate token if provided
-      if (token && !this.isValidToken(token)) {
-        res.status(401).json({
-          success: false,
-          error: 'Invalid authentication token',
-          timestamp: new Date().toISOString(),
-        });
-        return;
-      }
-
-      // Set SSE headers
-      res.writeHead(200, {
-        'Content-Type': 'text/event-stream',
-        'Cache-Control': 'no-cache',
-        Connection: 'keep-alive',
-        'Access-Control-Allow-Origin': '*',
-        'Access-Control-Allow-Headers': 'Cache-Control',
-      });
-
-      // Send initial connection event
-      res.write(
-        `data: ${JSON.stringify({
-          type: 'connected',
-          monitor_id: monitorId,
-          timestamp: new Date().toISOString(),
-        })}\n\n`
-      );
-
-      // Register monitor with EventBroadcaster for SSE
-      this.eventBroadcaster.addMonitor(monitorId, res);
-
-      logger.info(`SSE monitor ${monitorId} connected`);
-      logger.debug(`📊 Total monitors connected: ${this.eventBroadcaster.getMonitorCount()}`);
-
-      // Send full state if needed
-      this.sendFullStateSnapshotSSE(monitorId, res);
-
-      // Handle client disconnect
-      req.on('close', () => {
-        this.eventBroadcaster.removeMonitor(monitorId);
-        logger.info(`SSE monitor ${monitorId} disconnected`);
-        logger.debug(`📊 Total monitors remaining: ${this.eventBroadcaster.getMonitorCount()}`);
-      });
-
-      req.on('error', error => {
-        logger.error(`SSE monitor error for ${monitorId}:`, error);
-        this.eventBroadcaster.removeMonitor(monitorId);
-      });
     });
 
     // Worker and job cleanup endpoint
@@ -375,7 +276,7 @@ export class LightweightAPIServer {
       logger.info(`WebSocket connection to: ${url}`);
 
       // Parse URL to determine connection type
-      if (url.startsWith('/ws/monitor/')) {
+      if (url.startsWith('/ws/monitor/') || url.startsWith('/ws/monitor?')) {
         this.handleMonitorConnection(ws, url);
       } else if (url.startsWith('/ws/client/')) {
         this.handleClientConnection(ws, url);
@@ -413,11 +314,27 @@ export class LightweightAPIServer {
 
     this.monitorConnections.set(monitorId, connection);
 
-    // Register monitor with EventBroadcaster
-    this.eventBroadcaster.addMonitor(monitorId, ws);
-
     logger.info(`Monitor ${monitorId} connected`);
-    logger.debug(`📊 Total monitors connected: ${this.eventBroadcaster.getMonitorCount()}`);
+    logger.debug(`📊 Total monitors connected: ${this.monitorConnections.size}`);
+
+    // Set up ping/pong for connection health
+    let isAlive = true;
+    ws.on('pong', () => {
+      isAlive = true;
+    });
+
+    const pingInterval = setInterval(() => {
+      if (!isAlive) {
+        // Connection is dead, clean up
+        clearInterval(pingInterval);
+        ws.terminate();
+        this.monitorConnections.delete(monitorId);
+        logger.info(`Monitor ${monitorId} disconnected (ping timeout)`);
+        return;
+      }
+      isAlive = false;
+      ws.ping();
+    }, 30000); // Ping every 30 seconds
 
     ws.on('message', async (data: Buffer) => {
       try {
@@ -436,16 +353,16 @@ export class LightweightAPIServer {
     });
 
     ws.on('close', () => {
+      clearInterval(pingInterval);
       this.monitorConnections.delete(monitorId);
-      this.eventBroadcaster.removeMonitor(monitorId);
       logger.info(`Monitor ${monitorId} disconnected`);
-      logger.debug(`📊 Total monitors remaining: ${this.eventBroadcaster.getMonitorCount()}`);
+      logger.debug(`📊 Total monitors remaining: ${this.monitorConnections.size}`);
     });
 
     ws.on('error', error => {
       logger.error(`Monitor WebSocket error for ${monitorId}:`, error);
+      clearInterval(pingInterval);
       this.monitorConnections.delete(monitorId);
-      this.eventBroadcaster.removeMonitor(monitorId);
     });
   }
 
@@ -707,7 +624,14 @@ export class LightweightAPIServer {
         if (message.request_full_state) {
           logger.info(`Monitor ${monitorId} requested full state, sending...`);
           const beforeSnapshot = Date.now();
-          await this.sendFullStateSnapshot(connection);
+          await this.sendFullStateSnapshot(connection, {
+            finishedJobsPagination: (
+              message as { finishedJobsPagination?: { page: number; pageSize: number } }
+            ).finishedJobsPagination || {
+              page: 1,
+              pageSize: 20,
+            },
+          });
           logger.info(
             `Full state snapshot for ${monitorId} completed in ${Date.now() - beforeSnapshot}ms (${Date.now() - connectTime}ms since connect)`
           );
@@ -733,6 +657,18 @@ export class LightweightAPIServer {
             timestamp: new Date().toISOString(),
           })
         );
+        break;
+
+      case 'request_full_state':
+        logger.info(`Monitor ${monitorId} requested full state sync`);
+        await this.sendFullStateSnapshot(connection, {
+          finishedJobsPagination: (
+            message as { finishedJobsPagination?: { page: number; pageSize: number } }
+          ).finishedJobsPagination || {
+            page: 1,
+            pageSize: 20,
+          },
+        });
         break;
 
       case 'heartbeat':
@@ -851,7 +787,52 @@ export class LightweightAPIServer {
     }
   }
 
-  private async sendFullStateSnapshot(connection: MonitorConnection): Promise<void> {
+  private isMonitorSubscribedToEvent(connection: MonitorConnection, eventType: string): boolean {
+    // If no subscriptions, default to allowing all events
+    if (connection.subscribedTopics.size === 0) {
+      return true;
+    }
+
+    // Check event type against subscribed topics
+    if (
+      eventType.startsWith('job_') ||
+      eventType.startsWith('complete_job') ||
+      eventType.startsWith('update_job_progress')
+    ) {
+      return connection.subscribedTopics.has('jobs');
+    }
+
+    if (eventType.startsWith('worker_') || eventType.startsWith('connector_')) {
+      return connection.subscribedTopics.has('workers');
+    }
+
+    if (eventType.startsWith('machine_')) {
+      return connection.subscribedTopics.has('machines');
+    }
+
+    if (eventType === 'system_stats') {
+      return connection.subscribedTopics.has('system_stats');
+    }
+
+    if (eventType === 'heartbeat_ack' || eventType === 'heartbeat') {
+      return connection.subscribedTopics.has('heartbeat');
+    }
+
+    if (eventType === 'full_state_snapshot') {
+      return true; // Always allow full state snapshots
+    }
+
+    // Log unknown event types for debugging
+    logger.debug(`🤔 Unknown event type for subscription check: ${eventType}`);
+    return false;
+  }
+
+  private async sendFullStateSnapshot(
+    connection: MonitorConnection,
+    options?: {
+      finishedJobsPagination?: { page: number; pageSize: number };
+    }
+  ): Promise<void> {
     try {
       const startTime = Date.now();
 
@@ -1010,6 +991,10 @@ export class LightweightAPIServer {
       const allJobs = await this.getAllJobs();
       logger.debug(`Fetched ${allJobs.length} jobs in ${Date.now() - jobsStart}ms`);
 
+      // Get paginated completed jobs
+      const paginationOptions = options?.finishedJobsPagination || { page: 1, pageSize: 20 };
+      const completedJobsResult = await this.getCompletedJobsPaginated(paginationOptions);
+
       // Organize jobs by status for monitor compatibility
       const jobsByStatus = {
         pending: [] as unknown[],
@@ -1025,7 +1010,7 @@ export class LightweightAPIServer {
           job_type: job.service_required, // Map service_required to job_type for monitor
         };
 
-        // Categorize by status
+        // Categorize by status (excluding completed jobs - they're handled separately)
         switch (job.status) {
           case 'pending':
           case 'queued':
@@ -1037,7 +1022,7 @@ export class LightweightAPIServer {
             jobsByStatus.active.push(monitorJob);
             break;
           case 'completed':
-            jobsByStatus.completed.push(monitorJob);
+            // Skip - handled by pagination
             break;
           case 'failed':
           case 'cancelled':
@@ -1051,54 +1036,14 @@ export class LightweightAPIServer {
         }
       }
 
-      // Get machines from Redis
-      const machines = [];
-      try {
-        const machineKeys = await this.redis.keys('machine:*:info');
-        for (const machineKey of machineKeys) {
-          const machineData = await this.redis.hgetall(machineKey);
-          if (machineData && machineData.machine_id) {
-            // Get workers for this machine
-            const machineWorkers = workers.filter(
-              worker => worker.machine_id === machineData.machine_id
-            );
+      // Add paginated completed jobs
+      jobsByStatus.completed = completedJobsResult.jobs.map(job => ({
+        ...job,
+        job_type: job.service_required, // Map service_required to job_type for monitor
+      }));
 
-            // Determine machine status based on workers and stored status
-            let machineStatus = machineData.status || 'offline';
-
-            // If no workers are connected, mark machine as offline (but still show it)
-            if (machineWorkers.length === 0) {
-              machineStatus = 'offline';
-              // Update Redis to reflect the offline status
-              await this.redis.hset(`machine:${machineData.machine_id}:info`, {
-                status: 'offline',
-                last_activity: new Date().toISOString(),
-              });
-            } else {
-              // If workers are connected, machine should be ready (unless explicitly starting)
-              if (machineStatus !== 'starting') {
-                machineStatus = 'ready';
-              }
-            }
-
-            machines.push({
-              machine_id: machineData.machine_id,
-              status: machineStatus,
-              workers: machineWorkers.map(w => w.id),
-              host_info: {
-                hostname: machineData.hostname,
-                os: machineData.os,
-                cpu_cores: parseInt(machineData.cpu_cores) || 0,
-                total_ram_gb: parseInt(machineData.total_ram_gb) || 0,
-                gpu_count: parseInt(machineData.gpu_count) || 0,
-                gpu_models: machineData.gpu_models ? JSON.parse(machineData.gpu_models) : [],
-              },
-            });
-          }
-        }
-      } catch (error) {
-        logger.error('Error fetching machines from Redis:', error);
-      }
+      // Get machines from in-memory unified machine status
+      const machines = Array.from(this.unifiedMachineStatus.values());
 
       const snapshot = {
         workers,
@@ -1114,6 +1059,9 @@ export class LightweightAPIServer {
           total_workers: workers.length,
           active_workers: workers.filter(w => w.status === 'active' || w.status === 'busy').length,
           total_machines: machines.length,
+        },
+        pagination: {
+          finishedJobs: completedJobsResult.pagination,
         },
       };
 
@@ -1134,7 +1082,13 @@ export class LightweightAPIServer {
     }
   }
 
-  private async sendFullStateSnapshotSSE(monitorId: string, res: Response): Promise<void> {
+  private async sendFullStateSnapshotSSE(
+    monitorId: string,
+    res: Response,
+    options?: {
+      finishedJobsPagination?: { page: number; pageSize: number };
+    }
+  ): Promise<void> {
     try {
       const startTime = Date.now();
 
@@ -1293,6 +1247,10 @@ export class LightweightAPIServer {
       const allJobs = await this.getAllJobs();
       logger.debug(`Fetched ${allJobs.length} jobs in ${Date.now() - jobsStart}ms`);
 
+      // Get paginated completed jobs
+      const paginationOptions = options?.finishedJobsPagination || { page: 1, pageSize: 20 };
+      const completedJobsResult = await this.getCompletedJobsPaginated(paginationOptions);
+
       // Organize jobs by status for monitor compatibility
       const jobsByStatus = {
         pending: [] as unknown[],
@@ -1308,7 +1266,7 @@ export class LightweightAPIServer {
           job_type: job.service_required, // Map service_required to job_type for monitor
         };
 
-        // Categorize by status
+        // Categorize by status (excluding completed jobs - they're handled separately)
         switch (job.status) {
           case 'pending':
           case 'queued':
@@ -1320,7 +1278,7 @@ export class LightweightAPIServer {
             jobsByStatus.active.push(monitorJob);
             break;
           case 'completed':
-            jobsByStatus.completed.push(monitorJob);
+            // Skip - handled by pagination
             break;
           case 'failed':
           case 'cancelled':
@@ -1334,54 +1292,14 @@ export class LightweightAPIServer {
         }
       }
 
-      // Get machines from Redis
-      const machines = [];
-      try {
-        const machineKeys = await this.redis.keys('machine:*:info');
-        for (const machineKey of machineKeys) {
-          const machineData = await this.redis.hgetall(machineKey);
-          if (machineData && machineData.machine_id) {
-            // Get workers for this machine
-            const machineWorkers = workers.filter(
-              worker => worker.machine_id === machineData.machine_id
-            );
+      // Add paginated completed jobs
+      jobsByStatus.completed = completedJobsResult.jobs.map(job => ({
+        ...job,
+        job_type: job.service_required, // Map service_required to job_type for monitor
+      }));
 
-            // Determine machine status based on workers and stored status
-            let machineStatus = machineData.status || 'offline';
-
-            // If no workers are connected, mark machine as offline (but still show it)
-            if (machineWorkers.length === 0) {
-              machineStatus = 'offline';
-              // Update Redis to reflect the offline status
-              await this.redis.hset(`machine:${machineData.machine_id}:info`, {
-                status: 'offline',
-                last_activity: new Date().toISOString(),
-              });
-            } else {
-              // If workers are connected, machine should be ready (unless explicitly starting)
-              if (machineStatus !== 'starting') {
-                machineStatus = 'ready';
-              }
-            }
-
-            machines.push({
-              machine_id: machineData.machine_id,
-              status: machineStatus,
-              workers: machineWorkers.map(w => w.id),
-              host_info: {
-                hostname: machineData.hostname,
-                os: machineData.os,
-                cpu_cores: parseInt(machineData.cpu_cores) || 0,
-                total_ram_gb: parseInt(machineData.total_ram_gb) || 0,
-                gpu_count: parseInt(machineData.gpu_count) || 0,
-                gpu_models: machineData.gpu_models ? JSON.parse(machineData.gpu_models) : [],
-              },
-            });
-          }
-        }
-      } catch (error) {
-        logger.error('Error fetching machines from Redis:', error);
-      }
+      // Get machines from in-memory unified machine status
+      const machines = Array.from(this.unifiedMachineStatus.values());
 
       const snapshot = {
         workers,
@@ -1397,6 +1315,9 @@ export class LightweightAPIServer {
           total_workers: workers.length,
           active_workers: workers.filter(w => w.status === 'active' || w.status === 'busy').length,
           total_machines: machines.length,
+        },
+        pagination: {
+          finishedJobs: completedJobsResult.pagination,
         },
       };
 
@@ -1430,37 +1351,32 @@ export class LightweightAPIServer {
       | WorkerStatusChangedEvent
       | ConnectorStatusChangedEvent
   ): void {
+    // Use the unified WebSocket broadcast method
+    this.broadcastToWebSocketMonitors(event);
+  }
+
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  private broadcastToWebSocketMonitors(event: any): void {
     const eventJson = JSON.stringify(event);
     logger.info(
-      `📡 [DEBUG] Broadcasting ${event.type} to ${this.monitorConnections.size} WebSocket monitors + ${this.eventBroadcaster.getMonitorCount()} SSE monitors`
+      `📡 Broadcasting ${event.type} to ${this.monitorConnections.size} WebSocket monitors`
     );
 
-    // Broadcast to WebSocket monitors (legacy)
+    // Broadcast to WebSocket monitors
     for (const [monitorId, connection] of this.monitorConnections) {
       if (connection.ws.readyState === WebSocket.OPEN) {
         // Check if monitor is subscribed to this event type
         const eventType = event.type as string;
-        const isSubscribed =
-          connection.subscribedTopics.has('jobs') ||
-          connection.subscribedTopics.has(`jobs:${eventType.split('_')[1]}`) ||
-          connection.subscribedTopics.size === 0; // Subscribe to all if no specific topics
-
-        logger.info(
-          `📡 [DEBUG] WebSocket Monitor ${monitorId}: subscribedTopics=${Array.from(connection.subscribedTopics)}, isSubscribed=${isSubscribed}`
-        );
+        const isSubscribed = this.isMonitorSubscribedToEvent(connection, eventType);
 
         if (isSubscribed) {
           connection.ws.send(eventJson);
-          logger.info(`📡 [DEBUG] Sent ${event.type} to WebSocket monitor ${monitorId}`);
+          logger.debug(`📡 Sent ${event.type} to WebSocket monitor ${monitorId}`);
         } else {
-          logger.warn(`📡 [DEBUG] WebSocket Monitor ${monitorId} not subscribed to ${event.type}`);
+          logger.debug(`📡 WebSocket Monitor ${monitorId} not subscribed to ${event.type}`);
         }
       }
     }
-
-    // Also broadcast to SSE monitors via EventBroadcaster
-    this.eventBroadcaster.broadcast(event);
-    logger.info(`📡 [DEBUG] Also sent ${event.type} to SSE monitors via EventBroadcaster`);
   }
 
   private extractMachineIdFromWorkerId(workerId: string): string {
@@ -1520,22 +1436,29 @@ export class LightweightAPIServer {
 
         await this.redis.hset(`machine:${machineId}:info`, machineData);
 
-        this.eventBroadcaster.broadcastMachineStartup(
-          machineId,
-          'starting',
-          eventData.machine_config
-            ? {
-                hostname: eventData.machine_config.hostname || 'unknown',
-                os: process.platform,
-                cpu_cores: eventData.machine_config.cpu_cores || 4,
-                total_ram_gb: eventData.machine_config.ram_gb || 16,
-                gpu_count: eventData.machine_config.gpu_count || 1,
-                gpu_models: eventData.machine_config.gpu_model
-                  ? [eventData.machine_config.gpu_model]
-                  : undefined,
-              }
-            : undefined
-        );
+        const hostInfo = eventData.machine_config
+          ? {
+              hostname: eventData.machine_config.hostname || 'unknown',
+              os: process.platform,
+              cpu_cores: eventData.machine_config.cpu_cores || 4,
+              total_ram_gb: eventData.machine_config.ram_gb || 16,
+              gpu_count: eventData.machine_config.gpu_count || 1,
+              gpu_models: eventData.machine_config.gpu_model
+                ? [eventData.machine_config.gpu_model]
+                : undefined,
+            }
+          : undefined;
+
+        this.eventBroadcaster.broadcastMachineStartup(machineId, 'starting', hostInfo);
+
+        // Also broadcast to WebSocket monitors
+        this.broadcastToWebSocketMonitors({
+          type: 'machine_startup',
+          machine_id: machineId,
+          phase: 'starting',
+          host_info: hostInfo,
+          timestamp: Date.now(),
+        });
         logger.debug(`✅ Machine startup broadcast sent for: ${machineId}`);
         break;
 
@@ -1622,6 +1545,14 @@ export class LightweightAPIServer {
           machineId,
           eventData.reason || 'Machine shutdown'
         );
+
+        // Also broadcast to WebSocket monitors
+        this.broadcastToWebSocketMonitors({
+          type: 'machine_shutdown',
+          machine_id: machineId,
+          reason: eventData.reason || 'Machine shutdown',
+          timestamp: Date.now(),
+        });
         logger.info(`✅ Machine shutdown event broadcasted for: ${machineId}`);
         break;
 
@@ -1631,6 +1562,89 @@ export class LightweightAPIServer {
     }
 
     logger.info(`📢 Processed machine event: ${machineId} - ${eventData.event_type}`);
+  }
+
+  /**
+   * Handle unified machine status message (replaces fragmented status handling)
+   */
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  private async handleUnifiedMachineStatus(statusData: any): Promise<void> {
+    const machineId = statusData.machine_id;
+    const updateType = statusData.update_type || 'periodic';
+
+    // Track when we last heard from this machine
+    this.machineLastSeen.set(machineId, Date.now());
+    logger.info(`🏭 Processing unified machine status for: ${machineId} (${updateType})`);
+
+    try {
+      // Store the unified machine status in memory for snapshot access
+      this.unifiedMachineStatus.set(machineId, statusData);
+
+      // Also store basic machine info for backward compatibility
+      const machineInfo = {
+        machine_id: machineId,
+        status: statusData.status?.machine?.phase || 'unknown',
+        last_activity: new Date().toISOString(),
+        gpu_count: statusData.structure?.gpu_count || 0,
+        capabilities: JSON.stringify(statusData.structure?.capabilities || []),
+        structure: JSON.stringify(statusData.structure || {}),
+        uptime_ms: statusData.status?.machine?.uptime_ms || 0,
+      };
+
+      await this.redis.hset(`machine:${machineId}:info`, machineInfo);
+
+      // Store/update worker data for each worker in the machine
+      if (statusData.structure?.workers && statusData.status?.workers) {
+        for (const [workerId, workerInfo] of Object.entries(statusData.structure.workers)) {
+          const workerStatus = statusData.status.workers[workerId];
+
+          if (workerStatus) {
+            const workerData = {
+              worker_id: workerId,
+              machine_id: machineId,
+              status: workerStatus.status || 'unknown',
+              is_connected: workerStatus.is_connected || false,
+              current_job_id: workerStatus.current_job_id || '',
+              last_activity: workerStatus.last_activity || new Date().toISOString(),
+              capabilities: JSON.stringify({
+                gpu_id: (workerInfo as Record<string, unknown>).gpu_id,
+                services: (workerInfo as Record<string, unknown>).services,
+              }),
+              connector_statuses: JSON.stringify(statusData.status?.services || {}),
+            };
+
+            await this.redis.hset(`worker:${workerId}`, workerData);
+          }
+        }
+      }
+
+      // Broadcast appropriate events to monitors based on update type
+      if (updateType === 'initial' || updateType === 'periodic') {
+        // Broadcast machine update for periodic refreshes
+        // Broadcast to WebSocket monitors
+        this.broadcastToWebSocketMonitors({
+          type: 'machine_update',
+          machine_id: machineId,
+          status_data: statusData,
+          timestamp: Date.now(),
+        });
+      } else if (updateType === 'event_driven') {
+        // Broadcast specific status changes for immediate updates
+        // Broadcast to WebSocket monitors
+        this.broadcastToWebSocketMonitors({
+          type: 'machine_status_change',
+          machine_id: machineId,
+          status_data: statusData,
+          timestamp: Date.now(),
+        });
+      }
+
+      logger.debug(
+        `✅ Processed unified status for ${machineId}: ${Object.keys(statusData.structure?.workers || {}).length} workers, ${Object.keys(statusData.status?.services || {}).length} services`
+      );
+    } catch (error) {
+      logger.error(`❌ Error processing unified machine status for ${machineId}:`, error);
+    }
   }
 
   private mapStepToPhase(stepName: string): string {
@@ -1703,96 +1717,18 @@ export class LightweightAPIServer {
           `🔔 Redis pattern message: pattern=${pattern}, channel=${channel}, message=${message.substring(0, 100)}...`
         );
 
-        // Handle connector status updates
-        if (pattern === 'connector_status:*' && channel.startsWith('connector_status:')) {
+        // Handle unified machine status updates
+        if (pattern === 'machine:status:*' && channel.startsWith('machine:status:')) {
           try {
-            const statusData = JSON.parse(message);
+            const machineStatusData = JSON.parse(message);
             logger.info(
-              `🔌 [PMESSAGE] Received connector status: ${statusData.service_type} connector for worker ${statusData.worker_id} is ${statusData.status}`
+              `🏭 Received unified machine status: ${machineStatusData.machine_id} (${machineStatusData.update_type})`
             );
 
-            // Map connector status to monitor format
-            const mapConnectorStatusToMonitor = (
-              status: string
-            ): 'active' | 'inactive' | 'error' => {
-              switch (status) {
-                case 'active':
-                  return 'active';
-                case 'idle':
-                  return 'inactive';
-                case 'starting':
-                  return 'inactive';
-                case 'offline':
-                  return 'inactive';
-                case 'error':
-                  return 'error';
-                default:
-                  return 'inactive';
-              }
-            };
-
-            // Broadcast connector status change to monitors
-            const connectorStatusEvent: ConnectorStatusChangedEvent = {
-              type: 'connector_status_changed',
-              connector_id: statusData.connector_id,
-              service_type: statusData.service_type,
-              worker_id: statusData.worker_id,
-              status: mapConnectorStatusToMonitor(statusData.status),
-              service_info: statusData.service_info,
-              timestamp: Date.now(),
-            };
-
-            this.broadcastToMonitors(connectorStatusEvent);
-            logger.info(
-              `📢 [PMESSAGE] Broadcasted connector status change: ${statusData.service_type} -> ${statusData.status}`
-            );
+            // Process the unified machine status
+            await this.handleUnifiedMachineStatus(machineStatusData);
           } catch (error) {
-            logger.error('Error processing connector status message from pmessage:', error);
-          }
-        }
-        // Handle worker status updates
-        else if (pattern === 'worker_status:*' && channel.startsWith('worker_status:')) {
-          try {
-            const workerStatusData = JSON.parse(message);
-            logger.info(
-              `👷 [PMESSAGE] Received worker status: worker ${workerStatusData.worker_id} is ${workerStatusData.status}`
-            );
-
-            // Store worker data in Redis for full state snapshots
-            await this.redis.hmset(`worker:${workerStatusData.worker_id}`, {
-              worker_id: workerStatusData.worker_id,
-              machine_id: workerStatusData.machine_id,
-              status: workerStatusData.status,
-              capabilities: JSON.stringify(workerStatusData.capabilities),
-              connected_at: workerStatusData.connected_at,
-              last_heartbeat: new Date().toISOString(),
-              total_jobs_completed: '0',
-              total_jobs_failed: '0',
-            });
-
-            // Update heartbeat TTL
-            await this.redis.setex(
-              `worker:${workerStatusData.worker_id}:heartbeat`,
-              60,
-              new Date().toISOString()
-            );
-
-            // Broadcast worker status change to monitors
-            const workerStatusEvent: WorkerStatusChangedEvent = {
-              type: 'worker_status_changed',
-              worker_id: workerStatusData.worker_id,
-              old_status: workerStatusData.previous_status || 'unknown',
-              new_status: workerStatusData.status as 'idle' | 'busy' | 'offline' | 'error',
-              current_job_id: workerStatusData.current_job_id,
-              timestamp: Date.now(),
-            };
-
-            this.broadcastToMonitors(workerStatusEvent);
-            logger.info(
-              `📢 [PMESSAGE] Broadcasted worker status change: ${workerStatusData.worker_id} -> ${workerStatusData.status}`
-            );
-          } catch (error) {
-            logger.error('Error processing worker status message from pmessage:', error);
+            logger.error('Error processing unified machine status message:', error);
           }
         }
         // Handle keyspace notifications
@@ -1838,26 +1774,10 @@ export class LightweightAPIServer {
     await this.progressSubscriber.subscribe('complete_job');
     logger.info('✅ Subscribed to: complete_job');
 
-    // Subscribe to connector status updates
-    await this.progressSubscriber.psubscribe('connector_status:*');
-    logger.info('✅ Subscribed to: connector_status:* (pattern)');
-
-    // Subscribe to worker status updates
-    await this.progressSubscriber.psubscribe('worker_status:*');
-    logger.info('✅ Subscribed to: worker_status:* (pattern)');
-
-    // Subscribe to machine startup events
-    logger.info('🔌 Subscribing to Redis channel: machine:startup:events');
-    await this.progressSubscriber.subscribe('machine:startup:events');
-    logger.info('✅ Successfully subscribed to: machine:startup:events');
-
-    // Subscribe to worker connection/disconnection events
-    await this.progressSubscriber.subscribe('worker:events');
-    logger.info('✅ Subscribed to: worker:events');
-
-    // Add debug subscription to legacy channel to catch any old events
-    await this.progressSubscriber.subscribe('worker:startup:events');
-    logger.warn('⚠️  Also subscribed to legacy channel: worker:startup:events (should be empty)');
+    // Subscribe to unified machine status updates (replaces fragmented channels)
+    logger.info('🔌 Subscribing to unified machine status channel: machine:status:*');
+    await this.progressSubscriber.psubscribe('machine:status:*');
+    logger.info('✅ Successfully subscribed to: machine:status:* (pattern)');
 
     this.progressSubscriber.on('message', async (channel, message) => {
       if (channel === 'update_job_progress') {
@@ -1914,67 +1834,71 @@ export class LightweightAPIServer {
         } catch (error) {
           logger.error('Error processing job completion message:', error);
         }
-        // Note: connector_status:* is handled in pmessage event since it's a pattern subscription
-      } else if (channel === 'machine:startup:events') {
-        try {
-          const eventData = JSON.parse(message);
-          logger.info(`🚀 Received machine event on channel 'machine:startup:events':`, {
-            worker_id: eventData.worker_id,
-            machine_id: eventData.machine_id,
-            event_type: eventData.event_type,
-            reason: eventData.reason,
-            timestamp: eventData.timestamp,
-          });
-          logger.debug('🔍 Machine startup data:', JSON.stringify(eventData, null, 2));
-
-          // Process machine startup event and broadcast via EventBroadcaster
-          await this.handleMachineEvent(eventData);
-        } catch (error) {
-          logger.error('❌ Error processing machine startup message:', error);
-          logger.error('Raw message:', message);
-        }
-      } else if (channel === 'worker:events') {
-        try {
-          const eventData = JSON.parse(message);
-          logger.info(
-            `📞 Received worker event: ${eventData.type} for worker ${eventData.worker_id}`
-          );
-          logger.debug('🔍 Worker event data:', JSON.stringify(eventData, null, 2));
-
-          // Handle worker connected/disconnected events
-          if (eventData.type === 'worker_connected') {
-            this.eventBroadcaster.broadcastWorkerConnected(eventData.worker_id, eventData);
-            logger.info(`📢 Broadcasted worker_connected event for ${eventData.worker_id}`);
-          } else if (eventData.type === 'worker_disconnected') {
-            this.eventBroadcaster.broadcastWorkerDisconnected(
-              eventData.worker_id,
-              eventData.machine_id
-            );
-            logger.info(`📢 Broadcasted worker_disconnected event for ${eventData.worker_id}`);
-          } else {
-            logger.warn(`❓ Unknown worker event type: ${eventData.type}`);
-          }
-        } catch (error) {
-          logger.error('❌ Error processing worker event:', error);
-          logger.error('Raw message:', message);
-        }
-      } else if (channel === 'worker:startup:events') {
-        logger.warn(
-          `⚠️  Received event on legacy channel 'worker:startup:events' - this should not happen!`
-        );
-        logger.warn('Raw message:', message);
-        try {
-          const data = JSON.parse(message);
-          logger.warn('Parsed legacy event:', JSON.stringify(data, null, 2));
-        } catch (error) {
-          logger.error('Failed to parse legacy event:', error);
-        }
       }
     });
 
     logger.info(
       '✅ Started Redis pub/sub subscription for real-time progress and worker status updates'
     );
+
+    // Start periodic check for stale machines (30s timeout)
+    this.startStaleMachineCheck();
+  }
+
+  /**
+   * Start periodic check for machines that haven't sent status in 30+ seconds
+   */
+  private startStaleMachineCheck(): void {
+    this.staleMachineCheckInterval = setInterval(async () => {
+      await this.checkForStaleMachines();
+    }, 15000); // Check every 15 seconds
+
+    logger.info('✅ Started stale machine detection (30s timeout)');
+  }
+
+  /**
+   * Check for machines that haven't sent status updates and mark them as disconnected
+   */
+  private async checkForStaleMachines(): Promise<void> {
+    const now = Date.now();
+    const staleThreshold = 30000; // 30 seconds
+
+    for (const [machineId, lastSeen] of this.machineLastSeen.entries()) {
+      const timeSinceLastSeen = now - lastSeen;
+
+      if (timeSinceLastSeen > staleThreshold) {
+        logger.warn(
+          `🔴 Machine ${machineId} is stale (${Math.round(timeSinceLastSeen / 1000)}s since last status)`
+        );
+
+        try {
+          // Mark machine as disconnected in Redis
+          await this.redis.hset(`machine:${machineId}:info`, {
+            status: 'disconnected',
+            last_activity: new Date(lastSeen).toISOString(),
+            disconnected_at: new Date().toISOString(),
+          });
+
+          // Broadcast machine disconnected event to monitors
+          this.eventBroadcaster.broadcastMachineDisconnected(machineId, 'Status timeout (30s)');
+
+          // Also broadcast to WebSocket monitors
+          this.broadcastToWebSocketMonitors({
+            type: 'machine_disconnected',
+            machine_id: machineId,
+            reason: 'Status timeout (30s)',
+            timestamp: Date.now(),
+          });
+
+          // Remove from tracking to avoid repeated warnings
+          this.machineLastSeen.delete(machineId);
+
+          logger.info(`📢 Broadcasted disconnection for stale machine: ${machineId}`);
+        } catch (error) {
+          logger.error(`Failed to mark machine ${machineId} as disconnected:`, error);
+        }
+      }
+    }
   }
 
   private async handleJobStatusChange(jobId: string): Promise<void> {
@@ -2084,18 +2008,6 @@ export class LightweightAPIServer {
 
       // Broadcast to monitors
       this.broadcastToMonitors(jobProgressEvent);
-
-      // Broadcast to SSE connections (clients)
-      for (const [_clientId, connection] of this.sseConnections) {
-        if (connection.jobId === jobId) {
-          try {
-            connection.response.write(`data: ${JSON.stringify(jobProgressEvent)}\n\n`);
-          } catch (error) {
-            logger.error(`Failed to send SSE progress to client ${connection.clientId}:`, error);
-            this.sseConnections.delete(connection.clientId);
-          }
-        }
-      }
 
       // Broadcast to WebSocket connections (clients)
       for (const [_clientId, connection] of this.wsConnections) {
@@ -2215,21 +2127,6 @@ export class LightweightAPIServer {
       timestamp: completionData.timestamp as number,
     };
     this.broadcastToMonitors(jobCompletedEvent);
-
-    // Broadcast to SSE connections (clients waiting for this specific job)
-    for (const [_clientId, connection] of this.sseConnections) {
-      if (connection.jobId === jobId) {
-        try {
-          connection.response.write(`data: ${JSON.stringify(completionMessage)}\n\n`);
-          // Close SSE connection after sending completion
-          connection.response.end();
-          this.sseConnections.delete(connection.clientId);
-        } catch (error) {
-          logger.error(`Failed to send SSE completion to client ${connection.clientId}:`, error);
-          this.sseConnections.delete(connection.clientId);
-        }
-      }
-    }
 
     // Broadcast to WebSocket connections (clients subscribed to this job)
     for (const [_clientId, connection] of this.wsConnections) {
@@ -2561,6 +2458,49 @@ export class LightweightAPIServer {
     return result;
   }
 
+  private async getCompletedJobsPaginated(options: { page: number; pageSize: number }): Promise<{
+    jobs: Job[];
+    pagination: {
+      page: number;
+      pageSize: number;
+      totalCount: number;
+      hasNextPage: boolean;
+      hasPreviousPage: boolean;
+    };
+  }> {
+    const startTime = Date.now();
+    const offset = (options.page - 1) * options.pageSize;
+
+    // Get all completed jobs first to get total count
+    const allJobs = await this.getAllJobs();
+    const completedJobs = allJobs
+      .filter(job => job.status === 'completed')
+      .sort((a, b) => {
+        // Sort by completion time DESC (newest first)
+        const aTime = new Date(a.completed_at || a.created_at).getTime();
+        const bTime = new Date(b.completed_at || b.created_at).getTime();
+        return bTime - aTime;
+      });
+
+    const totalCount = completedJobs.length;
+    const paginatedJobs = completedJobs.slice(offset, offset + options.pageSize);
+
+    logger.info(
+      `getCompletedJobsPaginated completed in ${Date.now() - startTime}ms, returning ${paginatedJobs.length}/${totalCount} jobs (page ${options.page}, size ${options.pageSize})`
+    );
+
+    return {
+      jobs: paginatedJobs,
+      pagination: {
+        page: options.page,
+        pageSize: options.pageSize,
+        totalCount,
+        hasNextPage: offset + options.pageSize < totalCount,
+        hasPreviousPage: options.page > 1,
+      },
+    };
+  }
+
   private async performCleanup(options: {
     reset_workers: boolean;
     cleanup_orphaned_jobs: boolean;
@@ -2819,6 +2759,14 @@ export class LightweightAPIServer {
       // Broadcast machine deletion event
       this.eventBroadcaster.broadcastMachineShutdown(machineId, 'Machine deleted by user request');
 
+      // Also broadcast to WebSocket monitors
+      this.broadcastToWebSocketMonitors({
+        type: 'machine_shutdown',
+        machine_id: machineId,
+        reason: 'Machine deleted by user request',
+        timestamp: Date.now(),
+      });
+
       const result = {
         machine_id: machineId,
         workers_found: machineWorkers,
@@ -2883,6 +2831,14 @@ export class LightweightAPIServer {
       // Broadcast worker disconnection
       this.eventBroadcaster.broadcastWorkerDisconnected(workerId, workerId);
 
+      // Also broadcast to WebSocket monitors
+      this.broadcastToWebSocketMonitors({
+        type: 'worker_disconnected',
+        worker_id: workerId,
+        machine_id: workerId,
+        timestamp: Date.now(),
+      });
+
       logger.info(`✅ Worker ${workerId} cleaned up successfully`);
     } catch (error) {
       logger.error(`Failed to cleanup worker ${workerId}:`, error);
@@ -2920,7 +2876,7 @@ export class LightweightAPIServer {
       logger.info('🌐 HTTP endpoints:');
       logger.info('  POST /api/jobs - Submit job');
       logger.info('  GET /api/jobs/:id - Get job status');
-      logger.info('  GET /api/jobs/:id/progress - Stream progress (SSE)');
+      logger.info('  WS /ws/client - WebSocket for job progress streaming');
       logger.info('  GET /api/jobs - List jobs');
       logger.info('  GET /health - Health check');
     } catch (error) {
@@ -2932,11 +2888,11 @@ export class LightweightAPIServer {
   async stop(): Promise<void> {
     logger.info('Stopping Lightweight API Server...');
 
-    // Close all SSE connections
-    for (const [_clientId, connection] of this.sseConnections) {
-      connection.response.end();
+    // Stop stale machine check
+    if (this.staleMachineCheckInterval) {
+      clearInterval(this.staleMachineCheckInterval);
+      this.staleMachineCheckInterval = undefined;
     }
-    this.sseConnections.clear();
 
     // Close all WebSocket connections
     for (const [_clientId, connection] of this.wsConnections) {
@@ -2961,9 +2917,9 @@ export class LightweightAPIServer {
 
   getConnectionStats() {
     return {
-      sse_connections: this.sseConnections.size,
-      websocket_connections: this.wsConnections.size,
-      total_connections: this.sseConnections.size + this.wsConnections.size,
+      monitor_connections: this.monitorConnections.size,
+      client_websocket_connections: this.wsConnections.size,
+      total_connections: this.monitorConnections.size + this.wsConnections.size,
     };
   }
 }

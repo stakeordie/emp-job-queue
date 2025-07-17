@@ -175,7 +175,10 @@ export class ComfyUIConnector extends HybridConnector {
 
   async canProcessJob(jobData: JobData): Promise<boolean> {
     // Accept either payload.workflow or payload directly
-    return jobData.type === 'comfyui' && (jobData.payload?.workflow !== undefined || jobData.payload !== undefined);
+    return (
+      jobData.type === 'comfyui' &&
+      (jobData.payload?.workflow !== undefined || jobData.payload !== undefined)
+    );
   }
 
   // Override processJobImpl from BaseConnector to customize ComfyUI job processing

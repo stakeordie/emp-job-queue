@@ -5,26 +5,20 @@ import type {
 } from '@emp/core';
 
 /**
- * EventStreamService handles monitor connections using TWO separate protocols:
+ * WebSocketService handles monitor connections using WebSocket only:
  * 
- * 1. EventSource (SSE) - ONE-WAY from server to monitor
+ * 1. WebSocket - TWO-WAY for all monitor and client operations
  *    - Receives ALL monitor events (machine_shutdown, job updates, etc.)
- *    - No subscription messages needed - events are automatically streamed
- *    - Uses HTTP GET to /api/events/monitor endpoint
- *    - Cannot send data back to server
+ *    - Can send job submissions and client commands
+ *    - Connects to /ws/monitor endpoint with auth token
+ *    - Single connection for both monitoring and operations
  * 
- * 2. WebSocket - TWO-WAY for client operations
- *    - Used only for job submissions and client commands
- *    - Connects to /ws/client/ endpoint
- *    - Can send and receive messages
- * 
- * IMPORTANT: The monitor does NOT need to send subscription messages for events.
- * EventSource automatically receives all events that the server broadcasts.
+ * The monitor subscribes to events by sending subscription messages after connection.
  * The EventBroadcaster on the server side determines which events to send
- * based on the event type, not based on client subscriptions.
+ * based on client subscriptions.
  */
 export class EventStreamService {
-  private eventSource: EventSource | null = null;
+  private monitorWs: WebSocket | null = null;
   private clientWs: WebSocket | null = null;
   private reconnectAttempts = 0;
   private isConnecting = false;
@@ -33,7 +27,6 @@ export class EventStreamService {
   private monitorId: string = '';
   private subscriptions: SubscriptionTopic[] = [];
   private lastEventTimestamp: number = 0;
-  private pendingClientUrl: string = '';
   
   // Event listeners
   private onMessageCallbacks: Array<(message: BaseMessage) => void> = [];
@@ -66,7 +59,7 @@ export class EventStreamService {
     this.autoConnect = false; // Never auto-reconnect
     this.reconnectAttempts = 0;
     
-    // Generate timestamp-based IDs like the original monitor
+    // Generate timestamp-based IDs
     const timestamp = Date.now();
     this.monitorId = `monitor-id-${timestamp}`;
     const clientId = `client-id-${timestamp}`;
@@ -74,172 +67,164 @@ export class EventStreamService {
     // Extract host and remove protocol if present
     const host = this.baseUrl.replace(/^(https?:\/\/|wss?:\/\/)/, '');
     
-    // Determine protocols based on URL
+    // Determine WebSocket protocol based on URL
     const isSecure = this.baseUrl.startsWith('https://') || this.baseUrl.startsWith('wss://');
-    const httpProtocol = isSecure ? 'https' : 'http';
     const wsProtocol = isSecure ? 'wss' : 'ws';
     
     // Parse auth token from URL if present
     const [baseHost, authParams] = host.split('?');
     const authQuery = authParams ? `?${authParams}` : '';
     
-    // Create monitor EventSource URL
-    const monitorUrl = `${httpProtocol}://${baseHost}/api/events/monitor${authQuery}`;
+    // Create WebSocket URLs
+    const monitorUrl = `${wsProtocol}://${baseHost}/ws/monitor/${this.monitorId}${authQuery}`;
+    const clientUrl = `${wsProtocol}://${baseHost}/ws/client/${clientId}${authQuery}`;
     
-    console.log('[EventStream] Connecting monitor to:', monitorUrl);
+    console.log('[WebSocket] Connecting monitor to:', monitorUrl);
+    console.log('[WebSocket] Connecting client to:', clientUrl);
     
     try {
-      // ONLY create monitor EventSource connection first
-      this.eventSource = new EventSource(monitorUrl);
-      this.setupEventSourceHandlers(this.eventSource);
+      // Connect monitor WebSocket first
+      this.monitorWs = new WebSocket(monitorUrl);
+      this.setupMonitorWebSocketHandlers(this.monitorWs);
       
-      // Store client URL for later use when EventSource connects
-      this.pendingClientUrl = `${wsProtocol}://${baseHost}/ws/client/${clientId}${authQuery}`;
+      // Connect client WebSocket
+      this.clientWs = new WebSocket(clientUrl);
+      this.setupClientWebSocketHandlers(this.clientWs);
       
     } catch (error) {
-      console.error('[Connection] Failed to create EventSource:', error);
+      console.error('[Connection] Failed to create WebSocket:', error);
       this.isConnecting = false;
     }
   }
 
-  private setupEventSourceHandlers(eventSource: EventSource) {
-    // EventSource handlers for receiving monitor events
-    // NOTE: EventSource is ONE-WAY - we only receive events, never send subscription messages
-    eventSource.onopen = () => {
-      console.log('[EventStream] Monitor connected successfully');
+  private setupMonitorWebSocketHandlers(ws: WebSocket) {
+    ws.onopen = () => {
+      console.log('[WebSocket] Monitor connected successfully');
       
-      // Now that EventSource is connected, connect WebSocket
-      if (this.pendingClientUrl && !this.clientWs) {
-        console.log('[WebSocket] Connecting client to:', this.pendingClientUrl);
-        try {
-          this.clientWs = new WebSocket(this.pendingClientUrl);
-          this.setupWebSocketHandlers(this.clientWs, 'client');
-        } catch (error) {
-          console.error('[WebSocket] Failed to create client connection:', error);
-          // EventSource is connected but WebSocket failed - still partially functional
-          this.isConnecting = false;
-          this.onConnectCallbacks.forEach(callback => callback());
-        }
-      }
+      // Send subscription message to receive all monitor events
+      this.subscriptions = ['workers', 'machines', 'jobs', 'system_stats', 'heartbeat'];
+      this.sendSubscription();
+      
+      // Request initial full state sync
+      this.requestFullStateSync();
+      
+      // Check if both connections are ready
+      this.checkBothConnectionsReady();
     };
 
-    eventSource.onmessage = (event) => {
+    ws.onmessage = (event) => {
       try {
         const data = JSON.parse(event.data);
         
         // Debug logging for machine events
         if (data.type && data.type.startsWith('machine_')) {
-          console.log('[EventStream] Machine event received:', data.type, data);
+          console.log('[WebSocket] Machine event received:', data.type, data);
         }
         
         // Handle monitor events from the event broadcaster
         if (this.isMonitorEvent(data)) {
           // Log full_state_snapshot data for debugging
           if (data.type === 'full_state_snapshot') {
-            console.log('[EventStream] Processing monitor event:', data.type);
-            console.log('[EventStream] Full state snapshot data:', JSON.stringify(data, null, 2));
+            console.log('[WebSocket] Processing monitor event:', data.type);
+            console.log('[WebSocket] Full state snapshot data:', JSON.stringify(data, null, 2));
           } else {
-            console.log('[EventStream] Processing monitor event:', data.type);
+            console.log('[WebSocket] Processing monitor event:', data.type);
           }
           this.handleMonitorEvent(data as MonitorEvent);
-        } else {
-          console.log('[EventStream] Handling as legacy message:', data.type);
-          // Handle legacy messages
-          this.onMessageCallbacks.forEach(callback => callback(data as BaseMessage));
         }
       } catch (error) {
-        console.error('[EventStream] Error parsing monitor message:', error);
+        console.error('[WebSocket] Error parsing monitor message:', error);
       }
     };
 
-    eventSource.onerror = (error) => {
-      console.error('[EventStream] Monitor error:', error);
-      this.isConnecting = false;
+    ws.onclose = () => {
+      console.log('[WebSocket] Monitor connection closed');
+      this.monitorWs = null;
       
-      // EventSource automatically closes on error
-      if (this.eventSource?.readyState === EventSource.CLOSED) {
-        this.eventSource = null;
-        console.log('[EventStream] EventSource closed');
-      }
-      
-      this.onErrorCallbacks.forEach(callback => callback(error));
-      
-      // No auto-reconnect - just fail immediately
-      this.autoConnect = false;
-      this.isConnecting = false;
-      
-      // Clean up any connections
-      if (this.eventSource) {
-        this.eventSource.close();
-        this.eventSource = null;
-      }
-      if (this.clientWs) {
-        this.clientWs.close();
-        this.clientWs = null;
-      }
-      
-      // Notify UI that connection failed
-      const reason = 'API not responding';
-      this.onConnectionFailedCallbacks.forEach(callback => callback(reason));
-      
-      // Notify UI that we're disconnected
+      // Notify UI of disconnection
       this.onDisconnectCallbacks.forEach(callback => callback());
-      
-      // Clear pending data
-      this.pendingClientUrl = '';
+    };
+
+    ws.onerror = (error) => {
+      console.error('[WebSocket] Monitor error:', error);
+      this.handleConnectionError(error, 'Monitor WebSocket connection failed');
     };
   }
 
-  private setupWebSocketHandlers(ws: WebSocket, type: 'client') {
+  private setupClientWebSocketHandlers(ws: WebSocket) {
     ws.onopen = () => {
-      console.log(`[WebSocket] ${type} connected successfully`);
+      console.log('[WebSocket] Client connected successfully');
       
-      // Both connections are now open
-      this.isConnecting = false;
-      this.reconnectAttempts = 0;
-      
-      // Notify UI we're fully connected
-      this.onConnectCallbacks.forEach(callback => callback());
+      // Check if both connections are ready
+      this.checkBothConnectionsReady();
     };
 
     ws.onmessage = (event) => {
       try {
         const data = JSON.parse(event.data);
+        console.log('[WebSocket] Client message received:', data.type);
+        
         // Handle client messages (job responses, etc.)
         this.onMessageCallbacks.forEach(callback => callback(data as BaseMessage));
       } catch (error) {
-        console.error(`[WebSocket] Error parsing ${type} message:`, error);
+        console.error('[WebSocket] Error parsing client message:', error);
       }
     };
 
     ws.onclose = () => {
-      console.log(`[WebSocket] ${type} connection closed`);
+      console.log('[WebSocket] Client connection closed');
       this.clientWs = null;
       
       // Notify UI of disconnection
       this.onDisconnectCallbacks.forEach(callback => callback());
-      
-      // WebSocket closing doesn't trigger reconnection - only EventSource does
-      // This maintains the sequential connection model
     };
 
     ws.onerror = (error) => {
-      console.error(`[WebSocket] ${type} error:`, error);
-      this.isConnecting = false;
-      this.onErrorCallbacks.forEach(callback => callback(error));
-      
-      // WebSocket errors don't trigger reconnection - only EventSource does
-      // This maintains the sequential connection model where EventSource leads
+      console.error('[WebSocket] Client error:', error);
+      this.handleConnectionError(error, 'Client WebSocket connection failed');
     };
+  }
+
+  private checkBothConnectionsReady() {
+    if (this.monitorWs?.readyState === WebSocket.OPEN && 
+        this.clientWs?.readyState === WebSocket.OPEN) {
+      
+      this.isConnecting = false;
+      this.reconnectAttempts = 0;
+      
+      // Notify UI we're fully connected
+      this.onConnectCallbacks.forEach(callback => callback());
+    }
+  }
+
+  private handleConnectionError(error: Event, reason: string) {
+    this.isConnecting = false;
+    this.onErrorCallbacks.forEach(callback => callback(error));
+    
+    // Clean up connections
+    if (this.monitorWs) {
+      this.monitorWs.close();
+      this.monitorWs = null;
+    }
+    if (this.clientWs) {
+      this.clientWs.close();
+      this.clientWs = null;
+    }
+    
+    // Notify UI that connection failed
+    this.onConnectionFailedCallbacks.forEach(callback => callback(reason));
+    
+    // Notify UI that we're disconnected
+    this.onDisconnectCallbacks.forEach(callback => callback());
   }
 
   disconnect() {
     this.autoConnect = false; // Disable auto-reconnection
     this.reconnectAttempts = 0; // Reset reconnect attempts
     
-    if (this.eventSource) {
-      this.eventSource.close();
-      this.eventSource = null;
+    if (this.monitorWs) {
+      this.monitorWs.close();
+      this.monitorWs = null;
     }
     if (this.clientWs) {
       this.clientWs.close();
@@ -248,7 +233,7 @@ export class EventStreamService {
   }
 
   send(message: BaseMessage): boolean {
-    // Send messages via the client connection (for job submission)
+    // Send messages via the client connection (for job submission and commands)
     if (this.clientWs?.readyState === WebSocket.OPEN) {
       this.clientWs.send(JSON.stringify(message));
       return true;
@@ -260,7 +245,38 @@ export class EventStreamService {
   }
 
   isConnected(): boolean {
-    return this.eventSource?.readyState === EventSource.OPEN && this.clientWs?.readyState === WebSocket.OPEN;
+    return this.monitorWs?.readyState === WebSocket.OPEN && 
+           this.clientWs?.readyState === WebSocket.OPEN;
+  }
+
+  private sendSubscription() {
+    if (this.monitorWs?.readyState === WebSocket.OPEN) {
+      const subscriptionMessage = {
+        type: 'subscribe',
+        monitor_id: this.monitorId,
+        topics: this.subscriptions,
+        timestamp: Date.now()
+      };
+      this.monitorWs.send(JSON.stringify(subscriptionMessage));
+      console.log('[WebSocket] Sent subscription:', this.subscriptions);
+    }
+  }
+
+  private requestFullStateSync() {
+    if (this.monitorWs?.readyState === WebSocket.OPEN) {
+      const syncRequest = {
+        type: 'request_full_state',
+        monitor_id: this.monitorId,
+        timestamp: Date.now()
+      };
+      this.monitorWs.send(JSON.stringify(syncRequest));
+      console.log('[WebSocket] Requested full state sync');
+    }
+  }
+
+  // Public method to refresh monitor state
+  refreshMonitorState() {
+    this.requestFullStateSync();
   }
 
 
@@ -321,8 +337,8 @@ export class EventStreamService {
     };
   }
 
-  // Monitor events are now handled via EventSource
-  // No need for monitor-specific WebSocket methods
+  // Monitor events are now handled via WebSocket with subscriptions
+  // All communication uses a single WebSocket connection
 
   private isMonitorEvent(data: unknown): boolean {
     const eventTypes = [
@@ -331,7 +347,8 @@ export class EventStreamService {
       'job_submitted', 'job_assigned', 'job_status_changed', 'update_job_progress',
       'complete_job', 'job_failed', 'full_state_snapshot', 'heartbeat_ack',
       'resync_response', 'system_stats',
-      'machine_startup', 'machine_startup_step', 'machine_startup_complete', 'machine_shutdown'
+      'machine_startup', 'machine_startup_step', 'machine_startup_complete', 'machine_shutdown',
+      'machine_update', 'machine_status_change', 'machine_disconnected'
     ];
     
     return typeof data === 'object' && data !== null && 
@@ -394,8 +411,8 @@ export class EventStreamService {
     }
   }
 
-  // Subscription management and resync are now handled by EventSource
-  // Events are automatically streamed from the API server
+  // Subscription management is handled by WebSocket
+  // Events are streamed after sending subscription message
 
   // Track last event timestamp for resync
   private updateLastEventTimestamp(timestamp: number) {

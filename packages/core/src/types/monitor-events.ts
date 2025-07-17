@@ -68,6 +68,24 @@ export interface MachineShutdownEvent extends BaseMonitorEvent {
   reason?: string;
 }
 
+export interface MachineUpdateEvent extends BaseMonitorEvent {
+  type: 'machine_update';
+  machine_id: string;
+  status_data: Record<string, unknown>;
+}
+
+export interface MachineStatusChangeEvent extends BaseMonitorEvent {
+  type: 'machine_status_change';
+  machine_id: string;
+  status_data: Record<string, unknown>;
+}
+
+export interface MachineDisconnectedEvent extends BaseMonitorEvent {
+  type: 'machine_disconnected';
+  machine_id: string;
+  reason?: string;
+}
+
 // Worker Events
 export interface WorkerConnectedEvent extends BaseMonitorEvent {
   type: 'worker_connected';
@@ -252,6 +270,9 @@ export type MonitorEvent =
   | MachineStartupStepEvent
   | MachineStartupCompleteEvent
   | MachineShutdownEvent
+  | MachineUpdateEvent
+  | MachineStatusChangeEvent
+  | MachineDisconnectedEvent
   | WorkerConnectedEvent
   | WorkerDisconnectedEvent
   | WorkerStatusChangedEvent

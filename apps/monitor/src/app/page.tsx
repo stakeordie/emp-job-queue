@@ -3,8 +3,6 @@
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
-import { Input } from "@/components/ui/input"
-import { Label } from "@/components/ui/label"
 import {
   AlertDialog,
   AlertDialogAction,
@@ -15,93 +13,29 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog"
-import { 
-  Select, 
-  SelectContent, 
-  SelectItem, 
-  SelectTrigger, 
-  SelectValue 
-} from "@/components/ui/select"
 import { Progress } from "@/components/ui/progress"
-import { Play, Square, RefreshCw, X, TestTube, Target } from "lucide-react"
+import { RefreshCw, X } from "lucide-react"
 import { MachineCard } from "@/components/MachineCard"
 import { JobDetailsModal } from "@/components/JobDetailsModal"
+import { JobSubmissionPanel } from "@/components/JobSubmissionPanel"
+import { ConnectionHeader } from "@/components/ConnectionHeader"
 import { useMonitorStore } from "@/store"
-import { useState, useMemo, useEffect } from "react"
-import Link from "next/link"
+import { useState, useMemo } from "react"
 import type { Job } from "@/types/job"
 
-// Environment presets
-const CONNECTION_PRESETS = {
-  local: {
-    websocket: 'http://localhost:3331',
-    auth: '3u8sdj5389fj3kljsf90u',
-    name: 'Local Dev'
-  },
-  railway: {
-    websocket: 'wss://redisserver-production.up.railway.app',
-    auth: '3u8sdj5389fj3kljsf90u',
-    name: 'Railway (Old)'
-  },
-  railwaynew: {
-    websocket: 'wss://emp-job-queue-production.up.railway.app',
-    auth: '3u8sdj5389fj3kljsf90u',
-    name: 'Railway (New)'
-  }
-};
+// Environment presets moved to ConnectionHeader
 
-function Home() {
-  const { connection, jobs, workers, machines, connect, disconnect, setConnection, syncJobState, cancelJob, deleteMachine } = useMonitorStore();
-  const [websocketUrl, setWebsocketUrl] = useState(CONNECTION_PRESETS.local.websocket);
-  const [authToken, setAuthToken] = useState(CONNECTION_PRESETS.local.auth);
-  const [selectedPreset, setSelectedPreset] = useState('local');
+interface HomeProps {
+  isJobPanelOpen: boolean;
+}
+
+function Home({ isJobPanelOpen }: HomeProps) {
+  const { jobs, workers, machines, syncJobState, cancelJob, deleteMachine } = useMonitorStore();
   const [cancelJobId, setCancelJobId] = useState<string | null>(null);
   const [selectedJob, setSelectedJob] = useState<Job | null>(null);
   const [deleteMachineId, setDeleteMachineId] = useState<string | null>(null);
 
-  const handlePresetChange = (preset: string) => {
-    setSelectedPreset(preset);
-    if (CONNECTION_PRESETS[preset as keyof typeof CONNECTION_PRESETS]) {
-      const config = CONNECTION_PRESETS[preset as keyof typeof CONNECTION_PRESETS];
-      setWebsocketUrl(config.websocket);
-      setAuthToken(config.auth);
-    }
-  };
-
-  const handleConnect = () => {
-    // Clear any existing connection error
-    setConnection({ error: undefined });
-    const urlWithAuth = authToken ? `${websocketUrl}?token=${encodeURIComponent(authToken)}` : websocketUrl;
-    connect(urlWithAuth);
-    // Remember that user wants to be connected
-    localStorage.setItem('monitor-auto-connect', 'true');
-  };
-
-  const handleDisconnect = () => {
-    disconnect();
-    // Remember that user manually disconnected
-    localStorage.setItem('monitor-auto-connect', 'false');
-  };
-
-  const handleForceDisconnect = () => {
-    console.log('[Force Disconnect] Emergency disconnect');
-    disconnect();
-    localStorage.setItem('monitor-auto-connect', 'false');
-    // Force reload to clean up any stuck state
-    setTimeout(() => {
-      window.location.reload();
-    }, 500);
-  };
-
-  // Auto-clear connection error after 3 seconds
-  useEffect(() => {
-    if (connection.error) {
-      const timer = setTimeout(() => {
-        setConnection({ error: undefined });
-      }, 3000);
-      return () => clearTimeout(timer);
-    }
-  }, [connection.error, setConnection]);
+  // Connection logic moved to ConnectionHeader
 
   const handleSyncJob = (jobId: string) => {
     syncJobState(jobId);
@@ -176,121 +110,36 @@ function Home() {
   );
 
   return (
-    <main className="container mx-auto p-6 space-y-6">
-      <div className="space-y-4">
-        <div className="text-center space-y-2">
-          <h1 className="text-2xl font-bold">Job Queue Monitor</h1>
-          <p className="text-sm text-muted-foreground">
-            Real-time system monitoring and machine status
-          </p>
-        </div>
-        
-        {/* Navigation */}
-        <div className="flex justify-center gap-4">
-          <Link href="/client-test">
-            <Button variant="outline" className="flex items-center gap-2">
-              <TestTube className="h-4 w-4" />
-              Client Test Page
-            </Button>
-          </Link>
-          <Link href="/northstar">
-            <Button variant="outline" className="flex items-center gap-2">
-              <Target className="h-4 w-4" />
-              North Star Progress
-            </Button>
-          </Link>
-        </div>
+    <main className={`flex-1 p-6 space-y-6 overflow-y-auto transition-all duration-300 ease-in-out ${
+      isJobPanelOpen ? 'w-full' : 'w-full'
+    }`}>
+      {/* Job Statistics - Now in main monitor */}
+      <div className="grid grid-cols-4 gap-4">
+        <Card>
+          <CardContent className="p-4 text-center">
+            <div className="text-2xl font-bold text-blue-600">{jobCounts.active}</div>
+            <div className="text-sm text-muted-foreground">Active Jobs</div>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardContent className="p-4 text-center">
+            <div className="text-2xl font-bold text-yellow-600">{jobCounts.pending}</div>
+            <div className="text-sm text-muted-foreground">Pending Jobs</div>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardContent className="p-4 text-center">
+            <div className="text-2xl font-bold text-green-600">{jobCounts.completed}</div>
+            <div className="text-sm text-muted-foreground">Completed Jobs</div>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardContent className="p-4 text-center">
+            <div className="text-2xl font-bold text-red-600">{jobCounts.failed}</div>
+            <div className="text-sm text-muted-foreground">Failed Jobs</div>
+          </CardContent>
+        </Card>
       </div>
-
-      {/* Connection Controls */}
-      <Card>
-        <CardHeader>
-          <CardTitle className="text-lg">Connection</CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          <div className="grid grid-cols-3 gap-4">
-            <div>
-              <Label htmlFor="preset">Environment</Label>
-              <Select value={selectedPreset} onValueChange={handlePresetChange}>
-                <SelectTrigger id="preset">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  {Object.entries(CONNECTION_PRESETS).map(([key, config]) => (
-                    <SelectItem key={key} value={key}>
-                      {config.name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-            <div>
-              <Label htmlFor="websocket-url">WebSocket URL</Label>
-              <Input
-                id="websocket-url"
-                value={websocketUrl}
-                onChange={(e) => setWebsocketUrl(e.target.value)}
-                placeholder="ws://localhost:3002"
-              />
-            </div>
-            <div>
-              <Label htmlFor="auth-token">Auth Token</Label>
-              <Input
-                id="auth-token"
-                type="password"
-                value={authToken}
-                onChange={(e) => setAuthToken(e.target.value)}
-                placeholder="Enter auth token"
-              />
-            </div>
-          </div>
-          <div className="flex items-center gap-2">
-            <Badge variant={connection.isConnected ? "default" : "destructive"}>
-              {connection.isConnected ? "Connected" : "Disconnected"}
-            </Badge>
-            {connection.error ? (
-              <div className="text-red-600 text-sm">
-                {connection.error}
-              </div>
-            ) : (
-              <Button
-                onClick={connection.isConnected ? handleDisconnect : handleConnect}
-                variant={connection.isConnected ? "destructive" : "default"}
-                size="sm"
-                className={`transition-all duration-200 transform ${
-                  connection.isConnected 
-                    ? "hover:bg-red-600 hover:scale-105 active:scale-95 shadow-md hover:shadow-lg" 
-                    : "hover:bg-blue-600 hover:scale-105 active:scale-95 shadow-md hover:shadow-lg"
-                }`}
-              >
-                {connection.isConnected ? (
-                  <>
-                    <Square className="h-4 w-4 mr-2" />
-                    Disconnect
-                  </>
-                ) : (
-                  <>
-                    <Play className="h-4 w-4 mr-2" />
-                    Connect
-                  </>
-                )}
-              </Button>
-            )}
-            {connection.isConnected && (
-              <Button
-                onClick={handleForceDisconnect}
-                variant="outline"
-                size="sm"
-                className="text-red-600 border-red-200 hover:bg-red-50 hover:border-red-300"
-                title="Force disconnect and reload page to break connection loops"
-              >
-                <X className="h-4 w-4 mr-1" />
-                Force Stop
-              </Button>
-            )}
-          </div>
-        </CardContent>
-      </Card>
 
       {/* Machines */}
       <div className="space-y-4">
@@ -313,8 +162,14 @@ function Home() {
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
             {machines.map((machine) => {
+              // Defensive check to prevent errors
+              if (!machine || !machine.machine_id) {
+                console.warn('[UI] Invalid machine object:', machine);
+                return null;
+              }
+              
               const machineWorkers = workers.filter(w => 
-                machine.workers.includes(w.worker_id)
+                machine.workers && machine.workers.includes(w.worker_id)
               );
               return (
                 <MachineCard 
@@ -596,7 +451,7 @@ function StatusTrayFooter() {
   const { connection, jobs, workers, machines } = useMonitorStore();
   
   return (
-    <footer className="fixed bottom-0 left-0 right-0 bg-background border-t border-border px-4 py-2">
+    <footer className="bg-background border-t border-border px-4 py-2 flex-shrink-0">
       <div className="max-w-7xl mx-auto flex items-center justify-between text-sm">
         <div className="flex items-center space-x-4">
           <div className="flex items-center space-x-2">
@@ -634,10 +489,27 @@ function StatusTrayFooter() {
 }
 
 export default function Page() {
+  const [isJobPanelOpen, setIsJobPanelOpen] = useState(false);
+  
   return (
-    <>
-      <Home />
+    <div className="min-h-screen flex flex-col">
+      {/* Header */}
+      <ConnectionHeader />
+      
+      {/* Main Container */}
+      <div className="flex flex-1">
+        {/* Left Panel */}
+        <JobSubmissionPanel
+          isOpen={isJobPanelOpen}
+          onToggle={() => setIsJobPanelOpen(!isJobPanelOpen)}
+        />
+        
+        {/* Main Content */}
+        <Home isJobPanelOpen={isJobPanelOpen} />
+      </div>
+      
+      {/* Footer */}
       <StatusTrayFooter />
-    </>
+    </div>
   )
 }

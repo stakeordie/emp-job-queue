@@ -34,9 +34,16 @@ export const SimpleWorkerCard = memo(function SimpleWorkerCard({ worker }: Simpl
       >
         <div className="flex flex-col gap-2">
           <div className="flex items-center justify-between">
-            <span className="text-xs font-medium truncate">
-              {worker.worker_id}
-            </span>
+            <div className="flex flex-col gap-1">
+              <span className="text-xs font-medium truncate">
+                {worker.worker_id}
+              </span>
+              {worker.capabilities?.metadata?.version ? (
+                <span className="text-xs text-muted-foreground">
+                  v{String(worker.capabilities.metadata.version)}
+                </span>
+              ) : null}
+            </div>
             {isProcessing && (
               <Badge variant="secondary" className="text-xs">
                 Processing
@@ -108,6 +115,9 @@ export const SimpleWorkerCard = memo(function SimpleWorkerCard({ worker }: Simpl
                 <p>GPU: {worker.capabilities?.hardware?.gpu_model || 'Unknown'}</p>
                 <p>VRAM: {(worker.capabilities?.hardware?.gpu_memory_gb || 'Unknown')}GB</p>
                 {worker.capabilities?.hardware?.ram_gb && <p>RAM: {worker.capabilities.hardware.ram_gb}GB</p>}
+                {worker.capabilities?.metadata?.version ? (
+                  <p>Version: {String(worker.capabilities.metadata.version)}</p>
+                ) : null}
               </div>
             </div>
 

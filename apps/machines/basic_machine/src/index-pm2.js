@@ -10,13 +10,13 @@ import PM2ServiceManager from './lib/pm2-manager.cjs';
 console.log("🔥🔥🔥 TOTALLY NEW VERSION LOADED - NO CACHE 🔥🔥🔥");
 import http from 'http';
 import { URL } from 'url';
-import { RedisStartupNotifier } from './services/redis-startup-notifier.js';
+import { MachineStatusAggregator } from './services/machine-status-aggregator.js';
 
 const logger = createLogger('main-pm2');
 
 // PM2 manager instance
 const pm2Manager = new PM2ServiceManager();
-const startupNotifier = new RedisStartupNotifier(config);
+const statusAggregator = new MachineStatusAggregator(config);
 let startTime = null;
 
 /**
@@ -33,11 +33,8 @@ async function main() {
   startTime = Date.now();
 
   try {
-    // Initialize Redis startup notifier
-    await startupNotifier.connect();
-
-    // Notify machine startup beginning
-    await startupNotifier.notifyMachineStartup('starting');
+    // Initialize machine status aggregator (replaces fragmented status reporting)
+    await statusAggregator.connect();
 
     // Check if we're running under PM2
     const isPM2 = process.env.PM2_HOME || process.env.pm_id !== undefined;
@@ -47,30 +44,21 @@ async function main() {
 
     // Start PM2 services from ecosystem config
     logger.info('Starting PM2 services from ecosystem config...');
-    await startupNotifier.notifyStep('services_starting', { phase: 'Starting PM2 services' });
     await startPM2Services();
     
-    // Verify services are running and healthy
-    await startupNotifier.notifyStep('services_verification', { phase: 'Verifying service health' });
+    // Verify services are running and healthy  
     await verifyPM2Services();
 
     // Start health check server
     startHealthServer();
-
-    // Notify machine is configuring (services started, now verifying)
-    await startupNotifier.notifyMachineStartup('configuring');
     
-    // Notify startup complete
+    // Machine is now ready - status aggregator will handle all reporting
     const startupTime = Date.now() - startTime;
     logger.info(`Basic Machine ready in PM2 mode (${startupTime}ms)`);
-    
-    // Notify machine is fully ready
-    await startupNotifier.notifyMachineStartup('ready');
-    await startupNotifier.notifyStartupComplete();
 
   } catch (error) {
     logger.error('Failed to start Basic Machine:', error);
-    await startupNotifier.notifyStartupFailed(error);
+    // Status aggregator will automatically report machine error state
     process.exit(1);
   }
 }
@@ -85,14 +73,11 @@ async function startPM2Services() {
     // Start PM2 daemon
     await pm2Manager.pm2Exec('ping');
     logger.info('PM2 daemon started');
-    await startupNotifier.notifyServiceStarted('pm2-daemon', { status: 'PM2 daemon running' });
     
     // Start services from ecosystem config in proper order: shared-setup -> comfyui-installer -> workers
     // First start shared setup
-    await startupNotifier.notifyStep('shared_setup_starting', { service: 'shared-setup', phase: 'Starting shared directory setup' });
     await pm2Manager.pm2Exec('start /workspace/pm2-ecosystem.config.cjs --only shared-setup');
     logger.info('Shared setup service started');
-    await startupNotifier.notifyServiceStarted('shared-setup', { status: 'Shared directories configured' });
     
     // Wait for shared setup to complete
     await new Promise(resolve => setTimeout(resolve, 3000));
@@ -114,16 +99,13 @@ async function startPM2Services() {
     // Start ComfyUI installer if enabled
     const enableComfyUI = process.env.ENABLE_COMFYUI === 'true';
     if (enableComfyUI) {
-      await startupNotifier.notifyStep('comfyui_install_starting', { phase: 'Installing ComfyUI and custom nodes' });
       await pm2Manager.pm2Exec('start /workspace/pm2-ecosystem.config.cjs --only comfyui-installer');
       logger.info('ComfyUI installer service started');
-      await startupNotifier.notifyServiceStarted('comfyui-installer', { status: 'ComfyUI installation in progress' });
       
       // Wait for ComfyUI installation to complete
       await new Promise(resolve => setTimeout(resolve, 10000));
       
       // Start ComfyUI service instances (per GPU)
-      await startupNotifier.notifyStep('comfyui_services_starting', { phase: 'Starting ComfyUI service instances' });
       const comfyuiServices = [];
       for (let gpu = 0; gpu < gpuCount; gpu++) {
         comfyuiServices.push(`comfyui-gpu${gpu}`);
@@ -132,15 +114,10 @@ async function startPM2Services() {
       if (comfyuiServices.length > 0) {
         await pm2Manager.pm2Exec(`start /workspace/pm2-ecosystem.config.cjs --only ${comfyuiServices.join(',')}`);
         logger.info(`ComfyUI service instances started: ${comfyuiServices.join(', ')}`);
-        
-        for (const service of comfyuiServices) {
-          await startupNotifier.notifyServiceStarted(service, { gpu: service.replace('comfyui-gpu', ''), status: 'ComfyUI instance running' });
-        }
       }
     }
     
     // Start worker services (per GPU)
-    await startupNotifier.notifyStep('workers_starting', { phase: 'Starting Redis worker processes' });
     const workerServices = [];
     for (let gpu = 0; gpu < gpuCount; gpu++) {
       workerServices.push(`redis-worker-gpu${gpu}`);
@@ -149,20 +126,12 @@ async function startPM2Services() {
     if (workerServices.length > 0) {
       await pm2Manager.pm2Exec(`start /workspace/pm2-ecosystem.config.cjs --only ${workerServices.join(',')}`);
       logger.info(`Worker services started: ${workerServices.join(', ')}`);
-      
-      // Notify individual worker services started
-      for (const service of workerServices) {
-        const gpu = service.replace('redis-worker-gpu', '');
-        await startupNotifier.notifyServiceStarted(service, { gpu, status: 'Redis worker connecting' });
-      }
     }
     
     // Start simulation service if enabled
     if (process.env.ENABLE_SIMULATION === 'true') {
-      await startupNotifier.notifyStep('simulation_starting', { phase: 'Starting simulation service' });
       await pm2Manager.pm2Exec('start /workspace/pm2-ecosystem.config.cjs --only simulation');
       logger.info('Simulation service started');
-      await startupNotifier.notifyServiceStarted('simulation', { status: 'Simulation server running' });
     }
     
     // Save process list
@@ -344,7 +313,7 @@ function startHealthServer() {
                 logger.info('🔄 Executing machine restart...');
                 
                 // Send shutdown event to Redis first
-                await startupNotifier.notifyShutdown('API restart request');
+                await statusAggregator.shutdown();
                 
                 // Exit container - Docker/PM2 will handle restart
                 process.exit(0);
@@ -431,14 +400,14 @@ async function checkSystemHealth() {
       }
     }
 
-    // Check Redis notifier
-    const redisHealth = await startupNotifier.healthCheck();
-    health.services['redis-notifier'] = {
-      healthy: redisHealth.healthy,
-      error: redisHealth.error
+    // Check status aggregator Redis connection
+    const statusHealth = statusAggregator.getCurrentStatus();
+    health.services['status-aggregator'] = {
+      healthy: statusAggregator.isConnected,
+      error: statusAggregator.isConnected ? null : 'Not connected to Redis'
     };
     
-    if (!redisHealth.healthy) {
+    if (!statusAggregator.isConnected) {
       health.healthy = false;
     }
 
@@ -491,7 +460,7 @@ async function handleShutdown(signal) {
   try {
     // CRITICAL: Send shutdown event to Redis FIRST, before anything else
     logger.info(`🚨 PRIORITY: Sending shutdown event to Redis before any other shutdown actions`);
-    await startupNotifier.notifyShutdown(shutdownReason);
+    await statusAggregator.shutdown();
     logger.info(`✅ Shutdown event sent to Redis successfully`);
     
     // Small delay to ensure the event is transmitted
@@ -511,8 +480,7 @@ async function handleShutdown(signal) {
       // Don't wait, just exit
     }
     
-    // Now disconnect and exit
-    await startupNotifier.disconnect();
+    // Now exit gracefully
     logger.info('Graceful shutdown completed');
     process.exit(0);
   } catch (error) {

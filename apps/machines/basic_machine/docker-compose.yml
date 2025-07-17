@@ -68,6 +68,9 @@ services:
       - ENABLE_SIMULATION=${ENABLE_SIMULATION}
       - WORKER_LOCAL_PATH=${WORKER_LOCAL_PATH}
       - LOG_LEVEL=${LOG_LEVEL}
+      # Unified Machine Status Configuration
+      - UNIFIED_MACHINE_STATUS=true
+      - MACHINE_STATUS_UPDATE_INTERVAL_SECONDS=15
       # ComfyUI Configuration
       - ENABLE_COMFYUI=${ENABLE_COMFYUI}
       - COMFYUI_CPU_ONLY=${COMFYUI_CPU_ONLY}

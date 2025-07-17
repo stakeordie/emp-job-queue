@@ -43,6 +43,7 @@ export const MachineCard = memo(function MachineCard({ machine, workers, onDelet
       case 'starting': return 'secondary';
       case 'stopping': return 'destructive';
       case 'offline': return 'outline';
+      case 'disconnected': return 'destructive';
       default: return 'outline';
     }
   };
@@ -53,6 +54,7 @@ export const MachineCard = memo(function MachineCard({ machine, workers, onDelet
       case 'starting': return <Monitor className="h-4 w-4 animate-pulse" />;
       case 'stopping': return <AlertTriangle className="h-4 w-4" />;
       case 'offline': return <Server className="h-4 w-4" />;
+      case 'disconnected': return <X className="h-4 w-4" />;
       default: return <Server className="h-4 w-4" />;
     }
   };
@@ -195,6 +197,7 @@ export const MachineCard = memo(function MachineCard({ machine, workers, onDelet
         ${isActive ? 'border-green-500 bg-green-50' : ''}
         ${machine.status === 'starting' ? 'border-blue-500 bg-blue-50 border-dashed' : ''}
         ${machine.status === 'offline' ? 'border-gray-300 bg-gray-50' : ''}
+        ${machine.status === 'disconnected' ? 'border-red-300 bg-red-50' : ''}
         hover:shadow-md
       `}
       onClick={() => setShowLogs(true)}
@@ -223,7 +226,7 @@ export const MachineCard = memo(function MachineCard({ machine, workers, onDelet
                   <RotateCcw className="h-4 w-4" />
                 </Button>
               )}
-              {machine.status === 'offline' && onDelete && (
+              {(machine.status === 'offline' || machine.status === 'disconnected') && onDelete && (
                 <Button
                   variant="ghost"
                   size="sm"
@@ -232,7 +235,7 @@ export const MachineCard = memo(function MachineCard({ machine, workers, onDelet
                     onDelete(machine.machine_id);
                   }}
                   className="h-6 w-6 p-0 hover:bg-red-100 hover:text-red-600"
-                  title="Delete offline machine"
+                  title={`Delete ${machine.status} machine`}
                 >
                   <X className="h-4 w-4" />
                 </Button>
@@ -262,7 +265,8 @@ export const MachineCard = memo(function MachineCard({ machine, workers, onDelet
               <div className="text-center">
                 <Server className="h-8 w-8 mx-auto mb-2 opacity-50" />
                 <p className="text-sm">
-                  {machine.status === 'starting' ? 'Starting workers...' : 'No workers'}
+                  {machine.status === 'starting' ? 'Starting workers...' : 
+                   machine.status === 'disconnected' ? 'Connection lost (30s timeout)' : 'No workers'}
                 </p>
               </div>
             </div>

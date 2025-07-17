@@ -24,7 +24,38 @@ import {
   logger,
 } from '@emp/core';
 import { WorkerDashboard } from './worker-dashboard.js';
+import { readFileSync } from 'fs';
+import { join } from 'path';
 import os from 'os';
+
+/**
+ * Get worker version from git tag or bundled package.json
+ * Prioritizes git tag for releases, falls back to bundled version
+ */
+function getWorkerVersion(): string {
+  try {
+    // For releases: CI/CD should set WORKER_VERSION env var from git tag
+    if (process.env.WORKER_VERSION) {
+      return process.env.WORKER_VERSION;
+    }
+
+    // In container, try to read from bundled worker package.json
+    // This will have the version set by the bundle script
+    const bundledPath = '/workspace/worker-bundled/package.json';
+    try {
+      const packageJson = JSON.parse(readFileSync(bundledPath, 'utf8'));
+      return packageJson.version || 'unknown';
+    } catch {
+      // Try dist version (for development builds)
+      const distPath = '/workspace/worker-dist/package.json';
+      const packageJson = JSON.parse(readFileSync(distPath, 'utf8'));
+      return packageJson.version || 'unknown';
+    }
+  } catch (error) {
+    // Final fallback
+    return process.env.npm_package_version || 'dev-unknown';
+  }
+}
 
 export class RedisDirectBaseWorker {
   private workerId: string;
@@ -171,7 +202,7 @@ export class RedisDirectBaseWorker {
       location,
       cost,
       metadata: {
-        version: process.env.npm_package_version || '1.0.0',
+        version: getWorkerVersion(),
         node_version: process.version,
         platform: os.platform(),
         arch: os.arch(),
@@ -448,6 +479,14 @@ export class RedisDirectBaseWorker {
     // Update job status to IN_PROGRESS when processing begins
     await this.redisClient.startJobProcessing(job.id);
 
+    // Send job started event to machine aggregator
+    if (process.env.UNIFIED_MACHINE_STATUS === 'true') {
+      await this.sendMachineEvent('job_started', {
+        job_id: job.id,
+        service_type: job.service_required,
+      });
+    }
+
     // Update connector to 'active' when job starts
     await this.updateConnectorStatus(job.service_required, 'active');
 
@@ -487,6 +526,14 @@ export class RedisDirectBaseWorker {
       await this.redisClient.completeJob(jobId, result);
       this.finishJob(jobId);
 
+      // Send job completed event to machine aggregator
+      if (process.env.UNIFIED_MACHINE_STATUS === 'true' && job) {
+        await this.sendMachineEvent('job_completed', {
+          job_id: jobId,
+          service_type: job.service_required,
+        });
+      }
+
       // Update connector to 'idle' when job completes
       if (job) {
         await this.updateConnectorStatus(job.service_required, 'idle');
@@ -506,6 +553,15 @@ export class RedisDirectBaseWorker {
 
       await this.redisClient.failJob(jobId, error, canRetry);
       this.finishJob(jobId);
+
+      // Send job failed event to machine aggregator
+      if (process.env.UNIFIED_MACHINE_STATUS === 'true' && job) {
+        await this.sendMachineEvent('job_failed', {
+          job_id: jobId,
+          service_type: job.service_required,
+          error: error,
+        });
+      }
 
       // Update connector to 'error' when job fails
       if (job) {
@@ -730,6 +786,14 @@ export class RedisDirectBaseWorker {
   }
 
   private startConnectorStatusUpdates(): void {
+    // Skip individual connector status updates if unified machine status is enabled
+    if (process.env.UNIFIED_MACHINE_STATUS === 'true') {
+      logger.info(
+        `Skipping individual connector status updates for worker ${this.workerId} - using unified machine status`
+      );
+      return;
+    }
+
     // Send initial status immediately
     this.sendConnectorStatusUpdate();
 
@@ -827,8 +891,17 @@ export class RedisDirectBaseWorker {
       // Update local connector manager
       await this.connectorManager.updateConnectorStatus(serviceType, status, errorMessage);
 
-      // Immediately publish to Redis (this will trigger sendConnectorStatusUpdate)
-      await this.sendConnectorStatusUpdate();
+      // If using unified machine status, send event to machine aggregator
+      if (process.env.UNIFIED_MACHINE_STATUS === 'true') {
+        await this.sendMachineEvent('connector_status_changed', {
+          service_type: serviceType,
+          status: status,
+          health: errorMessage ? 'unhealthy' : 'healthy',
+        });
+      } else {
+        // Immediately publish to Redis (this will trigger sendConnectorStatusUpdate)
+        await this.sendConnectorStatusUpdate();
+      }
 
       logger.debug(`Updated connector ${serviceType} status to ${status}`);
     } catch (error) {
@@ -843,5 +916,29 @@ export class RedisDirectBaseWorker {
   public async forceConnectorStatusUpdate(): Promise<void> {
     logger.debug(`Force updating connector statuses for worker ${this.workerId}`);
     await this.sendConnectorStatusUpdate();
+  }
+
+  /**
+   * Send event to machine status aggregator
+   */
+  private async sendMachineEvent(eventType: string, data: any): Promise<void> {
+    try {
+      const redis = this.redisClient.getRedisConnection();
+      if (!redis) return;
+
+      const event = {
+        worker_id: this.workerId,
+        event_type: eventType,
+        data: data,
+        timestamp: Date.now(),
+      };
+
+      const channel = `machine:${this.machineId}:worker:${this.workerId}`;
+      await redis.publish(channel, JSON.stringify(event));
+
+      logger.debug(`Sent machine event: ${eventType} to ${channel}`);
+    } catch (error) {
+      logger.warn(`Failed to send machine event ${eventType}:`, error);
+    }
   }
 }

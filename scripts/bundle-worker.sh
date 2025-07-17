@@ -37,12 +37,24 @@ npx esbuild apps/worker/src/redis-direct-worker.ts \
 # Rename .cjs to .js (no shebang needed since we call with 'node')
 mv $BUNDLE_DIR/redis-direct-worker.cjs $BUNDLE_DIR/redis-direct-worker.js
 
-# Create package.json (no type:module for CommonJS)
-cat > $BUNDLE_DIR/package.json << 'EOF'
+# Get version info - use timestamp for local dev, git tags for releases
+BUILD_DATE=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
+TIMESTAMP_VERSION=$(date +"%Y%m%d.%H%M%S")
+
+# For local development, use timestamp. For releases, CI/CD should set RELEASE_VERSION
+if [ -z "$RELEASE_VERSION" ]; then
+  WORKER_VERSION="local-${TIMESTAMP_VERSION}"
+else
+  WORKER_VERSION="$RELEASE_VERSION"
+fi
+
+# Create package.json with appropriate version
+cat > $BUNDLE_DIR/package.json << EOF
 {
   "name": "emp-worker-bundled",
-  "version": "1.0.0",
-  "description": "Bundled EMP Worker - Local Development"
+  "version": "${WORKER_VERSION}",
+  "description": "Bundled EMP Worker - Local Development",
+  "buildDate": "${BUILD_DATE}"
 }
 EOF
 

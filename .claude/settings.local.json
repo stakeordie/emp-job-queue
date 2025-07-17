@@ -167,7 +167,13 @@
       "Bash(docker cp:*)",
       "Bash(npx vitest run:*)",
       "Bash(npm test)",
-      "Bash(railway login:*)"
+      "Bash(railway login:*)",
+      "Bash(./test-machine-status.sh:*)",
+      "Bash(TEST_MODE=true pnpm test --run machine-status-reporting)",
+      "Bash(git describe:*)",
+      "Bash(git rev-parse:*)",
+      "Bash(/dev/null)",
+      "Bash(bash:*)"
     ],
     "deny": []
   }

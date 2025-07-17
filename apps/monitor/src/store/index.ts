@@ -40,6 +40,7 @@ interface MonitorStore {
   // WebSocket actions
   connect: (url?: string) => void;
   disconnect: () => void;
+  refreshMonitor: () => void;
   submitJob: (jobData: Record<string, unknown>) => void;
   syncJobState: (jobId?: string) => void;
   cancelJob: (jobId: string) => void;
@@ -320,7 +321,7 @@ export const useMonitorStore = create<MonitorStore>()(
         }
       }
       
-      // Process machines
+      // Process machines - handle both old and new format
       if (stateData.machines && Array.isArray(stateData.machines)) {
         stateData.machines.forEach((machineData: unknown) => {
           const machine = machineData as {
@@ -331,16 +332,30 @@ export const useMonitorStore = create<MonitorStore>()(
               gpu_count?: number;
               total_ram_gb?: number;
             };
+            // New unified format fields
+            structure?: {
+              gpu_count?: number;
+              capabilities?: string[];
+              workers?: Record<string, unknown>;
+            };
+            phase?: string;
           };
+          
+          // Handle both old and new formats
+          const machineStatus = machine.phase || machine.status || 'offline';
+          const machineWorkers = machine.workers || [];
+          const hostInfo = machine.host_info || (machine.structure ? {
+            gpu_count: machine.structure.gpu_count
+          } : undefined);
           
           addMachine({
             machine_id: machine.machine_id,
-            status: machine.status as 'ready' | 'starting' | 'offline',
-            workers: machine.workers || [],
+            status: machineStatus as 'ready' | 'starting' | 'offline',
+            workers: machineWorkers,
             logs: [],
             started_at: new Date().toISOString(),
             last_activity: new Date().toISOString(),
-            host_info: machine.host_info
+            host_info: hostInfo
           });
         });
       }
@@ -552,6 +567,127 @@ export const useMonitorStore = create<MonitorStore>()(
             message: `Machine shutdown${shutdownEvent.reason ? `: ${shutdownEvent.reason}` : ''}`,
             source: 'system'
           });
+          break;
+        }
+        
+        case 'machine_update': {
+          const updateEvent = event as {
+            type: 'machine_update';
+            machine_id: string;
+            status_data: {
+              machine_id: string;
+              status: {
+                machine?: {
+                  machine_id: string;
+                  status: string;
+                  host_info?: {
+                    hostname: string;
+                    ip_address?: string;
+                    os: string;
+                    cpu_cores: number;
+                    total_ram_gb: number;
+                    gpu_count: number;
+                    gpu_models?: string[];
+                  };
+                };
+                workers?: string[];
+                services?: Record<string, unknown>;
+              };
+              [key: string]: unknown;
+            };
+            timestamp: number;
+          };
+          
+          console.log('[Store] Processing machine_update event:', updateEvent);
+          
+          // Defensive checks to prevent errors
+          if (!updateEvent.machine_id || !updateEvent.status_data) {
+            console.warn('[Store] Invalid machine_update event:', updateEvent);
+            break;
+          }
+          
+          // Extract machine data from actual structure
+          const machineData = updateEvent.status_data.status?.machine;
+          const machineStatus = machineData?.phase || 'offline'; // phase is the actual field
+          const workerIds = Object.keys(updateEvent.status_data.status?.workers || {}); // workers is an object, not array
+          const hostInfo = updateEvent.status_data.structure; // structure contains host info like gpu_count
+          
+          const existingMachine = get().machines.find(m => m.machine_id === updateEvent.machine_id);
+          
+          if (!existingMachine) {
+            // Create new machine with defensive defaults
+            addMachine({
+              machine_id: updateEvent.machine_id,
+              status: machineStatus as 'ready' | 'starting' | 'offline',
+              workers: workerIds,
+              logs: [],
+              started_at: new Date().toISOString(),
+              last_activity: new Date().toISOString(),
+              host_info: hostInfo ? {
+                gpu_count: hostInfo.gpu_count,
+                // Add other host info fields as needed
+              } : undefined
+            });
+          } else {
+            // Update existing machine with defensive defaults
+            updateMachine(updateEvent.machine_id, {
+              status: machineStatus as 'ready' | 'starting' | 'offline',
+              workers: workerIds,
+              last_activity: new Date().toISOString(),
+              host_info: hostInfo ? {
+                gpu_count: hostInfo.gpu_count,
+                // Add other host info fields as needed
+              } : existingMachine.host_info
+            });
+          }
+          break;
+        }
+        
+        case 'machine_status_change': {
+          const statusEvent = event as {
+            type: 'machine_status_change';
+            machine_id: string;
+            status_data: {
+              status: string;
+              workers: string[];
+              host_info?: {
+                hostname: string;
+                ip_address?: string;
+                os: string;
+                cpu_cores: number;
+                total_ram_gb: number;
+                gpu_count: number;
+                gpu_models?: string[];
+              };
+              [key: string]: unknown;
+            };
+            timestamp: number;
+          };
+          
+          console.log('[Store] Processing machine_status_change event:', statusEvent);
+          
+          const existingMachine = get().machines.find(m => m.machine_id === statusEvent.machine_id);
+          
+          if (!existingMachine) {
+            // Create new machine
+            addMachine({
+              machine_id: statusEvent.machine_id,
+              status: statusEvent.status_data.status as 'ready' | 'starting' | 'offline',
+              workers: statusEvent.status_data.workers || [],
+              logs: [],
+              started_at: new Date().toISOString(),
+              last_activity: new Date().toISOString(),
+              host_info: statusEvent.status_data.host_info
+            });
+          } else {
+            // Update existing machine
+            updateMachine(statusEvent.machine_id, {
+              status: statusEvent.status_data.status as 'ready' | 'starting' | 'offline',
+              workers: statusEvent.status_data.workers || existingMachine.workers,
+              last_activity: new Date().toISOString(),
+              host_info: statusEvent.status_data.host_info || existingMachine.host_info
+            });
+          }
           break;
         }
         
@@ -1124,6 +1260,17 @@ export const useMonitorStore = create<MonitorStore>()(
         message: 'Manually disconnected from hub - cleared stale data',
         source: 'store',
       });
+    },
+    
+    refreshMonitor: () => {
+      const { addLog } = get();
+      addLog({
+        level: 'info',
+        category: 'websocket',
+        message: 'Refreshing monitor state - requesting full state sync',
+        source: 'store',
+      });
+      websocketService.refreshMonitorState();
     },
     
     deleteMachine: async (machineId: string) => {

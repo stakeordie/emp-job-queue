@@ -297,6 +297,37 @@ export class EventBroadcaster {
     this.broadcast(event);
   }
 
+  broadcastMachineUpdate(machineId: string, statusData: Record<string, unknown>): void {
+    const event = {
+      type: 'machine_update' as const,
+      machine_id: machineId,
+      status_data: statusData,
+      timestamp: Date.now(),
+    };
+    console.log("broadcast", event)
+    this.broadcast(event);
+  }
+
+  broadcastMachineStatusChange(machineId: string, statusData: Record<string, unknown>): void {
+    const event = {
+      type: 'machine_status_change' as const,
+      machine_id: machineId,
+      status_data: statusData,
+      timestamp: Date.now(),
+    };
+    this.broadcast(event);
+  }
+
+  broadcastMachineDisconnected(machineId: string, reason?: string): void {
+    const event = {
+      type: 'machine_disconnected' as const,
+      machine_id: machineId,
+      reason,
+      timestamp: Date.now(),
+    };
+    this.broadcast(event);
+  }
+
   broadcastWorkerConnected(workerId: string, workerData: Record<string, unknown>): void {
     // Extract machine_id from worker data (same level as worker_id)
     const machineId = (workerData.machine_id as string) || 'unknown-machine';
@@ -491,6 +522,9 @@ export class EventBroadcaster {
       case 'machine_startup_step':
       case 'machine_startup_complete':
       case 'machine_shutdown':
+      case 'machine_update':
+      case 'machine_status_change':
+      case 'machine_disconnected':
         return ['machines', 'workers'];
 
       case 'job_submitted':

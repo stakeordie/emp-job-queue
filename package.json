@@ -10,6 +10,7 @@
     "lint": "turbo run lint",
     "typecheck": "turbo run typecheck",
     "test": "turbo run test",
+    "test:all": "./scripts/test-all.sh",
     "clean": "turbo run clean && rm -rf node_modules",
     "install:clean": "rm -rf node_modules pnpm-lock.yaml && pnpm install",
     "dev:api": "turbo run dev --filter=api",
@@ -65,6 +66,13 @@
     "machines:basic:comfyui": "echo '🎨 ComfyUI Status Check (Production - port 3189)' && curl -s http://localhost:3189/ | head -n 5 || echo '❌ ComfyUI not responding'",
     "machines:basic:local:comfyui": "echo '🎨 ComfyUI Status Check (Local - port 3190)' && curl -s http://localhost:3190/ | head -n 5 || echo '❌ ComfyUI not responding'",
     "machines:basic:local:simulation": "echo '🧪 Simulation Status Check (Local - port 8299)' && curl -s http://localhost:8299/health | jq || echo '❌ Simulation service not responding'",
+    "machines:basic:test:up": "pnpm machines:basic:test:down && ./scripts/bundle-worker.sh && cd apps/machines/basic_machine && cp .env.local.test .env.local && ./generate-docker-compose.sh && docker compose -f docker-compose.yml -f docker-compose.dev.yml -f docker-compose.override.yml --env-file .env.local.test --project-name basic-machine-test --profile expose-ports up",
+    "machines:basic:test:up:build": "pnpm machines:basic:test:down && ./scripts/bundle-worker.sh && cd apps/machines/basic_machine && cp .env.local.test .env.local && ./generate-docker-compose.sh && docker compose -f docker-compose.yml -f docker-compose.dev.yml -f docker-compose.override.yml --env-file .env.local.test --project-name basic-machine-test --profile expose-ports up --build",
+    "machines:basic:test:down": "cd apps/machines/basic_machine && docker compose -f docker-compose.yml -f docker-compose.dev.yml -f docker-compose.override.yml --env-file .env.local.test --project-name basic-machine-test down",
+    "machines:basic:test:logs": "docker compose -f apps/machines/basic_machine/docker-compose.yml --env-file apps/machines/basic_machine/.env.local.test --project-name basic-machine-test logs -f",
+    "machines:basic:test:status": "echo '🧪 Test Machine Status Check (port 9094)' && curl -s http://localhost:9094/health | jq || echo '❌ Health check failed'",
+    "machines:basic:test:comfyui": "echo '🎨 Test ComfyUI Status Check (port 3194)' && curl -s http://localhost:3194/ | head -n 5 || echo '❌ ComfyUI not responding'",
+    "machines:basic:test:simulation": "echo '🧪 Test Simulation Status Check (port 8301)' && curl -s http://localhost:8301/health | jq || echo '❌ Simulation service not responding'",
     "machines:basic:ports": "echo '🌐 Checking Basic Machine Ports (Production):' && echo '  Health (9091):' && nc -z localhost 9091 && echo '    ✅ Open' || echo '    ❌ Closed' && echo '  ComfyUI (3189):' && nc -z localhost 3189 && echo '    ✅ Open' || echo '    ❌ Closed'",
     "machines:basic:local:ports": "echo '🌐 Checking Basic Machine Ports (Local):' && echo '  Health (9092):' && nc -z localhost 9092 && echo '    ✅ Open' || echo '    ❌ Closed' && echo '  Simulation (8299):' && nc -z localhost 8299 && echo '    ✅ Open' || echo '    ❌ Closed' && echo '  ComfyUI (3190):' && nc -z localhost 3190 && echo '    ✅ Open' || echo '    ❌ Closed'",
     "machines:base:up": "docker compose -f apps/machines/base_machine/docker-compose.yml up",
@@ -99,6 +107,7 @@
     "machines:basic:prod:push": "cd apps/machines/basic_machine && docker push emprops/basic-machine-production:latest"
   },
   "devDependencies": {
+    "esbuild": "^0.25.6",
     "playwright": "^1.53.2",
     "turbo": "^2.0.0",
     "typescript": "^5.0.0"
