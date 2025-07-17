@@ -338,7 +338,7 @@ export class RedisDirectBaseWorker {
         last_activity: Date.now(),
         version: getWorkerVersion(), // Use actual Git release version
         build_timestamp: Date.now(), // Timestamp for build verification
-        build_info: 'status-events-v2'
+        build_info: 'status-events-v2',
       });
 
       // Start job polling
@@ -481,7 +481,7 @@ export class RedisDirectBaseWorker {
       last_activity: Date.now(),
       version: getWorkerVersion(),
       build_timestamp: Date.now(),
-      build_info: 'status-events-v2'
+      build_info: 'status-events-v2',
     });
 
     // Set job timeout
@@ -630,7 +630,7 @@ export class RedisDirectBaseWorker {
         last_activity: Date.now(),
         version: getWorkerVersion(),
         build_timestamp: Date.now(),
-        build_info: 'status-events-v2'
+        build_info: 'status-events-v2',
       });
     }
 

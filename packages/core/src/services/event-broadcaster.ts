@@ -304,7 +304,7 @@ export class EventBroadcaster {
       status_data: statusData,
       timestamp: Date.now(),
     };
-    console.log("broadcast", event)
+    console.log('broadcast', event);
     this.broadcast(event);
   }
 
