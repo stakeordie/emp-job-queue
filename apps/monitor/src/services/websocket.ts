@@ -262,21 +262,22 @@ export class EventStreamService {
     }
   }
 
-  private requestFullStateSync() {
+  private requestFullStateSync(options?: { finishedJobsPagination?: { page: number; pageSize: number } }) {
     if (this.monitorWs?.readyState === WebSocket.OPEN) {
       const syncRequest = {
         type: 'request_full_state',
         monitor_id: this.monitorId,
-        timestamp: Date.now()
+        timestamp: Date.now(),
+        ...options
       };
       this.monitorWs.send(JSON.stringify(syncRequest));
-      console.log('[WebSocket] Requested full state sync');
+      console.log('[WebSocket] Requested full state sync', options);
     }
   }
 
   // Public method to refresh monitor state
-  refreshMonitorState() {
-    this.requestFullStateSync();
+  refreshMonitorState(options?: { finishedJobsPagination?: { page: number; pageSize: number } }) {
+    this.requestFullStateSync(options);
   }
 
 

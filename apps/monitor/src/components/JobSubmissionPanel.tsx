@@ -1,12 +1,9 @@
 "use client";
 
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
-import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { PanelLeftOpen, PanelLeftClose } from "lucide-react"
 import { JobSubmissionForm } from "@/components/job-submission-form"
-import { useMonitorStore } from "@/store"
-import { useMemo } from "react"
+import { JobResultsCard } from "@/components/JobResultsCard"
 
 interface JobSubmissionPanelProps {
   isOpen: boolean;
@@ -14,15 +11,6 @@ interface JobSubmissionPanelProps {
 }
 
 export function JobSubmissionPanel({ isOpen, onToggle }: JobSubmissionPanelProps) {
-  const { jobs } = useMonitorStore();
-
-  // Memoize recent jobs (last 5 for the panel)
-  const recentJobs = useMemo(() => 
-    jobs
-      .sort((a, b) => b.created_at - a.created_at)
-      .slice(0, 5),
-    [jobs]
-  );
 
   return (
     <div className={`relative flex-shrink-0 transition-all duration-300 ease-in-out ${
@@ -80,48 +68,8 @@ export function JobSubmissionPanel({ isOpen, onToggle }: JobSubmissionPanelProps
             {/* Job Submission Form */}
             <JobSubmissionForm />
 
-            {/* Recent Jobs */}
-            <Card>
-              <CardHeader className="pb-2">
-                <CardTitle className="text-sm">Recent Jobs ({recentJobs.length})</CardTitle>
-              </CardHeader>
-              <CardContent className="p-3">
-                {recentJobs.length === 0 ? (
-                  <p className="text-muted-foreground text-center py-4 text-xs">No jobs submitted yet</p>
-                ) : (
-                  <div className="space-y-2">
-                    {recentJobs.map((job, index) => (
-                      <div key={job.id} className="flex items-center justify-between p-2 border rounded text-xs">
-                        <div className="flex items-center gap-2 flex-1">
-                          <span className="text-xs font-medium text-muted-foreground w-4">{index + 1}</span>
-                          <Badge variant={
-                            job.status === 'completed' ? 'default' :
-                            job.status === 'failed' ? 'destructive' :
-                            job.status === 'processing' || job.status === 'active' ? 'secondary' :
-                            'outline'
-                          } className="text-xs px-1 py-0">
-                            {job.status}
-                          </Badge>
-                          <div className="flex-1 min-w-0">
-                            <p className="font-medium text-xs truncate">{job.id}</p>
-                            <p className="text-xs text-muted-foreground truncate">
-                              {job.job_type} | P:{job.priority}
-                            </p>
-                          </div>
-                        </div>
-                        
-                        <div className="text-right text-xs text-muted-foreground">
-                          {job.progress !== undefined && (
-                            <p>{job.progress}%</p>
-                          )}
-                          <p>{new Date(job.created_at).toLocaleTimeString()}</p>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </CardContent>
-            </Card>
+            {/* Job Results */}
+            <JobResultsCard />
           </div>
         </div>
       </div>

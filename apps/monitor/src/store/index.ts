@@ -7,6 +7,48 @@ import type { MonitorEvent } from '@emp/core';
 import { throttle } from '@/utils/throttle';
 // import { batchUpdates } from '@/utils/throttle'; // Unused but kept for future use
 
+// Unified machine status format interface
+interface UnifiedMachineStatus {
+  machine_id: string;
+  timestamp: number;
+  update_type: string;
+  structure: {
+    gpu_count: number;
+    capabilities: string[];
+    workers: Record<string, any>;
+  };
+  status: {
+    machine: {
+      phase: string;
+      uptime_ms: number;
+    };
+    workers: Record<string, any>;
+    services: Record<string, any>;
+  };
+}
+
+// Helper function to process unified machine status format
+const processUnifiedMachineStatus = (unifiedStatus: UnifiedMachineStatus): Omit<Machine, 'logs' | 'started_at' | 'last_activity'> => {
+  // Extract data from unified machine status structure
+  const machineData = unifiedStatus.status?.machine;
+  const machinePhase = machineData?.phase || 'offline';
+  const workersData = unifiedStatus.status?.workers || {};
+  const servicesData = unifiedStatus.status?.services || {};
+  
+  // Convert workers object to array of worker IDs
+  const workerIds = Object.keys(workersData);
+  
+  return {
+    machine_id: unifiedStatus.machine_id,
+    status: machinePhase as 'ready' | 'starting' | 'offline',
+    workers: workerIds,
+    services: servicesData,
+    host_info: {
+      gpu_count: unifiedStatus.structure?.gpu_count
+    }
+  };
+};
+
 interface MonitorStore {
   // Connection state
   connection: ConnectionState;
@@ -16,6 +58,15 @@ interface MonitorStore {
   workers: Worker[];
   machines: Machine[];
   logs: LogEntry[];
+  
+  // Pagination state
+  finishedJobsPagination: {
+    page: number;
+    pageSize: number;
+    totalCount: number;
+    hasNextPage: boolean;
+    hasPreviousPage: boolean;
+  };
   
   // UI state
   ui: UIState;
@@ -46,6 +97,9 @@ interface MonitorStore {
   cancelJob: (jobId: string) => void;
   deleteMachine: (machineId: string) => void;
   
+  // Pagination actions
+  setFinishedJobsPagination: (pagination: Partial<MonitorStore['finishedJobsPagination']>) => void;
+  
   // Event-driven state management
   handleFullState: (state: unknown) => void;
   handleEvent: (event: MonitorEvent) => void;
@@ -66,6 +120,14 @@ export const useMonitorStore = create<MonitorStore>()(
     workers: [],
     machines: [],
     logs: [],
+    
+    finishedJobsPagination: {
+      page: 1,
+      pageSize: 20,
+      totalCount: 0,
+      hasNextPage: false,
+      hasPreviousPage: false,
+    },
     
     ui: {
       selectedJobId: null,
@@ -105,6 +167,10 @@ export const useMonitorStore = create<MonitorStore>()(
         if (jobIndex === -1) {
           // Job not found, might have been removed or not yet added
           // This is now handled more gracefully in event handlers
+          console.error(`[Store] Prevented update on non-existent job (would have caused error): ${jobId}`, {
+            attempted_updates: updates,
+            available_jobs: state.jobs.map(j => j.id)
+          });
           return state;
         }
         
@@ -113,7 +179,11 @@ export const useMonitorStore = create<MonitorStore>()(
         // Prevent status downgrades (completed/failed jobs cannot go back to active states)
         if ((currentJob.status === 'completed' || currentJob.status === 'failed') && 
             updates.status && !['completed', 'failed'].includes(updates.status)) {
-          console.log(`[Store] Preventing status downgrade for job ${jobId}: ${currentJob.status} -> ${updates.status}`);
+          console.error(`[Store] Prevented status downgrade for job (would have caused data inconsistency): ${jobId}`, {
+            current_status: currentJob.status,
+            attempted_status: updates.status,
+            attempted_updates: updates
+          });
           return state;
         }
         
@@ -237,6 +307,15 @@ export const useMonitorStore = create<MonitorStore>()(
         };
         machines?: unknown[];
         system_stats: Record<string, number>;
+        pagination?: {
+          finishedJobs?: {
+            page: number;
+            pageSize: number;
+            totalCount: number;
+            hasNextPage: boolean;
+            hasPreviousPage: boolean;
+          };
+        };
       };
       
       // Clear existing data
@@ -321,41 +400,17 @@ export const useMonitorStore = create<MonitorStore>()(
         }
       }
       
-      // Process machines - handle both old and new format
+      // Process machines using unified machine status format
       if (stateData.machines && Array.isArray(stateData.machines)) {
         stateData.machines.forEach((machineData: unknown) => {
-          const machine = machineData as {
-            machine_id: string;
-            workers: string[];
-            status: string;
-            host_info?: {
-              gpu_count?: number;
-              total_ram_gb?: number;
-            };
-            // New unified format fields
-            structure?: {
-              gpu_count?: number;
-              capabilities?: string[];
-              workers?: Record<string, unknown>;
-            };
-            phase?: string;
-          };
-          
-          // Handle both old and new formats
-          const machineStatus = machine.phase || machine.status || 'offline';
-          const machineWorkers = machine.workers || [];
-          const hostInfo = machine.host_info || (machine.structure ? {
-            gpu_count: machine.structure.gpu_count
-          } : undefined);
+          const unifiedStatus = machineData as UnifiedMachineStatus;
+          const processedMachine = processUnifiedMachineStatus(unifiedStatus);
           
           addMachine({
-            machine_id: machine.machine_id,
-            status: machineStatus as 'ready' | 'starting' | 'offline',
-            workers: machineWorkers,
+            ...processedMachine,
             logs: [],
             started_at: new Date().toISOString(),
             last_activity: new Date().toISOString(),
-            host_info: hostInfo
           });
         });
       }
@@ -402,6 +457,15 @@ export const useMonitorStore = create<MonitorStore>()(
             });
           }
         });
+      }
+      
+      // Update pagination information
+      if (stateData.pagination?.finishedJobs) {
+        const { setFinishedJobsPagination } = get();
+        console.log('[Store] Updating pagination:', stateData.pagination.finishedJobs);
+        setFinishedJobsPagination(stateData.pagination.finishedJobs);
+      } else {
+        console.log('[Store] No pagination data found in state:', stateData.pagination);
       }
       
       // Note: Connector status reconciliation disabled for now - relies on real-time events
@@ -602,15 +666,20 @@ export const useMonitorStore = create<MonitorStore>()(
           
           // Defensive checks to prevent errors
           if (!updateEvent.machine_id || !updateEvent.status_data) {
-            console.warn('[Store] Invalid machine_update event:', updateEvent);
+            console.error('[Store] Invalid machine_update event - missing required fields (would have caused error):', {
+              machine_id: updateEvent.machine_id,
+              status_data: updateEvent.status_data,
+              full_event: updateEvent
+            });
             break;
           }
           
           // Extract machine data from actual structure
           const machineData = updateEvent.status_data.status?.machine;
-          const machineStatus = machineData?.phase || 'offline'; // phase is the actual field
+          const machineStatus = (machineData as { phase?: string })?.phase || 'offline'; // phase is the actual field
           const workerIds = Object.keys(updateEvent.status_data.status?.workers || {}); // workers is an object, not array
           const hostInfo = updateEvent.status_data.structure; // structure contains host info like gpu_count
+          const servicesData = updateEvent.status_data.status?.services || {}; // services data
           
           const existingMachine = get().machines.find(m => m.machine_id === updateEvent.machine_id);
           
@@ -624,9 +693,10 @@ export const useMonitorStore = create<MonitorStore>()(
               started_at: new Date().toISOString(),
               last_activity: new Date().toISOString(),
               host_info: hostInfo ? {
-                gpu_count: hostInfo.gpu_count,
+                gpu_count: (hostInfo as { gpu_count?: number }).gpu_count,
                 // Add other host info fields as needed
-              } : undefined
+              } : undefined,
+              services: servicesData as { [serviceName: string]: { status: string; health: string; pm2_status: string; } }
             });
           } else {
             // Update existing machine with defensive defaults
@@ -635,9 +705,48 @@ export const useMonitorStore = create<MonitorStore>()(
               workers: workerIds,
               last_activity: new Date().toISOString(),
               host_info: hostInfo ? {
-                gpu_count: hostInfo.gpu_count,
+                gpu_count: (hostInfo as { gpu_count?: number }).gpu_count,
                 // Add other host info fields as needed
-              } : existingMachine.host_info
+              } : existingMachine.host_info,
+              services: servicesData as { [serviceName: string]: { status: string; health: string; pm2_status: string; } }
+            });
+          }
+          
+          // Update workers' connector_statuses based on services data
+          if (servicesData && updateEvent.status_data.status?.workers) {
+            const { updateWorker } = get();
+            
+            // Iterate through each worker in the status
+            Object.entries(updateEvent.status_data.status.workers).forEach(([workerId]) => {
+              const connectorStatuses: Record<string, { connector_id: string; status: 'active' | 'inactive' | 'error' | 'waiting_for_service' | 'connecting'; error_message?: string }> = {};
+              
+              // Find all services for this worker
+              Object.entries(servicesData).forEach(([serviceName, serviceStatus]) => {
+                const status = serviceStatus as { status: string; health: string; pm2_status: string };
+                if (serviceName.startsWith(workerId + '.')) {
+                  const service = serviceName.split('.')[1];
+                  
+                  // Map service status to connector status
+                  let connectorStatus: 'active' | 'inactive' | 'error' | 'waiting_for_service' | 'connecting' = 'inactive';
+                  if (status.status === 'active' && status.health === 'healthy') {
+                    connectorStatus = 'inactive'; // Shows blue in SimpleWorkerCard
+                  } else if (status.status === 'active' && status.health === 'unhealthy') {
+                    connectorStatus = 'error';
+                  } else if (status.status === 'unknown') {
+                    connectorStatus = 'waiting_for_service'; // Shows yellow
+                  }
+                  
+                  connectorStatuses[service] = {
+                    connector_id: serviceName,
+                    status: connectorStatus
+                  };
+                }
+              });
+              
+              // Update the worker with connector statuses
+              updateWorker(workerId, {
+                connector_statuses: connectorStatuses
+              });
             });
           }
           break;
@@ -647,45 +756,52 @@ export const useMonitorStore = create<MonitorStore>()(
           const statusEvent = event as {
             type: 'machine_status_change';
             machine_id: string;
-            status_data: {
-              status: string;
-              workers: string[];
-              host_info?: {
-                hostname: string;
-                ip_address?: string;
-                os: string;
-                cpu_cores: number;
-                total_ram_gb: number;
-                gpu_count: number;
-                gpu_models?: string[];
-              };
-              [key: string]: unknown;
-            };
+            status_data: unknown;
             timestamp: number;
           };
           
+          // Cast to unified format after validation
+          const unifiedStatus = statusEvent.status_data as UnifiedMachineStatus;
+          
           console.log('[Store] Processing machine_status_change event:', statusEvent);
           
+          // Defensive checks to prevent corrupted data
+          if (!statusEvent.machine_id || !statusEvent.status_data) {
+            console.error('[Store] Invalid machine_status_change event - missing required fields:', {
+              machine_id: statusEvent.machine_id,
+              status_data: statusEvent.status_data,
+              full_event: statusEvent
+            });
+            break;
+          }
+          
+          // Validate status_data structure
+          if (typeof statusEvent.status_data !== 'object') {
+            console.error('[Store] Invalid machine_status_change event - status_data is not an object:', {
+              status_data_type: typeof statusEvent.status_data,
+              status_data_value: statusEvent.status_data,
+              full_event: statusEvent
+            });
+            break;
+          }
+          
           const existingMachine = get().machines.find(m => m.machine_id === statusEvent.machine_id);
+          const processedMachine = processUnifiedMachineStatus(unifiedStatus);
           
           if (!existingMachine) {
             // Create new machine
             addMachine({
-              machine_id: statusEvent.machine_id,
-              status: statusEvent.status_data.status as 'ready' | 'starting' | 'offline',
-              workers: statusEvent.status_data.workers || [],
+              ...processedMachine,
               logs: [],
               started_at: new Date().toISOString(),
               last_activity: new Date().toISOString(),
-              host_info: statusEvent.status_data.host_info
             });
           } else {
             // Update existing machine
             updateMachine(statusEvent.machine_id, {
-              status: statusEvent.status_data.status as 'ready' | 'starting' | 'offline',
-              workers: statusEvent.status_data.workers || existingMachine.workers,
+              ...processedMachine,
               last_activity: new Date().toISOString(),
-              host_info: statusEvent.status_data.host_info || existingMachine.host_info
+              host_info: processedMachine.host_info || existingMachine.host_info
             });
           }
           break;
@@ -1097,7 +1213,11 @@ export const useMonitorStore = create<MonitorStore>()(
           }
           
           if (currentJob.status === 'completed' || currentJob.status === 'failed') {
-            console.log(`[Monitor] Ignoring progress update for already completed job: ${jobEvent.job_id}`);
+            console.error(`[Monitor] Prevented progress update on already completed job (would have caused data inconsistency): ${jobEvent.job_id}`, {
+              current_status: currentJob.status,
+              attempted_progress: jobEvent.progress,
+              attempted_event: jobEvent
+            });
             break;
           }
           
@@ -1127,7 +1247,10 @@ export const useMonitorStore = create<MonitorStore>()(
           // Defensive check: don't override jobs that are already failed or completed
           const currentJob = get().jobs.find(job => job.id === jobEvent.job_id);
           if (currentJob?.status === 'failed') {
-            console.log(`[Monitor] Ignoring completion event for already failed job: ${jobEvent.job_id}`);
+            console.error(`[Monitor] Prevented completion event overriding already failed job (would have caused data inconsistency): ${jobEvent.job_id}`, {
+              current_status: currentJob.status,
+              attempted_event: jobEvent
+            });
             break;
           }
           
@@ -1263,14 +1386,19 @@ export const useMonitorStore = create<MonitorStore>()(
     },
     
     refreshMonitor: () => {
-      const { addLog } = get();
+      const { addLog, finishedJobsPagination } = get();
       addLog({
         level: 'info',
         category: 'websocket',
         message: 'Refreshing monitor state - requesting full state sync',
         source: 'store',
       });
-      websocketService.refreshMonitorState();
+      websocketService.refreshMonitorState({
+        finishedJobsPagination: {
+          page: finishedJobsPagination.page,
+          pageSize: finishedJobsPagination.pageSize
+        }
+      });
     },
     
     deleteMachine: async (machineId: string) => {
@@ -1311,6 +1439,12 @@ export const useMonitorStore = create<MonitorStore>()(
         });
       }
     },
+    
+    // Pagination actions
+    setFinishedJobsPagination: (pagination) =>
+      set((state) => ({
+        finishedJobsPagination: { ...state.finishedJobsPagination, ...pagination },
+      })),
 
     submitJob: (jobData) => {
       const { addLog } = get();

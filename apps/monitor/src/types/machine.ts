@@ -14,6 +14,13 @@ export interface Machine {
     total_ram_gb?: number;
     gpu_count?: number;
   };
+  services?: {
+    [serviceName: string]: {
+      status: string;
+      health: string;
+      pm2_status: string;
+    };
+  };
 }
 
 export interface MachineLog {

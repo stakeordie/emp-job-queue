@@ -25,7 +25,7 @@ export class MachineStatusAggregator {
     
     // Status update frequency from env var
     this.updateIntervalSeconds = parseInt(
-      process.env.MACHINE_STATUS_UPDATE_INTERVAL_SECONDS || '15'
+      process.env.MACHINE_STATUS_UPDATE_INTERVAL_SECONDS || '10'
     );
     
     // Build static structure once from config

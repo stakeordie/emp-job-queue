@@ -22,19 +22,8 @@ interface MachineCardProps {
   onRestart?: (machineId: string) => void;
 }
 
-interface PM2Service {
-  name: string;
-  status: string;
-  pid: number;
-  memory: number;
-  cpu: number;
-  uptime: number;
-  restarts: number;
-}
-
 export const MachineCard = memo(function MachineCard({ machine, workers, onDelete, onRestart }: MachineCardProps) {
   const [showLogs, setShowLogs] = useState(false);
-  const [pm2Services, setPm2Services] = useState<PM2Service[]>([]);
   const [activeTab, setActiveTab] = useState("overview");
 
   const getStatusColor = (status: Machine['status']) => {
@@ -79,43 +68,17 @@ export const MachineCard = memo(function MachineCard({ machine, workers, onDelet
     return null;
   }, [machine.health_url, machine.machine_id]);
 
-  // Fetch PM2 services list
-  const fetchPM2Services = useCallback(async () => {
-    const healthUrl = getHealthUrl();
-    console.log('Machine health_url:', machine.health_url);
-    console.log('Extracted health URL:', healthUrl);
-    
-    if (!healthUrl) {
-      console.log('No health URL available');
-      return;
-    }
-    
-    try {
-      const url = `${healthUrl}/pm2/list`;
-      console.log('Fetching PM2 services from:', url);
-      const response = await fetch(url);
-      console.log('PM2 services response:', response.status, response.ok);
-      
-      if (response.ok) {
-        const services = await response.json();
-        console.log('PM2 services data:', services);
-        setPm2Services(services);
-      } else {
-        console.error('PM2 services fetch failed:', response.status, await response.text());
-      }
-    } catch (error) {
-      console.error('Failed to fetch PM2 services:', error);
-    }
-  }, [machine.health_url, getHealthUrl]);
 
   // Build log stream URL for react-logviewer
   const getLogUrl = (serviceName: string, logType?: string) => {
     const healthUrl = getHealthUrl();
-    if (!healthUrl) return null;
+    if (!healthUrl || !serviceName) return null;
     
     // Use ComfyUI-specific logs for ComfyUI services
-    if (serviceName.startsWith('comfyui-gpu')) {
-      const gpu = serviceName.replace('comfyui-gpu', '');
+    if (serviceName.includes('.comfyui')) {
+      // Extract GPU number from worker ID (e.g., "basic-machine-local-worker-0.comfyui" -> "0")
+      const match = serviceName.match(/worker-(\d+)\.comfyui/);
+      const gpu = match ? match[1] : '0';
       const type = logType || 'server';
       return `${healthUrl}/comfyui/logs?gpu=${gpu}&type=${type}&lines=1000`;
     }
@@ -168,8 +131,6 @@ export const MachineCard = memo(function MachineCard({ machine, workers, onDelet
       
       if (response.ok) {
         console.log(`Service ${serviceName} restarted successfully`);
-        // Refresh services list
-        await fetchPM2Services();
         // Service restarted successfully
       } else {
         console.error(`Failed to restart service ${serviceName}:`, response.status, await response.text());
@@ -179,16 +140,12 @@ export const MachineCard = memo(function MachineCard({ machine, workers, onDelet
     }
   };
 
-  // Load PM2 data when modal opens
+  // Reset active tab when modal closes
   useEffect(() => {
-    if (showLogs && machine.status === 'ready') {
-      fetchPM2Services();
-    } else if (!showLogs) {
-      // Clean up when modal closes
-      setPm2Services([]);
+    if (!showLogs) {
       setActiveTab('overview');
     }
-  }, [showLogs, machine.status, fetchPM2Services]);
+  }, [showLogs]);
 
   return (
     <>
@@ -311,8 +268,7 @@ export const MachineCard = memo(function MachineCard({ machine, workers, onDelet
                 variant="outline" 
                 size="sm" 
                 onClick={() => {
-                  fetchPM2Services();
-                  // Machine restarted - logs will auto-refresh via react-logviewer
+                  // Logs will auto-refresh via react-logviewer
                 }}
                 className="ml-auto"
               >
@@ -327,13 +283,14 @@ export const MachineCard = memo(function MachineCard({ machine, workers, onDelet
                 <div className="overflow-x-auto">
                   <TabsList className="inline-flex w-max gap-1 min-w-full h-8">
                     <TabsTrigger value="overview" className="text-xs py-1 px-2">Overview</TabsTrigger>
-                    {pm2Services.map(service => (
-                      <TabsTrigger key={service.name} value={service.name} className="flex items-center gap-1 whitespace-nowrap text-xs py-1 px-2">
+                    {machine.services && Object.entries(machine.services).map(([serviceName, service]) => (
+                      <TabsTrigger key={serviceName} value={serviceName} className="flex items-center gap-1 whitespace-nowrap text-xs py-1 px-2">
                         <div className={`w-1.5 h-1.5 rounded-full ${
-                          service.status === 'online' ? 'bg-green-500' : 
-                          service.status === 'stopping' ? 'bg-yellow-500' : 'bg-red-500'
+                          service.status === 'active' && service.health === 'healthy' ? 'bg-blue-500' : 
+                          service.status === 'active' && service.health === 'unhealthy' ? 'bg-yellow-500' : 
+                          service.status === 'inactive' ? 'bg-red-500' : 'bg-gray-500'
                         }`} />
-                        {service.name}
+                        {serviceName}
                       </TabsTrigger>
                     ))}
                   </TabsList>
@@ -344,29 +301,37 @@ export const MachineCard = memo(function MachineCard({ machine, workers, onDelet
                 <TabsContent value="overview" className="h-full">
                   <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 h-full">
                     <div>
-                      <h3 className="text-lg font-semibold mb-2">PM2 Services</h3>
+                      <h3 className="text-lg font-semibold mb-2">Services</h3>
                       <ScrollArea className="h-[300px] border rounded p-3">
-                        {pm2Services.length === 0 ? (
+                        {(!machine.services || Object.keys(machine.services).length === 0) ? (
                           <div className="text-center text-muted-foreground py-8">
                             <Server className="h-8 w-8 mx-auto mb-2 opacity-50" />
-                            <p>No PM2 services found</p>
+                            <p>No services found</p>
                           </div>
                         ) : (
                           <div className="space-y-2">
-                            {pm2Services.map(service => (
-                              <div key={service.name} className="flex items-center justify-between p-2 border rounded">
+                            {Object.entries(machine.services).map(([serviceName, service]) => (
+                              <div key={serviceName} className="flex items-center justify-between p-2 border rounded">
                                 <div className="flex items-center gap-2">
                                   <div className={`w-3 h-3 rounded-full ${
-                                    service.status === 'online' ? 'bg-green-500' : 
-                                    service.status === 'stopping' ? 'bg-yellow-500' : 'bg-red-500'
+                                    service.status === 'active' && service.health === 'healthy' ? 'bg-blue-500' : 
+                                    service.status === 'active' && service.health === 'unhealthy' ? 'bg-yellow-500' : 
+                                    service.status === 'inactive' ? 'bg-red-500' : 'bg-gray-500'
                                   }`} />
-                                  <span className="font-mono text-sm">{service.name}</span>
-                                  <Badge variant="outline" className="text-xs">
+                                  <span className="font-mono text-sm">{serviceName}</span>
+                                  <Badge variant={
+                                    service.status === 'active' && service.health === 'healthy' ? 'default' : 
+                                    service.status === 'active' && service.health === 'unhealthy' ? 'secondary' : 
+                                    'destructive'
+                                  } className="text-xs">
                                     {service.status}
+                                  </Badge>
+                                  <Badge variant="outline" className="text-xs">
+                                    {service.health}
                                   </Badge>
                                 </div>
                                 <div className="text-xs text-muted-foreground">
-                                  PID: {service.pid} | Memory: {Math.round(service.memory / 1024 / 1024)}MB | Restarts: {service.restarts}
+                                  PM2: {service.pm2_status}
                                 </div>
                               </div>
                             ))}
@@ -422,31 +387,38 @@ export const MachineCard = memo(function MachineCard({ machine, workers, onDelet
                   </div>
                 </TabsContent>
 
-                {pm2Services.map(service => (
-                  <TabsContent key={service.name} value={service.name} className="h-full">
+                {machine.services && Object.entries(machine.services).map(([serviceName, service]) => (
+                  <TabsContent key={serviceName} value={serviceName} className="h-full">
                     <div className="h-full flex flex-col">
                       <div className="flex items-center justify-between mb-1 shrink-0">
-                        <h3 className="text-sm font-medium">{service.name}</h3>
+                        <h3 className="text-sm font-medium">{serviceName}</h3>
                         <div className="flex items-center gap-2 text-xs">
                           <Button
                             variant="ghost"
                             size="sm"
-                            onClick={() => restartService(service.name)}
+                            onClick={() => restartService(serviceName)}
                             className="h-5 w-5 p-0 hover:bg-blue-100 hover:text-blue-600"
-                            title={`Restart ${service.name} service`}
+                            title={`Restart ${serviceName} service`}
                           >
                             <RotateCcw className="h-2.5 w-2.5" />
                           </Button>
-                          <Badge variant={service.status === 'online' ? 'default' : 'destructive'} className="text-xs py-0 px-1">
+                          <Badge variant={
+                            service.status === 'active' && service.health === 'healthy' ? 'default' : 
+                            service.status === 'active' && service.health === 'unhealthy' ? 'secondary' : 
+                            'destructive'
+                          } className="text-xs py-0 px-1">
                             {service.status}
                           </Badge>
+                          <Badge variant="outline" className="text-xs py-0 px-1">
+                            {service.health}
+                          </Badge>
                           <span className="text-xs text-muted-foreground">
-                            PID: {service.pid} | {Math.round(service.memory / 1024 / 1024)}MB
+                            PM2: {service.pm2_status}
                           </span>
                         </div>
                       </div>
                       <div className="flex-1 border rounded h-full">
-                        {service.name.startsWith('comfyui-gpu') ? (
+                        {serviceName.includes('comfyui') ? (
                           // ComfyUI services get sub-tabs for different log types
                           <Tabs defaultValue="server" className="h-full flex flex-col">
                             <div className="border-b px-2 pt-2">
@@ -458,11 +430,11 @@ export const MachineCard = memo(function MachineCard({ machine, workers, onDelet
                             </div>
                             {['server', 'output', 'error'].map((logType) => (
                               <TabsContent key={logType} value={logType} className="flex-1 m-0 p-0">
-                                {getLogUrl(service.name, logType) ? (
+                                {getLogUrl(serviceName, logType) ? (
                                   <ScrollFollow
                                     startFollowing={true}
                                     render={({ follow, onScroll }) => {
-                                      const logUrl = getLogUrl(service.name, logType);
+                                      const logUrl = getLogUrl(serviceName, logType);
                                       if (!logUrl) return null;
                                       
                                       return (
@@ -501,11 +473,11 @@ export const MachineCard = memo(function MachineCard({ machine, workers, onDelet
                           </Tabs>
                         ) : (
                           // Other services use standard PM2 logs
-                          getLogUrl(service.name) ? (
+                          getLogUrl(serviceName) ? (
                             <ScrollFollow
                               startFollowing={true}
                               render={({ follow, onScroll }) => {
-                                const logUrl = getLogUrl(service.name);
+                                const logUrl = getLogUrl(serviceName);
                                 if (!logUrl) return null;
                                 
                                 return (

@@ -330,6 +330,14 @@ export class RedisDirectBaseWorker {
       this.status = WorkerStatus.IDLE;
       this.running = true;
 
+      // Send worker connected event
+      await this.sendMachineEvent('worker_status_changed', {
+        status: 'idle',
+        is_connected: true,
+        current_job_id: null,
+        last_activity: Date.now()
+      });
+
       // Start job polling
       this.startJobPolling();
 
@@ -403,6 +411,15 @@ export class RedisDirectBaseWorker {
     await this.redisClient.disconnect();
 
     this.status = WorkerStatus.OFFLINE;
+    
+    // Send worker disconnected event
+    await this.sendMachineEvent('worker_status_changed', {
+      status: 'offline',
+      is_connected: false,
+      current_job_id: null,
+      last_activity: Date.now()
+    });
+    
     logger.info(`Redis-direct worker ${this.workerId} stopped`);
   }
 
@@ -452,6 +469,14 @@ export class RedisDirectBaseWorker {
     this.currentJobs.set(job.id, job);
     this.jobStartTimes.set(job.id, Date.now());
     this.status = WorkerStatus.BUSY;
+
+    // Send worker busy event
+    await this.sendMachineEvent('worker_status_changed', {
+      status: 'busy',
+      is_connected: true,
+      current_job_id: job.id,
+      last_activity: Date.now()
+    });
 
     // Set job timeout
     const timeoutMs = this.jobTimeoutMinutes * 60 * 1000;
@@ -586,7 +611,19 @@ export class RedisDirectBaseWorker {
     }
 
     // Update status
-    this.status = this.currentJobs.size > 0 ? WorkerStatus.BUSY : WorkerStatus.IDLE;
+    const newStatus = this.currentJobs.size > 0 ? WorkerStatus.BUSY : WorkerStatus.IDLE;
+    const statusChanged = this.status !== newStatus;
+    this.status = newStatus;
+
+    // Send status change event if status changed
+    if (statusChanged) {
+      await this.sendMachineEvent('worker_status_changed', {
+        status: this.status === WorkerStatus.IDLE ? 'idle' : 'busy',
+        is_connected: true,
+        current_job_id: this.currentJobs.size > 0 ? Array.from(this.currentJobs.keys())[0] : null,
+        last_activity: Date.now()
+      });
+    }
 
     // Ensure Redis status is updated when worker becomes idle
     if (this.status === WorkerStatus.IDLE) {

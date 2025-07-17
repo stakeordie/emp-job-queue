@@ -19,6 +19,7 @@ import { MachineCard } from "@/components/MachineCard"
 import { JobDetailsModal } from "@/components/JobDetailsModal"
 import { JobSubmissionPanel } from "@/components/JobSubmissionPanel"
 import { ConnectionHeader } from "@/components/ConnectionHeader"
+import { Pagination } from "@/components/Pagination"
 import { useMonitorStore } from "@/store"
 import { useState, useMemo } from "react"
 import type { Job } from "@/types/job"
@@ -30,7 +31,7 @@ interface HomeProps {
 }
 
 function Home({ isJobPanelOpen }: HomeProps) {
-  const { jobs, workers, machines, syncJobState, cancelJob, deleteMachine } = useMonitorStore();
+  const { jobs, workers, machines, syncJobState, cancelJob, deleteMachine, finishedJobsPagination, setFinishedJobsPagination, refreshMonitor } = useMonitorStore();
   const [cancelJobId, setCancelJobId] = useState<string | null>(null);
   const [selectedJob, setSelectedJob] = useState<Job | null>(null);
   const [deleteMachineId, setDeleteMachineId] = useState<string | null>(null);
@@ -64,12 +65,16 @@ function Home({ isJobPanelOpen }: HomeProps) {
   };
 
   // Memoize job counts to avoid recalculating on every render
-  const jobCounts = useMemo(() => ({
-    active: jobs.filter(job => job.status === 'active' || job.status === 'processing').length,
-    pending: jobs.filter(job => job.status === 'pending').length,
-    completed: jobs.filter(job => job.status === 'completed').length,
-    failed: jobs.filter(job => job.status === 'failed').length,
-  }), [jobs]);
+  const jobCounts = useMemo(() => {
+    const counts = {
+      active: jobs.filter(job => job.status === 'active' || job.status === 'processing').length,
+      pending: jobs.filter(job => job.status === 'pending').length,
+      completed: finishedJobsPagination.totalCount || jobs.filter(job => job.status === 'completed').length,
+      failed: jobs.filter(job => job.status === 'failed').length,
+    };
+    console.log('[Monitor] Job counts:', counts, 'Total jobs:', jobs.length, 'Pagination totalCount:', finishedJobsPagination.totalCount);
+    return counts;
+  }, [jobs, finishedJobsPagination.totalCount]);
 
   // Memoize filtered and sorted job lists
   const activeJobsList = useMemo(() => 
@@ -97,17 +102,42 @@ function Home({ isJobPanelOpen }: HomeProps) {
     [jobs]
   );
 
-  const finishedJobsList = useMemo(() => 
+  // Completed jobs (server-side pagination)
+  const completedJobsList = useMemo(() => 
     jobs
-      .filter(job => job.status === 'completed' || job.status === 'failed')
+      .filter(job => job.status === 'completed')
       .sort((a, b) => {
-        // Sort finished jobs by completion time (most recent first)
-        const timeA = a.completed_at || a.failed_at || a.created_at;
-        const timeB = b.completed_at || b.failed_at || b.created_at;
+        // Sort by completion time (most recent first)
+        const timeA = new Date(a.completed_at || a.created_at).getTime();
+        const timeB = new Date(b.completed_at || b.created_at).getTime();
         return timeB - timeA;
       }),
     [jobs]
   );
+  
+  // Failed jobs (local, not paginated)
+  const failedJobsList = useMemo(() => 
+    jobs
+      .filter(job => job.status === 'failed')
+      .sort((a, b) => {
+        // Sort by failure time (most recent first)
+        const timeA = new Date(a.failed_at || a.created_at).getTime();
+        const timeB = new Date(b.failed_at || b.created_at).getTime();
+        return timeB - timeA;
+      })
+      .slice(0, 10), // Show only 10 most recent failed jobs
+    [jobs]
+  );
+
+  // Use server pagination data for page calculations
+  const totalFinishedPages = Math.ceil(finishedJobsPagination.totalCount / finishedJobsPagination.pageSize);
+  const currentFinishedPage = finishedJobsPagination.page;
+  
+  // Handle page change for finished jobs
+  const handleFinishedJobsPageChange = (page: number) => {
+    setFinishedJobsPagination({ page });
+    refreshMonitor();
+  };
 
   return (
     <main className={`flex-1 p-6 space-y-6 overflow-y-auto transition-all duration-300 ease-in-out ${
@@ -164,7 +194,13 @@ function Home({ isJobPanelOpen }: HomeProps) {
             {machines.map((machine) => {
               // Defensive check to prevent errors
               if (!machine || !machine.machine_id) {
-                console.warn('[UI] Invalid machine object:', machine);
+                console.error('[UI] Invalid machine object - missing required fields:', {
+                  machine_exists: !!machine,
+                  machine_id: machine?.machine_id,
+                  machine_type: typeof machine,
+                  machine_keys: machine ? Object.keys(machine) : 'null/undefined',
+                  full_machine: machine
+                });
                 return null;
               }
               
@@ -204,7 +240,32 @@ function Home({ isJobPanelOpen }: HomeProps) {
                   <p className="text-muted-foreground text-center py-8 text-sm">No active jobs</p>
                 ) : (
                   <div className="space-y-2">
-                    {activeJobsList.map((job, index) => (
+                    {activeJobsList.map((job, index) => {
+                      // Debug logging to catch object rendering issues
+                      if (typeof job !== 'object' || job === null) {
+                        console.error('[UI] Invalid job object in activeJobsList:', {
+                          job_type: typeof job,
+                          job_value: job,
+                          index: index
+                        });
+                        return null;
+                      }
+                      
+                      // Check for unexpected nested objects that might cause React child errors
+                      // Skip known legitimate object fields like payload, requirements, result, etc.
+                      const knownObjectFields = ['payload', 'requirements', 'result', 'error_details', 'metadata'];
+                      Object.entries(job).forEach(([key, value]) => {
+                        if (typeof value === 'object' && value !== null && !Array.isArray(value) && !knownObjectFields.includes(key)) {
+                          console.warn('[UI] Found unexpected nested object in job data:', {
+                            job_id: job.id,
+                            field: key,
+                            value_type: typeof value,
+                            value: value
+                          });
+                        }
+                      });
+                      
+                      return (
                     <div key={job.id} className="flex items-center justify-between p-3 border rounded">
                       <div className="flex items-center gap-3 flex-1">
                         <span className="text-lg font-bold text-muted-foreground w-8">{index + 1}</span>
@@ -278,7 +339,8 @@ function Home({ isJobPanelOpen }: HomeProps) {
                         </div>
                       </div>
                     </div>
-                  ))}
+                      );
+                    })}
                 </div>
               )}
             </CardContent>
@@ -344,20 +406,76 @@ function Home({ isJobPanelOpen }: HomeProps) {
           {/* Finished Jobs */}
           <Card>
             <CardHeader>
-              <CardTitle>Finished Jobs ({jobCounts.completed + jobCounts.failed})</CardTitle>
+              <CardTitle>
+                Completed Jobs ({finishedJobsPagination.totalCount || completedJobsList.length})
+                {totalFinishedPages > 1 && (
+                  <span className="text-xs font-normal text-muted-foreground ml-2">
+                    Page {currentFinishedPage} of {totalFinishedPages}
+                  </span>
+                )}
+              </CardTitle>
             </CardHeader>
             <CardContent className="max-h-64 overflow-y-auto">
-              {finishedJobsList.length === 0 ? (
-                <p className="text-muted-foreground text-center py-4">No finished jobs yet.</p>
+              {completedJobsList.length === 0 ? (
+                <p className="text-muted-foreground text-center py-4">No completed jobs yet.</p>
               ) : (
                 <div className="space-y-2">
-                  {finishedJobsList.map((job, index) => (
+                  {completedJobsList.map((job, index) => (
                     <div key={job.id} className="flex items-center justify-between p-2 border rounded text-sm">
                       <div className="flex items-center gap-3">
                         <span className="text-base font-bold text-muted-foreground w-6">{index + 1}</span>
-                        <Badge variant={
-                          job.status === 'completed' ? 'default' : 'destructive'
-                        }>
+                        <Badge variant="default">
+                          {job.status}
+                        </Badge>
+                        <div>
+                          <p className="font-medium">{job.id}</p>
+                          <p className="text-xs text-muted-foreground">
+                            {job.job_type} | Priority: {job.priority}
+                            {job.workflow_id && ` | Workflow: ${job.workflow_id}`}
+                            {job.workflow_priority !== undefined && ` | W.Priority: ${job.workflow_priority}`}
+                            {job.workflow_datetime && ` | ${new Date(job.workflow_datetime).toLocaleTimeString()}`}
+                            {job.step_number !== undefined && ` | Step: ${job.step_number}`}
+                          </p>
+                        </div>
+                      </div>
+                      <div className="text-right text-xs text-muted-foreground">
+                        {job.worker_id && <p>Worker: {job.worker_id}</p>}
+                        {!job.result && <p className="text-yellow-600">No result</p>}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </CardContent>
+            
+            {/* Pagination Controls - Always visible at bottom */}
+            {totalFinishedPages > 1 && (
+              <div className="p-3 border-t bg-muted/20">
+                <Pagination
+                  currentPage={currentFinishedPage}
+                  totalPages={totalFinishedPages}
+                  onPageChange={handleFinishedJobsPageChange}
+                  className="justify-center"
+                />
+              </div>
+            )}
+          </Card>
+
+          {/* Failed Jobs */}
+          <Card>
+            <CardHeader>
+              <CardTitle>Failed Jobs ({jobCounts.failed})</CardTitle>
+            </CardHeader>
+            <CardContent className="max-h-64 overflow-y-auto">
+              {failedJobsList.length === 0 ? (
+                <p className="text-muted-foreground text-center py-4">No failed jobs yet.</p>
+              ) : (
+                <div className="space-y-2">
+                  {failedJobsList.map((job, index) => (
+                    <div key={job.id} className="flex items-center justify-between p-2 border rounded text-sm">
+                      <div className="flex items-center gap-3">
+                        <span className="text-base font-bold text-muted-foreground w-6">{index + 1}</span>
+                        <Badge variant="destructive">
                           {job.status}
                         </Badge>
                         <div>
@@ -377,11 +495,6 @@ function Home({ isJobPanelOpen }: HomeProps) {
                       </div>
                     </div>
                   ))}
-                  {jobs.filter(job => job.status === 'completed' || job.status === 'failed').length > 15 && (
-                    <p className="text-center text-muted-foreground text-sm">
-                      Showing 15 of {jobs.filter(job => job.status === 'completed' || job.status === 'failed').length} finished jobs
-                    </p>
-                  )}
                 </div>
               )}
             </CardContent>
