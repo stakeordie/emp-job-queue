@@ -82,30 +82,46 @@ function NorthStarDashboard() {
           </CardTitle>
         </CardHeader>
         <CardContent>
-          <div className="space-y-4">
-            <div className="flex items-center justify-between">
-              <span className="text-2xl font-bold">{metrics.overallNorthStarProgress}%</span>
-              <Badge variant={metrics.overallNorthStarProgress > 50 ? "default" : "secondary"}>
-                {metrics.overallNorthStarProgress > 70 ? "Advanced" : 
-                 metrics.overallNorthStarProgress > 40 ? "Developing" : "Early"}
-              </Badge>
-            </div>
-            <Progress value={metrics.overallNorthStarProgress} className="w-full" />
-            <div className="grid grid-cols-3 gap-4 text-sm">
-              <div className="text-center">
-                <div className="font-semibold">{metrics.poolSeparationReadiness}%</div>
-                <div className="text-muted-foreground">Pool Separation</div>
-              </div>
-              <div className="text-center">
-                <div className="font-semibold">{metrics.modelIntelligenceReadiness}%</div>
-                <div className="text-muted-foreground">Model Intelligence</div>
-              </div>
-              <div className="text-center">
-                <div className="font-semibold">{metrics.routingIntelligenceReadiness}%</div>
-                <div className="text-muted-foreground">Routing Intelligence</div>
+          {metrics.overallNorthStarProgress === null ? (
+            <div className="text-center py-8">
+              <div className="text-xl font-bold text-muted-foreground mb-2">Insufficient Data</div>
+              <div className="text-sm text-muted-foreground">
+                Need {metrics.minimumDataThreshold} completed jobs to calculate North Star progress.
+                <br />Currently have {metrics.hasJobData ? 'some' : 'no'} job completion data.
               </div>
             </div>
-          </div>
+          ) : (
+            <div className="space-y-4">
+              <div className="flex items-center justify-between">
+                <span className="text-2xl font-bold">{metrics.overallNorthStarProgress}%</span>
+                <Badge variant={metrics.overallNorthStarProgress > 50 ? "default" : "secondary"}>
+                  {metrics.overallNorthStarProgress > 70 ? "Advanced" : 
+                   metrics.overallNorthStarProgress > 40 ? "Developing" : "Early"}
+                </Badge>
+              </div>
+              <Progress value={metrics.overallNorthStarProgress} className="w-full" />
+              <div className="grid grid-cols-3 gap-4 text-sm">
+                <div className="text-center">
+                  <div className="font-semibold">
+                    {metrics.poolSeparationReadiness !== null ? `${metrics.poolSeparationReadiness}%` : 'Not Ready'}
+                  </div>
+                  <div className="text-muted-foreground">Pool Separation</div>
+                </div>
+                <div className="text-center">
+                  <div className="font-semibold">
+                    {metrics.modelIntelligenceReadiness !== null ? `${metrics.modelIntelligenceReadiness}%` : 'Not Ready'}
+                  </div>
+                  <div className="text-muted-foreground">Model Intelligence</div>
+                </div>
+                <div className="text-center">
+                  <div className="font-semibold">
+                    {metrics.routingIntelligenceReadiness !== null ? `${metrics.routingIntelligenceReadiness}%` : 'Not Ready'}
+                  </div>
+                  <div className="text-muted-foreground">Routing Intelligence</div>
+                </div>
+              </div>
+            </div>
+          )}
         </CardContent>
       </Card>
 
@@ -125,9 +141,15 @@ function NorthStarDashboard() {
               <Progress value={metrics.systemHealthScore} className="w-full" />
             </div>
             <div className="text-center space-y-2">
-              <div className="text-2xl font-bold text-blue-600">{metrics.jobCompletionRate}%</div>
+              <div className="text-2xl font-bold text-blue-600">
+                {metrics.jobCompletionRate !== null ? `${metrics.jobCompletionRate}%` : 'No Data'}
+              </div>
               <div className="text-sm text-muted-foreground">Job Success Rate</div>
-              <Progress value={metrics.jobCompletionRate} className="w-full" />
+              {metrics.jobCompletionRate !== null ? (
+                <Progress value={metrics.jobCompletionRate} className="w-full" />
+              ) : (
+                <div className="text-xs text-muted-foreground">Need completed jobs</div>
+              )}
             </div>
             <div className="text-center space-y-2">
               <div className="text-2xl font-bold text-purple-600">{metrics.workerStabilityScore}%</div>
@@ -136,9 +158,12 @@ function NorthStarDashboard() {
             </div>
             <div className="text-center space-y-2">
               <div className="text-2xl font-bold text-orange-600">
-                {Math.round(metrics.averageQueueWaitTime / 1000)}s
+                {metrics.averageQueueWaitTime !== null ? `${Math.round(metrics.averageQueueWaitTime / 1000)}s` : 'No Data'}
               </div>
               <div className="text-sm text-muted-foreground">Avg Wait Time</div>
+              {metrics.averageQueueWaitTime === null && (
+                <div className="text-xs text-muted-foreground">Need job timing data</div>
+              )}
             </div>
           </div>
         </CardContent>
@@ -151,35 +176,49 @@ function NorthStarDashboard() {
             <CardTitle>Job Duration Distribution</CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="space-y-4">
-              <div className="flex items-center justify-between">
-                <span className="text-sm">Fast Lane (&lt;30s)</span>
-                <div className="flex items-center gap-2">
-                  <Badge variant="outline">{metrics.jobDurationDistribution.fastLane}%</Badge>
-                  <Progress value={metrics.jobDurationDistribution.fastLane} className="w-20" />
+            {metrics.jobDurationDistribution === null ? (
+              <div className="text-center py-8">
+                <div className="text-lg font-semibold text-muted-foreground mb-2">No Duration Data</div>
+                <div className="text-sm text-muted-foreground">
+                  Need {metrics.minimumDataThreshold} completed jobs with timing data to analyze duration patterns.
+                  <br />This is required for pool separation analysis.
                 </div>
               </div>
-              <div className="flex items-center justify-between">
-                <span className="text-sm">Standard (30s-3m)</span>
-                <div className="flex items-center gap-2">
-                  <Badge variant="outline">{metrics.jobDurationDistribution.standard}%</Badge>
-                  <Progress value={metrics.jobDurationDistribution.standard} className="w-20" />
+            ) : (
+              <>
+                <div className="space-y-4">
+                  <div className="flex items-center justify-between">
+                    <span className="text-sm">Fast Lane (&lt;30s)</span>
+                    <div className="flex items-center gap-2">
+                      <Badge variant="outline">{metrics.jobDurationDistribution.fastLane}%</Badge>
+                      <Progress value={metrics.jobDurationDistribution.fastLane} className="w-20" />
+                    </div>
+                  </div>
+                  <div className="flex items-center justify-between">
+                    <span className="text-sm">Standard (30s-3m)</span>
+                    <div className="flex items-center gap-2">
+                      <Badge variant="outline">{metrics.jobDurationDistribution.standard}%</Badge>
+                      <Progress value={metrics.jobDurationDistribution.standard} className="w-20" />
+                    </div>
+                  </div>
+                  <div className="flex items-center justify-between">
+                    <span className="text-sm">Heavy (&gt;3m)</span>
+                    <div className="flex items-center gap-2">
+                      <Badge variant="outline">{metrics.jobDurationDistribution.heavy}%</Badge>
+                      <Progress value={metrics.jobDurationDistribution.heavy} className="w-20" />
+                    </div>
+                  </div>
                 </div>
-              </div>
-              <div className="flex items-center justify-between">
-                <span className="text-sm">Heavy (&gt;3m)</span>
-                <div className="flex items-center gap-2">
-                  <Badge variant="outline">{metrics.jobDurationDistribution.heavy}%</Badge>
-                  <Progress value={metrics.jobDurationDistribution.heavy} className="w-20" />
+                <div className="mt-4 pt-4 border-t">
+                  <div className="text-sm text-muted-foreground">
+                    Clear duration patterns indicate pool separation readiness.
+                    Current score: <span className="font-semibold">
+                      {metrics.poolSeparationReadiness !== null ? `${metrics.poolSeparationReadiness}%` : 'Not Ready'}
+                    </span>
+                  </div>
                 </div>
-              </div>
-            </div>
-            <div className="mt-4 pt-4 border-t">
-              <div className="text-sm text-muted-foreground">
-                Clear duration patterns indicate pool separation readiness.
-                Current score: <span className="font-semibold">{metrics.poolSeparationReadiness}%</span>
-              </div>
-            </div>
+              </>
+            )}
           </CardContent>
         </Card>
 
@@ -188,37 +227,49 @@ function NorthStarDashboard() {
             <CardTitle>Performance Variance</CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="space-y-4">
-              <div className="grid grid-cols-2 gap-4 text-sm">
-                <div>
-                  <div className="font-semibold">Average</div>
-                  <div className="text-muted-foreground">
-                    {Math.round(metrics.performanceHeterogeneity.avgProcessingTime / 1000)}s
+            {metrics.performanceHeterogeneity === null ? (
+              <div className="text-center py-8">
+                <div className="text-lg font-semibold text-muted-foreground mb-2">No Performance Data</div>
+                <div className="text-sm text-muted-foreground">
+                  Need completed jobs with timing data to analyze performance variance.
+                  <br />This helps identify resource contention patterns.
+                </div>
+              </div>
+            ) : (
+              <>
+                <div className="space-y-4">
+                  <div className="grid grid-cols-2 gap-4 text-sm">
+                    <div>
+                      <div className="font-semibold">Average</div>
+                      <div className="text-muted-foreground">
+                        {Math.round(metrics.performanceHeterogeneity.avgProcessingTime / 1000)}s
+                      </div>
+                    </div>
+                    <div>
+                      <div className="font-semibold">Range</div>
+                      <div className="text-muted-foreground">
+                        {Math.round(metrics.performanceHeterogeneity.minProcessingTime / 1000)}s - 
+                        {Math.round(metrics.performanceHeterogeneity.maxProcessingTime / 1000)}s
+                      </div>
+                    </div>
+                  </div>
+                  <div>
+                    <div className="flex items-center justify-between mb-2">
+                      <span className="text-sm">Contention Score</span>
+                      <Badge variant={metrics.performanceHeterogeneity.contentionScore > 50 ? "destructive" : "secondary"}>
+                        {metrics.performanceHeterogeneity.contentionScore}%
+                      </Badge>
+                    </div>
+                    <Progress value={metrics.performanceHeterogeneity.contentionScore} className="w-full" />
                   </div>
                 </div>
-                <div>
-                  <div className="font-semibold">Range</div>
-                  <div className="text-muted-foreground">
-                    {Math.round(metrics.performanceHeterogeneity.minProcessingTime / 1000)}s - 
-                    {Math.round(metrics.performanceHeterogeneity.maxProcessingTime / 1000)}s
+                <div className="mt-4 pt-4 border-t">
+                  <div className="text-sm text-muted-foreground">
+                    High variance indicates resource contention that specialized pools would solve.
                   </div>
                 </div>
-              </div>
-              <div>
-                <div className="flex items-center justify-between mb-2">
-                  <span className="text-sm">Contention Score</span>
-                  <Badge variant={metrics.performanceHeterogeneity.contentionScore > 50 ? "destructive" : "secondary"}>
-                    {metrics.performanceHeterogeneity.contentionScore}%
-                  </Badge>
-                </div>
-                <Progress value={metrics.performanceHeterogeneity.contentionScore} className="w-full" />
-              </div>
-            </div>
-            <div className="mt-4 pt-4 border-t">
-              <div className="text-sm text-muted-foreground">
-                High variance indicates resource contention that specialized pools would solve.
-              </div>
-            </div>
+              </>
+            )}
           </CardContent>
         </Card>
       </div>
@@ -291,33 +342,22 @@ function NorthStarDashboard() {
           <CardTitle>Model Usage Patterns</CardTitle>
         </CardHeader>
         <CardContent>
-          {metrics.modelUsagePatterns.length === 0 ? (
-            <div className="text-center py-8 text-muted-foreground">
-              Model tracking not yet implemented
+          <div className="text-center py-8">
+            <div className="text-lg font-semibold text-muted-foreground mb-2">Model Tracking Not Implemented</div>
+            <div className="text-sm text-muted-foreground mb-4">
+              Model usage patterns, download times, and co-occurrence tracking requires implementation.
+              <br />This will enable predictive model placement strategies.
             </div>
-          ) : (
-            <div className="space-y-4">
-              {metrics.modelUsagePatterns.map((model) => (
-                <div key={model.modelName} className="border rounded p-4">
-                  <div className="flex items-center justify-between mb-2">
-                    <div className="font-medium">{model.modelName}</div>
-                    <div className="flex items-center gap-2">
-                      <Badge variant="outline">{model.frequency}% usage</Badge>
-                      <Badge variant="secondary">{model.successRate}% success</Badge>
-                    </div>
-                  </div>
-                  <div className="text-sm text-muted-foreground">
-                    Avg download: {Math.round(model.avgDownloadTime / 1000)}s |
-                    Co-occurs with: {model.coOccurrences.join(", ")}
-                  </div>
-                </div>
-              ))}
+            <div className="text-xs text-orange-600 bg-orange-50 border border-orange-200 rounded p-3 inline-block">
+              <strong>TODO:</strong> Extract model usage from job payloads and ComfyUI workflows
             </div>
-          )}
+          </div>
           <div className="mt-4 pt-4 border-t">
             <div className="text-sm text-muted-foreground">
               Model usage patterns will drive predictive placement strategies.
-              Current readiness: <span className="font-semibold">{metrics.modelIntelligenceReadiness}%</span>
+              Current readiness: <span className="font-semibold">
+                {metrics.modelIntelligenceReadiness !== null ? `${metrics.modelIntelligenceReadiness}%` : 'Not Ready'}
+              </span>
             </div>
           </div>
         </CardContent>

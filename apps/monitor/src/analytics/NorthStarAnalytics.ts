@@ -43,23 +43,29 @@ export interface MachinePoolPotential {
 }
 
 export interface NorthStarMetrics {
-  // Overall progress scores (0-100)
-  poolSeparationReadiness: number;
-  modelIntelligenceReadiness: number;
-  routingIntelligenceReadiness: number;
-  overallNorthStarProgress: number;
+  // Overall progress scores (0-100 or null if insufficient data)
+  poolSeparationReadiness: number | null;
+  modelIntelligenceReadiness: number | null;
+  routingIntelligenceReadiness: number | null;
+  overallNorthStarProgress: number | null;
   
-  // Detailed metrics
-  jobDurationDistribution: JobDurationPattern;
-  performanceHeterogeneity: PerformanceVariance;
+  // Detailed metrics (null if insufficient data)
+  jobDurationDistribution: JobDurationPattern | null;
+  performanceHeterogeneity: PerformanceVariance | null;
   machinePoolPotentials: MachinePoolPotential[];
   modelUsagePatterns: ModelUsagePattern[];
   
-  // Production health
+  // Production health (real data only)
   systemHealthScore: number;
-  jobCompletionRate: number;
+  jobCompletionRate: number | null;
   workerStabilityScore: number;
-  averageQueueWaitTime: number;
+  averageQueueWaitTime: number | null;
+  
+  // Data availability indicators
+  hasJobData: boolean;
+  hasModelData: boolean;
+  hasPerformanceData: boolean;
+  minimumDataThreshold: number;
 }
 
 export class NorthStarAnalytics {
@@ -81,25 +87,34 @@ export class NorthStarAnalytics {
   }
 
   /**
-   * Calculate comprehensive North Star metrics
+   * Calculate comprehensive North Star metrics - only real data, null for insufficient data
    */
   calculateMetrics(): NorthStarMetrics {
-    const jobDuration = this.analyzeJobDurations();
-    const performance = this.analyzePerformanceVariance();
-    const machinePool = this.analyzeMachinePoolPotential();
-    const modelUsage = this.analyzeModelUsage();
-    
-    // Calculate readiness scores
-    const poolSeparationReadiness = this.calculatePoolSeparationReadiness(jobDuration, performance);
-    const modelIntelligenceReadiness = this.calculateModelIntelligenceReadiness();
-    const routingIntelligenceReadiness = this.calculateRoutingIntelligenceReadiness(machinePool);
-    
-    // Overall progress (weighted average)
-    const overallProgress = Math.round(
-      (poolSeparationReadiness * 0.4) +
-      (modelIntelligenceReadiness * 0.3) +
-      (routingIntelligenceReadiness * 0.3)
+    // Data availability checks
+    const completedJobs = this.jobHistory.filter(job => 
+      job.status === 'completed' && job.started_at && job.completed_at
     );
+    const minimumJobsRequired = 10;
+    const hasJobData = completedJobs.length >= minimumJobsRequired;
+    const hasModelData = false; // Model tracking not implemented yet
+    const hasPerformanceData = completedJobs.length >= 5;
+    
+    // Analyze only if we have sufficient data
+    const jobDuration = hasJobData ? this.analyzeJobDurations() : null;
+    const performance = hasPerformanceData ? this.analyzePerformanceVariance() : null;
+    const machinePool = this.analyzeMachinePoolPotential(); // Can work with any data
+    const modelUsage: ModelUsagePattern[] = []; // Not implemented yet
+    
+    // Calculate readiness scores only with sufficient data
+    const poolSeparationReadiness = (jobDuration && performance) ? 
+      this.calculatePoolSeparationReadiness(jobDuration, performance) : null;
+    const modelIntelligenceReadiness = null; // Not ready - no model tracking
+    const routingIntelligenceReadiness = machinePool.length > 0 ? 
+      this.calculateRoutingIntelligenceReadiness(machinePool) : null;
+    
+    // Overall progress only if we have at least one component ready
+    const overallProgress = poolSeparationReadiness !== null ? 
+      Math.round(poolSeparationReadiness * 0.4) : null; // Only count implemented parts
 
     return {
       poolSeparationReadiness,
@@ -113,9 +128,14 @@ export class NorthStarAnalytics {
       modelUsagePatterns: modelUsage,
       
       systemHealthScore: this.calculateSystemHealth(),
-      jobCompletionRate: this.calculateJobCompletionRate(),
+      jobCompletionRate: hasJobData ? this.calculateJobCompletionRate() : null,
       workerStabilityScore: this.calculateWorkerStability(),
-      averageQueueWaitTime: this.calculateAverageQueueWaitTime()
+      averageQueueWaitTime: hasJobData ? this.calculateAverageQueueWaitTime() : null,
+      
+      hasJobData,
+      hasModelData,
+      hasPerformanceData,
+      minimumDataThreshold: minimumJobsRequired
     };
   }
 
@@ -268,27 +288,12 @@ export class NorthStarAnalytics {
   }
 
   /**
-   * Analyze model usage patterns (placeholder - would need model download events)
+   * Analyze model usage patterns
    */
   private analyzeModelUsage(): ModelUsagePattern[] {
-    // TODO: Implement when model download tracking is available
-    // For now, return placeholder data
-    return [
-      {
-        modelName: 'SDXL Base',
-        frequency: 85,
-        avgDownloadTime: 45000,
-        successRate: 95,
-        coOccurrences: ['SDXL Refiner', 'LoRA Collections']
-      },
-      {
-        modelName: 'LoRA Collections',
-        frequency: 67,
-        avgDownloadTime: 12000,
-        successRate: 98,
-        coOccurrences: ['SDXL Base', 'Control Net']
-      }
-    ];
+    // Model tracking not yet implemented - return empty array
+    // TODO: Implement model usage tracking from job payloads and ComfyUI workflows
+    return [];
   }
 
   /**
@@ -309,10 +314,9 @@ export class NorthStarAnalytics {
   /**
    * Calculate model intelligence readiness score
    */
-  private calculateModelIntelligenceReadiness(): number {
-    // High readiness if we have clear model usage patterns and co-occurrences
-    // For now, return moderate score since we don't have full model tracking yet
-    return 25; // Will improve as model tracking is implemented
+  private calculateModelIntelligenceReadiness(): number | null {
+    // Model tracking not implemented yet - return null for honest status
+    return null;
   }
 
   /**

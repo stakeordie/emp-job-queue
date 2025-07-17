@@ -16,6 +16,13 @@
   - Enables testing EmProps approach without modifying API or changing result handling
   - Validates whether predictable URL construction works with current job system
 
+- **North Star Analytics Cleanup**: Removed mock data and replaced with honest "not ready" states
+  - Updated NorthStarAnalytics to return null for insufficient data instead of fake percentages
+  - Added minimum data thresholds (10 completed jobs for meaningful analysis)
+  - UI now clearly shows "Insufficient Data", "Not Ready", or "Not Implemented" instead of misleading scores
+  - Model intelligence shows "Not Implemented" with TODO indicators for required work
+  - Provides clear roadmap of what data collection is needed for real North Star progress tracking
+
 - **QA Agent Role**: Added comprehensive QA agent role definition to CLAUDE.md
   - Enables quick activation with "you are a QA agent" command
   - Defines first actions: read all documentation for system context before starting QA work
