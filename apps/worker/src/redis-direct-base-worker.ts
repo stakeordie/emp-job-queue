@@ -549,7 +549,7 @@ export class RedisDirectBaseWorker {
       const job = this.currentJobs.get(jobId);
 
       await this.redisClient.completeJob(jobId, result);
-      this.finishJob(jobId);
+      await this.finishJob(jobId);
 
       // Send job completed event to machine aggregator
       if (process.env.UNIFIED_MACHINE_STATUS === 'true' && job) {
@@ -577,7 +577,7 @@ export class RedisDirectBaseWorker {
       const job = this.currentJobs.get(jobId);
 
       await this.redisClient.failJob(jobId, error, canRetry);
-      this.finishJob(jobId);
+      await this.finishJob(jobId);
 
       // Send job failed event to machine aggregator
       if (process.env.UNIFIED_MACHINE_STATUS === 'true' && job) {
@@ -599,7 +599,7 @@ export class RedisDirectBaseWorker {
     }
   }
 
-  private finishJob(jobId: string): void {
+  private async finishJob(jobId: string): Promise<void> {
     this.currentJobs.delete(jobId);
     this.jobStartTimes.delete(jobId);
 
