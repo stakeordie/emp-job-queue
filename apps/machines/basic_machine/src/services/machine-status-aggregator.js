@@ -193,6 +193,7 @@ export class MachineStatusAggregator {
           this.currentStatus.workers[worker_id].is_connected = data.is_connected;
           // Store version info to verify latest code is running
           this.currentStatus.workers[worker_id].version = data.version;
+          this.currentStatus.workers[worker_id].build_timestamp = data.build_timestamp;
           this.currentStatus.workers[worker_id].build_info = data.build_info;
           await this.publishStatus('event_driven');
         }

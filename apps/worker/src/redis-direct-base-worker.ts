@@ -336,7 +336,8 @@ export class RedisDirectBaseWorker {
         is_connected: true,
         current_job_id: null,
         last_activity: Date.now(),
-        version: `bundled-${Date.now()}`, // Timestamp to prove latest version
+        version: getWorkerVersion(), // Use actual Git release version
+        build_timestamp: Date.now(), // Timestamp for build verification
         build_info: 'status-events-v2'
       });
 
@@ -478,7 +479,8 @@ export class RedisDirectBaseWorker {
       is_connected: true,
       current_job_id: job.id,
       last_activity: Date.now(),
-      version: `bundled-${Date.now()}`,
+      version: getWorkerVersion(),
+      build_timestamp: Date.now(),
       build_info: 'status-events-v2'
     });
 
@@ -626,7 +628,8 @@ export class RedisDirectBaseWorker {
         is_connected: true,
         current_job_id: this.currentJobs.size > 0 ? Array.from(this.currentJobs.keys())[0] : null,
         last_activity: Date.now(),
-        version: `bundled-${Date.now()}`,
+        version: getWorkerVersion(),
+        build_timestamp: Date.now(),
         build_info: 'status-events-v2'
       });
     }
