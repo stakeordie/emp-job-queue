@@ -41,9 +41,10 @@ export function ConnectionHeader() {
   const [authToken, setAuthToken] = useState(CONNECTION_PRESETS.local.auth);
   const [selectedPreset, setSelectedPreset] = useState('local');
   
-  // Check if auto-connect is enabled via environment variable
+  // Check if auto-connect is enabled via environment variable (only in production)
   const autoConnectUrl = process.env.NEXT_PUBLIC_WS_URL;
-  const isAutoConnectEnabled = !!autoConnectUrl;
+  const isProduction = process.env.NODE_ENV === 'production';
+  const isAutoConnectEnabled = isProduction && !!autoConnectUrl;
 
   const handlePresetChange = (preset: string) => {
     setSelectedPreset(preset);
@@ -116,6 +117,12 @@ export function ConnectionHeader() {
             <div className="flex items-center gap-2">
               <Label className="text-xs">Auto-connecting to:</Label>
               <code className="text-xs bg-muted px-2 py-1 rounded">{autoConnectUrl}</code>
+            </div>
+          ) : autoConnectUrl && !isProduction ? (
+            /* Development mode with WS URL available - show info */
+            <div className="flex items-center gap-2">
+              <Label className="text-xs">Dev Mode:</Label>
+              <span className="text-xs text-muted-foreground">Auto-connect disabled (URL: {autoConnectUrl})</span>
             </div>
           ) : (
             /* Manual connection mode - show full controls */
