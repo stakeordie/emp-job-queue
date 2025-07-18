@@ -480,7 +480,7 @@ export function JobResultModal({ job, isOpen, onClose }: JobResultModalProps) {
 
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
-      <DialogContent className="max-w-4xl w-[90vw] max-h-[90vh] flex flex-col">
+      <DialogContent className="max-w-7xl w-[95vw] max-h-[90vh] flex flex-col">
         <DialogHeader>
           <DialogTitle className="flex items-center justify-between">
             <div className="flex items-center gap-2">
@@ -592,9 +592,11 @@ export function JobResultModal({ job, isOpen, onClose }: JobResultModalProps) {
                       {copiedField === 'job' ? <Check className="h-4 w-4" /> : <Copy className="h-4 w-4" />}
                     </Button>
                   </div>
-                  <pre className="bg-gray-50 p-4 rounded text-sm font-mono whitespace-pre-wrap">
-                    {JSON.stringify(job, null, 2)}
-                  </pre>
+                  <div className="bg-gray-50 rounded border max-h-[60vh] overflow-auto">
+                    <pre className="p-4 text-sm font-mono whitespace-pre-wrap">
+                      {JSON.stringify(job, null, 2)}
+                    </pre>
+                  </div>
                 </div>
               </ScrollArea>
             </TabsContent>
