@@ -135,3 +135,34 @@ Thumbs.db
 
 .turbo
 .turbo*
+
+# Large AI model files
+*.safetensors
+*.ckpt
+*.bin
+*.pt
+*.pth
+
+# Python cache and compiled files
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+
+# Example and sandbox files
+packages/custom-nodes/examples/
+packages/custom-nodes/models/
+packages/service-config/workflows/sandbox/
+
+# Temporary directories and test files
+temp_*/
+test-*.js
+test-*.py
+
+# Large workflow collections with binary assets
+**/*.png
+**/*.jpg
+**/*.jpeg
+!docs/**/*.png
+!docs/**/*.jpg
+!apps/monitor/public/**
