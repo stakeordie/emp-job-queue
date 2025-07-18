@@ -240,6 +240,16 @@ export default class RedisWorkerService extends BaseService {
   async createEnvFile() {
     const envPath = path.join(this.workerDir, '.env');
     
+    // Debug: Log what we're getting from environment
+    this.logger.info('DEBUG: Environment variables for ComfyUI worker:', {
+      WORKER_COMFYUI_HOST: process.env.WORKER_COMFYUI_HOST,
+      WORKER_COMFYUI_PORT: process.env.WORKER_COMFYUI_PORT,
+      WORKER_COMFYUI_USERNAME: process.env.WORKER_COMFYUI_USERNAME,
+      WORKER_COMFYUI_PASSWORD: process.env.WORKER_COMFYUI_PASSWORD ? '[SET]' : '[NOT SET]',
+      WORKER_COMFYUI_TIMEOUT_SECONDS: process.env.WORKER_COMFYUI_TIMEOUT_SECONDS,
+      WORKER_COMFYUI_MAX_CONCURRENT_JOBS: process.env.WORKER_COMFYUI_MAX_CONCURRENT_JOBS
+    });
+    
     const envContent = {
       HUB_REDIS_URL: this.config.redis.url,
       WORKER_ID: this.workerId,
@@ -250,7 +260,14 @@ export default class RedisWorkerService extends BaseService {
       GPU_MODEL: this.config.machine.gpu.model,
       CUDA_VISIBLE_DEVICES: this.gpu.toString(),
       NODE_ENV: 'production',
-      LOG_LEVEL: this.config.logging.level
+      LOG_LEVEL: this.config.logging.level,
+      // Pass through ComfyUI connection settings
+      WORKER_COMFYUI_HOST: process.env.WORKER_COMFYUI_HOST,
+      WORKER_COMFYUI_PORT: process.env.WORKER_COMFYUI_PORT,
+      WORKER_COMFYUI_USERNAME: process.env.WORKER_COMFYUI_USERNAME,
+      WORKER_COMFYUI_PASSWORD: process.env.WORKER_COMFYUI_PASSWORD,
+      WORKER_COMFYUI_TIMEOUT_SECONDS: process.env.WORKER_COMFYUI_TIMEOUT_SECONDS,
+      WORKER_COMFYUI_MAX_CONCURRENT_JOBS: process.env.WORKER_COMFYUI_MAX_CONCURRENT_JOBS
     };
 
     const envString = Object.entries(envContent)

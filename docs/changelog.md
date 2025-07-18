@@ -3,6 +3,23 @@
 ## [Unreleased]
 
 ### Added
+- **Service Job ID Mapping System**: Implemented comprehensive job tracking for external services (ComfyUI, Ollama, etc.)
+  - **Enhanced Job Schema**: Added `service_job_id`, `service_submitted_at`, `last_service_check`, `service_status` fields to track external service job IDs
+  - **ComfyUI Connector Enhancement**: Automatically stores ComfyUI prompt_id mapping in Redis immediately after job submission
+  - **Health Check Mechanism**: Added `healthCheckJob()` method to query external services directly using stored service job IDs
+  - **Race Condition Prevention**: Prevents worker getting stuck when WebSocket connections fail or jobs complete instantly (cached results)
+  - **Automatic Recovery**: Detects completed jobs that worker missed, returns lost jobs to queue, handles service failures gracefully
+  - **AbortController Timeouts**: Replaced deprecated timeout options with proper AbortController pattern for fetch requests
+  - **Production-Ready Error Handling**: Comprehensive error handling for all service interaction failure modes
+  - **Advances North Star**: Critical foundation for reliable job tracking across distributed, ephemeral machine infrastructure
+
+- **Completed Jobs Timestamp Display**: Enhanced monitor UI with comprehensive job completion tracking
+  - **Relative Time Display**: Shows human-readable completion times (e.g., "5m ago", "2h ago", "3d ago")
+  - **Absolute Time Display**: Shows precise completion times with full date/time tooltips on hover
+  - **Proper Sorting**: Completed jobs sorted by completion time (most recent first) for better UX
+  - **Color-Coded Information**: Green for relative time, gray for absolute time, clear visual hierarchy
+  - **Real-Time Updates**: Timestamps update automatically as new jobs complete
+
 - **Worker Version Display**: Added Git version tracking and display in monitor UI
   - Workers now report actual Git release versions (e.g., v0.0.42-6-g4a13e67) in status events
   - Monitor UI displays worker versions in machine cards under capabilities metadata
@@ -32,6 +49,14 @@
   - Perfect separation of concerns: developers get control, production gets automation
 
 ### Fixed
+- **Critical Job State Race Condition**: Fixed workers getting stuck on jobs that complete instantly or lose WebSocket connection
+  - **Root Cause**: ComfyUI cached results complete in milliseconds but worker waits for WebSocket progress updates that never come
+  - **Impact**: Worker shows "busy" but job shows "completed", new jobs stuck in pending indefinitely
+  - **Solution**: Implemented service job ID mapping system that tracks external service IDs and enables health checks
+  - **Recovery**: Health check detects completed jobs worker missed, automatically extracts results or returns jobs to queue
+  - **Prevention**: Immediate Redis storage of service job mappings enables recovery from any connection loss scenario
+  - **Documentation**: Added comprehensive analysis to `/docs/monitor-reliability-fix.md` covering all failure modes
+
 - **Pagination Worker Status Loss**: Fixed workers losing status and version data during pagination navigation
   - Root cause: Pagination triggered full state refresh that overwrote real-time worker data
   - Solution: Added `refreshJobsOnly()` method that preserves worker/machine state during pagination

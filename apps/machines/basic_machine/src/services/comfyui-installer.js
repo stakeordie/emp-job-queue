@@ -289,21 +289,26 @@ export default class ComfyUIInstallerService extends BaseService {
         
         cloneArgs.push(cleanUrl, nodePath);
         
+        // Add timeout to prevent hanging on slow/dead repositories
         await execa('git', cloneArgs, {
-          stdio: 'inherit'
+          stdio: 'inherit',
+          timeout: 120000, // 2 minute timeout
+          signal: AbortSignal.timeout(120000)
         });
 
         // Checkout specific branch or commit if specified
         if (nodeConfig.branch) {
           await execa('git', ['checkout', nodeConfig.branch], {
             cwd: nodePath,
-            stdio: 'inherit'
+            stdio: 'inherit',
+            timeout: 30000 // 30 second timeout
           });
         }
         if (nodeConfig.commit) {
           await execa('git', ['reset', '--hard', nodeConfig.commit], {
             cwd: nodePath,
-            stdio: 'inherit'
+            stdio: 'inherit',
+            timeout: 30000 // 30 second timeout
           });
         }
       }
@@ -325,7 +330,8 @@ export default class ComfyUIInstallerService extends BaseService {
             '-r', 'requirements.txt'
           ], {
             cwd: nodePath,
-            stdio: 'inherit'
+            stdio: 'inherit',
+            timeout: 300000 // 5 minute timeout for pip installs
           });
         } else {
           this.logger.warn(`${nodeName} has requirements: true but no requirements.txt found`);
@@ -352,7 +358,13 @@ export default class ComfyUIInstallerService extends BaseService {
 
       this.logger.info(`Custom node ${nodeName} installed successfully`);
     } catch (error) {
-      this.logger.error(`Failed to install custom node ${nodeName}:`, error);
+      if (error.signal === 'SIGTERM' || error.message.includes('timeout')) {
+        this.logger.error(`Custom node ${nodeName} installation timed out - skipping and continuing with next node`);
+      } else if (error.message.includes('clone')) {
+        this.logger.error(`Custom node ${nodeName} clone failed (repository may be down) - skipping and continuing with next node:`, error.message);
+      } else {
+        this.logger.error(`Failed to install custom node ${nodeName} - skipping and continuing with next node:`, error.message);
+      }
       // Continue with other nodes even if one fails
     }
   }

@@ -13,6 +13,10 @@
     "test:all": "./scripts/test-all.sh",
     "clean": "turbo run clean && rm -rf node_modules",
     "install:clean": "rm -rf node_modules pnpm-lock.yaml && pnpm install",
+    "env:build": "node scripts/env/build-env.js",
+    "env:switch": "node scripts/env/switch-env.js",
+    "env:validate": "node scripts/env/validate-env.js",
+    "env:list": "node scripts/env/list-profiles.js",
     "dev:api": "turbo run dev --filter=api",
     "dev:worker": "turbo run dev --filter=worker",
     "dev:monitor": "turbo run dev --filter=monitor",
@@ -46,6 +50,11 @@
     "dev:full-stack": "./scripts/dev-full-stack.sh",
     "dev:full-stack:stop": "./scripts/dev-full-stack-stop.sh",
     "dev:full-stack:status": "./scripts/dev-full-stack-status.sh",
+    "dev:full-local": "pnpm env:build --profile=full-local && pnpm dev",
+    "dev:mixed": "pnpm env:build --profile=dev-mixed && pnpm dev",
+    "dev:staging": "pnpm env:build --profile=staging-mixed && pnpm dev",
+    "dev:remote-comfyui": "pnpm env:build --profile=remote-comfyui && pnpm machines:basic:local:up",
+    "setup:developer": "pnpm env:build --profile=full-local && pnpm install && pnpm dev:local-redis",
     "build:api": "turbo run build --filter=api",
     "build:worker": "turbo run build --filter=worker",
     "build:monitor": "turbo run build --filter=monitor",
@@ -116,5 +125,8 @@
     "node": ">=18.0.0",
     "pnpm": ">=10.0.0"
   },
-  "packageManager": "pnpm@10.12.4"
+  "packageManager": "pnpm@10.12.4",
+  "dependencies": {
+    "chalk": "^5.4.1"
+  }
 }

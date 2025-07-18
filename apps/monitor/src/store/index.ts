@@ -635,6 +635,39 @@ export const useMonitorStore = create<MonitorStore>()(
           break;
         }
         
+        case 'machine_disconnected': {
+          const disconnectedEvent = event as {
+            type: 'machine_disconnected';
+            machine_id: string;
+            reason?: string;
+            timestamp: number;
+          };
+          
+          // Find the machine to get its workers
+          const machine = get().machines.find(m => m.machine_id === disconnectedEvent.machine_id);
+          if (machine) {
+            // Remove all workers associated with this machine
+            const workerIds = machine.workers;
+            for (const workerId of workerIds) {
+              removeWorker(workerId);
+            }
+          }
+          
+          updateMachine(disconnectedEvent.machine_id, {
+            status: 'offline',
+            last_activity: new Date().toISOString(),
+            workers: [] // Clear the workers array
+          });
+          
+          addMachineLog(disconnectedEvent.machine_id, {
+            timestamp: new Date().toISOString(),
+            level: 'warn',
+            message: `Machine disconnected${disconnectedEvent.reason ? `: ${disconnectedEvent.reason}` : ''}`,
+            source: 'system'
+          });
+          break;
+        }
+        
         case 'machine_update': {
           const updateEvent = event as {
             type: 'machine_update';

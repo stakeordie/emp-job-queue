@@ -77,8 +77,13 @@ if (process.env.ENABLE_REDIS_WORKERS === 'true') {
         STANDALONE_MODE: 'true',
         WORKER_ID: `${process.env.WORKER_ID || 'basic-machine'}-gpu${gpu}`,
         USE_LOCAL_WORKER: 'true',
-        // Map ComfyUI port for this GPU to worker connector environment
-        WORKER_COMFYUI_PORT: parseInt(process.env.COMFYUI_PORT_START || '8188') + gpu
+        // Use remote ComfyUI configuration if specified, otherwise map local ComfyUI port for this GPU
+        WORKER_COMFYUI_HOST: process.env.WORKER_COMFYUI_HOST,
+        WORKER_COMFYUI_PORT: process.env.WORKER_COMFYUI_PORT || (parseInt(process.env.COMFYUI_PORT_START || '8188') + gpu),
+        WORKER_COMFYUI_USERNAME: process.env.WORKER_COMFYUI_USERNAME,
+        WORKER_COMFYUI_PASSWORD: process.env.WORKER_COMFYUI_PASSWORD,
+        WORKER_COMFYUI_TIMEOUT_SECONDS: process.env.WORKER_COMFYUI_TIMEOUT_SECONDS,
+        WORKER_COMFYUI_MAX_CONCURRENT_JOBS: process.env.WORKER_COMFYUI_MAX_CONCURRENT_JOBS
       }
     });
   }

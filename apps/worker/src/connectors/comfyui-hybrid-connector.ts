@@ -203,6 +203,9 @@ export class ComfyUIConnector extends HybridConnector {
       const promptId = await this.submitWorkflow(workflow as Record<string, unknown>);
       logger.info(`ComfyUI job ${jobData.id} submitted with prompt ID: ${promptId}`);
 
+      // CRITICAL: Store service job ID mapping in Redis immediately
+      await this.updateJobServiceId(jobData.id, promptId);
+
       // Update job with prompt ID for tracking
       const activeJob = this.activeJobs.get(jobData.id);
       if (activeJob) {
@@ -493,6 +496,152 @@ export class ComfyUIConnector extends HybridConnector {
       } catch (error) {
         logger.error(`Failed to update completion status for job ${jobId}:`, error);
       }
+    }
+  }
+
+  /**
+   * Store service job ID mapping in Redis for health checks and recovery
+   */
+  private async updateJobServiceId(jobId: string, serviceJobId: string): Promise<void> {
+    if (!this.redis) {
+      logger.warn(`Cannot store service job ID mapping for ${jobId} - no Redis connection`);
+      return;
+    }
+
+    try {
+      await this.redis.hmset(`job:${jobId}`, {
+        service_job_id: serviceJobId,
+        service_submitted_at: new Date().toISOString(),
+        last_service_check: new Date().toISOString(),
+        service_status: 'submitted'
+      });
+      
+      logger.info(`Stored service job ID mapping: ${jobId} → ${serviceJobId}`);
+    } catch (error) {
+      logger.error(`Failed to store service job ID mapping for ${jobId}:`, error);
+    }
+  }
+
+  /**
+   * Health check for stuck jobs - query ComfyUI directly using service job ID
+   */
+  async healthCheckJob(jobId: string): Promise<{action: string, reason: string, result?: any}> {
+    if (!this.redis) {
+      return { action: 'return_to_queue', reason: 'no_redis_connection' };
+    }
+
+    try {
+      const jobData = await this.redis.hgetall(`job:${jobId}`);
+      
+      if (!jobData.service_job_id) {
+        return { action: 'return_to_queue', reason: 'service_submission_failed' };
+      }
+
+      // Query ComfyUI history directly
+      const serviceStatus = await this.queryComfyUIStatus(jobData.service_job_id);
+      
+      // Update last service check
+      await this.redis.hset(`job:${jobId}`, 'last_service_check', new Date().toISOString());
+      
+      switch (serviceStatus.status) {
+        case 'completed':
+          logger.info(`Health check: Job ${jobId} (${jobData.service_job_id}) completed in ComfyUI`);
+          return { action: 'complete_job', reason: 'found_completed_in_service', result: serviceStatus.result };
+          
+        case 'failed':
+          logger.warn(`Health check: Job ${jobId} (${jobData.service_job_id}) failed in ComfyUI`);
+          return { action: 'fail_job', reason: serviceStatus.error || 'service_reported_failure' };
+          
+        case 'running':
+          logger.info(`Health check: Job ${jobId} (${jobData.service_job_id}) still running in ComfyUI`);
+          return { action: 'continue_monitoring', reason: 'service_still_processing' };
+          
+        case 'not_found':
+          logger.warn(`Health check: Job ${jobId} (${jobData.service_job_id}) not found in ComfyUI`);
+          return { action: 'return_to_queue', reason: 'service_job_not_found' };
+          
+        default:
+          return { action: 'return_to_queue', reason: 'unknown_service_status' };
+      }
+    } catch (error) {
+      logger.error(`Health check failed for job ${jobId}:`, error);
+      return { action: 'return_to_queue', reason: 'health_check_error' };
+    }
+  }
+
+  /**
+   * Query ComfyUI status directly using prompt ID
+   */
+  private async queryComfyUIStatus(promptId: string): Promise<{status: string, result?: any, error?: string}> {
+    try {
+      const historyUrl = `${this.httpBaseUrl}/history/${promptId}`;
+      
+      // Create controller for timeout
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 5000);
+      
+      const response = await fetch(historyUrl, {
+        headers: this.httpHeaders,
+        signal: controller.signal
+      });
+      
+      clearTimeout(timeoutId);
+
+      if (!response.ok) {
+        return { status: 'not_found' };
+      }
+
+      const historyData = await response.json();
+      
+      if (!historyData || Object.keys(historyData).length === 0) {
+        return { status: 'not_found' };
+      }
+
+      // Check if job completed successfully
+      if (historyData[promptId]?.status?.completed) {
+        return { 
+          status: 'completed', 
+          result: historyData[promptId].outputs 
+        };
+      }
+
+      // Check if job failed
+      if (historyData[promptId]?.status?.status_str === 'error') {
+        return { 
+          status: 'failed', 
+          error: historyData[promptId].status.messages?.join(', ') || 'Unknown error'
+        };
+      }
+
+      // Job exists but not completed - check queue
+      const queueController = new AbortController();
+      const queueTimeoutId = setTimeout(() => queueController.abort(), 3000);
+      
+      const queueResponse = await fetch(`${this.httpBaseUrl}/queue`, {
+        headers: this.httpHeaders,
+        signal: queueController.signal
+      });
+      
+      clearTimeout(queueTimeoutId);
+
+      if (queueResponse.ok) {
+        const queueData = await queueResponse.json();
+        const inQueue = queueData.queue_running?.some((item: any) => 
+          item[1] === promptId || item[0] === promptId
+        ) || queueData.queue_pending?.some((item: any) => 
+          item[1] === promptId || item[0] === promptId
+        );
+
+        if (inQueue) {
+          return { status: 'running' };
+        }
+      }
+
+      return { status: 'not_found' };
+
+    } catch (error) {
+      logger.error(`Failed to query ComfyUI status for prompt ${promptId}:`, error);
+      return { status: 'not_found' };
     }
   }
 

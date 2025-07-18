@@ -45,16 +45,8 @@ export class MachineStatusAggregator {
   buildMachineStructure() {
     const gpuCount = this.config.machine.gpu.count;
     
-    // Filter out internal services and only include actual user-facing services
-    const capabilities = Object.entries(this.config.services)
-      .filter(([name, service]) => {
-        // Exclude internal/infrastructure services
-        return service.enabled && 
-               name !== 'redisWorker' && 
-               name !== 'nginx' && 
-               name !== 'pm2';
-      })
-      .map(([name]) => name);
+    // Use worker connectors as capabilities - this shows what jobs the worker can handle
+    const capabilities = this.config.worker.connectors || ['simulation'];
 
     const workers = {};
     for (let gpu = 0; gpu < gpuCount; gpu++) {

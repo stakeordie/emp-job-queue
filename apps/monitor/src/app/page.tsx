@@ -21,6 +21,7 @@ import { JobSubmissionPanel } from "@/components/JobSubmissionPanel"
 import { ConnectionHeader } from "@/components/ConnectionHeader"
 import { AutoConnector } from "@/components/AutoConnector"
 import { Pagination } from "@/components/Pagination"
+import { ConnectionsPanel } from "@/components/ConnectionsPanel"
 import { useMonitorStore } from "@/store"
 import { useState, useMemo } from "react"
 import type { Job } from "@/types/job"
@@ -36,6 +37,24 @@ function Home({ isJobPanelOpen }: HomeProps) {
   const [cancelJobId, setCancelJobId] = useState<string | null>(null);
   const [selectedJob, setSelectedJob] = useState<Job | null>(null);
   const [deleteMachineId, setDeleteMachineId] = useState<string | null>(null);
+
+  // Format timestamp to relative time
+  const formatRelativeTime = (timestamp: number | undefined): string => {
+    if (!timestamp) return 'Unknown';
+    
+    const now = Date.now();
+    const diff = now - timestamp;
+    const seconds = Math.floor(diff / 1000);
+    const minutes = Math.floor(seconds / 60);
+    const hours = Math.floor(minutes / 60);
+    const days = Math.floor(hours / 24);
+    
+    if (days > 0) return `${days}d ago`;
+    if (hours > 0) return `${hours}h ago`;
+    if (minutes > 0) return `${minutes}m ago`;
+    if (seconds > 0) return `${seconds}s ago`;
+    return 'Just now';
+  };
 
   // Connection logic moved to ConnectionHeader
 
@@ -174,6 +193,9 @@ function Home({ isJobPanelOpen }: HomeProps) {
         </Card>
       </div>
 
+      {/* Connections Panel */}
+      <ConnectionsPanel />
+
       {/* Machines */}
       <div className="space-y-4">
         <div className="flex items-center justify-between">
@@ -216,10 +238,6 @@ function Home({ isJobPanelOpen }: HomeProps) {
                   machine={machine} 
                   workers={machineWorkers} 
                   onDelete={handleDeleteMachine}
-                  onRestart={(machineId) => {
-                    console.log(`Machine ${machineId} restart initiated from UI`);
-                    // Optionally show a toast notification or update UI state
-                  }}
                 />
               );
             })}
@@ -442,8 +460,18 @@ function Home({ isJobPanelOpen }: HomeProps) {
                         </div>
                       </div>
                       <div className="text-right text-xs text-muted-foreground">
-                        {job.worker_id && <p>Worker: {job.worker_id}</p>}
-                        {!job.result && <p className="text-yellow-600">No result</p>}
+                        {job.completed_at && (
+                          <div>
+                            <p className="font-medium text-green-600">
+                              {formatRelativeTime(job.completed_at)}
+                            </p>
+                            <p className="text-gray-400" title={new Date(job.completed_at).toLocaleString()}>
+                              {new Date(job.completed_at).toLocaleTimeString()}
+                            </p>
+                          </div>
+                        )}
+                        {job.worker_id && <p className="mt-1">Worker: {job.worker_id}</p>}
+                        {!job.result && <p className="text-yellow-600 mt-1">No result</p>}
                       </div>
                     </div>
                   ))}

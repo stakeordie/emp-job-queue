@@ -352,6 +352,32 @@ function startHealthServer() {
           }
           break;
 
+        case '/refresh-status':
+          if (req.method === 'POST' || req.method === 'GET') {
+            logger.info('📊 Status refresh requested via API');
+            try {
+              // Trigger immediate status collection and broadcast
+              await statusAggregator.collectAndPublishStatus();
+              res.statusCode = 200;
+              res.end(JSON.stringify({ 
+                message: 'Status update triggered',
+                machine_id: config.machine.id,
+                timestamp: Date.now()
+              }));
+            } catch (error) {
+              logger.error('Failed to trigger status update:', error);
+              res.statusCode = 500;
+              res.end(JSON.stringify({ 
+                error: 'Failed to trigger status update',
+                details: error.message
+              }));
+            }
+          } else {
+            res.statusCode = 405;
+            res.end(JSON.stringify({ error: 'Method not allowed' }));
+          }
+          break;
+
         default:
           res.statusCode = 404;
           res.end(JSON.stringify({ error: 'Not found' }));

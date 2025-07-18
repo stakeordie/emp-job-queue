@@ -23,6 +23,11 @@ export interface Job {
   last_failed_worker?: string;
   processing_time?: number;
   estimated_completion?: string;
+  // Service job tracking for external systems
+  service_job_id?: string; // External service ID (e.g., ComfyUI prompt_id)
+  service_submitted_at?: string; // When job was submitted to external service
+  last_service_check?: string; // Last time we verified status with external service
+  service_status?: string; // Last known status from external service
 }
 
 export enum JobStatus {

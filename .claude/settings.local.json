@@ -175,7 +175,10 @@
       "Bash(/dev/null)",
       "Bash(bash:*)",
       "Bash(export WORKER_VERSION=\"v0.0.42-6-g4a13e67\")",
-      "Bash(./bundle-worker.sh:*)"
+      "Bash(./bundle-worker.sh:*)",
+      "Bash(tree:*)",
+      "Bash(git clone:*)",
+      "Bash(echo:*)"
     ],
     "deny": []
   }

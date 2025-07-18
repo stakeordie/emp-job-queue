@@ -92,10 +92,12 @@ The machine exposes health endpoints on port 9090:
 - `GET /health` - Overall system health
 - `GET /status` - Detailed service status
 - `GET /ready` - Simple readiness check
+- `GET/POST /refresh-status` - Trigger immediate status broadcast to monitors
 
 Example:
 ```bash
 curl http://localhost:9090/health
+curl -X POST http://localhost:9090/refresh-status
 ```
 
 ## Services

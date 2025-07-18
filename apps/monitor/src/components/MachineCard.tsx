@@ -19,10 +19,9 @@ interface MachineCardProps {
   machine: Machine;
   workers: Worker[];
   onDelete?: (machineId: string) => void;
-  onRestart?: (machineId: string) => void;
 }
 
-export const MachineCard = memo(function MachineCard({ machine, workers, onDelete, onRestart }: MachineCardProps) {
+export const MachineCard = memo(function MachineCard({ machine, workers, onDelete }: MachineCardProps) {
   const [showLogs, setShowLogs] = useState(false);
   const [activeTab, setActiveTab] = useState("overview");
 
@@ -87,31 +86,34 @@ export const MachineCard = memo(function MachineCard({ machine, workers, onDelet
     return `${healthUrl}/pm2/logs?service=${serviceName}&lines=1000&stream=true`;
   };
 
-  // Restart machine
-  const restartMachine = async () => {
+  // Request machine status update
+  const requestMachineStatus = async () => {
     const healthUrl = getHealthUrl();
     if (!healthUrl) {
-      console.error('No health URL available for restart');
+      console.error('No health URL available for status request');
       return;
     }
 
     try {
-      console.log('Restarting machine:', machine.machine_id);
-      const response = await fetch(`${healthUrl}/restart/machine`, {
-        method: 'POST'
+      console.log('Requesting status update for machine:', machine.machine_id);
+      // Trigger an immediate status broadcast from the machine
+      const response = await fetch(`${healthUrl}/refresh-status`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        }
       });
       
       if (response.ok) {
-        console.log('Machine restart initiated successfully');
-        // Optionally call parent callback
-        if (onRestart) {
-          onRestart(machine.machine_id);
-        }
+        const result = await response.json();
+        console.log('Machine status update triggered:', result);
+        // The machine will broadcast its status update via Redis
+        // and the monitor will receive it through the WebSocket connection
       } else {
-        console.error('Failed to restart machine:', response.status, await response.text());
+        console.error('Failed to request machine status:', response.status, await response.text());
       }
     } catch (error) {
-      console.error('Error restarting machine:', error);
+      console.error('Error requesting machine status:', error);
     }
   };
 
@@ -169,18 +171,18 @@ export const MachineCard = memo(function MachineCard({ machine, workers, onDelet
               <Badge variant={getStatusColor(machine.status)}>
                 {machine.status}
               </Badge>
-              {machine.status === 'ready' && (
+              {(machine.status === 'ready' || machine.status === 'starting') && (
                 <Button
                   variant="ghost"
                   size="sm"
                   onClick={(e) => {
                     e.stopPropagation();
-                    restartMachine();
+                    requestMachineStatus();
                   }}
                   className="h-6 w-6 p-0 hover:bg-blue-100 hover:text-blue-600"
-                  title="Restart machine"
+                  title="Refresh machine status"
                 >
-                  <RotateCcw className="h-4 w-4" />
+                  <RefreshCw className="h-4 w-4" />
                 </Button>
               )}
               {(machine.status === 'offline' || machine.status === 'disconnected') && onDelete && (

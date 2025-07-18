@@ -46,6 +46,9 @@ interface MonitorConnection {
 interface ClientConnection {
   ws: WebSocket;
   clientId: string;
+  ipAddress: string;
+  userAgent?: string;
+  connectedAt: string;
 }
 
 export class LightweightAPIServer {
@@ -126,6 +129,35 @@ export class LightweightAPIServer {
     // Health check
     this.app.get('/health', (_req: Request, res: Response) => {
       res.json({ status: 'ok', timestamp: new Date().toISOString() });
+    });
+
+    // Connections endpoint - show all connected clients
+    this.app.get('/api/connections', (_req: Request, res: Response) => {
+      const connections = {
+        monitor_connections: Array.from(this.monitorConnections.entries()).map(([id, conn]) => ({
+          id,
+          monitor_id: conn.monitorId,
+          client_id: conn.clientId,
+          subscribed_topics: Array.from(conn.subscribedTopics),
+          connected_at: new Date().toISOString(),
+        })),
+        client_connections: Array.from(this.clientConnections.entries()).map(([id, conn]) => ({
+          id,
+          client_id: conn.clientId,
+          ip_address: conn.ipAddress,
+          user_agent: conn.userAgent,
+          connected_at: conn.connectedAt,
+        })),
+        websocket_connections: Array.from(this.wsConnections.entries()).map(([id, conn]) => ({
+          id,
+          client_id: conn.clientId,
+          subscribed_jobs: Array.from(conn.subscribedJobs),
+          connected_at: new Date().toISOString(),
+        })),
+        stats: this.getConnectionStats(),
+        timestamp: new Date().toISOString(),
+      };
+      res.json(connections);
     });
 
     // Job submission (modern HTTP endpoint)
@@ -277,9 +309,9 @@ export class LightweightAPIServer {
 
       // Parse URL to determine connection type
       if (url.startsWith('/ws/monitor/') || url.startsWith('/ws/monitor?')) {
-        this.handleMonitorConnection(ws, url);
+        this.handleMonitorConnection(ws, url, req);
       } else if (url.startsWith('/ws/client/')) {
-        this.handleClientConnection(ws, url);
+        this.handleClientConnection(ws, url, req);
       } else {
         // Legacy WebSocket connection (fallback)
         this.handleLegacyConnection(ws);
@@ -287,7 +319,7 @@ export class LightweightAPIServer {
     });
   }
 
-  private handleMonitorConnection(ws: WebSocket, url: string): void {
+  private handleMonitorConnection(ws: WebSocket, url: string, _req: unknown): void {
     const monitorId = url.split('/ws/monitor/')[1]?.split('?')[0];
     if (!monitorId) {
       ws.close(1008, 'Invalid monitor ID');
@@ -366,7 +398,7 @@ export class LightweightAPIServer {
     });
   }
 
-  private handleClientConnection(ws: WebSocket, url: string): void {
+  private handleClientConnection(ws: WebSocket, url: string, req: unknown): void {
     const clientId = url.split('/ws/client/')[1]?.split('?')[0];
     if (!clientId) {
       ws.close(1008, 'Invalid client ID');
@@ -384,9 +416,29 @@ export class LightweightAPIServer {
       return;
     }
 
+    // Extract IP address (handle various proxy scenarios)
+    const getClientIP = (req: unknown): string => {
+      const reqWithHeaders = req as {
+        headers?: { [key: string]: string | string[] | undefined };
+        connection?: { remoteAddress?: string };
+        socket?: { remoteAddress?: string };
+      };
+
+      return (
+        (reqWithHeaders.headers?.['x-forwarded-for'] as string)?.split(',')[0] ||
+        (reqWithHeaders.headers?.['x-real-ip'] as string) ||
+        reqWithHeaders.connection?.remoteAddress ||
+        reqWithHeaders.socket?.remoteAddress ||
+        'unknown'
+      );
+    };
+
     const connection: ClientConnection = {
       ws,
       clientId,
+      ipAddress: getClientIP(req),
+      userAgent: req.headers['user-agent'],
+      connectedAt: new Date().toISOString(),
     };
 
     this.clientConnections.set(clientId, connection);
