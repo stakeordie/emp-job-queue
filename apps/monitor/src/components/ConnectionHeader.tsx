@@ -113,19 +113,13 @@ export function ConnectionHeader() {
         {/* Right side - Connection Controls */}
         <div className="flex items-center gap-4">
           {isAutoConnectEnabled ? (
-            /* Auto-connect mode - show simplified controls */
+            /* Auto-connect mode (production only) - show simplified controls */
             <div className="flex items-center gap-2">
               <Label className="text-xs">Auto-connecting to:</Label>
               <code className="text-xs bg-muted px-2 py-1 rounded">{autoConnectUrl}</code>
             </div>
-          ) : autoConnectUrl && !isProduction ? (
-            /* Development mode with WS URL available - show info */
-            <div className="flex items-center gap-2">
-              <Label className="text-xs">Dev Mode:</Label>
-              <span className="text-xs text-muted-foreground">Auto-connect disabled (URL: {autoConnectUrl})</span>
-            </div>
           ) : (
-            /* Manual connection mode - show full controls */
+            /* Development mode or no auto-connect URL - show full manual controls */
             <>
               {/* Environment Preset */}
               <div className="flex items-center gap-2">
@@ -169,6 +163,13 @@ export function ConnectionHeader() {
                 />
               </div>
             </>
+          )}
+          
+          {/* Development mode indicator when auto-connect URL is available */}
+          {autoConnectUrl && !isProduction && (
+            <div className="flex items-center gap-1">
+              <span className="text-xs text-muted-foreground">💻 Dev Mode</span>
+            </div>
           )}
 
           {/* Connection Status and Actions */}
