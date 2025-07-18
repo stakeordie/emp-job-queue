@@ -23,6 +23,13 @@
   - Model intelligence shows "Not Implemented" with TODO indicators for required work
   - Provides clear roadmap of what data collection is needed for real North Star progress tracking
 
+- **Auto-Connect WebSocket**: Added environment variable support for automatic WebSocket connection
+  - Set `NEXT_PUBLIC_WS_URL` in `.env.local` to enable automatic connection on startup
+  - Monitor automatically connects to specified WebSocket URL without manual intervention
+  - ConnectionHeader shows simplified UI when auto-connect is enabled (displays target URL, hides manual controls)
+  - Perfect for production deployments where connection URL is fixed and known
+  - Maintains manual connection UI when environment variable is not set
+
 ### Fixed
 - **Pagination Worker Status Loss**: Fixed workers losing status and version data during pagination navigation
   - Root cause: Pagination triggered full state refresh that overwrote real-time worker data

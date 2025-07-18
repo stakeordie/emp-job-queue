@@ -19,6 +19,7 @@ import { MachineCard } from "@/components/MachineCard"
 import { JobDetailsModal } from "@/components/JobDetailsModal"
 import { JobSubmissionPanel } from "@/components/JobSubmissionPanel"
 import { ConnectionHeader } from "@/components/ConnectionHeader"
+import { AutoConnector } from "@/components/AutoConnector"
 import { Pagination } from "@/components/Pagination"
 import { useMonitorStore } from "@/store"
 import { useState, useMemo } from "react"
@@ -143,6 +144,8 @@ function Home({ isJobPanelOpen }: HomeProps) {
     <main className={`flex-1 p-6 space-y-6 overflow-y-auto transition-all duration-300 ease-in-out ${
       isJobPanelOpen ? 'w-full' : 'w-full'
     }`}>
+      {/* Auto-connect if NEXT_PUBLIC_WS_URL is set */}
+      <AutoConnector />
       {/* Job Statistics - Now in main monitor */}
       <div className="grid grid-cols-4 gap-4">
         <Card>

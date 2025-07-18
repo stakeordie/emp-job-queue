@@ -40,6 +40,10 @@ export function ConnectionHeader() {
   const [websocketUrl, setWebsocketUrl] = useState(CONNECTION_PRESETS.local.websocket);
   const [authToken, setAuthToken] = useState(CONNECTION_PRESETS.local.auth);
   const [selectedPreset, setSelectedPreset] = useState('local');
+  
+  // Check if auto-connect is enabled via environment variable
+  const autoConnectUrl = process.env.NEXT_PUBLIC_WS_URL;
+  const isAutoConnectEnabled = !!autoConnectUrl;
 
   const handlePresetChange = (preset: string) => {
     setSelectedPreset(preset);
@@ -107,47 +111,58 @@ export function ConnectionHeader() {
 
         {/* Right side - Connection Controls */}
         <div className="flex items-center gap-4">
-          {/* Environment Preset */}
-          <div className="flex items-center gap-2">
-            <Label htmlFor="preset" className="text-xs">Environment:</Label>
-            <Select value={selectedPreset} onValueChange={handlePresetChange}>
-              <SelectTrigger id="preset" className="w-32 h-8">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                {Object.entries(CONNECTION_PRESETS).map(([key, config]) => (
-                  <SelectItem key={key} value={key}>
-                    {config.name}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
+          {isAutoConnectEnabled ? (
+            /* Auto-connect mode - show simplified controls */
+            <div className="flex items-center gap-2">
+              <Label className="text-xs">Auto-connecting to:</Label>
+              <code className="text-xs bg-muted px-2 py-1 rounded">{autoConnectUrl}</code>
+            </div>
+          ) : (
+            /* Manual connection mode - show full controls */
+            <>
+              {/* Environment Preset */}
+              <div className="flex items-center gap-2">
+                <Label htmlFor="preset" className="text-xs">Environment:</Label>
+                <Select value={selectedPreset} onValueChange={handlePresetChange}>
+                  <SelectTrigger id="preset" className="w-32 h-8">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {Object.entries(CONNECTION_PRESETS).map(([key, config]) => (
+                      <SelectItem key={key} value={key}>
+                        {config.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
 
-          {/* WebSocket URL */}
-          <div className="flex items-center gap-2">
-            <Label htmlFor="websocket-url" className="text-xs">URL:</Label>
-            <Input
-              id="websocket-url"
-              value={websocketUrl}
-              onChange={(e) => setWebsocketUrl(e.target.value)}
-              placeholder="ws://localhost:3002"
-              className="w-48 h-8"
-            />
-          </div>
+              {/* WebSocket URL */}
+              <div className="flex items-center gap-2">
+                <Label htmlFor="websocket-url" className="text-xs">URL:</Label>
+                <Input
+                  id="websocket-url"
+                  value={websocketUrl}
+                  onChange={(e) => setWebsocketUrl(e.target.value)}
+                  placeholder="ws://localhost:3002"
+                  className="w-48 h-8"
+                />
+              </div>
 
-          {/* Auth Token */}
-          <div className="flex items-center gap-2">
-            <Label htmlFor="auth-token" className="text-xs">Token:</Label>
-            <Input
-              id="auth-token"
-              type="password"
-              value={authToken}
-              onChange={(e) => setAuthToken(e.target.value)}
-              placeholder="Enter auth token"
-              className="w-32 h-8"
-            />
-          </div>
+              {/* Auth Token */}
+              <div className="flex items-center gap-2">
+                <Label htmlFor="auth-token" className="text-xs">Token:</Label>
+                <Input
+                  id="auth-token"
+                  type="password"
+                  value={authToken}
+                  onChange={(e) => setAuthToken(e.target.value)}
+                  placeholder="Enter auth token"
+                  className="w-32 h-8"
+                />
+              </div>
+            </>
+          )}
 
           {/* Connection Status and Actions */}
           <div className="flex items-center gap-2">
@@ -159,6 +174,9 @@ export function ConnectionHeader() {
               <div className="text-red-600 text-xs max-w-32 truncate" title={connection.error}>
                 {connection.error}
               </div>
+            ) : isAutoConnectEnabled ? (
+              /* In auto-connect mode, don't show manual connect button */
+              <span className="text-xs text-muted-foreground">Auto-managed</span>
             ) : (
               <Button
                 onClick={connection.isConnected ? handleDisconnect : handleConnect}
