@@ -3,8 +3,6 @@
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
-import { Input } from "@/components/ui/input"
-import { Label } from "@/components/ui/label"
 import {
   AlertDialog,
   AlertDialogAction,
@@ -15,67 +13,50 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog"
-import { 
-  Select, 
-  SelectContent, 
-  SelectItem, 
-  SelectTrigger, 
-  SelectValue 
-} from "@/components/ui/select"
 import { Progress } from "@/components/ui/progress"
-import { Play, Square, RefreshCw, X } from "lucide-react"
-import { JobSubmissionForm } from "@/components/job-submission-form"
-import { SimpleWorkerCard } from "@/components/SimpleWorkerCard"
+import { RefreshCw, X } from "lucide-react"
+import { MachineCard } from "@/components/MachineCard"
 import { JobDetailsModal } from "@/components/JobDetailsModal"
+import { JobSubmissionPanel } from "@/components/JobSubmissionPanel"
+import { ConnectionHeader } from "@/components/ConnectionHeader"
+import { AutoConnector } from "@/components/AutoConnector"
+import { Pagination } from "@/components/Pagination"
+import { ConnectionsPanel } from "@/components/ConnectionsPanel"
 import { useMonitorStore } from "@/store"
 import { useState, useMemo } from "react"
 import type { Job } from "@/types/job"
 
-// Environment presets
-const CONNECTION_PRESETS = {
-  local: {
-    websocket: 'ws://localhost:3001',
-    auth: '3u8sdj5389fj3kljsf90u',
-    name: 'Local Dev'
-  },
-  'local-test': {
-    websocket: 'ws://localhost:3011', 
-    auth: '3u8sdj5389fj3kljsf90u',
-    name: 'Local Test'
-  },
-  railway: {
-    websocket: 'wss://redisserver-production.up.railway.app',
-    auth: '3u8sdj5389fj3kljsf90u',
-    name: 'Railway (Old)'
-  },
-  railwaynew: {
-    websocket: 'wss://redisservernew-production.up.railway.app',
-    auth: '3u8sdj5389fj3kljsf90u',
-    name: 'Railway (New)'
-  }
-};
+// Environment presets moved to ConnectionHeader
 
-export default function Home() {
-  const { connection, jobs, workers, connect, disconnect, syncJobState, cancelJob } = useMonitorStore();
-  const [websocketUrl, setWebsocketUrl] = useState(CONNECTION_PRESETS.local.websocket);
-  const [authToken, setAuthToken] = useState(CONNECTION_PRESETS.local.auth);
-  const [selectedPreset, setSelectedPreset] = useState('local');
+interface HomeProps {
+  isJobPanelOpen: boolean;
+}
+
+function Home({ isJobPanelOpen }: HomeProps) {
+  const { jobs, workers, machines, syncJobState, cancelJob, deleteMachine, finishedJobsPagination, setFinishedJobsPagination, refreshJobsOnly } = useMonitorStore();
   const [cancelJobId, setCancelJobId] = useState<string | null>(null);
   const [selectedJob, setSelectedJob] = useState<Job | null>(null);
+  const [deleteMachineId, setDeleteMachineId] = useState<string | null>(null);
 
-  const handlePresetChange = (preset: string) => {
-    setSelectedPreset(preset);
-    if (CONNECTION_PRESETS[preset as keyof typeof CONNECTION_PRESETS]) {
-      const config = CONNECTION_PRESETS[preset as keyof typeof CONNECTION_PRESETS];
-      setWebsocketUrl(config.websocket);
-      setAuthToken(config.auth);
-    }
+  // Format timestamp to relative time
+  const formatRelativeTime = (timestamp: number | undefined): string => {
+    if (!timestamp) return 'Unknown';
+    
+    const now = Date.now();
+    const diff = now - timestamp;
+    const seconds = Math.floor(diff / 1000);
+    const minutes = Math.floor(seconds / 60);
+    const hours = Math.floor(minutes / 60);
+    const days = Math.floor(hours / 24);
+    
+    if (days > 0) return `${days}d ago`;
+    if (hours > 0) return `${hours}h ago`;
+    if (minutes > 0) return `${minutes}m ago`;
+    if (seconds > 0) return `${seconds}s ago`;
+    return 'Just now';
   };
 
-  const handleConnect = () => {
-    const urlWithAuth = authToken ? `${websocketUrl}?token=${encodeURIComponent(authToken)}` : websocketUrl;
-    connect(urlWithAuth);
-  };
+  // Connection logic moved to ConnectionHeader
 
   const handleSyncJob = (jobId: string) => {
     syncJobState(jobId);
@@ -92,13 +73,28 @@ export default function Home() {
     }
   };
 
+  const handleDeleteMachine = (machineId: string) => {
+    setDeleteMachineId(machineId);
+  };
+
+  const confirmDeleteMachine = () => {
+    if (deleteMachineId) {
+      deleteMachine(deleteMachineId);
+      setDeleteMachineId(null);
+    }
+  };
+
   // Memoize job counts to avoid recalculating on every render
-  const jobCounts = useMemo(() => ({
-    active: jobs.filter(job => job.status === 'active' || job.status === 'processing').length,
-    pending: jobs.filter(job => job.status === 'pending').length,
-    completed: jobs.filter(job => job.status === 'completed').length,
-    failed: jobs.filter(job => job.status === 'failed').length,
-  }), [jobs]);
+  const jobCounts = useMemo(() => {
+    const counts = {
+      active: jobs.filter(job => job.status === 'active' || job.status === 'processing').length,
+      pending: jobs.filter(job => job.status === 'pending').length,
+      completed: finishedJobsPagination.totalCount || jobs.filter(job => job.status === 'completed').length,
+      failed: jobs.filter(job => job.status === 'failed').length,
+    };
+    console.log('[Monitor] Job counts:', counts, 'Total jobs:', jobs.length, 'Pagination totalCount:', finishedJobsPagination.totalCount);
+    return counts;
+  }, [jobs, finishedJobsPagination.totalCount]);
 
   // Memoize filtered and sorted job lists
   const activeJobsList = useMemo(() => 
@@ -126,134 +122,131 @@ export default function Home() {
     [jobs]
   );
 
-  const finishedJobsList = useMemo(() => 
+  // Completed jobs (server-side pagination)
+  const completedJobsList = useMemo(() => 
     jobs
-      .filter(job => job.status === 'completed' || job.status === 'failed')
+      .filter(job => job.status === 'completed')
       .sort((a, b) => {
-        // Sort finished jobs by completion time (most recent first)
-        const timeA = a.completed_at || a.failed_at || a.created_at;
-        const timeB = b.completed_at || b.failed_at || b.created_at;
+        // Sort by completion time (most recent first)
+        const timeA = new Date(a.completed_at || a.created_at).getTime();
+        const timeB = new Date(b.completed_at || b.created_at).getTime();
         return timeB - timeA;
       }),
     [jobs]
   );
+  
+  // Failed jobs (local, not paginated)
+  const failedJobsList = useMemo(() => 
+    jobs
+      .filter(job => job.status === 'failed')
+      .sort((a, b) => {
+        // Sort by failure time (most recent first)
+        const timeA = new Date(a.failed_at || a.created_at).getTime();
+        const timeB = new Date(b.failed_at || b.created_at).getTime();
+        return timeB - timeA;
+      })
+      .slice(0, 10), // Show only 10 most recent failed jobs
+    [jobs]
+  );
+
+  // Use server pagination data for page calculations
+  const totalFinishedPages = Math.ceil(finishedJobsPagination.totalCount / finishedJobsPagination.pageSize);
+  const currentFinishedPage = finishedJobsPagination.page;
+  
+  // Handle page change for finished jobs
+  const handleFinishedJobsPageChange = (page: number) => {
+    setFinishedJobsPagination({ page });
+    refreshJobsOnly(); // Only refresh job data, preserve worker/machine state
+  };
 
   return (
-    <main className="container mx-auto p-6 space-y-6">
-      <div className="text-center space-y-2">
-        <h1 className="text-2xl font-bold">Job Queue Monitor</h1>
-        <p className="text-sm text-muted-foreground">
-          Real-time monitoring and job submission
-        </p>
+    <main className={`flex-1 p-6 space-y-6 overflow-y-auto transition-all duration-300 ease-in-out ${
+      isJobPanelOpen ? 'w-full' : 'w-full'
+    }`}>
+      {/* Auto-connect if NEXT_PUBLIC_WS_URL is set */}
+      <AutoConnector />
+      {/* Job Statistics - Now in main monitor */}
+      <div className="grid grid-cols-4 gap-4">
+        <Card>
+          <CardContent className="p-4 text-center">
+            <div className="text-2xl font-bold text-blue-600">{jobCounts.active}</div>
+            <div className="text-sm text-muted-foreground">Active Jobs</div>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardContent className="p-4 text-center">
+            <div className="text-2xl font-bold text-yellow-600">{jobCounts.pending}</div>
+            <div className="text-sm text-muted-foreground">Pending Jobs</div>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardContent className="p-4 text-center">
+            <div className="text-2xl font-bold text-green-600">{jobCounts.completed}</div>
+            <div className="text-sm text-muted-foreground">Completed Jobs</div>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardContent className="p-4 text-center">
+            <div className="text-2xl font-bold text-red-600">{jobCounts.failed}</div>
+            <div className="text-sm text-muted-foreground">Failed Jobs</div>
+          </CardContent>
+        </Card>
       </div>
 
-      {/* Connection Controls */}
-      <Card>
-        <CardHeader>
-          <CardTitle className="text-lg">Connection</CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          <div className="grid grid-cols-3 gap-4">
-            <div>
-              <Label htmlFor="preset">Environment</Label>
-              <Select value={selectedPreset} onValueChange={handlePresetChange}>
-                <SelectTrigger>
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  {Object.entries(CONNECTION_PRESETS).map(([key, config]) => (
-                    <SelectItem key={key} value={key}>
-                      {config.name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-            <div>
-              <Label htmlFor="websocket-url">WebSocket URL</Label>
-              <Input
-                id="websocket-url"
-                value={websocketUrl}
-                onChange={(e) => setWebsocketUrl(e.target.value)}
-                placeholder="ws://localhost:3002"
-              />
-            </div>
-            <div>
-              <Label htmlFor="auth-token">Auth Token</Label>
-              <Input
-                id="auth-token"
-                type="password"
-                value={authToken}
-                onChange={(e) => setAuthToken(e.target.value)}
-                placeholder="Enter auth token"
-              />
-            </div>
-          </div>
-          <div className="flex items-center gap-2">
-            <Badge variant={connection.isConnected ? "default" : "destructive"}>
-              {connection.isConnected ? "Connected" : "Disconnected"}
-            </Badge>
-            <Button
-              onClick={connection.isConnected ? disconnect : handleConnect}
-              variant={connection.isConnected ? "destructive" : "default"}
-              size="sm"
-              className={`transition-all duration-200 transform ${
-                connection.isConnected 
-                  ? "hover:bg-red-600 hover:scale-105 active:scale-95 shadow-md hover:shadow-lg" 
-                  : "hover:bg-blue-600 hover:scale-105 active:scale-95 shadow-md hover:shadow-lg"
-              }`}
-            >
-              {connection.isConnected ? (
-                <>
-                  <Square className="h-4 w-4 mr-2" />
-                  Disconnect
-                </>
-              ) : (
-                <>
-                  <Play className="h-4 w-4 mr-2" />
-                  Connect
-                </>
-              )}
-            </Button>
-          </div>
-        </CardContent>
-      </Card>
+      {/* Connections Panel */}
+      <ConnectionsPanel />
 
-      {/* Workers */}
+      {/* Machines */}
       <div className="space-y-4">
         <div className="flex items-center justify-between">
           <h2 className="text-lg font-semibold">
-            Workers ({workers.length})
+            Machines ({machines.length})
           </h2>
           <div className="flex items-center gap-4 text-sm text-muted-foreground">
+            <span>Total Workers: {workers.length}</span>
             <span>Active Jobs: {jobCounts.active}</span>
             <span>Completed: {jobCounts.completed}</span>
             <span>Failed: {jobCounts.failed}</span>
           </div>
         </div>
         
-        {workers.length === 0 ? (
+        {machines.length === 0 ? (
           <Card className="p-8">
-            <p className="text-muted-foreground text-center">No workers connected. Start some workers to see them here.</p>
+            <p className="text-muted-foreground text-center">No machines connected. Start some machines to see them here.</p>
           </Card>
         ) : (
-          <div className="flex flex-wrap gap-2">
-            {workers.map((worker) => (
-              <SimpleWorkerCard key={worker.id} worker={worker} />
-            ))}
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+            {machines.map((machine) => {
+              // Defensive check to prevent errors
+              if (!machine || !machine.machine_id) {
+                console.error('[UI] Invalid machine object - missing required fields:', {
+                  machine_exists: !!machine,
+                  machine_id: machine?.machine_id,
+                  machine_type: typeof machine,
+                  machine_keys: machine ? Object.keys(machine) : 'null/undefined',
+                  full_machine: machine
+                });
+                return null;
+              }
+              
+              const machineWorkers = workers.filter(w => 
+                machine.workers && machine.workers.includes(w.worker_id)
+              );
+              return (
+                <MachineCard 
+                  key={machine.machine_id} 
+                  machine={machine} 
+                  workers={machineWorkers} 
+                  onDelete={handleDeleteMachine}
+                />
+              );
+            })}
           </div>
         )}
       </div>
 
-      {/* Main Content - Job Focused Layout */}
-      <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
-        {/* Left Side - Compact Job Submission (1/4 width) */}
-        <div className="lg:col-span-1">
-          <JobSubmissionForm />
-        </div>
-
-        {/* Right Side - Job Monitoring (3/4 width) */}
-        <div className="lg:col-span-3 space-y-6">
+      {/* Main Content - Job Monitoring */}
+      <div className="space-y-6">
           {/* Job Queues - Two Column Layout */}
           <div className="grid grid-cols-2 gap-4">
             {/* Active Jobs (Left) */}
@@ -268,7 +261,32 @@ export default function Home() {
                   <p className="text-muted-foreground text-center py-8 text-sm">No active jobs</p>
                 ) : (
                   <div className="space-y-2">
-                    {activeJobsList.map((job, index) => (
+                    {activeJobsList.map((job, index) => {
+                      // Debug logging to catch object rendering issues
+                      if (typeof job !== 'object' || job === null) {
+                        console.error('[UI] Invalid job object in activeJobsList:', {
+                          job_type: typeof job,
+                          job_value: job,
+                          index: index
+                        });
+                        return null;
+                      }
+                      
+                      // Check for unexpected nested objects that might cause React child errors
+                      // Skip known legitimate object fields like payload, requirements, result, etc.
+                      const knownObjectFields = ['payload', 'requirements', 'result', 'error_details', 'metadata'];
+                      Object.entries(job).forEach(([key, value]) => {
+                        if (typeof value === 'object' && value !== null && !Array.isArray(value) && !knownObjectFields.includes(key)) {
+                          console.warn('[UI] Found unexpected nested object in job data:', {
+                            job_id: job.id,
+                            field: key,
+                            value_type: typeof value,
+                            value: value
+                          });
+                        }
+                      });
+                      
+                      return (
                     <div key={job.id} className="flex items-center justify-between p-3 border rounded">
                       <div className="flex items-center gap-3 flex-1">
                         <span className="text-lg font-bold text-muted-foreground w-8">{index + 1}</span>
@@ -342,7 +360,8 @@ export default function Home() {
                         </div>
                       </div>
                     </div>
-                  ))}
+                      );
+                    })}
                 </div>
               )}
             </CardContent>
@@ -408,20 +427,86 @@ export default function Home() {
           {/* Finished Jobs */}
           <Card>
             <CardHeader>
-              <CardTitle>Finished Jobs ({jobCounts.completed + jobCounts.failed})</CardTitle>
+              <CardTitle>
+                Completed Jobs ({finishedJobsPagination.totalCount || completedJobsList.length})
+                {totalFinishedPages > 1 && (
+                  <span className="text-xs font-normal text-muted-foreground ml-2">
+                    Page {currentFinishedPage} of {totalFinishedPages}
+                  </span>
+                )}
+              </CardTitle>
             </CardHeader>
             <CardContent className="max-h-64 overflow-y-auto">
-              {finishedJobsList.length === 0 ? (
-                <p className="text-muted-foreground text-center py-4">No finished jobs yet.</p>
+              {completedJobsList.length === 0 ? (
+                <p className="text-muted-foreground text-center py-4">No completed jobs yet.</p>
               ) : (
                 <div className="space-y-2">
-                  {finishedJobsList.map((job, index) => (
+                  {completedJobsList.map((job, index) => (
                     <div key={job.id} className="flex items-center justify-between p-2 border rounded text-sm">
                       <div className="flex items-center gap-3">
                         <span className="text-base font-bold text-muted-foreground w-6">{index + 1}</span>
-                        <Badge variant={
-                          job.status === 'completed' ? 'default' : 'destructive'
-                        }>
+                        <Badge variant="default">
+                          {job.status}
+                        </Badge>
+                        <div>
+                          <p className="font-medium">{job.id}</p>
+                          <p className="text-xs text-muted-foreground">
+                            {job.job_type} | Priority: {job.priority}
+                            {job.workflow_id && ` | Workflow: ${job.workflow_id}`}
+                            {job.workflow_priority !== undefined && ` | W.Priority: ${job.workflow_priority}`}
+                            {job.workflow_datetime && ` | ${new Date(job.workflow_datetime).toLocaleTimeString()}`}
+                            {job.step_number !== undefined && ` | Step: ${job.step_number}`}
+                          </p>
+                        </div>
+                      </div>
+                      <div className="text-right text-xs text-muted-foreground">
+                        {job.completed_at && (
+                          <div>
+                            <p className="font-medium text-green-600">
+                              {formatRelativeTime(job.completed_at)}
+                            </p>
+                            <p className="text-gray-400" title={new Date(job.completed_at).toLocaleString()}>
+                              {new Date(job.completed_at).toLocaleTimeString()}
+                            </p>
+                          </div>
+                        )}
+                        {job.worker_id && <p className="mt-1">Worker: {job.worker_id}</p>}
+                        {!job.result && <p className="text-yellow-600 mt-1">No result</p>}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </CardContent>
+            
+            {/* Pagination Controls - Always visible at bottom */}
+            {totalFinishedPages > 1 && (
+              <div className="p-3 border-t bg-muted/20">
+                <Pagination
+                  currentPage={currentFinishedPage}
+                  totalPages={totalFinishedPages}
+                  onPageChange={handleFinishedJobsPageChange}
+                  className="justify-center"
+                />
+              </div>
+            )}
+          </Card>
+
+          {/* Failed Jobs */}
+          <Card>
+            <CardHeader>
+              <CardTitle>Failed Jobs ({jobCounts.failed})</CardTitle>
+            </CardHeader>
+            <CardContent className="max-h-64 overflow-y-auto">
+              {failedJobsList.length === 0 ? (
+                <p className="text-muted-foreground text-center py-4">No failed jobs yet.</p>
+              ) : (
+                <div className="space-y-2">
+                  {failedJobsList.map((job, index) => (
+                    <div key={job.id} className="flex items-center justify-between p-2 border rounded text-sm">
+                      <div className="flex items-center gap-3">
+                        <span className="text-base font-bold text-muted-foreground w-6">{index + 1}</span>
+                        <Badge variant="destructive">
                           {job.status}
                         </Badge>
                         <div>
@@ -441,17 +526,11 @@ export default function Home() {
                       </div>
                     </div>
                   ))}
-                  {jobs.filter(job => job.status === 'completed' || job.status === 'failed').length > 15 && (
-                    <p className="text-center text-muted-foreground text-sm">
-                      Showing 15 of {jobs.filter(job => job.status === 'completed' || job.status === 'failed').length} finished jobs
-                    </p>
-                  )}
                 </div>
               )}
             </CardContent>
           </Card>
         </div>
-      </div>
 
       {/* Cancel Job Confirmation Dialog */}
       <AlertDialog open={!!cancelJobId} onOpenChange={() => setCancelJobId(null)}>
@@ -475,6 +554,28 @@ export default function Home() {
         </AlertDialogContent>
       </AlertDialog>
 
+      {/* Delete Machine Confirmation Dialog */}
+      <AlertDialog open={!!deleteMachineId} onOpenChange={() => setDeleteMachineId(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete Machine</AlertDialogTitle>
+            <AlertDialogDescription>
+              Are you sure you want to delete machine &quot;{deleteMachineId}&quot;? This action cannot be undone.
+              The machine and all its associated workers will be permanently removed from the system.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Keep Machine</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={confirmDeleteMachine}
+              className="bg-red-600 hover:bg-red-700"
+            >
+              Delete Machine
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
       {/* Job Details Modal */}
       <JobDetailsModal
         job={selectedJob}
@@ -482,6 +583,77 @@ export default function Home() {
         isOpen={!!selectedJob}
         onClose={() => setSelectedJob(null)}
       />
+
+      {/* Add bottom padding to prevent content from being hidden behind status tray */}
+      <div className="h-12" />
     </main>
+  )
+}
+
+{/* Status Tray Footer - Outside main */}
+function StatusTrayFooter() {
+  const { connection, jobs, workers, machines } = useMonitorStore();
+  
+  return (
+    <footer className="bg-background border-t border-border px-4 py-2 flex-shrink-0">
+      <div className="max-w-7xl mx-auto flex items-center justify-between text-sm">
+        <div className="flex items-center space-x-4">
+          <div className="flex items-center space-x-2">
+            <div className={`w-2 h-2 rounded-full ${
+              connection.isConnected 
+                ? 'bg-green-500' 
+                : connection.error 
+                  ? 'bg-red-500' 
+                  : 'bg-yellow-500'
+            }`} />
+            <span className="text-muted-foreground">
+              {connection.isConnected 
+                ? 'Connected' 
+                : connection.error 
+                  ? 'Connection Failed' 
+                  : 'Disconnected'}
+            </span>
+          </div>
+          {!connection.isConnected && !connection.error && (
+            <span className="text-muted-foreground">
+              Auto-reconnect: Disabled - Click Connect to retry
+            </span>
+          )}
+        </div>
+        <div className="flex items-center space-x-2 text-muted-foreground">
+          <span>{workers.length} workers</span>
+          <span>•</span>
+          <span>{jobs.length} jobs</span>
+          <span>•</span>
+          <span>{machines.length} machines</span>
+        </div>
+      </div>
+    </footer>
+  )
+}
+
+export default function Page() {
+  const [isJobPanelOpen, setIsJobPanelOpen] = useState(false);
+  
+  return (
+    <div className="min-h-screen flex flex-col">
+      {/* Header */}
+      <ConnectionHeader />
+      
+      {/* Main Container */}
+      <div className="flex flex-1">
+        {/* Left Panel */}
+        <JobSubmissionPanel
+          isOpen={isJobPanelOpen}
+          onToggle={() => setIsJobPanelOpen(!isJobPanelOpen)}
+        />
+        
+        {/* Main Content */}
+        <Home isJobPanelOpen={isJobPanelOpen} />
+      </div>
+      
+      {/* Footer */}
+      <StatusTrayFooter />
+    </div>
   )
 }

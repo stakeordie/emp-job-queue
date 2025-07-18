@@ -8,6 +8,7 @@ pnpm-debug.log*
 # Build output
 dist/
 build/
+bundled/
 *.tsbuildinfo
 
 # Environment files
@@ -16,8 +17,16 @@ build/
 .env.development.local
 .env.test.local
 .env.production.local
-.env.hub
-.env.worker
+
+# Keep example files but ignore actual local configs
+!.env.example
+!**/.env.example
+
+# Machine environment files with secrets
+apps/machines/basic_machine/.env.local.dev
+apps/machines/basic_machine/.env.local.prod
+apps/machines/basic_machine/.env.local.machine*
+apps/machines/basic_machine/config_nodes_archive.json
 
 # Runtime data
 pids/
@@ -93,7 +102,6 @@ dump.rdb
 
 # Package files
 *.tar.gz
-packages/
 
 # IDE files
 .idea/
@@ -101,6 +109,17 @@ packages/
 *.swp
 *.swo
 *~
+
+# Debug scripts and screenshots
+debug-*.js
+debug-*.sh
+test-*.sh
+monitor-*.png
+screenshot-*.png
+x.json
+
+# Generated Docker overrides
+docker-compose.override.yml
 
 # OS generated files
 .DS_Store
@@ -112,3 +131,38 @@ ehthumbs.db
 Thumbs.db
 
 *code-workspace
+
+
+.turbo
+.turbo*
+
+# Large AI model files
+*.safetensors
+*.ckpt
+*.bin
+*.pt
+*.pth
+
+# Python cache and compiled files
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+
+# Example and sandbox files
+packages/custom-nodes/examples/
+packages/custom-nodes/models/
+packages/service-config/workflows/sandbox/
+
+# Temporary directories and test files
+temp_*/
+test-*.js
+test-*.py
+
+# Large workflow collections with binary assets
+**/*.png
+**/*.jpg
+**/*.jpeg
+!docs/**/*.png
+!docs/**/*.jpg
+!apps/monitor/public/**

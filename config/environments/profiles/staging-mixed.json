@@ -1,0 +1,20 @@
+{
+  "name": "Staging Mixed",
+  "description": "Local machine testing against staging infrastructure",
+  "components": {
+    "redis": "staging",
+    "api": "staging",
+    "machine": "local",
+    "monitor": "local",
+    "comfy": "staging"
+  },
+  "secrets": [
+    "STAGING_REDIS_PASSWORD",
+    "AWS_ACCESS_KEY_ID",
+    "AWS_SECRET_ACCESS_KEY_ENCODED"
+  ],
+  "validation": {
+    "required_services": [],
+    "network_access": ["staging-redis.emprops.com", "staging-api.emprops.com"]
+  }
+}

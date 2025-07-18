@@ -1,15 +1,13 @@
 [build]
 builder = "dockerfile"
-dockerfile = "Dockerfile.redis"
+dockerfilePath = "Dockerfile.railway"
 
 [deploy]
-healthcheckPath = "/"
-healthcheckTimeout = 100
 restartPolicyType = "always"
 
-[[services]]
-name = "redis-functions"
-dockerfile = "Dockerfile.redis"
-
-[services.redis-functions.variables]
-REDIS_ARGS = "--enable-module-command"
+[env]
+NODE_ENV = "production"
+CORS_ORIGINS = "*"
+LOG_LEVEL = "info"
+WS_AUTH_TOKEN = "3u8sdj5389fj3kljsf90u"
+REDIS_URL = "redis://default:JQSoNVpIPsuaDQYicNvocglialxPrTjj@ballast.proxy.rlwy.net:30645"

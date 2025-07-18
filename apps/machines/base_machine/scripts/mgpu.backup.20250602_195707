@@ -1,0 +1,1446 @@
+#!/bin/bash
+
+# Base directory for your ComfyUI instances
+ROOT="${ROOT:-/workspace}"
+LOG_DIR="${ROOT}/logs"
+START_LOG="${LOG_DIR}/start.log"
+
+# Ensure log directory exists
+mkdir -p "$LOG_DIR"
+chmod 755 "$LOG_DIR"
+touch "$START_LOG"
+chmod 644 "$START_LOG"
+
+# Source environment variables
+if [ -f /etc/environment ]; then
+    while IFS='=' read -r key value; do
+        if [ -n "$key" ]; then
+            # Remove any leading/trailing whitespace and quotes
+            key=$(echo "$key" | tr -d '"' | xargs)
+            value=$(echo "$value" | tr -d '"' | xargs)
+            export "$key=$value"
+        fi
+    done < /etc/environment
+fi
+
+log() {
+    local timestamp
+    timestamp=$(date '+%Y-%m-%d %H:%M:%S')
+    local msg="[MGPU] $*"
+    
+    # Ensure log directory exists
+    if [ ! -d "$LOG_DIR" ]; then
+        mkdir -p "$LOG_DIR"
+        chmod 755 "$LOG_DIR"
+    fi
+    
+    # Ensure log file exists and is writable
+    if [ ! -f "$START_LOG" ]; then
+        touch "$START_LOG"
+        chmod 644 "$START_LOG"
+    fi
+    
+    if [ -w "$START_LOG" ]; then
+        echo "[$timestamp] $msg" | tee -a "$START_LOG" >&2
+    else
+        echo "[$timestamp] $msg (Warning: Could not write to $START_LOG)" >&2
+    fi
+}
+
+# Test logging at startup
+log "MGPU script starting, log file: $START_LOG"
+
+# Add debug logging at start (only once)
+if [ "${DEBUG:-}" = "true" ]; then
+    log "Debug: Environment variables at script start:"
+    log "NUM_GPUS=${NUM_GPUS:-not set}"
+    log "ROOT=$ROOT"
+    log "PATH=$PATH"
+    log "MOCK_GPU=${MOCK_GPU:-not set}"
+fi
+
+# Validate GPU ID
+validate_gpu_id() {
+    local gpu_id=$1
+
+    # Special case for 'all'
+    if [ "$gpu_id" = "all" ]; then
+        [ "${DEBUG:-}" = "true" ] && log "Debug: Validating GPU ID: all"
+        return 0
+    fi
+
+    # Check if gpu_id is a number
+    if ! [[ "$gpu_id" =~ ^[0-9]+$ ]]; then
+        log "Error: Invalid GPU ID '$gpu_id'. Must be a number or 'all'"
+        return 1
+    fi
+
+    [ "${DEBUG:-}" = "true" ] && log "Debug: Validating GPU ID: $gpu_id"
+    [ "${DEBUG:-}" = "true" ] && log "Debug: Current NUM_GPUS value: $NUM_GPUS"
+
+    # Check if gpu_id is within range
+    if [ "$gpu_id" -ge "${NUM_GPUS:-0}" ]; then
+        log "Error: GPU ID '$gpu_id' is out of range. Must be between 0 and $((NUM_GPUS-1))"
+        return 1
+    fi
+
+    return 0
+}
+
+# Function to show logs
+show_logs() {
+    # 2025-04-12 16:50: Updated to require service specification
+    local service_type=$1
+    local gpu_id=$2
+    shift 2  # Remove service_type and gpu_id from arguments
+    
+    # Validate service type
+    if [ -z "$service_type" ]; then
+        # 2025-04-12 17:52: Updated service name from comfy to comfyui
+        log "ERROR: Service type (comfyui or a1111) must be specified"
+        return 1
+    fi
+    
+    # 2025-04-12 17:52: Updated service name from comfy to comfyui
+    if [ "$service_type" != "comfyui" ] && [ "$service_type" != "a1111" ]; then
+        log "ERROR: Invalid service type: $service_type. Must be 'comfyui' or 'a1111'"
+        return 1
+    fi
+    
+    # Check if multitail is available
+    if ! command -v multitail >/dev/null 2>&1; then
+        log "ERROR: multitail is not installed. Please install it first."
+        return 1
+    fi
+
+    # Define colors for each GPU
+    local colors=("green" "yellow" "blue" "magenta" "cyan" "red" "white" "purple")
+    
+    # Determine the directory prefix based on service type
+    local dir_prefix
+    # 2025-04-12 17:52: Updated service name from comfy to comfyui
+    if [ "$service_type" = "comfyui" ]; then
+        dir_prefix="comfyui_gpu"
+    else
+        dir_prefix="a1111_gpu"
+    fi
+    
+    # If only one GPU is specified, use tail instead of multitail
+    if [ "$gpu_id" != "all" ]; then
+        # Validate GPU number
+        if ! [[ "$gpu_id" =~ ^[0-9]+$ ]]; then
+            log "Error: Invalid GPU ID '$gpu_id'"
+            return 1
+        fi
+        
+        # Validate GPU ID
+        validate_gpu_id "$gpu_id" >/dev/null || return 1
+        
+        local log_file="${ROOT}/${dir_prefix}${gpu_id}/logs/output.log"
+        if [ -f "$log_file" ]; then
+            # Check if no-follow mode is requested
+            if [ "$1" = "-n" ] || [ "$1" = "no-follow" ]; then
+                log "Showing recent logs for $service_type on GPU $gpu_id"
+                tail -n 100 "$log_file"
+            else
+                log "Starting log view for $service_type on GPU $gpu_id (Ctrl+C to exit)"
+                tail -f "$log_file"
+            fi
+            return 0
+        else
+            log "ERROR: Log file not found for $service_type on GPU $gpu_id"
+            return 1
+        fi
+    fi
+    
+    # For 'all', use multitail
+    # Build the multitail command
+    local cmd="multitail --mergeall -m 5000"  # 5000 lines of scroll buffer
+    local found_valid=false
+    local gpu_count
+    gpu_count=$(show_count)
+    
+    # Show all available GPUs
+    for ((i=0; i<gpu_count; i++)); do
+        local log_file="${ROOT}/${dir_prefix}${i}/logs/output.log"
+        if [ -f "$log_file" ]; then
+            local color_index=$((i % ${#colors[@]}))
+            cmd="$cmd -ci ${colors[$color_index]} --label \"$service_type GPU$i: \" $log_file"
+            found_valid=true
+        fi
+    done
+    
+    if [ "$found_valid" = "false" ]; then
+        log "ERROR: No valid $service_type GPU logs found"
+        return 1
+    fi
+    
+    # Execute the multitail command
+    log "Starting log view for all $service_type services (Press 'b' to scroll, 'q' to exit scroll mode, Ctrl+C to exit)"
+    eval "$cmd"
+}
+
+# Function to start a specific GPU service
+start_service() {
+    local service_type=$1
+    local gpu_id=$2
+    
+    # 2025-04-12 16:40: Updated to require service specification
+    if [ -z "$service_type" ]; then
+        # 2025-04-12 17:52: Updated service name from comfy to comfyui
+        log "ERROR: Service type (comfyui or a1111) must be specified"
+        return 1
+    fi
+    
+    # Validate service type
+    # 2025-04-12 17:52: Updated service name from comfy to comfyui
+    if [ "$service_type" != "comfyui" ] && [ "$service_type" != "a1111" ]; then
+        log "ERROR: Invalid service type: $service_type. Must be 'comfyui' or 'a1111'"
+        return 1
+    fi
+    
+    if [ "$gpu_id" = "all" ]; then
+        start_all_services "$service_type"
+        return $?
+    fi
+    
+    log "Starting $service_type service for GPU $gpu_id..."
+    # Pass test_gpus as third parameter if MOCK_GPU is set
+    if [ "${MOCK_GPU:-0}" -eq 1 ]; then
+        service "$service_type" start "$gpu_id" "1" || return 1
+    else
+        service "$service_type" start "$gpu_id" || return 1
+    fi
+}
+
+# Function to start all GPU services
+start_all_services() {
+    # 2025-04-12 16:41: Updated to support service type parameter
+    local service_type=$1
+    
+    if [ -z "$service_type" ]; then
+        # 2025-04-12 17:52: Updated service name from comfy to comfyui
+        log "ERROR: Service type (comfyui or a1111) must be specified"
+        return 1
+    fi
+    
+    log "Starting all $service_type services..."
+    local gpu_count
+    gpu_count=$(show_count)
+    
+    for ((i=0; i<gpu_count; i++)); do
+        start_service "$service_type" "$i"
+    done
+    
+    log "All $service_type services started"
+    return 0
+}
+
+# Function to stop a specific GPU service
+stop_service() {
+    # 2025-04-12 16:42: Updated to require service specification
+    local service_type=$1
+    local gpu_id=$2
+    
+    # Validate service type
+    if [ -z "$service_type" ]; then
+        # 2025-04-12 17:52: Updated service name from comfy to comfyui
+        log "ERROR: Service type (comfyui or a1111) must be specified"
+        return 1
+    fi
+    
+    # 2025-04-12 17:52: Updated service name from comfy to comfyui
+    if [ "$service_type" != "comfyui" ] && [ "$service_type" != "a1111" ]; then
+        log "ERROR: Invalid service type: $service_type. Must be 'comfyui' or 'a1111'"
+        return 1
+    fi
+    
+    if [ "$gpu_id" = "all" ]; then
+        stop_all_services "$service_type"
+        return
+    fi
+    
+    # Validate GPU ID first (only once)
+    validate_gpu_id "$gpu_id" >/dev/null || return 1
+    
+    log "Stopping $service_type service for GPU $gpu_id..."
+    service "$service_type" stop "$gpu_id"
+}
+
+# Internal function to stop a service
+stop_service_internal() {
+    # 2025-04-12 16:42: Updated to require service specification
+    local service_type=$1
+    local gpu_id=$2
+    service "$service_type" stop "$gpu_id"
+}
+
+# Function to stop all GPU services
+stop_all_services() {
+    # 2025-04-12 16:42: Updated to require service specification
+    local service_type=$1
+    
+    if [ -z "$service_type" ]; then
+        # 2025-04-12 17:52: Updated service name from comfy to comfyui
+        log "ERROR: Service type (comfyui or a1111) must be specified"
+        return 1
+    fi
+    
+    log "Stopping all $service_type services..."
+    local failed=0
+    local gpu_count
+    gpu_count=$(show_count)
+    
+    for ((i=0; i<gpu_count; i++)); do
+        if ! stop_service "$service_type" "$i"; then
+            failed=1
+        fi
+    done
+    
+    log "All $service_type services stopped"
+    return $failed
+}
+
+## Function to restart a specific GPU service
+restart_service() {
+    # 2025-04-12 16:43: Updated to require service specification
+    local service_type=$1
+    local gpu_id=$2
+    
+    # Validate service type
+    if [ -z "$service_type" ]; then
+        # 2025-04-12 17:52: Updated service name from comfy to comfyui
+        log "ERROR: Service type (comfyui or a1111) must be specified"
+        return 1
+    fi
+    
+    # 2025-04-12 17:52: Updated service name from comfy to comfyui
+    if [ "$service_type" != "comfyui" ] && [ "$service_type" != "a1111" ]; then
+        log "ERROR: Invalid service type: $service_type. Must be 'comfyui' or 'a1111'"
+        return 1
+    fi
+    
+    if [ "$gpu_id" = "all" ]; then
+        restart_all_services "$service_type"
+        return
+    fi
+    
+    # Validate GPU ID first (only once)
+    validate_gpu_id "$gpu_id" >/dev/null || return 1
+    
+    log "Restarting $service_type service for GPU $gpu_id..."
+    service "$service_type" restart "$gpu_id"
+}
+
+# Function to restart all GPU services
+restart_all_services() {
+    # 2025-04-12 16:43: Updated to require service specification
+    local service_type=$1
+    
+    if [ -z "$service_type" ]; then
+        # 2025-04-12 17:52: Updated service name from comfy to comfyui
+        log "ERROR: Service type (comfyui or a1111) must be specified"
+        return 1
+    fi
+    
+    log "Restarting all $service_type services..."
+    local failed=0
+    local gpu_count
+    gpu_count=$(show_count)
+    
+    for ((i=0; i<gpu_count; i++)); do
+        if ! restart_service "$service_type" "$i"; then
+            failed=1
+        fi
+    done
+    return $failed
+}
+
+# Function to check status of a specific GPU service
+check_status() {
+    # 2025-04-12 16:45: Updated to require service specification
+    local service_type=$1
+    local gpu_id=$2
+    
+    # Validate service type
+    if [ -z "$service_type" ]; then
+        # 2025-04-12 17:52: Updated service name from comfy to comfyui
+        log "ERROR: Service type (comfyui or a1111) must be specified"
+        return 1
+    fi
+    
+    # 2025-04-12 17:52: Updated service name from comfy to comfyui
+    if [ "$service_type" != "comfyui" ] && [ "$service_type" != "a1111" ]; then
+        log "ERROR: Invalid service type: $service_type. Must be 'comfyui' or 'a1111'"
+        return 1
+    fi
+    
+    if [ "$gpu_id" = "all" ]; then
+        check_all_status "$service_type"
+        return $?
+    fi
+    
+    # Validate GPU ID first (only once)
+    validate_gpu_id "$gpu_id" >/dev/null || return 1
+    
+    # Capture the output of service status
+    local status_output
+    status_output=$(service "$service_type" status "$gpu_id" 2>&1)
+    local exit_code=$?
+    
+    # Extract status from the output (matches "Service is running" or "Service is not running")
+    if echo "$status_output" | grep -q "Service is running"; then
+        printf "%s GPU %d: %s\n" "$service_type" "$gpu_id" "$(echo "$status_output" | grep "Service is" | sed "s/\[.*\] //")"
+        return 0
+    else
+        printf "%s GPU %d: %s\n" "$service_type" "$gpu_id" "$(echo "$status_output" | grep "Service is" | sed "s/\[.*\] //")"
+        return $exit_code
+    fi
+}
+
+# Function to check status of all GPU services
+check_all_status() {
+    # 2025-04-12 16:45: Updated to require service specification
+    local service_type=$1
+    
+    if [ -z "$service_type" ]; then
+        # 2025-04-12 17:52: Updated service name from comfy to comfyui
+        log "ERROR: Service type (comfyui or a1111) must be specified"
+        return 1
+    fi
+    
+    log "Checking status of all $service_type services..."
+    local failed=0
+    local gpu_count
+    gpu_count=$(show_count)
+    
+    for ((i=0; i<gpu_count; i++)); do
+        if ! check_status "$service_type" "$i"; then
+            failed=1
+        fi
+    done
+    return $failed
+}
+
+# Function to setup a service (ComfyUI or Automatic1111) for a specific GPU or CPU
+setup_gpu() {
+    # 2025-04-12 16:47: Updated to support both ComfyUI and Automatic1111
+    local service_type=$1
+    local gpu_id=$2
+    local target_dir
+    
+    # Validate service type
+    if [ -z "$service_type" ]; then
+        # 2025-04-12 17:52: Updated service name from comfy to comfyui
+        log "ERROR: Service type (comfyui or a1111) must be specified"
+        return 1
+    fi
+    
+    # 2025-04-12 17:52: Updated service name from comfy to comfyui
+    if [ "$service_type" != "comfyui" ] && [ "$service_type" != "a1111" ]; then
+        log "ERROR: Invalid service type: $service_type. Must be 'comfyui' or 'a1111'"
+        return 1
+    fi
+    
+    if [ "$gpu_id" = "all" ]; then
+        setup_all_gpus "$service_type"
+        return $?
+    fi
+    
+    # Set target directory based on service type
+    # 2025-04-12 17:52: Updated service name from comfy to comfyui
+    if [ "$service_type" = "comfyui" ]; then
+        target_dir="${ROOT}/comfyui_gpu${gpu_id}"
+    else
+        target_dir="${ROOT}/a1111_gpu${gpu_id}"
+    fi
+    
+    log "Setting up $service_type for GPU ${gpu_id}..."
+    
+    # Create directory if it doesn't exist
+    mkdir -p "$target_dir"
+    chmod 755 "$target_dir"
+    
+    # Setup based on service type
+    # 2025-04-12 17:52: Updated service name from comfy to comfyui
+    if [ "$service_type" = "comfyui" ]; then
+        setup_comfyui "$gpu_id" "$target_dir"
+    else
+        setup_a1111 "$gpu_id" "$target_dir"
+    fi
+    
+    return $?
+}
+
+# Function to setup ComfyUI for a specific GPU
+setup_comfyui() {
+    local gpu_id=$1
+    local target_dir=$2
+    
+    # Use COMFY_REPO_URL environment variable with fallback
+    local repo_url="${COMFY_REPO_URL:-https://github.com/comfyanonymous/ComfyUI.git}"
+    local base_commit="02a1b01aad28470f06c8b4f95b90914413d3e4c8"
+    
+    log "Cloning ComfyUI from ${repo_url} for GPU ${gpu_id}..."
+    if ! git clone "$repo_url" "$target_dir"; then
+        log "ERROR: Failed to clone ComfyUI"
+        return 1
+    fi
+    
+    cd "$target_dir" || return 1
+    
+    # Handle different branches based on whether it's a fork
+    if [ "$repo_url" = "https://github.com/stakeordie/ComfyUI.git" ]; then
+        # Updated: 2025-05-12T15:52:00-04:00 - Changed from websocket_version to forward branch
+        log "Fork detected, checking out forward branch..."
+        if ! git checkout forward; then
+            log "ERROR: Failed to checkout forward branch"
+            return 1
+        fi
+    else
+        log "Base repo detected, resetting to specific commit ${base_commit}..."
+        if ! git reset --hard "$base_commit"; then
+            log "ERROR: Failed to reset to specific commit"
+            return 1
+        fi
+    fi
+    cd - > /dev/null || return 1
+    
+    # Create logs directory
+    mkdir -p "${target_dir}/logs"
+    chmod 755 "${target_dir}/logs"
+    touch "${target_dir}/logs/output.log"
+    chmod 644 "${target_dir}/logs/output.log"
+    
+    # Verify setup
+    if [ ! -f "${target_dir}/main.py" ]; then
+        log "ERROR: Setup failed - main.py not found in $target_dir"
+        return 1
+    fi
+    
+    # Handle workflows directory
+    if [ -d "${target_dir}/user/default/workflows" ]; then
+        log "Removing existing workflows directory..."
+        rm -rf "${target_dir}/user/default/workflows"
+    fi
+    
+    if [ ! -d "${target_dir}/user/default" ]; then
+        log "Creating user/default directory..."
+        mkdir -p "${target_dir}/user/default"
+    fi
+    
+    if [ ! -L "${target_dir}/user/default/workflows" ]; then
+        log "Symlinking workflows directory..."
+        ln -s "/workspace/shared/workflows" "${target_dir}/user/default/workflows"
+    fi
+    
+    log "ComfyUI setup complete for GPU ${gpu_id}"
+    return 0
+}
+
+# [2025-05-28T14:01:43-04:00] Function to download models for Automatic1111
+download_a1111_models() {
+    log "DEBUG: download_a1111_models function called"
+    log "Downloading models for Automatic1111..."
+    
+    # Check if we should skip model download
+    if [ "${SKIP_MODEL_DOWNLOAD:-false}" = "true" ]; then
+        log "Skipping model download (SKIP_MODEL_DOWNLOAD=${SKIP_MODEL_DOWNLOAD:-false})"
+        return 0
+    fi
+    
+    # Check if models directory exists
+    if [ ! -d "/workspace/shared/sd_models/Stable-diffusion" ]; then
+        log "Creating models directory: /workspace/shared/sd_models/Stable-diffusion"
+        mkdir -p "/workspace/shared/sd_models/Stable-diffusion" || {
+            log "ERROR: Failed to create models directory"
+            return 1
+        }
+        log "Models directory created successfully"
+    else
+        log "Models directory already exists: /workspace/shared/sd_models/Stable-diffusion"
+    fi
+    
+    # Check if there are existing models
+    local existing_models=($(ls -A "/workspace/shared/sd_models/Stable-diffusion" 2>/dev/null))
+    if [ ${#existing_models[@]} -gt 0 ]; then
+        log "====================================================="
+        log "Found ${#existing_models[@]} existing models, skipping download"
+        log "Listing existing models:"
+        ls -lh "/workspace/shared/sd_models/Stable-diffusion" | tee -a "$START_LOG"
+        log "====================================================="
+        
+        # Add existing models to the list
+        for model in "${existing_models[@]}"; do
+            log "Added existing model to list: $model"
+            if [ -z "$MODELS" ]; then
+                MODELS="$model"
+            else
+                MODELS="$MODELS,$model"
+            fi
+            ((skipped++))
+        done
+        
+        log "Using existing models: $MODELS"
+    fi
+    
+    # Define model download function to reduce code duplication
+    download_model() {
+        local name=$1
+        local url=$2
+        local output=$3
+        local variant=${4:-""}
+        
+        log "====================================================="
+        log "Downloading $name${variant:+ ($variant)}..."
+        log "URL: $url"
+        log "Output: $output"
+        log "====================================================="
+        
+        # Check if file already exists
+        if [ -f "$output" ]; then
+            log "File already exists, checking size..."
+            local file_size=$(stat -c%s "$output" 2>/dev/null || stat -f%z "$output")
+            log "Existing file size: $file_size bytes"
+            
+            # If file is very small, it might be corrupted - redownload
+            if [ "$file_size" -lt 1000000 ]; then  # Less than 1MB
+                log "File appears to be too small or corrupted, redownloading..."
+            else
+                log "File appears to be valid, skipping download"
+                # Add to models list
+                if [ -z "$MODELS" ]; then
+                    MODELS="$(basename "$output")"
+                else
+                    MODELS="$MODELS,$(basename "$output")"
+                fi
+                ((skipped++))
+                return 0
+            fi
+        fi
+        
+        # Download the model
+        wget --no-verbose --show-progress --progress=bar:force:noscroll "$url" -O "$output" 2>&1 | tee -a "$START_LOG"
+        
+        # Check if download was successful
+        if [ ${PIPESTATUS[0]} -eq 0 ] && [ -f "$output" ]; then
+            log "Download successful: $(ls -lh "$output")"
+            # Add to models list
+            if [ -z "$MODELS" ]; then
+                MODELS="$(basename "$output")"
+            else
+                MODELS="$MODELS,$(basename "$output")"
+            fi
+            ((downloaded++))
+            return 0
+        else
+            log "ERROR: Failed to download $name"
+            ((failed++))
+            return 1
+        fi
+    }
+    
+    # Download SDXL Base
+    download_model "SDXL Base" \
+        "https://huggingface.co/stabilityai/stable-diffusion-xl-base-1.0/resolve/main/sd_xl_base_1.0_0.9vae.safetensors" \
+        "/workspace/shared/sd_models/Stable-diffusion/sd_xl_base_1.0_0.9vae.safetensors"
+
+    # Create symlink with lowercase j for compatibility with workflows that use lowercase
+    log "Creating symlink for SDXL Base with lowercase name..."
+    if [ -f "/workspace/shared/sd_models/Stable-diffusion/sd_xl_base_1.0_0.9vae.safetensors" ]; then
+        ln -sf "/workspace/shared/sd_models/Stable-diffusion/sd_xl_base_1.0_0.9vae.safetensors" \
+                "/workspace/shared/sd_models/Stable-diffusion/sd_xl_base-1.0.safetensors"
+        log "Successfully created symlink from sd_xl_base_1.0_0.9vae.safetensors to sd_xl_base-1.0.safetensors"
+        MODELS="$MODELS,sd_xl_base-1.0.safetensors"
+    else
+        log "WARNING: sd_xl_base_1.0_0.9vae.safetensors file not found, cannot create symlink"
+    fi
+    
+    
+    # Skip additional downloads if in storage test mode
+    if [ "${STORAGE_TEST_MODE:-false}" = "true" ]; then
+        log "STORAGE_TEST_MODE is true, skipping additional downloads"
+    else
+        log "STORAGE_TEST_MODE is not true, downloading additional models..."
+        
+        # Download JuggernautXL
+        download_model "JuggernautXL" \
+            "https://huggingface.co/RunDiffusion/Juggernaut-XL-v8/resolve/main/juggernautXL_v8Rundiffusion.safetensors" \
+            "/workspace/shared/sd_models/Stable-diffusion/JuggernautXL_v8Rundiffusion.safetensors"
+        
+        # Create symlink with lowercase j for compatibility with workflows that use lowercase
+        log "Creating symlink for JuggernautXL with lowercase name..."
+        if [ -f "/workspace/shared/sd_models/Stable-diffusion/JuggernautXL_v8Rundiffusion.safetensors" ]; then
+            ln -sf "/workspace/shared/sd_models/Stable-diffusion/JuggernautXL_v8Rundiffusion.safetensors" \
+                    "/workspace/shared/sd_models/Stable-diffusion/juggernautXL_v8Rundiffusion.safetensors"
+            log "Successfully created symlink from JuggernautXL_v8Rundiffusion.safetensors to juggernautXL_v8Rundiffusion.safetensors"
+            MODELS="$MODELS,juggernautXL_v8Rundiffusion.safetensors"
+        else
+            log "WARNING: JuggernautXL file not found, cannot create symlink"
+        fi
+        
+        # Download SD 2.1
+        download_model "SD 2.1" \
+            "https://huggingface.co/stabilityai/stable-diffusion-2-1/resolve/main/v2-1_768-ema-pruned.safetensors" \
+            "/workspace/shared/sd_models/Stable-diffusion/v2-1_768-ema-pruned.safetensors"
+
+        # Download SD 2.1
+        download_model "SD 2.1 (ckpt)" \
+            "https://huggingface.co/stabilityai/stable-diffusion-2-1/resolve/main/v2-1_768-ema-pruned.ckpt" \
+            "/workspace/shared/sd_models/Stable-diffusion/v2-1_768-ema-pruned.ckpt"
+        
+        # Download SD 1.5
+        download_model "SD 1.5" \
+            "https://huggingface.co/stable-diffusion-v1-5/stable-diffusion-v1-5/resolve/main/v1-5-pruned.safetensors" \
+            "/workspace/shared/sd_models/Stable-diffusion/v1-5-pruned.safetensors"
+        
+        # Download SD 1.5 (alt)
+        download_model "SD 1.5 (ckpt)" \
+            "https://huggingface.co/runwayml/stable-diffusion-v1-5/resolve/main/v1-5-pruned.ckpt" \
+            "/workspace/shared/sd_models/Stable-diffusion/v1-5-pruned.ckpt"
+
+        
+        # Download SDXL Refiner
+        download_model "SDXL Refiner" \
+            "https://huggingface.co/stabilityai/stable-diffusion-xl-refiner-1.0/resolve/main/sd_xl_refiner_1.0_0.9vae.safetensors" \
+            "/workspace/shared/sd_models/Stable-diffusion/sd_xl_refiner_1.0_0.9vae.safetensors"
+
+        log "Creating symlink for SDXL Refiner with lowercase name..."
+        if [ -f "/workspace/shared/sd_models/Stable-diffusion/sd_xl_refiner_1.0_0.9vae.safetensors" ]; then
+            ln -sf "/workspace/shared/sd_models/Stable-diffusion/sd_xl_refiner_1.0_0.9vae.safetensors" \
+                    "/workspace/shared/sd_models/Stable-diffusion/sd_xl_refiner-1.0.safetensors"
+            log "Successfully created symlink from sd_xl_refiner_1.0_0.9vae.safetensors to sd_xl_refiner-1.0.safetensors"
+            MODELS="$MODELS,sd_xl_refiner-1.0.safetensors"
+        else
+            log "WARNING: sd_xl_refiner_1.0_0.9vae.safetensors file not found, cannot create symlink"
+        fi
+    
+    fi
+    
+    log "====================================================="
+    log "MODEL DOWNLOAD SUMMARY:"
+    log "Downloaded: $downloaded models"
+    log "Skipped (already exist): $skipped models"
+    log "Failed: $failed models"
+    log "Final models list: $MODELS"
+    log "====================================================="
+    
+    # List the final directory contents (only to log file, not to stdout)
+    log "Final models directory contents:"
+    ls -lh "/workspace/shared/sd_models/Stable-diffusion" >> "$START_LOG" 2>&1
+    
+    # Get the total size of models for logging purposes only (only to log file, not to stdout)
+    local total_size=$(du -sh "/workspace/shared/sd_models/Stable-diffusion" 2>/dev/null | cut -f1)
+    log "Total size of models: $total_size"
+    
+    # Updated: 2025-05-29T22:33:23-04:00 - Complete rewrite of model output to ensure clean model names
+    # Create a clean list of actual model files only
+    log "Creating clean model list..."
+    local clean_models=""
+    
+    # Find all .safetensors and .ckpt files in the models directory
+    for model_file in "/workspace/shared/sd_models/Stable-diffusion"/*.{safetensors,ckpt}; do
+        # Skip if the pattern didn't match any files
+        if [ ! -f "$model_file" ]; then
+            continue
+        fi
+        
+        # Get just the filename
+        local model_name=$(basename "$model_file")
+        
+        # Add to clean model list
+        if [ -z "$clean_models" ]; then
+            clean_models="$model_name"
+        else
+            clean_models="$clean_models,$model_name"
+        fi
+        
+        log "Added to clean model list: $model_name"
+    done
+    
+    # Log the final clean model list
+    log "Final clean model list: $clean_models"
+    
+    # Return only the clean model list
+    echo "$clean_models"
+    return 0
+}
+
+# Function to load models into Automatic1111
+# Updated: 2025-05-28T19:59:16-04:00 - Enhanced logging for model loading process
+# Updated: 2025-05-29T22:18:28-04:00 - Added support for multiple GPU instances
+# Updated: 2025-05-29T23:03:47-04:00 - Improved model existence checking and error handling
+# Updated: 2025-05-29T23:51:20-04:00 - Added better handling for large model lists
+load_a1111_models() {
+    local models_list=$1
+    
+    if [ -z "$models_list" ]; then
+        log "No models to load"
+        return 0
+    fi
+    
+    log "====================================================="
+    log "STARTING MODEL LOADING PROCESS FOR AUTOMATIC1111"
+    log "====================================================="
+    log "Models to be loaded: $models_list"
+    log "Model directory: /workspace/shared/sd_models/Stable-diffusion"
+    
+    # Check if directory exists and list contents
+    if [ -d "/workspace/shared/sd_models/Stable-diffusion" ]; then
+        log "Model directory exists, listing contents:"
+        ls -la "/workspace/shared/sd_models/Stable-diffusion" | tee -a "$START_LOG"
+    else
+        log "ERROR: Model directory does not exist!"
+        return 1
+    fi
+    
+    # Process each model
+    IFS=',' read -r -a model_array <<< "$models_list"
+    local total_models=${#model_array[@]}
+    local current=0
+    local success=0
+    local failed=0
+    local skipped=0
+    
+    log "Total models to load: $total_models"
+    
+    # Get number of GPU instances
+    local num_gpus=${NUM_GPUS:-1}
+    log "Detected $num_gpus GPU instances"
+    
+    # Get base port for Automatic1111
+    local base_port=${WORKER_BASE_A1111_PORT:-3001}
+    log "Using base port $base_port for Automatic1111 instances"
+    
+    for model in "${model_array[@]}"; do
+        if [ -n "$model" ]; then
+            ((current++))
+            log "====================================================="
+            log "PROCESSING MODEL [$current/$total_models]: $model"
+            log "====================================================="
+            
+            # [2025-05-29T23:30:15-04:00] Check multiple possible locations for model files
+            # [2025-05-29T23:28:30-04:00] Updated to prioritize /workspace/shared path
+            local model_found=false
+            local model_path=""
+            
+            # Try different possible model locations
+            local model_paths=(
+                "/workspace/shared/sd_models/Stable-diffusion/$model"
+                "/workspace/shared/models/checkpoints/$model"
+                "/workspace/sd_models/Stable-diffusion/$model"
+                "/data/sd_models/Stable-diffusion/$model"
+            )
+            
+            for path in "${model_paths[@]}"; do
+                if [ -f "$path" ]; then
+                    model_path="$path"
+                    model_found=true
+                    log "Model file found at: $path"
+                    break
+                fi
+            done
+            
+            if [ "$model_found" = true ]; then
+                log "Model file exists: $(ls -lh "$model_path")"
+                
+                # Load the model on each GPU instance
+                local gpu_success=0
+                
+                for gpu_id in $(seq 0 $((num_gpus-1))); do
+                    local port=$((base_port + gpu_id))
+                    log "Loading model on GPU $gpu_id (port $port)..."
+                    
+                    # Attempt to load the model on this GPU
+                    python3 /scripts/a1111_scripts/a1111_loader.py -m "$model" -g "$gpu_id" -p "$port" 2>&1 | tee -a "$START_LOG"
+                    
+                    if [ ${PIPESTATUS[0]} -eq 0 ]; then
+                        log "SUCCESS: Model '$model' loaded successfully on GPU $gpu_id (port $port)"
+                        ((gpu_success++))
+                    else
+                        log "WARNING: Failed to load model: $model on GPU $gpu_id (port $port)"
+                    fi
+                done
+                
+                # If at least one GPU succeeded, count it as a success
+                if [ $gpu_success -gt 0 ]; then
+                    log "Model '$model' loaded successfully on $gpu_success/$num_gpus GPUs"
+                    ((success++))
+                else
+                    log "WARNING: Failed to load model: $model on all GPUs"
+                    ((failed++))
+                fi
+            else
+                log "SKIPPED: Model file does not exist: $model_path"
+                ((skipped++))
+            fi
+        fi
+    done
+    
+    log "====================================================="
+    log "MODEL LOADING SUMMARY:"
+    log "Total models: $total_models"
+    log "Successfully loaded: $success"
+    log "Failed to load: $failed"
+    log "Skipped (not found): $skipped"
+    log "====================================================="
+    
+    return 0
+}
+
+# Function to setup Automatic1111 for a specific GPU
+setup_a1111() {
+    # 2025-04-14 20:40:00-04:00: Updated to use template approach instead of cloning
+    local gpu_id=$1
+    local target_dir=$2
+    
+    log "DEBUG: Setting up Automatic1111 for GPU ${gpu_id} in directory ${target_dir}"
+    
+    # Check if target directory exists
+    if [ ! -d "$target_dir" ]; then
+        log "Creating target directory: $target_dir"
+        mkdir -p "$target_dir" || {
+            log "ERROR: Failed to create directory $target_dir"
+            return 1
+        }
+    fi
+    
+    # Check if directory is empty
+    if [ "$(ls -A "$target_dir" 2>/dev/null)" ]; then
+        log "Target directory $target_dir is not empty, using existing installation"
+    else
+        # Copy from template directory
+        log "Copying Automatic1111 from template for GPU ${gpu_id}..."
+        
+        # [2025-04-15T10:04:50-04:00] Use /tmp/a1111_template as the new template source
+        if [ -d "/tmp/a1111_template" ]; then
+            log "Copying from template directory /tmp/a1111_template"
+            # [2025-04-15T21:26:34-04:00] Use rsync instead of cp to include hidden files like .git
+            rsync -a /tmp/a1111_template/ "$target_dir/" || {
+                log "ERROR: Failed to copy from template directory"
+                return 1
+            }
+            log "Successfully copied Automatic1111 template to $target_dir"
+        else
+            log "ERROR: Template directory /tmp/a1111_template not found"
+            return 1
+        fi
+    fi
+    
+    # Create logs directory
+    log "Creating logs directory in ${target_dir}/logs"
+    mkdir -p "${target_dir}/logs" || {
+        log "ERROR: Failed to create logs directory"
+        return 1
+    }
+    chmod 755 "${target_dir}/logs"
+    touch "${target_dir}/logs/output.log"
+    chmod 644 "${target_dir}/logs/output.log"
+    
+    # Verify setup
+    log "Verifying Automatic1111 setup..."
+    if [ ! -f "${target_dir}/webui.py" ]; then
+        log "ERROR: Setup failed - webui.py not found in $target_dir"
+        log "DEBUG: Directory contents: $(ls -la "$target_dir")"
+        return 1
+    fi
+    
+    # Make webui.sh executable
+    log "Making webui.sh executable..."
+    if [ -f "${target_dir}/webui.sh" ]; then
+        chmod +x "${target_dir}/webui.sh" || {
+            log "WARNING: Failed to make webui.sh executable"
+        }
+    else
+        log "WARNING: webui.sh not found in $target_dir"
+    fi
+    
+    # Setup configuration symlinks
+    # Added: 2025-04-14T20:45:00-04:00 - Setting up configuration symlinks
+    log "Setting up configuration symlinks"
+    
+    # Create necessary directories
+    mkdir -p /data/.cache /data/embeddings /data/config/auto /data/config/auto/extensions /data/config/auto/config_states
+    
+    # Define configuration symlinks
+    declare -A CONFIG_SYMLINKS=(
+        ["${target_dir}/config.json"]="/data/config/auto/config.json"
+        ["${target_dir}/ui-config.json"]="/data/config/auto/ui-config.json"
+        ["${target_dir}/styles.csv"]="/data/config/auto/styles.csv"
+        ["${target_dir}/extensions"]="/data/config/auto/extensions"
+        ["${target_dir}/config_states"]="/data/config/auto/config_states"
+        ["${target_dir}/embeddings"]="/data/embeddings"
+    )
+    
+    # Create configuration symlinks
+    for link_target in "${!CONFIG_SYMLINKS[@]}"; do
+        link_source="${CONFIG_SYMLINKS[$link_target]}"
+        
+        # Remove target if it exists
+        if [ -e "$link_target" ]; then
+            rm -rf "$link_target"
+        fi
+        
+        # Create parent directory if needed
+        mkdir -p "$(dirname "$link_target")"
+        
+        # Create source file/directory if it doesn't exist
+        if [ ! -e "$link_source" ]; then
+            if [[ "$link_source" == *".json" ]] || [[ "$link_source" == *".csv" ]]; then
+                # For files, create empty file
+                touch "$link_source"
+            else
+                # For directories, create directory
+                mkdir -p "$link_source"
+            fi
+        fi
+        
+        # Create symlink
+        ln -sf "$link_source" "$link_target"
+        log "Created symlink: $link_target -> $link_source"
+    done
+    
+    # [2025-04-17T13:33:51-04:00] Initialize configuration files with valid JSON
+    log "Initializing configuration files with valid JSON"
+    if [ -f "/scripts/a1111_scripts/a1111_config.py" ]; then
+        python3 /scripts/a1111_scripts/a1111_config.py "/data/config/auto/config.json"
+        python3 /scripts/a1111_scripts/a1111_config.py "/data/config/auto/ui-config.json"
+        log "Configuration files initialized with valid JSON structure"
+    else
+        log "WARNING: a1111_config.py not found, configuration files may be empty"
+    fi
+    
+    # [2025-05-28T13:32:50-04:00] Setting up shared sd_models directory and symlink in worker
+    SHARED_MODELS_DIR="/workspace/shared/sd_models"
+    mkdir -p "$SHARED_MODELS_DIR"
+    # Ensure Stable-diffusion subdirectory exists
+    mkdir -p "${SHARED_MODELS_DIR}/Stable-diffusion"
+    log "Created directory: ${SHARED_MODELS_DIR}/Stable-diffusion"
+    
+    # Remove any models directory in the worker (if present)
+    if [ -e "${target_dir}/models" ]; then
+        rm -rf "${target_dir}/models"
+    fi
+    ln -sf "$SHARED_MODELS_DIR" "${target_dir}/models"
+    log "Created symlink: ${target_dir}/models -> $SHARED_MODELS_DIR"
+    
+    # [2025-04-16T20:24:53-04:00] Check for models only in shared models directory
+    # Removed unnecessary ComfyUI directory path as it never contains models
+    COMFY_MODEL_DIRS=(
+        "/workspace/shared/models/checkpoints"
+    )
+    
+    MODELS_FOUND=false
+    
+    # Added: 2025-05-15T18:54:19-04:00 - Removed model download URLs to avoid duplication with start.sh
+    # Model downloads will now be handled exclusively by start.sh
+    # Define the models we want to look for (for symlink creation only)
+    declare -A MODEL_NAMES=(
+        ["juggernautXL_v8Rundiffusion.safetensors"]="JuggernautXL v8 Rundiffusion"
+        ["v1-5-pruned.safetensors"]="SD 1.5"
+        ["v2-1_768-ema-pruned.safetensors"]="SD 2.1"
+        ["sd_xl_base_1.0_0.9vae.safetensors"]="SDXL Base"
+        ["sd_xl_refiner_1.0_0.9vae.safetensors"]="SDXL Refiner"
+        ["v1-5-pruned.ckpt"]="SD 1.5 (ckpt)"
+        ["v2-1_768-ema-pruned.ckpt"]="SD 2.1 (ckpt)"
+        ["sd_xl_base_1.0.safetensors"]="SDXL Base (original)"
+        ["sd_xl_refiner_1.0.safetensors"]="SDXL Refiner (original)"
+    )
+    
+    # Added: 2025-04-14T21:29:00-04:00 - Define model name aliases (different capitalizations)
+    declare -A MODEL_ALIASES=(
+        ["JuggernautXL_v8Rundiffusion.safetensors"]="juggernautXL_v8Rundiffusion.safetensors"
+    )
+    
+    # Set up a counter for downloaded models
+    MODELS_DOWNLOADED=0
+    
+    # Added: 2025-05-15T18:54:19-04:00 - Updated to only create symlinks for existing models
+    # Process each model (symlink creation only, no downloads)
+    for model_name in "${!MODEL_NAMES[@]}"; do
+        MODEL_FOUND=false
+        model_desc="${MODEL_NAMES[$model_name]}"
+        
+        # Check if model exists in any of the ComfyUI model directories
+        for comfy_dir in "${COMFY_MODEL_DIRS[@]}"; do
+            if [ -f "${comfy_dir}/${model_name}" ]; then
+                log "Found model ${model_name} (${model_desc}) in ${comfy_dir}, creating symlink"
+                # [2025-04-16T20:34:27-04:00] Updated to use SHARED_MODELS_DIR instead of target_dir/models
+                if ! ln -sf "${comfy_dir}/${model_name}" "${SHARED_MODELS_DIR}/Stable-diffusion/${model_name}"; then
+                    log "ERROR: Failed to create symlink for ${model_name}"
+                else
+                    log "Successfully created symlink: ${SHARED_MODELS_DIR}/Stable-diffusion/${model_name} -> ${comfy_dir}/${model_name}"
+                    MODEL_FOUND=true
+                fi
+                MODELS_FOUND=true
+                break
+            fi
+        done
+        
+        # If model not found, just log it - downloads will be handled by start.sh
+        if [ "$MODEL_FOUND" = "false" ]; then
+            log "Model ${model_name} (${model_desc}) not found in ComfyUI directories - will be downloaded by start.sh if needed"
+        fi
+    done
+    
+    # Added: 2025-05-15T18:54:19-04:00 - Updated to only create symlinks for existing models
+    # Process model aliases (different capitalizations)
+    for alias_name in "${!MODEL_ALIASES[@]}"; do
+        original_name="${MODEL_ALIASES[$alias_name]}"
+        target_file="${SHARED_MODELS_DIR}/Stable-diffusion/${original_name}"
+        alias_file="${SHARED_MODELS_DIR}/Stable-diffusion/${alias_name}"
+        
+        # If the original model exists, create a symlink with the alias name
+        if [ -f "$target_file" ]; then
+            log "Creating alias symlink: ${alias_name} -> ${original_name}"
+            ln -sf "$target_file" "$alias_file"
+        else
+            # Check if the alias exists in ComfyUI directories
+            ALIAS_FOUND=false
+            
+            for comfy_dir in "${COMFY_MODEL_DIRS[@]}"; do
+                if [ -f "${comfy_dir}/${alias_name}" ]; then
+                    log "Found alias model ${alias_name} in ${comfy_dir}, creating symlinks"
+                    ln -sf "${comfy_dir}/${alias_name}" "$alias_file"
+                    ln -sf "${comfy_dir}/${alias_name}" "$target_file"
+                    ALIAS_FOUND=true
+                    MODELS_FOUND=true
+                    break
+                fi
+            done
+            
+            if [ "$ALIAS_FOUND" = "false" ]; then
+                log "Alias model ${alias_name} not found - will be handled by start.sh if needed"
+            fi
+        fi
+    done
+    
+    log "Downloaded $MODELS_DOWNLOADED models that weren't found locally"
+    
+    # If no models were found, clone the repo
+    # Added: 2025-05-15T18:54:19-04:00 - Removed model repository cloning to avoid duplication with start.sh
+    if [ "$MODELS_FOUND" = "false" ]; then
+        log "No models found in ComfyUI directories - models will be downloaded by start.sh if needed"
+    else
+        log "Successfully created symlinks for existing models"
+    fi
+        
+    # No cleanup needed
+    
+    log "Automatic1111 setup complete for GPU ${gpu_id}"
+    return 0
+}
+
+# Added: 2025-05-15T19:02:00-04:00 - Removed unused create_symbolic_links_from_yaml function
+# This function was defined but never called, and referenced a non-existent config file
+# Symlinks are now handled by setup_static_model_symlinks in start.sh using static-models.json
+
+# Added: 2025-05-28T20:11:50-04:00 - Flash Attention background installation functions
+# These functions handle installing Flash Attention from source in the background
+# while ComfyUI is running without Flash Attention, then restart ComfyUI with Flash Attention
+
+# Status file to track Flash Attention installation progress
+FLASH_ATTN_STATUS_FILE="/tmp/flash_attn_install_status"
+
+# Function to check if Flash Attention is already installed
+check_flash_attention_installed() {
+    if python -c "import flash_attn" 2>/dev/null; then
+        log "Flash Attention is already installed"
+        return 0
+    else
+        log "Flash Attention is not installed"
+        return 1
+    fi
+}
+
+# Function to install Flash Attention in the background
+install_flash_attention_background() {
+    # Create a status file to track progress
+    echo "starting" > "$FLASH_ATTN_STATUS_FILE"
+    
+    # Run the installation in the background
+    (   
+        log "Starting Flash Attention installation in the background"
+        echo "in_progress" > "$FLASH_ATTN_STATUS_FILE"
+        
+        # Create a temporary directory for the installation
+        TEMP_DIR="/tmp/flash_attention_install"
+        mkdir -p "$TEMP_DIR"
+        cd "$TEMP_DIR" || {
+            log "ERROR: Failed to create temporary directory for Flash Attention installation"
+            echo "failed" > "$FLASH_ATTN_STATUS_FILE"
+            return 1
+        }
+        
+        # Clone the repository
+        log "Cloning Flash Attention repository"
+        if ! git clone https://github.com/Dao-AILab/flash-attention.git; then
+            log "ERROR: Failed to clone Flash Attention repository"
+            echo "failed" > "$FLASH_ATTN_STATUS_FILE"
+            return 1
+        fi
+        
+        # Install Flash Attention
+        cd flash-attention || {
+            log "ERROR: Failed to enter Flash Attention directory"
+            echo "failed" > "$FLASH_ATTN_STATUS_FILE"
+            return 1
+        }
+        
+        log "Installing Flash Attention from source"
+        if ! pip install . --no-build-isolation; then
+            log "ERROR: Failed to install Flash Attention"
+            echo "failed" > "$FLASH_ATTN_STATUS_FILE"
+            return 1
+        fi
+        
+        # Verify installation
+        if ! python -c "import flash_attn; print('Flash Attention version:', flash_attn.__version__)"; then
+            log "ERROR: Flash Attention installed but failed to import"
+            echo "failed" > "$FLASH_ATTN_STATUS_FILE"
+            return 1
+        fi
+        
+        # Clean up
+        cd / || true
+        rm -rf "$TEMP_DIR"
+        
+        # Mark as completed
+        log "SUCCESS: Flash Attention installation completed successfully"
+        echo "completed" > "$FLASH_ATTN_STATUS_FILE"
+        
+        # Signal that ComfyUI should be restarted
+        log "Restarting ComfyUI with Flash Attention enabled"
+        restart_comfyui_with_flash_attention
+    ) &
+    
+    # Return immediately without waiting for the background process
+    return 0
+}
+
+# Function to check the status of Flash Attention installation
+check_flash_attention_status() {
+    if [ ! -f "$FLASH_ATTN_STATUS_FILE" ]; then
+        echo "not_started"
+        return 1
+    fi
+    
+    local status
+    status=$(cat "$FLASH_ATTN_STATUS_FILE")
+    echo "$status"
+    
+    if [ "$status" = "completed" ]; then
+        return 0
+    else
+        return 1
+    fi
+}
+
+# Function to restart ComfyUI with Flash Attention
+restart_comfyui_with_flash_attention() {
+    log "Restarting all ComfyUI instances with Flash Attention enabled"
+    
+    # Set the environment variable to use Flash Attention
+    export COMFY_ARGS="--use-flash-attention"
+    
+    # Restart all ComfyUI instances
+    restart_all_services "comfyui"
+    
+    log "All ComfyUI instances restarted with Flash Attention enabled"
+    return 0
+}
+
+# Function to setup all GPU directories
+setup_all_gpus() {
+    # 2025-04-12 16:48: Updated to require service specification
+    local service_type=$1
+    
+    if [ -z "$service_type" ]; then
+        # 2025-04-12 17:52: Updated service name from comfy to comfyui
+        log "ERROR: Service type (comfyui or a1111) must be specified"
+        return 1
+    fi
+    
+    log "Setting up $service_type for all GPUs..."
+    local failed=0
+    local gpu_count
+    gpu_count=$(show_count)
+    
+    for ((i=0; i<gpu_count; i++)); do
+        setup_gpu "$service_type" "$i" || failed=1
+    done
+    return $failed
+}
+
+# Show usage information
+show_usage() {
+    # 2025-04-12 16:48: Updated to include service type in usage
+    cat << EOF
+Usage: $0 SERVICE COMMAND [gpu_id] [options]
+
+Services:
+    # 2025-04-12 17:52: Updated service name from comfy to comfyui
+    comfyui                ComfyUI service
+    a1111                 Automatic1111 service
+
+Commands:
+    start   [gpu_id]       Start service for GPU
+    stop    [gpu_id]       Stop service for GPU
+    restart [gpu_id]       Restart service for GPU
+    status  [gpu_id]       Show status of service for GPU
+    logs    [gpu_id] [-n]  Show logs for GPU (default: follow mode, -n for no-follow)
+    setup   [gpu_id]       Setup service for GPU
+    count                  Show number of available GPUs
+
+# [2025-05-28T14:01:43-04:00] Added new model management commands
+Model Management Commands:
+    download_a1111_models   Download models for Automatic1111
+    load_a1111_models LIST Load models into Automatic1111 (LIST is comma-separated)
+
+# [2025-05-28T20:11:50-04:00] Added Flash Attention commands
+Flash Attention Commands:
+    install_flash_attention      Install Flash Attention in the background
+    check_flash_attention        Check the status of Flash Attention installation
+    restart_with_flash_attention Restart ComfyUI with Flash Attention enabled
+
+Arguments:
+    gpu_id                 GPU ID (0-N) or 'all' for all GPUs
+    
+Options:
+    -n, no-follow         For logs: show recent logs and exit (default: follow mode)
+
+Examples:
+    # 2025-04-12 17:52: Updated service name from comfy to comfyui
+    $0 comfyui start 0      Start ComfyUI on GPU 0
+    $0 a1111 start all     Start Automatic1111 on all GPUs
+    # 2025-04-12 17:52: Updated service name from comfy to comfyui
+    $0 comfyui logs 0       Follow ComfyUI logs for GPU 0
+    $0 a1111 logs all      Follow Automatic1111 logs for all GPUs
+    # 2025-04-12 17:52: Updated service name from comfy to comfyui
+    $0 comfyui logs 0 -n    Show recent ComfyUI logs for GPU 0 and exit
+EOF
+}
+
+# Function to show GPU count
+show_count() {
+    if [ "${MOCK_GPU:-0}" = "1" ]; then
+        echo "${NUM_GPUS}"
+    else
+        # Try to get real GPU count from nvidia-smi
+        if command -v nvidia-smi >/dev/null 2>&1; then
+            nvidia-smi --query-gpu=gpu_name --format=csv,noheader | wc -l
+        else
+            echo "0"
+        fi
+    fi
+}
+
+# Main command handling
+# 2025-04-12 16:48: Updated to require service type as first parameter
+if [ -z "$1" ]; then
+    show_usage
+    exit 1
+fi
+
+case "$1" in
+    # [2025-05-28T14:01:43-04:00] Added download_a1111_models command
+    download_a1111_models)
+        # Call the download function directly and return its output
+        log "Calling download_a1111_models function directly"
+        download_a1111_models
+        exit $?
+        ;;
+    # [2025-05-28T14:01:43-04:00] Added load_a1111_models command
+    load_a1111_models)
+        # Check if models list is provided
+        if [ -z "$2" ]; then
+            log "ERROR: No models list provided. Usage: mgpu load_a1111_models 'model1.safetensors,model2.safetensors'"
+            exit 1
+        fi
+        # Call the load function with the provided models list
+        log "Calling load_a1111_models function with models: $2"
+        load_a1111_models "$2"
+        exit $?
+        ;;
+    # [2025-05-28T20:11:50-04:00] Added Flash Attention installation commands
+    install_flash_attention)
+        log "Starting Flash Attention installation in the background"
+        install_flash_attention_background
+        exit $?
+        ;;
+    check_flash_attention)
+        status=$(check_flash_attention_status)
+        log "Flash Attention installation status: $status"
+        echo "$status"
+        if [ "$status" = "completed" ]; then
+            exit 0
+        else
+            exit 1
+        fi
+        ;;
+    restart_with_flash_attention)
+        log "Manually triggering restart of ComfyUI with Flash Attention"
+        restart_comfyui_with_flash_attention
+        exit $?
+        ;;
+    # 2025-04-12 17:52: Updated service name from comfy to comfyui
+    comfyui|a1111)
+        service_type="$1"
+        shift  # Remove service type from arguments
+        
+        if [ -z "$1" ]; then
+            show_usage
+            exit 1
+        fi
+        
+        case "$1" in
+            start|stop|restart|status|setup)
+                if [ -z "$2" ]; then
+                    show_usage
+                    exit 1
+                fi
+                
+                case "$1" in
+                    start)
+                        start_service "$service_type" "$2"
+                        ;;
+                    stop)
+                        stop_service "$service_type" "$2"
+                        ;;
+                    restart)
+                        restart_service "$service_type" "$2"
+                        ;;
+                    status)
+                        check_status "$service_type" "$2"
+                        ;;
+                    setup)
+                        setup_gpu "$service_type" "$2"
+                        ;;
+                esac
+                ;;
+            logs)
+                if [ -z "$2" ]; then
+                    show_logs "$service_type" "all"
+                else
+                    gpu_id="$2"
+                    shift 2  # Remove 'logs' and gpu_id from arguments
+                    show_logs "$service_type" "$gpu_id" "$@"  # Pass all remaining arguments to show_logs
+                fi
+                ;;
+            count)
+                show_count
+                ;;
+            *)
+                show_usage
+                exit 1
+                ;;
+        esac
+        ;;
+    count)
+        show_count
+        ;;
+    *)
+        show_usage
+        exit 1
+        ;;
+esac

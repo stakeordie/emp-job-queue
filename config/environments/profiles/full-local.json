@@ -1,0 +1,19 @@
+{
+  "name": "Full Local Development",
+  "description": "All components running locally for offline development",
+  "components": {
+    "redis": "local",
+    "api": "local",
+    "machine": "local",
+    "monitor": "local",
+    "comfy": "local"
+  },
+  "secrets": [
+    "AWS_ACCESS_KEY_ID",
+    "AWS_SECRET_ACCESS_KEY_ENCODED"
+  ],
+  "validation": {
+    "required_services": ["redis"],
+    "port_conflicts": [6379, 3331, 3333, 8188, 9090]
+  }
+}
