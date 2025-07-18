@@ -480,7 +480,7 @@ export function JobResultModal({ job, isOpen, onClose }: JobResultModalProps) {
 
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
-      <DialogContent className="max-w-7xl w-[95vw] max-h-[90vh] flex flex-col">
+      <DialogContent className="w-[95vw] max-w-none max-h-[90vh] flex flex-col" style={{ width: '95vw', maxWidth: 'none' }}>
         <DialogHeader>
           <DialogTitle className="flex items-center justify-between">
             <div className="flex items-center gap-2">
