@@ -10,6 +10,7 @@
 
 import { ConnectorManager } from './connector-manager.js';
 import { RedisDirectWorkerClient } from './redis-direct-worker-client.js';
+import { JobHealthMonitor, HealthCheckResult } from './job-health-monitor.js';
 import {
   WorkerCapabilities,
   WorkerStatus,
@@ -25,7 +26,6 @@ import {
 } from '@emp/core';
 import { WorkerDashboard } from './worker-dashboard.js';
 import { readFileSync } from 'fs';
-import { join } from 'path';
 import os from 'os';
 
 /**
@@ -51,7 +51,7 @@ function getWorkerVersion(): string {
       const packageJson = JSON.parse(readFileSync(distPath, 'utf8'));
       return packageJson.version || 'unknown';
     }
-  } catch (error) {
+  } catch (_error) {
     // Final fallback
     return process.env.npm_package_version || 'dev-unknown';
   }
@@ -62,6 +62,7 @@ export class RedisDirectBaseWorker {
   private machineId: string;
   private connectorManager: ConnectorManager;
   private redisClient: RedisDirectWorkerClient;
+  private jobHealthMonitor: JobHealthMonitor;
   private capabilities: WorkerCapabilities;
   private status: WorkerStatus = WorkerStatus.INITIALIZING;
   private currentJobs = new Map<string, Job>();
@@ -86,6 +87,17 @@ export class RedisDirectBaseWorker {
     this.machineId = machineId;
     this.connectorManager = connectorManager;
     this.redisClient = new RedisDirectWorkerClient(hubRedisUrl, workerId);
+
+    // Initialize job health monitor
+    const healthCheckIntervalMs = parseInt(process.env.WORKER_HEALTH_CHECK_INTERVAL_MS || '30000');
+    const inactivityTimeoutMs = parseInt(
+      process.env.WORKER_WEBSOCKET_INACTIVITY_TIMEOUT_MS || '30000'
+    );
+    this.jobHealthMonitor = new JobHealthMonitor(
+      connectorManager,
+      healthCheckIntervalMs,
+      inactivityTimeoutMs
+    );
 
     // Configuration from environment - match existing patterns
     this.pollIntervalMs = parseInt(process.env.WORKER_POLL_INTERVAL_MS || '1000'); // Faster polling for Redis-direct
@@ -350,6 +362,12 @@ export class RedisDirectBaseWorker {
       // Start periodic connector status updates
       this.startConnectorStatusUpdates();
 
+      // Setup and start job health monitoring
+      this.jobHealthMonitor.setHealthCheckCallback(async (jobId, job, result) => {
+        await this.handleHealthCheckResult(jobId, job, result);
+      });
+      this.jobHealthMonitor.start();
+
       // TODO: Start dashboard if enabled (requires interface compatibility)
       // if (process.env.WORKER_DASHBOARD_ENABLED === 'true') {
       //   const port = parseInt(process.env.WORKER_DASHBOARD_PORT || '3003');
@@ -395,6 +413,9 @@ export class RedisDirectBaseWorker {
       clearInterval(this.connectorStatusInterval);
       this.connectorStatusInterval = undefined;
     }
+
+    // Stop job health monitoring
+    this.jobHealthMonitor.stop();
 
     // Cancel any ongoing jobs
     for (const [jobId, _job] of this.currentJobs) {
@@ -472,6 +493,9 @@ export class RedisDirectBaseWorker {
     this.currentJobs.set(job.id, job);
     this.jobStartTimes.set(job.id, Date.now());
     this.status = WorkerStatus.BUSY;
+
+    // Start health monitoring for this job
+    this.jobHealthMonitor.startMonitoring(job);
 
     // Send worker busy event
     await this.sendMachineEvent('worker_status_changed', {
@@ -609,6 +633,9 @@ export class RedisDirectBaseWorker {
     this.currentJobs.delete(jobId);
     this.jobStartTimes.delete(jobId);
 
+    // Stop health monitoring for this job
+    this.jobHealthMonitor.stopMonitoring(jobId);
+
     // Clear timeout
     const timeout = this.jobTimeouts.get(jobId);
     if (timeout) {
@@ -662,6 +689,49 @@ export class RedisDirectBaseWorker {
         }
       }
     }, 60000); // Check every minute
+  }
+
+  /**
+   * Handle the result of a health check (called by JobHealthMonitor)
+   */
+  private async handleHealthCheckResult(
+    jobId: string,
+    job: Job,
+    healthResult: HealthCheckResult
+  ): Promise<void> {
+    switch (healthResult.action) {
+      case 'complete_job':
+        logger.info(`Health check found completed job ${jobId}, completing it`);
+        await this.completeJob(
+          jobId,
+          healthResult.result || { recovered: true, reason: healthResult.reason }
+        );
+        break;
+
+      case 'fail_job':
+        logger.warn(
+          `Health check detected failed job ${jobId}, failing it: ${healthResult.reason}`
+        );
+        await this.failJob(jobId, `Health check failure: ${healthResult.reason}`, false);
+        break;
+
+      case 'return_to_queue':
+        logger.warn(`Health check requests job ${jobId} return to queue: ${healthResult.reason}`);
+        await this.failJob(jobId, `Health check recovery: ${healthResult.reason}`, true);
+        break;
+
+      case 'continue_monitoring':
+        logger.info(
+          `Health check indicates job ${jobId} is still processing normally: ${healthResult.reason}`
+        );
+        // Restart health monitoring for this job
+        this.jobHealthMonitor.startMonitoring(job);
+        break;
+
+      default:
+        logger.warn(`Unknown health check action for job ${jobId}: ${healthResult.action}`);
+        break;
+    }
   }
 
   // Getters for external access
@@ -965,9 +1035,19 @@ export class RedisDirectBaseWorker {
   }
 
   /**
+   * Update WebSocket activity timestamp for a job
+   * Called by connectors when they receive WebSocket messages
+   */
+  public updateJobWebSocketActivity(jobId: string): void {
+    if (this.currentJobs.has(jobId)) {
+      this.jobHealthMonitor.updateWebSocketActivity(jobId);
+    }
+  }
+
+  /**
    * Send event to machine status aggregator
    */
-  private async sendMachineEvent(eventType: string, data: any): Promise<void> {
+  private async sendMachineEvent(eventType: string, data: unknown): Promise<void> {
     try {
       const redis = this.redisClient.getRedisConnection();
       if (!redis) return;
