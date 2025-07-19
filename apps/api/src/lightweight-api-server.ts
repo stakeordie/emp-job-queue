@@ -437,7 +437,9 @@ export class LightweightAPIServer {
       ws,
       clientId,
       ipAddress: getClientIP(req),
-      userAgent: req.headers['user-agent'],
+      userAgent: (req as { headers?: { [key: string]: string | string[] | undefined } }).headers?.[
+        'user-agent'
+      ] as string | undefined,
       connectedAt: new Date().toISOString(),
     };
 
