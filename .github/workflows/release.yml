@@ -72,25 +72,6 @@ jobs:
         docker push emprops/emp-job-queue-api:latest
         docker push emprops/emp-job-queue-api:${{ steps.get_tag.outputs.tag }}
 
-    - name: Build and push Machine Docker image
-      run: |
-        # Get current date for build timestamp
-        BUILD_DATE=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
-        
-        # Build machine Docker image with version injection
-        docker build \
-          --build-arg MACHINE_VERSION="${{ steps.get_tag.outputs.tag }}" \
-          --build-arg BUILD_DATE="${BUILD_DATE}" \
-          --build-arg CACHE_BUST="$(date +%s)" \
-          -f apps/machines/basic_machine/Dockerfile \
-          -t emprops/basic-machine:latest \
-          -t emprops/basic-machine:${{ steps.get_tag.outputs.tag }} \
-          apps/machines/basic_machine/
-        
-        # Push both tags
-        docker push emprops/basic-machine:latest
-        docker push emprops/basic-machine:${{ steps.get_tag.outputs.tag }}
-        
     - name: Build and package worker
       run: |
         # Enable corepack and install dependencies
@@ -178,7 +159,7 @@ jobs:
         body: |
           ## EmProps Job Queue Release ${{ steps.get_tag.outputs.tag }}
           
-          This release contains both the **worker bundle** and **machine container** for the EmProps GPU job queue system.
+          This release contains the **worker bundle** and **API container** for the EmProps GPU job queue system.
           
           ### What's Included
           
@@ -188,8 +169,8 @@ jobs:
           - `README.md` - Usage instructions
           
           **🐳 Docker Images:**
-          - `emprops/basic-machine:${{ steps.get_tag.outputs.tag }}` - **GPU machine container** with ComfyUI, PM2, and worker
           - `emprops/emp-job-queue-api:${{ steps.get_tag.outputs.tag }}` - **API server container**
+          - `emprops/basic-machine:${{ steps.get_tag.outputs.tag }}` - **GPU machine container** (built separately)
           
           ### Installation Options
           
@@ -200,11 +181,11 @@ jobs:
           
           **Option 2: Docker Containers**
           ```bash
-          # GPU machine with ComfyUI + worker
-          docker pull emprops/basic-machine:${{ steps.get_tag.outputs.tag }}
-          
-          # API server
+          # API server (built by CI/CD)
           docker pull emprops/emp-job-queue-api:${{ steps.get_tag.outputs.tag }}
+          
+          # GPU machine with ComfyUI + worker (built separately)
+          docker pull emprops/basic-machine:${{ steps.get_tag.outputs.tag }}
           ```
           
           ### Features
@@ -228,6 +209,18 @@ jobs:
           - All @emp/core dependencies bundled inline
           - Compatible with existing basic_machine and base_machine infrastructure
           - Replaces Python worker from emp-redis
+          
+          ### Release Process
+          Machine containers are now built locally for faster iteration with Docker layer caching:
+          ```bash
+          # 1. Build machine container locally
+          cd apps/machines/basic_machine
+          pnpm docker:build:version ${{ steps.get_tag.outputs.tag }} emprops basic-machine --push
+          
+          # 2. Create release (API + worker bundle built by CI/CD)
+          git tag ${{ steps.get_tag.outputs.tag }}
+          git push origin ${{ steps.get_tag.outputs.tag }}
+          ```
           
         files: |
           emp-job-queue-worker.tar.gz
