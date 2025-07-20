@@ -15,8 +15,17 @@ DEFAULT_IMAGE_NAME="emp-job-queue-api"
 
 # Parse command line arguments
 VERSION="${1:-$DEFAULT_TAG}"
-REGISTRY="${2:-$DEFAULT_REGISTRY}"
-IMAGE_NAME="${3:-$DEFAULT_IMAGE_NAME}"
+
+# Handle shorthand: version --push
+if [ "$2" = "--push" ]; then
+  REGISTRY="$DEFAULT_REGISTRY"
+  IMAGE_NAME="$DEFAULT_IMAGE_NAME"
+  PUSH_FLAG="--push"
+else
+  REGISTRY="${2:-$DEFAULT_REGISTRY}"
+  IMAGE_NAME="${3:-$DEFAULT_IMAGE_NAME}"
+  PUSH_FLAG="$4"
+fi
 
 # Build timestamp
 BUILD_DATE=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
@@ -47,7 +56,7 @@ echo "   ${FULL_IMAGE_NAME}:latest"
 echo
 
 # Optionally push to registry
-if [ "$4" = "--push" ]; then
+if [ "$PUSH_FLAG" = "--push" ]; then
   echo "📤 Pushing to registry..."
   docker push "${FULL_IMAGE_NAME}:${VERSION}"
   docker push "${FULL_IMAGE_NAME}:latest"
