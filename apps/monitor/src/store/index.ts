@@ -58,6 +58,7 @@ interface MonitorStore {
   workers: Worker[];
   machines: Machine[];
   logs: LogEntry[];
+  apiVersion: string | null;
   
   // Pagination state
   finishedJobsPagination: {
@@ -97,6 +98,7 @@ interface MonitorStore {
   syncJobState: (jobId?: string) => void;
   cancelJob: (jobId: string) => void;
   deleteMachine: (machineId: string) => void;
+  fetchApiVersion: () => Promise<void>;
   
   // Pagination actions
   setFinishedJobsPagination: (pagination: Partial<MonitorStore['finishedJobsPagination']>) => void;
@@ -121,6 +123,7 @@ export const useMonitorStore = create<MonitorStore>()(
     workers: [],
     machines: [],
     logs: [],
+    apiVersion: null,
     
     finishedJobsPagination: {
       page: 1,
@@ -1602,6 +1605,40 @@ export const useMonitorStore = create<MonitorStore>()(
           message: `Failed to delete machine ${machineId}: ${error}`,
           source: 'store',
         });
+      }
+    },
+
+    fetchApiVersion: async () => {
+      try {
+        // Get the current WebSocket URL from the websocket service to derive API URL
+        const websocketUrl = websocketService.getUrl();
+        
+        // Convert WebSocket URL to HTTP URL for the API
+        let apiBaseUrl = 'http://localhost:3331';
+        if (websocketUrl) {
+          const url = new URL(websocketUrl);
+          apiBaseUrl = `${url.protocol === 'wss:' ? 'https:' : 'http:'}//${url.host}`;
+        }
+
+        const response = await fetch(`${apiBaseUrl}/version`);
+        
+        if (!response.ok) {
+          console.warn(`Failed to fetch API version: ${response.status}`);
+          return;
+        }
+        
+        const versionData = await response.json();
+        
+        set(state => ({
+          ...state,
+          apiVersion: versionData.api_version || 'unknown',
+        }));
+      } catch (error) {
+        console.warn('Failed to fetch API version:', error);
+        set(state => ({
+          ...state,
+          apiVersion: 'unavailable',
+        }));
       }
     },
     

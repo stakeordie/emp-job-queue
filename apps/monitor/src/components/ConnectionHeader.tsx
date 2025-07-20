@@ -36,7 +36,7 @@ const CONNECTION_PRESETS = {
 };
 
 export function ConnectionHeader() {
-  const { connection, connect, disconnect, setConnection, refreshMonitor } = useMonitorStore();
+  const { connection, connect, disconnect, setConnection, refreshMonitor, apiVersion, fetchApiVersion } = useMonitorStore();
   const [websocketUrl, setWebsocketUrl] = useState(CONNECTION_PRESETS.local.websocket);
   const [authToken, setAuthToken] = useState(CONNECTION_PRESETS.local.auth);
   const [selectedPreset, setSelectedPreset] = useState('local');
@@ -90,6 +90,13 @@ export function ConnectionHeader() {
     }
   }, [connection.error, setConnection]);
 
+  // Fetch API version when connected
+  useEffect(() => {
+    if (connection.isConnected && !apiVersion) {
+      fetchApiVersion();
+    }
+  }, [connection.isConnected, apiVersion, fetchApiVersion]);
+
   return (
     <header className="h-20 bg-background border-b border-border flex-shrink-0">
       <div className="h-full px-6 flex items-center justify-between">
@@ -97,7 +104,14 @@ export function ConnectionHeader() {
         <div className="flex items-center gap-6">
           <div>
             <h1 className="text-lg font-bold">Job Queue Monitor</h1>
-            <p className="text-xs text-muted-foreground">Real-time system monitoring</p>
+            <div className="flex items-center gap-2">
+              <p className="text-xs text-muted-foreground">Real-time system monitoring</p>
+              {apiVersion && (
+                <Badge variant="outline" className="text-xs">
+                  API: {apiVersion}
+                </Badge>
+              )}
+            </div>
           </div>
           
           <div className="flex items-center gap-3">

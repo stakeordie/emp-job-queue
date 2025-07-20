@@ -56,8 +56,17 @@ jobs:
         
     - name: Build and push API Docker image
       run: |
-        # Build API Docker image using simplified CI Dockerfile
-        docker build -f apps/api/Dockerfile.ci -t emprops/emp-job-queue-api:latest -t emprops/emp-job-queue-api:${{ steps.get_tag.outputs.tag }} .
+        # Get current date for build timestamp
+        BUILD_DATE=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
+        
+        # Build API Docker image using simplified CI Dockerfile with version injection
+        docker build \
+          --build-arg API_VERSION="${{ steps.get_tag.outputs.tag }}" \
+          --build-arg BUILD_DATE="${BUILD_DATE}" \
+          -f apps/api/Dockerfile.ci \
+          -t emprops/emp-job-queue-api:latest \
+          -t emprops/emp-job-queue-api:${{ steps.get_tag.outputs.tag }} \
+          .
         
         # Push both tags
         docker push emprops/emp-job-queue-api:latest
