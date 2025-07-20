@@ -54,13 +54,13 @@ export class EventBroadcaster {
   private maxHistorySize = 1000;
   // DEBUG: Track instance
   private instanceId = Math.random().toString(36).substring(7);
-  
+
   constructor() {
     // DEBUG: Log instance creation
     logger.debug(`EventBroadcaster instance created: ${this.instanceId}`);
-    
+
     // Direct EmProps message creation (no adapter needed)
-    
+
     // Start heartbeat monitoring
     this.startHeartbeatMonitoring();
   }
@@ -73,8 +73,10 @@ export class EventBroadcaster {
     logger.info(`[EventBroadcaster] Adding monitor ${monitorId} - still connected`);
 
     this.monitors.set(monitorId, connection);
-    
-    logger.info(`[EventBroadcaster] Monitor ${monitorId} added successfully. Total monitors: ${this.monitors.size}`);
+
+    logger.info(
+      `[EventBroadcaster] Monitor ${monitorId} added successfully. Total monitors: ${this.monitors.size}`
+    );
 
     // Note: Connection event handlers are managed by the API server
     // We don't set up duplicate handlers here to avoid conflicts
@@ -104,11 +106,11 @@ export class EventBroadcaster {
   removeMonitor(monitorId: string): void {
     logger.info(`[EventBroadcaster] REMOVING monitor ${monitorId} - MONITOR DISCONNECTED!`);
     logger.info(`[EventBroadcaster] Before removal: ${this.monitors.size} monitors`);
-    
+
     // Monitor disconnected
     this.monitors.delete(monitorId);
     this.subscriptions.delete(monitorId);
-    
+
     logger.info(`[EventBroadcaster] After removal: ${this.monitors.size} monitors remaining`);
   }
 
@@ -119,30 +121,30 @@ export class EventBroadcaster {
     logger.debug(`EventBroadcaster.addClient called`, {
       clientId,
       clientsBefore: Array.from(this.clients.keys()),
-      wsReadyState: ws.readyState
+      wsReadyState: ws.readyState,
     });
-    
+
     const connection: ClientConnection = {
       ws,
       clientId,
       clientType,
       subscribedJobs: new Set(),
     };
-    
+
     this.clients.set(clientId, connection);
-    
+
     logger.debug(`Client added to EventBroadcaster`, {
       clientId,
       clientsAfter: Array.from(this.clients.keys()),
-      successfullyAdded: this.clients.has(clientId)
+      successfullyAdded: this.clients.has(clientId),
     });
-    
+
     // Set up WebSocket handlers
     ws.on('close', () => {
       logger.debug(`Client WebSocket closed: ${clientId}`);
       this.removeClient(clientId);
     });
-    
+
     ws.on('error', error => {
       logger.error(`EventBroadcaster client error`, { clientId, error });
       this.removeClient(clientId);
@@ -155,11 +157,11 @@ export class EventBroadcaster {
   removeClient(clientId: string): void {
     logger.debug(`EventBroadcaster.removeClient called`, {
       clientId,
-      clientExisted: this.clients.has(clientId)
+      clientExisted: this.clients.has(clientId),
     });
     this.clients.delete(clientId);
     logger.debug(`Client removed from EventBroadcaster`, {
-      clientsAfter: Array.from(this.clients.keys())
+      clientsAfter: Array.from(this.clients.keys()),
     });
   }
 
@@ -216,10 +218,10 @@ export class EventBroadcaster {
     // Store event in history
     this.addToHistory(event);
 
-    logger.debug(`[TRACE 2] EventBroadcaster.broadcast() called`, { 
+    logger.debug(`[TRACE 2] EventBroadcaster.broadcast() called`, {
       eventType: event.type,
       eventData: event,
-      instanceId: this.instanceId
+      instanceId: this.instanceId,
     });
 
     // Send to all subscribed monitors (original format)
@@ -231,9 +233,9 @@ export class EventBroadcaster {
     }
 
     // Send to relevant clients (with format adaptation for EmProps)
-    logger.debug(`[TRACE 3] Checking clients for event`, { 
-      clientCount: this.clients.size, 
-      eventType: event.type 
+    logger.debug(`[TRACE 3] Checking clients for event`, {
+      clientCount: this.clients.size,
+      eventType: event.type,
     });
     this.broadcastToClients(event);
 
@@ -248,18 +250,18 @@ export class EventBroadcaster {
    */
   private broadcastToClients(event: MonitorEvent): void {
     logger.debug(`[TRACE 3] broadcastToClients() - checking ${this.clients.size} clients`);
-    
+
     for (const [clientId, client] of this.clients) {
       logger.debug(`[TRACE 4] Checking if client should receive event`, {
         clientId,
         subscribedJobs: Array.from(client.subscribedJobs),
-        eventType: event.type
+        eventType: event.type,
       });
       const shouldReceive = this.shouldClientReceiveEvent(client, event);
       logger.debug(`Client event filter result`, {
         clientId,
         eventType: event.type,
-        shouldReceive
+        shouldReceive,
       });
       if (shouldReceive) {
         this.sendToClient(client, event);
@@ -276,7 +278,7 @@ export class EventBroadcaster {
       const jobId = this.getJobIdFromEvent(event);
       return jobId ? client.subscribedJobs.has(jobId) : false;
     }
-    
+
     // Other events (system-wide): don't send to clients for now
     // Can be extended later if needed
     return false;
@@ -314,45 +316,45 @@ export class EventBroadcaster {
       clientId: client.clientId,
       wsReadyState: client.ws.readyState,
       wsOpen: WebSocket.OPEN,
-      wsExists: !!client.ws
+      wsExists: !!client.ws,
     });
-    
+
     try {
       // Create EmProps format message directly
       const empropsMessage = this.createEmPropsMessage(event);
-      
+
       logger.debug(`[TRACE 6] Created EmProps message`, {
         clientId: client.clientId,
         originalEventType: event.type,
-        empropsMessage: empropsMessage
+        empropsMessage: empropsMessage,
       });
-      
+
       if (empropsMessage && client.ws.readyState === WebSocket.OPEN) {
         const messageString = JSON.stringify(empropsMessage);
         logger.debug(`[TRACE 7] About to call ws.send()`, {
           clientId: client.clientId,
-          messagePreview: messageString.substring(0, 200)
+          messagePreview: messageString.substring(0, 200),
         });
         client.ws.send(messageString);
         logger.debug(`[TRACE 8] ws.send() completed successfully`, {
-          clientId: client.clientId
+          clientId: client.clientId,
         });
       } else {
         logger.warn(`Cannot send to client - WebSocket not ready`, {
           clientId: client.clientId,
           hasEmpropsMessage: !!empropsMessage,
-          wsReadyState: client.ws.readyState
+          wsReadyState: client.ws.readyState,
         });
       }
     } catch (error) {
       logger.error(`[ERROR] Failed to send message to client`, {
         clientId: client.clientId,
         error: error instanceof Error ? error.message : String(error),
-        stack: error instanceof Error ? error.stack : undefined
+        stack: error instanceof Error ? error.stack : undefined,
       });
     }
   }
-  
+
   /**
    * Create EmProps format message from monitor event
    */
@@ -361,7 +363,7 @@ export class EventBroadcaster {
       case 'job_submitted':
         // Pass through job_submitted as-is (no translation to job_accepted)
         return event as EmPropsMessage;
-      
+
       case 'update_job_progress':
         return {
           type: 'update_job_progress',
@@ -369,7 +371,7 @@ export class EventBroadcaster {
           progress: event.progress,
           timestamp: event.timestamp,
         };
-      
+
       case 'complete_job':
         return {
           type: 'complete_job',
@@ -381,7 +383,7 @@ export class EventBroadcaster {
           },
           timestamp: event.timestamp,
         };
-      
+
       case 'job_failed':
         return {
           type: 'complete_job',
@@ -393,7 +395,7 @@ export class EventBroadcaster {
           },
           timestamp: event.timestamp,
         };
-      
+
       case 'job_assigned':
         return {
           type: 'job_assigned',
@@ -401,8 +403,7 @@ export class EventBroadcaster {
           worker_id: event.worker_id,
           timestamp: event.timestamp,
         };
-      
-      
+
       default:
         // Event doesn't need EmProps adaptation
         return null;
@@ -569,6 +570,7 @@ export class EventBroadcaster {
       status_data: statusData,
       timestamp: Date.now(),
     };
+    // eslint-disable-next-line no-console
     console.log('broadcast', event);
     this.broadcast(event);
   }
@@ -881,10 +883,14 @@ export class EventBroadcaster {
 
         if (timeSinceHeartbeat > staleThreshold) {
           // Monitor heartbeat stale, removing
-          logger.info(`[EventBroadcaster] HEARTBEAT TIMEOUT for monitor ${monitorId}. Last heartbeat: ${timeSinceHeartbeat}ms ago (threshold: ${staleThreshold}ms)`);
+          logger.info(
+            `[EventBroadcaster] HEARTBEAT TIMEOUT for monitor ${monitorId}. Last heartbeat: ${timeSinceHeartbeat}ms ago (threshold: ${staleThreshold}ms)`
+          );
           this.removeMonitor(monitorId);
         } else {
-          logger.debug(`[EventBroadcaster] Monitor ${monitorId} heartbeat OK - still connected (${timeSinceHeartbeat}ms ago)`);
+          logger.debug(
+            `[EventBroadcaster] Monitor ${monitorId} heartbeat OK - still connected (${timeSinceHeartbeat}ms ago)`
+          );
           // Send heartbeat ack
           const connection = this.monitors.get(monitorId);
           if (connection) {

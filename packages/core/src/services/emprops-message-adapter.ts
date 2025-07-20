@@ -1,8 +1,8 @@
 /**
  * EmProps Message Adapter Service
- * 
+ *
  * Converts internal Job Queue API messages to EmProps-compatible format.
- * Enables EmProps API to receive messages in the expected format while 
+ * Enables EmProps API to receive messages in the expected format while
  * maintaining backward compatibility for monitor clients.
  */
 
@@ -55,7 +55,7 @@ export interface EmPropsErrorMessage {
   timestamp: number;
 }
 
-export type EmPropsMessage = 
+export type EmPropsMessage =
   | EmPropsConnectionMessage
   | EmPropsJobAcceptedMessage
   | EmPropsProgressMessage
@@ -149,12 +149,7 @@ export class EmPropsMessageAdapter {
    * Check if a message should be adapted for EmProps format
    */
   shouldAdaptMessage(messageType: string): boolean {
-    const adaptableTypes = [
-      'job_submitted',
-      'update_job_progress', 
-      'complete_job',
-      'job_failed',
-    ];
+    const adaptableTypes = ['job_submitted', 'update_job_progress', 'complete_job', 'job_failed'];
     return adaptableTypes.includes(messageType);
   }
 
@@ -165,16 +160,16 @@ export class EmPropsMessageAdapter {
     switch (event.type) {
       case 'job_submitted':
         return this.adaptJobSubmittedToAccepted(event as JobSubmittedEvent);
-      
+
       case 'update_job_progress':
         return this.adaptProgressUpdate(event as JobProgressEvent);
-      
+
       case 'complete_job':
         return this.adaptJobCompletion(event as JobCompletedEvent);
-      
+
       case 'job_failed':
         return this.adaptJobFailure(event as JobFailedEvent);
-      
+
       default:
         // Message doesn't need adaptation
         return null;

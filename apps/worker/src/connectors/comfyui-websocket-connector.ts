@@ -248,6 +248,8 @@ export class ComfyUIWebSocketConnector extends BaseConnector {
       };
 
       logger.info(`Submitting ComfyUI job ${jobData.id} via WebSocket (prompt protocol)`);
+      logger.info(`ComfyUI WebSocket: Client ID: ${this.clientId}, Connected: ${this.isConnected}`);
+      logger.info(`ComfyUI WebSocket: Sending message:`, JSON.stringify(promptMessage, null, 2));
       this.sendMessage(promptMessage);
 
       // Set timeout
@@ -273,7 +275,7 @@ export class ComfyUIWebSocketConnector extends BaseConnector {
 
   protected handleWebSocketMessage(message: any): void {
     try {
-      logger.debug(`ComfyUI WebSocket message received:`, message);
+      logger.info(`ComfyUI WebSocket message received:`, JSON.stringify(message, null, 2));
 
       switch (message.type) {
         case 'client_id':
@@ -805,9 +807,14 @@ export class ComfyUIWebSocketConnector extends BaseConnector {
   // Utility method for sending messages
   protected sendMessage(message: unknown): void {
     if (this.websocket && this.isConnected) {
-      this.websocket.send(JSON.stringify(message));
+      const messageStr = JSON.stringify(message);
+      logger.info(`ComfyUI WebSocket: Sending message: ${messageStr}`);
+      this.websocket.send(messageStr);
+      logger.info(`ComfyUI WebSocket: Message sent successfully`);
     } else {
-      throw new Error('WebSocket not connected');
+      const error = `WebSocket not connected. Connected: ${this.isConnected}, Socket exists: ${!!this.websocket}`;
+      logger.error(error);
+      throw new Error(error);
     }
   }
 
