@@ -174,7 +174,9 @@ export class JobHealthMonitor {
       }
 
       // Perform the health check
-      const healthResult = await (connector as { healthCheckJob: (jobId: string) => Promise<HealthCheckResult> }).healthCheckJob(jobId);
+      const healthResult = await (
+        connector as { healthCheckJob: (jobId: string) => Promise<HealthCheckResult> }
+      ).healthCheckJob(jobId);
       logger.info(`Health check result for job ${jobId}:`, healthResult);
 
       // Stop monitoring this job since we're about to handle it

@@ -28,7 +28,9 @@ export class SimulationConnector extends BaseConnector {
     const progressIntervalMs = parseInt(
       process.env.WORKER_SIMULATION_PROGRESS_INTERVAL_MS || '200'
     );
-    const healthCheckFailureRate = parseFloat(process.env.WORKER_SIMULATION_HEALTH_CHECK_FAILURE_RATE || '0.04'); // 1 in 25
+    const healthCheckFailureRate = parseFloat(
+      process.env.WORKER_SIMULATION_HEALTH_CHECK_FAILURE_RATE || '0.04'
+    ); // 1 in 25
 
     // Initialize BaseConnector with simulation-specific config
     super(connectorId, {
@@ -115,13 +117,15 @@ export class SimulationConnector extends BaseConnector {
 
       // Simulate health check failure scenario (1 in 25 jobs don't send complete_job)
       const shouldSimulateHealthCheckFailure = Math.random() < this.healthCheckFailureRate;
-      
+
       for (let step = 0; step <= this.steps; step++) {
         const progress = Math.round((step / this.steps) * 100);
-        
+
         // Don't send the final progress update if simulating health check failure
         if (shouldSimulateHealthCheckFailure && step === this.steps) {
-          logger.warn(`Simulation job ${jobData.id}: Simulating missed complete_job message (health check test)`);
+          logger.warn(
+            `Simulation job ${jobData.id}: Simulating missed complete_job message (health check test)`
+          );
           // Job completes but final progress update is never sent - will trigger health check
           break;
         }
@@ -213,9 +217,13 @@ export class SimulationConnector extends BaseConnector {
    * Health check for stuck simulation jobs
    * Simulation-specific implementation that always recovers jobs since they complete instantly
    */
-  async healthCheckJob(jobId: string): Promise<{ action: string; reason: string; result?: unknown }> {
-    logger.info(`Simulation health check for job ${jobId}: assuming completed (simulation always succeeds)`);
-    
+  async healthCheckJob(
+    jobId: string
+  ): Promise<{ action: string; reason: string; result?: unknown }> {
+    logger.info(
+      `Simulation health check for job ${jobId}: assuming completed (simulation always succeeds)`
+    );
+
     // For simulation, we always assume the job completed successfully
     // This simulates the scenario where ComfyUI completed but didn't send complete_job message
     return {

@@ -183,7 +183,9 @@ export class LightweightAPIServer {
       // Test client broadcast
       logger.info('[TEST] Broadcasting to clients...');
       const clientResults: Record<string, unknown> = {};
-      const broadcaster = this.eventBroadcaster as unknown as { clients: Map<string, { ws: WebSocket }> };
+      const broadcaster = this.eventBroadcaster as unknown as {
+        clients: Map<string, { ws: WebSocket }>;
+      };
       broadcaster.clients.forEach((client: { ws: WebSocket }, id: string) => {
         logger.info(`[TEST] Client ${id} - readyState: ${client.ws.readyState}`);
         try {
@@ -203,7 +205,9 @@ export class LightweightAPIServer {
       // Test monitor broadcast
       logger.info('[TEST] Broadcasting to monitors...');
       const monitorResults: Record<string, unknown> = {};
-      const monitorBroadcaster = this.eventBroadcaster as unknown as { monitors: Map<string, WebSocket> };
+      const monitorBroadcaster = this.eventBroadcaster as unknown as {
+        monitors: Map<string, WebSocket>;
+      };
       monitorBroadcaster.monitors.forEach((monitor: WebSocket, id: string) => {
         logger.info(`[TEST] Monitor ${id}`);
         if (monitor instanceof WebSocket) {
@@ -226,7 +230,8 @@ export class LightweightAPIServer {
       res.json({
         clientCount: broadcaster.clients.size,
         monitorCount: monitorBroadcaster.monitors.size,
-        eventBroadcasterInstance: (this.eventBroadcaster as unknown as { instanceId: string }).instanceId,
+        eventBroadcasterInstance: (this.eventBroadcaster as unknown as { instanceId: string })
+          .instanceId,
         clients: clientResults,
         monitors: monitorResults,
       });
@@ -2657,7 +2662,8 @@ export class LightweightAPIServer {
 
     logger.debug('[TRACE 1] Job submitted, about to broadcast', {
       jobId,
-      eventBroadcasterInstance: (this.eventBroadcaster as unknown as { instanceId: string }).instanceId,
+      eventBroadcasterInstance: (this.eventBroadcaster as unknown as { instanceId: string })
+        .instanceId,
     });
 
     // Broadcast job_submitted to both monitors and clients via EventBroadcaster

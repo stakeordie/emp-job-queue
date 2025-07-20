@@ -24,13 +24,16 @@ export class ComfyUIWebSocketConnector extends BaseConnector {
   protected clientId: string | null = null;
   protected promptId: string | null = null;
 
-  private activeJobs = new Map<string, {
-    jobData: JobData;
-    progressCallback: ProgressCallback;
-    resolve: (result: JobResult) => void;
-    reject: (error: Error) => void;
-    timeout?: NodeJS.Timeout;
-  }>();
+  private activeJobs = new Map<
+    string,
+    {
+      jobData: JobData;
+      progressCallback: ProgressCallback;
+      resolve: (result: JobResult) => void;
+      reject: (error: Error) => void;
+      timeout?: NodeJS.Timeout;
+    }
+  >();
 
   constructor(connectorId: string) {
     // Build WebSocket URL from environment (supporting both local and remote)
@@ -38,17 +41,15 @@ export class ComfyUIWebSocketConnector extends BaseConnector {
     const port = parseInt(process.env.WORKER_COMFYUI_PORT || '8188');
     const isSecure = process.env.WORKER_COMFYUI_SECURE === 'true';
     const wsProtocol = isSecure ? 'wss' : 'ws';
-    const httpProtocol = isSecure ? 'https' : 'http';
-    
     // Authentication for remote connections
     const username = process.env.WORKER_COMFYUI_USERNAME;
     const password = process.env.WORKER_COMFYUI_PASSWORD;
     const apiKey = process.env.WORKER_COMFYUI_API_KEY;
-    
+
     // Only use auth for remote connections (not localhost/127.0.0.1)
     const isRemoteConnection = host !== 'localhost' && host !== '127.0.0.1';
-    const shouldUseAuth = isRemoteConnection && (username && password || apiKey);
-    
+    const shouldUseAuth = isRemoteConnection && ((username && password) || apiKey);
+
     // Build WebSocket URL with auth if needed
     let websocketUrl = process.env.WORKER_COMFYUI_WS_URL;
     if (!websocketUrl) {
@@ -61,11 +62,13 @@ export class ComfyUIWebSocketConnector extends BaseConnector {
     }
 
     // Debug: Log what we're actually using
-    console.log('[ComfyUI-WS] Environment check:', {
+    logger.debug('[ComfyUI-WS] Environment check:', {
       WORKER_COMFYUI_HOST: process.env.WORKER_COMFYUI_HOST,
       WORKER_COMFYUI_PORT: process.env.WORKER_COMFYUI_PORT,
-      host, port, websocketUrl,
-      finalBaseUrl: websocketUrl
+      host,
+      port,
+      websocketUrl,
+      finalBaseUrl: websocketUrl,
     });
 
     super(connectorId, {
@@ -81,14 +84,16 @@ export class ComfyUIWebSocketConnector extends BaseConnector {
         heartbeat_interval_ms: parseInt(process.env.WORKER_COMFYUI_HEARTBEAT_MS || '30000'),
         reconnect_delay_ms: parseInt(process.env.WORKER_COMFYUI_RECONNECT_DELAY_MS || '5000'),
         max_reconnect_attempts: parseInt(process.env.WORKER_COMFYUI_MAX_RECONNECT || '5'),
-        
+
         // Auth settings for WebSocket connection
-        auth: shouldUseAuth ? {
-          type: apiKey ? 'bearer' as const : 'basic' as const,
-          username: username,
-          password: password,
-          token: apiKey,
-        } : undefined,
+        auth: shouldUseAuth
+          ? {
+              type: apiKey ? ('bearer' as const) : ('basic' as const),
+              username: username,
+              password: password,
+              token: apiKey,
+            }
+          : undefined,
       },
     });
 
@@ -100,7 +105,9 @@ export class ComfyUIWebSocketConnector extends BaseConnector {
   // ============================================================================
 
   protected async initializeService(): Promise<void> {
-    logger.info(`ComfyUI WebSocket connector ${this.connector_id} connecting to ${this.config.settings.websocket_url}`);
+    logger.info(
+      `ComfyUI WebSocket connector ${this.connector_id} connecting to ${this.config.settings.websocket_url}`
+    );
     await this.connectWebSocket();
   }
 
@@ -176,7 +183,11 @@ export class ComfyUIWebSocketConnector extends BaseConnector {
       }
 
       // Submit job via WebSocket and wait for completion
-      const result = await this.submitJobViaWebSocket(jobData, workflow as Record<string, unknown>, progressCallback);
+      const result = await this.submitJobViaWebSocket(
+        jobData,
+        workflow as Record<string, unknown>,
+        progressCallback
+      );
 
       const processingTime = Date.now() - startTime;
       logger.info(`ComfyUI WebSocket job ${jobData.id} completed in ${processingTime}ms`);
@@ -196,7 +207,8 @@ export class ComfyUIWebSocketConnector extends BaseConnector {
 
       return {
         success: false,
-        error: error instanceof Error ? error.message : 'Unknown ComfyUI WebSocket processing error',
+        error:
+          error instanceof Error ? error.message : 'Unknown ComfyUI WebSocket processing error',
         processing_time_ms: processingTime,
         service_metadata: {
           service_version: this.version,
@@ -239,10 +251,13 @@ export class ComfyUIWebSocketConnector extends BaseConnector {
       this.sendMessage(promptMessage);
 
       // Set timeout
-      const timeout = setTimeout(() => {
-        this.activeJobs.delete(jobData.id);
-        reject(new Error(`ComfyUI WebSocket job ${jobData.id} timed out`));
-      }, (this.config.timeout_seconds || 300) * 1000);
+      const timeout = setTimeout(
+        () => {
+          this.activeJobs.delete(jobData.id);
+          reject(new Error(`ComfyUI WebSocket job ${jobData.id} timed out`));
+        },
+        (this.config.timeout_seconds || 300) * 1000
+      );
 
       // Store timeout for cleanup
       const job = this.activeJobs.get(jobData.id);
@@ -293,20 +308,36 @@ export class ComfyUIWebSocketConnector extends BaseConnector {
   private handleClientId(message: any): void {
     this.clientId = message.data?.client_id;
     logger.info(`ComfyUI WebSocket: Received client_id: ${this.clientId}`);
-    
+
     // Now we're fully connected, report as active
     this.reportStatus('active');
   }
 
-  private handlePromptQueued(message: any): void {
+  private async handlePromptQueued(message: any): Promise<void> {
     this.promptId = message.data?.prompt_id;
     logger.info(`ComfyUI: Prompt queued with ID: ${this.promptId}`);
-    
+
     // Find the job waiting for this prompt_id
     // In ComfyUI protocol, we don't have direct job_id mapping, so we use the most recent job
     const jobs = Array.from(this.activeJobs.values());
     if (jobs.length > 0) {
       const latestJob = jobs[jobs.length - 1];
+
+      // Store service job ID mapping for health checks
+      if (this.redis && this.promptId) {
+        try {
+          await this.redis.hset(`job:${latestJob.jobData.id}`, 'service_job_id', this.promptId);
+          logger.debug(
+            `Stored service job ID mapping: job ${latestJob.jobData.id} -> prompt ${this.promptId}`
+          );
+        } catch (error) {
+          logger.warn(
+            `Failed to store service job ID mapping for job ${latestJob.jobData.id}:`,
+            error
+          );
+        }
+      }
+
       latestJob.progressCallback({
         job_id: latestJob.jobData.id,
         progress: 10,
@@ -328,7 +359,7 @@ export class ComfyUIWebSocketConnector extends BaseConnector {
       try {
         await job.progressCallback({
           job_id: jobId,
-          progress: Math.min(90, 10 + (progress * 80)), // Map 0-1 to 10-90%
+          progress: Math.min(90, 10 + progress * 80), // Map 0-1 to 10-90%
           message: `Processing node ${nodeId || 'unknown'}`,
           current_step: `node_${nodeId}`,
           total_steps: 0,
@@ -347,7 +378,7 @@ export class ComfyUIWebSocketConnector extends BaseConnector {
     if (nodeId === null) {
       // Execution completed (node is null)
       logger.info(`ComfyUI: Workflow execution completed`);
-      
+
       // Complete all active jobs
       for (const [jobId, job] of this.activeJobs) {
         logger.info(`ComfyUI job ${jobId} completed`);
@@ -380,7 +411,7 @@ export class ComfyUIWebSocketConnector extends BaseConnector {
   private handleExecutionError(message: any): void {
     const data = message.data;
     const errorMessage = data?.exception_message || 'Unknown execution error';
-    
+
     logger.error(`ComfyUI execution error: ${errorMessage}`);
 
     // Fail all active jobs
@@ -403,7 +434,7 @@ export class ComfyUIWebSocketConnector extends BaseConnector {
   private handleError(message: any): void {
     const data = message.data;
     const errorMessage = data?.message || 'Unknown ComfyUI error';
-    
+
     logger.error(`ComfyUI error: ${errorMessage}`);
 
     // Fail all active jobs
@@ -438,11 +469,11 @@ export class ComfyUIWebSocketConnector extends BaseConnector {
 
         // Prepare WebSocket options with auth headers for remote connections
         const wsOptions: any = {};
-        
+
         if (this.config.settings.auth) {
           const auth = this.config.settings.auth as AuthConfig;
           wsOptions.headers = {};
-          
+
           if (auth.type === 'basic' && auth.username && auth.password) {
             // Basic auth header
             const credentials = Buffer.from(`${auth.username}:${auth.password}`).toString('base64');
@@ -477,14 +508,14 @@ export class ComfyUIWebSocketConnector extends BaseConnector {
           this.isConnected = false;
           logger.warn(`ComfyUI WebSocket disconnected: ${code} ${reason}`);
           this.onWebSocketClose();
-          
+
           // Attempt reconnection if not a normal close
           if (code !== 1000) {
             this.attemptReconnection();
           }
         });
 
-        this.websocket.on('error', (error) => {
+        this.websocket.on('error', error => {
           logger.error('ComfyUI WebSocket error:', error);
           this.onWebSocketError(error);
           reject(error);
@@ -501,7 +532,6 @@ export class ComfyUIWebSocketConnector extends BaseConnector {
         this.websocket.on('open', () => {
           clearTimeout(timeout);
         });
-
       } catch (error) {
         reject(error);
       }
@@ -510,14 +540,14 @@ export class ComfyUIWebSocketConnector extends BaseConnector {
 
   protected onWebSocketOpen(): void {
     logger.info(`ComfyUI WebSocket connected to ${(this.config.settings as any).websocket_url}`);
-    
+
     // Wait for client_id message from ComfyUI before considering connection fully ready
     this.waitForClientId();
   }
 
   private async waitForClientId(): Promise<void> {
     // Set up a timeout for receiving client_id
-    const timeout = setTimeout(() => {
+    setTimeout(() => {
       logger.warn('ComfyUI WebSocket: No client_id received within 10 seconds');
       this.reportStatus('active'); // Report as active anyway
     }, 10000);
@@ -527,15 +557,17 @@ export class ComfyUIWebSocketConnector extends BaseConnector {
   }
 
   protected onWebSocketClose(): void {
-    logger.warn(`ComfyUI WebSocket disconnected from ${(this.config.settings as any).websocket_url}`);
-    
+    logger.warn(
+      `ComfyUI WebSocket disconnected from ${(this.config.settings as any).websocket_url}`
+    );
+
     // Clear ComfyUI state
     this.clientId = null;
     this.promptId = null;
-    
+
     // Report disconnection status to unified machine state
     this.reportStatus('offline', 'ComfyUI WebSocket disconnected');
-    
+
     // Fail all active jobs
     for (const [jobId, job] of this.activeJobs) {
       logger.error(`Failing job ${jobId} due to WebSocket disconnection`);
@@ -549,7 +581,7 @@ export class ComfyUIWebSocketConnector extends BaseConnector {
 
   protected onWebSocketError(error: Error): void {
     logger.error('ComfyUI WebSocket error:', error);
-    
+
     // Report error status to unified machine state
     this.reportStatus('error', `ComfyUI WebSocket error: ${error.message}`);
   }
@@ -573,6 +605,143 @@ export class ComfyUIWebSocketConnector extends BaseConnector {
     } catch (error) {
       logger.error('ComfyUI WebSocket health check failed:', error);
       return false;
+    }
+  }
+
+  /**
+   * Health check for stuck jobs - query ComfyUI directly using service job ID
+   * This enables the unified JobHealthMonitor to recover stuck/completed jobs
+   */
+  async healthCheckJob(
+    jobId: string
+  ): Promise<{ action: string; reason: string; result?: unknown }> {
+    if (!this.redis) {
+      return { action: 'return_to_queue', reason: 'no_redis_connection' };
+    }
+
+    try {
+      const jobData = await this.redis.hgetall(`job:${jobId}`);
+      if (!jobData.service_job_id) {
+        return { action: 'return_to_queue', reason: 'service_submission_failed' };
+      }
+
+      // Query ComfyUI history directly via HTTP API
+      const serviceStatus = await this.queryComfyUIStatus(jobData.service_job_id);
+
+      // Update last service check
+      await this.redis.hset(`job:${jobId}`, 'last_service_check', new Date().toISOString());
+
+      switch (serviceStatus.status) {
+        case 'completed':
+          logger.info(
+            `Health check: Job ${jobId} (${jobData.service_job_id}) completed in ComfyUI`
+          );
+          return {
+            action: 'complete_job',
+            reason: 'found_completed_in_service',
+            result: serviceStatus.result,
+          };
+
+        case 'failed':
+          logger.warn(`Health check: Job ${jobId} (${jobData.service_job_id}) failed in ComfyUI`);
+          return { action: 'fail_job', reason: serviceStatus.error || 'service_reported_failure' };
+
+        case 'running':
+          logger.info(
+            `Health check: Job ${jobId} (${jobData.service_job_id}) still running in ComfyUI`
+          );
+          return { action: 'continue_monitoring', reason: 'service_still_processing' };
+
+        case 'not_found':
+          logger.warn(
+            `Health check: Job ${jobId} (${jobData.service_job_id}) not found in ComfyUI`
+          );
+          return { action: 'return_to_queue', reason: 'service_job_not_found' };
+
+        default:
+          logger.warn(`Health check: Unknown status for job ${jobId}: ${serviceStatus.status}`);
+          return { action: 'continue_monitoring', reason: 'unknown_service_status' };
+      }
+    } catch (error) {
+      logger.error(`Health check failed for job ${jobId}:`, error);
+      return { action: 'continue_monitoring', reason: 'health_check_error' };
+    }
+  }
+
+  /**
+   * Query ComfyUI HTTP API to check job status by prompt_id
+   * This enables health checks even when WebSocket connection is lost
+   */
+  private async queryComfyUIStatus(
+    promptId: string
+  ): Promise<{ status: string; result?: unknown; error?: string }> {
+    try {
+      // Build HTTP URL from WebSocket URL
+      const wsUrl = this.config.base_url as string;
+      const httpUrl = wsUrl.replace(/^wss?:\/\//, 'http://').replace(/\/ws$/, '');
+      const historyUrl = `${httpUrl}/history/${promptId}`;
+
+      // Prepare headers with auth if needed
+      const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+
+      if (this.config.settings?.auth) {
+        const auth = this.config.settings.auth as AuthConfig;
+        if (auth.type === 'basic' && auth.username && auth.password) {
+          const credentials = Buffer.from(`${auth.username}:${auth.password}`).toString('base64');
+          headers['Authorization'] = `Basic ${credentials}`;
+        } else if (auth.type === 'bearer' && auth.token) {
+          headers['Authorization'] = `Bearer ${auth.token}`;
+        }
+      }
+
+      // Create controller for timeout
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 5000);
+
+      const response = await fetch(historyUrl, {
+        headers,
+        signal: controller.signal,
+      });
+
+      clearTimeout(timeoutId);
+
+      if (!response.ok) {
+        return { status: 'not_found' };
+      }
+
+      const historyData = await response.json();
+      if (!historyData || Object.keys(historyData).length === 0) {
+        return { status: 'not_found' };
+      }
+
+      // Check if job completed successfully
+      if (historyData[promptId]?.status?.completed) {
+        return {
+          status: 'completed',
+          result: historyData[promptId],
+        };
+      }
+
+      // Check if job failed
+      if (historyData[promptId]?.status?.error) {
+        return {
+          status: 'failed',
+          error: historyData[promptId].status.error,
+        };
+      }
+
+      // If we have history data but no completion status, assume running
+      if (historyData[promptId]) {
+        return { status: 'running' };
+      }
+
+      return { status: 'not_found' };
+    } catch (error) {
+      logger.error(`Failed to query ComfyUI status for prompt ${promptId}:`, error);
+      return {
+        status: 'not_found',
+        error: error instanceof Error ? error.message : 'Unknown error',
+      };
     }
   }
 
@@ -607,9 +776,11 @@ export class ComfyUIWebSocketConnector extends BaseConnector {
     }
   }
 
-  async updateConfiguration(config: any): Promise<void> {
+  async updateConfiguration(_config: unknown): Promise<void> {
     // TODO: Implement configuration updates
-    logger.info(`Configuration update requested for ComfyUI WebSocket connector ${this.connector_id}`);
+    logger.info(
+      `Configuration update requested for ComfyUI WebSocket connector ${this.connector_id}`
+    );
   }
 
   getConfiguration(): any {
@@ -647,9 +818,13 @@ export class ComfyUIWebSocketConnector extends BaseConnector {
     }
 
     this.reconnectAttempts++;
-    const delay = ((this.config.settings as any).reconnect_delay_ms || 5000) * Math.pow(2, this.reconnectAttempts - 1);
+    const delay =
+      ((this.config.settings as any).reconnect_delay_ms || 5000) *
+      Math.pow(2, this.reconnectAttempts - 1);
 
-    logger.info(`Attempting ComfyUI WebSocket reconnection ${this.reconnectAttempts}/${this.maxReconnectAttempts} in ${delay}ms`);
+    logger.info(
+      `Attempting ComfyUI WebSocket reconnection ${this.reconnectAttempts}/${this.maxReconnectAttempts} in ${delay}ms`
+    );
 
     setTimeout(async () => {
       try {
