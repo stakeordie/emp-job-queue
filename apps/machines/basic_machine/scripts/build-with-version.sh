@@ -42,7 +42,6 @@ echo "🔨 Building Docker image..."
 docker build \
   --build-arg MACHINE_VERSION="${VERSION}" \
   --build-arg BUILD_DATE="${BUILD_DATE}" \
-  --build-arg CACHE_BUST="$(date +%s)" \
   --tag "${FULL_IMAGE_NAME}:${VERSION}" \
   --tag "${FULL_IMAGE_NAME}:latest" \
   "${PROJECT_DIR}"
