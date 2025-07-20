@@ -7,10 +7,9 @@ RUN npm install -g pnpm
 # Stage 2: AI services base (using existing PyTorch image)
 FROM pytorch/pytorch:2.7.0-cuda12.8-cudnn9-devel AS ai-base
 
-# Layer cache bust and version injection
+# Layer cache bust (separate from version to preserve custom nodes cache)
 ARG CACHE_BUST=2
-ARG MACHINE_VERSION=latest
-RUN echo "Cache bust: ${CACHE_BUST}" && echo "Machine version: ${MACHINE_VERSION}"
+RUN echo "Cache bust: ${CACHE_BUST}"
 
 # Install Node.js 18 and PM2
 RUN apt-get update && \
@@ -83,6 +82,7 @@ RUN echo "Installing custom nodes (cache bust: $CUSTOM_NODES_CACHE_BUST)" && \
     node /service-manager/src/services/comfyui-installer.js --build-time --custom-nodes-only --skip-env
 
 # Inject machine version and build info AFTER custom nodes (for better caching)
+ARG MACHINE_VERSION=latest
 ARG BUILD_DATE
 RUN cd /service-manager && \
     sed -i "s/\"version\": \"[^\"]*\"/\"version\": \"${MACHINE_VERSION}\"/" package.json && \
