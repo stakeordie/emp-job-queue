@@ -69,17 +69,9 @@ COPY config_nodes.json /workspace/config_nodes.json
 COPY src/ /service-manager/src/
 COPY package.json pnpm-lock.yaml* /service-manager/
 
-# Inject machine version and build info into package.json and environment
-ARG BUILD_DATE
+# Install dependencies (without version injection for better caching)
 RUN cd /service-manager && \
-    sed -i "s/\"version\": \"[^\"]*\"/\"version\": \"${MACHINE_VERSION}\"/" package.json && \
-    echo "MACHINE_VERSION=${MACHINE_VERSION}" > .version && \
-    echo "BUILD_DATE=${BUILD_DATE}" >> .version && \
     pnpm install --prod --no-frozen-lockfile
-
-# Set environment variables for runtime
-ENV MACHINE_VERSION=${MACHINE_VERSION}
-ENV BUILD_DATE=${BUILD_DATE}
 
 # Cache layer 4: Install custom nodes (this layer will cache if config_nodes.json doesn't change)
 ARG CUSTOM_NODES_CACHE_BUST=default
@@ -89,6 +81,17 @@ RUN echo "Installing custom nodes (cache bust: $CUSTOM_NODES_CACHE_BUST)" && \
     # Install custom nodes WITHOUT environment variables (no .env files created)
     # Environment variables and .env files will be processed at runtime
     node /service-manager/src/services/comfyui-installer.js --build-time --custom-nodes-only --skip-env
+
+# Inject machine version and build info AFTER custom nodes (for better caching)
+ARG BUILD_DATE
+RUN cd /service-manager && \
+    sed -i "s/\"version\": \"[^\"]*\"/\"version\": \"${MACHINE_VERSION}\"/" package.json && \
+    echo "MACHINE_VERSION=${MACHINE_VERSION}" > .version && \
+    echo "BUILD_DATE=${BUILD_DATE}" >> .version
+
+# Set environment variables for runtime
+ENV MACHINE_VERSION=${MACHINE_VERSION}
+ENV BUILD_DATE=${BUILD_DATE}
 
 # Cache layer 5: Copy remaining application files
 COPY scripts/ /service-manager/scripts/
