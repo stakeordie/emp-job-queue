@@ -20,9 +20,7 @@ echo
 
 # Build Machine container  
 echo "🔨 Building Machine container..."
-cd apps/machines/basic_machine
-pnpm docker:build:version "${VERSION}" emprops basic-machine ${PUSH_FLAG}
-cd ../../..
+pnpm machines:basic:prod "${VERSION}" emprops basic-machine ${PUSH_FLAG}
 echo
 
 echo "🎉 All containers built successfully!"

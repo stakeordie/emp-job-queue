@@ -114,7 +114,8 @@
     "machines:basic:prod:up:build": "pnpm machines:basic:prod:down && cd apps/machines/basic_machine && docker compose -f docker-compose.prod.yml --env-file .env.local.prod --project-name basic-machine-production up --build",
     "machines:basic:prod:down": "cd apps/machines/basic_machine && docker compose -f docker-compose.prod.yml --env-file .env.local.prod --project-name basic-machine-production down",
     "machines:basic:prod:build": "pnpm machines:basic:prod:down && cd apps/machines/basic_machine && docker compose -f docker-compose.prod.yml --env-file .env.local.prod --project-name basic-machine-production build",
-    "machines:basic:prod:push": "cd apps/machines/basic_machine && docker push emprops/basic-machine-production:latest"
+    "machines:basic:prod:push": "cd apps/machines/basic_machine && docker push emprops/basic-machine-production:latest",
+    "machines:basic:prod": "cd apps/machines/basic_machine && pnpm docker:build:version"
   },
   "devDependencies": {
     "esbuild": "^0.25.6",

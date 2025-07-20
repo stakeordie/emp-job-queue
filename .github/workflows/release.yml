@@ -213,9 +213,8 @@ jobs:
           ### Release Process
           Machine containers are now built locally for faster iteration with Docker layer caching:
           ```bash
-          # 1. Build machine container locally
-          cd apps/machines/basic_machine
-          pnpm docker:build:version ${{ steps.get_tag.outputs.tag }} emprops basic-machine --push
+          # 1. Build and push machine container locally
+          pnpm machines:basic:prod ${{ steps.get_tag.outputs.tag }} emprops basic-machine --push
           
           # 2. Create release (API + worker bundle built by CI/CD)
           git tag ${{ steps.get_tag.outputs.tag }}
