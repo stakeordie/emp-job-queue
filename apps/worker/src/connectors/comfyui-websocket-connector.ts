@@ -60,6 +60,14 @@ export class ComfyUIWebSocketConnector extends BaseConnector {
       }
     }
 
+    // Debug: Log what we're actually using
+    console.log('[ComfyUI-WS] Environment check:', {
+      WORKER_COMFYUI_HOST: process.env.WORKER_COMFYUI_HOST,
+      WORKER_COMFYUI_PORT: process.env.WORKER_COMFYUI_PORT,
+      host, port, websocketUrl,
+      finalBaseUrl: websocketUrl
+    });
+
     super(connectorId, {
       service_type: 'comfyui',
       base_url: websocketUrl,
