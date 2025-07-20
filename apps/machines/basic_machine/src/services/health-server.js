@@ -1,6 +1,7 @@
 import { BaseService } from './base-service.js';
 import express from 'express';
 import { createLogger } from '../utils/logger.js';
+import { versionService } from './version-service.js';
 
 const logger = createLogger('health-server');
 
@@ -24,6 +25,7 @@ export default class HealthServer extends BaseService {
     this.app.get('/health', this.handleHealth.bind(this));
     this.app.get('/status', this.handleStatus.bind(this));
     this.app.get('/ready', this.handleReady.bind(this));
+    this.app.get('/version', this.handleVersion.bind(this));
     
     // Service-specific endpoints
     this.app.get('/services', this.handleServices.bind(this));
@@ -81,6 +83,7 @@ export default class HealthServer extends BaseService {
       res.status(allHealthy ? 200 : 503).json({
         healthy: allHealthy,
         timestamp: new Date().toISOString(),
+        machine_version: versionService.getVersion(),
         services: healthChecks
       });
     } catch (error) {
@@ -471,6 +474,24 @@ export default class HealthServer extends BaseService {
       logger.error(`Service logs failed for ${req.params.serviceName}:`, error);
       res.status(500).json({
         service: req.params.serviceName,
+        error: error.message,
+        timestamp: new Date().toISOString()
+      });
+    }
+  }
+
+  async handleVersion(req, res) {
+    try {
+      const versionInfo = versionService.getVersionInfo();
+      
+      res.json({
+        ...versionInfo,
+        uptime_seconds: Math.floor(process.uptime()),
+        timestamp: new Date().toISOString(),
+      });
+    } catch (error) {
+      logger.error('Version endpoint failed:', error);
+      res.status(500).json({
         error: error.message,
         timestamp: new Date().toISOString()
       });

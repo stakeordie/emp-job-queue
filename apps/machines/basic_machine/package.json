@@ -13,7 +13,10 @@
     "test:ui": "vitest --ui",
     "test:coverage": "vitest run --coverage",
     "lint": "eslint src/**/*.js",
-    "lint:fix": "eslint src/**/*.js --fix"
+    "lint:fix": "eslint src/**/*.js --fix",
+    "docker:build": "./scripts/build-with-version.sh",
+    "docker:build:version": "./scripts/build-with-version.sh",
+    "docker:build:push": "./scripts/build-with-version.sh latest emprops basic-machine --push"
   },
   "dependencies": {
     "@azure/storage-blob": "^12.27.0",

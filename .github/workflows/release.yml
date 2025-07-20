@@ -62,6 +62,25 @@ jobs:
         # Push both tags
         docker push emprops/emp-job-queue-api:latest
         docker push emprops/emp-job-queue-api:${{ steps.get_tag.outputs.tag }}
+
+    - name: Build and push Machine Docker image
+      run: |
+        # Get current date for build timestamp
+        BUILD_DATE=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
+        
+        # Build machine Docker image with version injection
+        docker build \
+          --build-arg MACHINE_VERSION="${{ steps.get_tag.outputs.tag }}" \
+          --build-arg BUILD_DATE="${BUILD_DATE}" \
+          --build-arg CACHE_BUST="$(date +%s)" \
+          -f apps/machines/basic_machine/Dockerfile \
+          -t emprops/basic-machine:latest \
+          -t emprops/basic-machine:${{ steps.get_tag.outputs.tag }} \
+          apps/machines/basic_machine/
+        
+        # Push both tags
+        docker push emprops/basic-machine:latest
+        docker push emprops/basic-machine:${{ steps.get_tag.outputs.tag }}
         
     - name: Build and package worker
       run: |
@@ -148,26 +167,52 @@ jobs:
         tag_name: ${{ steps.get_tag.outputs.tag }}
         name: Release ${{ steps.get_tag.outputs.tag }}
         body: |
-          ## EmProps Job Queue Worker Release
+          ## EmProps Job Queue Release ${{ steps.get_tag.outputs.tag }}
           
-          This release contains a **self-contained bundled worker** for the EmProps GPU job queue system.
+          This release contains both the **worker bundle** and **machine container** for the EmProps GPU job queue system.
           
           ### What's Included
+          
+          **📦 Worker Bundle (emp-job-queue-worker.tar.gz):**
           - `redis-direct-worker.js` - **Single bundled executable** (all dependencies included)
           - `package.json` - Package metadata
           - `README.md` - Usage instructions
           
-          ### Installation
+          **🐳 Docker Images:**
+          - `emprops/basic-machine:${{ steps.get_tag.outputs.tag }}` - **GPU machine container** with ComfyUI, PM2, and worker
+          - `emprops/emp-job-queue-api:${{ steps.get_tag.outputs.tag }}` - **API server container**
+          
+          ### Installation Options
+          
+          **Option 1: Worker Bundle (Standalone)**
           1. Download `emp-job-queue-worker.tar.gz`
           2. Extract: `tar -xzf emp-job-queue-worker.tar.gz`
           3. Run: `node redis-direct-worker.js`
           
+          **Option 2: Docker Containers**
+          ```bash
+          # GPU machine with ComfyUI + worker
+          docker pull emprops/basic-machine:${{ steps.get_tag.outputs.tag }}
+          
+          # API server
+          docker pull emprops/emp-job-queue-api:${{ steps.get_tag.outputs.tag }}
+          ```
+          
           ### Features
+          
+          **Worker Features:**
           - **Zero dependencies** - Single bundled file with everything included
           - **Multi-connector support** - ComfyUI, A1111, and simulation modes
           - **Direct Redis connection** - No WebSocket hub dependency
           - **Multi-GPU ready** - Use CUDA_VISIBLE_DEVICES for GPU assignment
           - **TypeScript-based** - Modern, type-safe worker implementation
+          
+          **Machine Container Features:**
+          - **ComfyUI WebSocket Connector** - Native WebSocket job submission with stakeordie/ComfyUI fork
+          - **Health Check System** - Unified failure recovery across all services
+          - **Version Tracking** - Built-in version info at `/version` endpoint
+          - **PM2 Service Management** - Per-GPU ComfyUI instances with automatic restart
+          - **64 Custom Nodes** - Pre-installed ComfyUI extensions
           
           ### Changes
           - Single bundled executable using esbuild (no more import errors!)

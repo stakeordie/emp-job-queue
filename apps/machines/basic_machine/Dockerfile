@@ -7,9 +7,10 @@ RUN npm install -g pnpm
 # Stage 2: AI services base (using existing PyTorch image)
 FROM pytorch/pytorch:2.7.0-cuda12.8-cudnn9-devel AS ai-base
 
-# Layer cache bust
+# Layer cache bust and version injection
 ARG CACHE_BUST=2
-RUN echo "Cache bust: ${CACHE_BUST}"
+ARG MACHINE_VERSION=latest
+RUN echo "Cache bust: ${CACHE_BUST}" && echo "Machine version: ${MACHINE_VERSION}"
 
 # Install Node.js 18 and PM2
 RUN apt-get update && \
@@ -67,7 +68,18 @@ COPY config_nodes.json /workspace/config_nodes.json
 # Cache layer 3: Copy minimal files needed for custom nodes installation
 COPY src/ /service-manager/src/
 COPY package.json pnpm-lock.yaml* /service-manager/
-RUN cd /service-manager && pnpm install --prod --no-frozen-lockfile
+
+# Inject machine version and build info into package.json and environment
+ARG BUILD_DATE
+RUN cd /service-manager && \
+    sed -i "s/\"version\": \"[^\"]*\"/\"version\": \"${MACHINE_VERSION}\"/" package.json && \
+    echo "MACHINE_VERSION=${MACHINE_VERSION}" > .version && \
+    echo "BUILD_DATE=${BUILD_DATE}" >> .version && \
+    pnpm install --prod --no-frozen-lockfile
+
+# Set environment variables for runtime
+ENV MACHINE_VERSION=${MACHINE_VERSION}
+ENV BUILD_DATE=${BUILD_DATE}
 
 # Cache layer 4: Install custom nodes (this layer will cache if config_nodes.json doesn't change)
 ARG CUSTOM_NODES_CACHE_BUST=default
