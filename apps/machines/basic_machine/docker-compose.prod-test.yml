@@ -12,7 +12,7 @@ services:
         CUSTOM_NODES_CACHE_BUST: ${CUSTOM_NODES_CACHE_BUST:-default}
         # No sensitive environment variables at build time - all handled at runtime
     
-    image: basic-machine-prod-test:latest
+    image: ${BASIC_MACHINE_IMAGE:-basic-machine-prod-test:latest}
     platform: linux/amd64
     container_name: ${CONTAINER_NAME:-basic-machine-prod-test}
     hostname: ${CONTAINER_NAME:-basic-machine-prod-test}

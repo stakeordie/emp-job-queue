@@ -196,6 +196,12 @@ export class LightweightAPIServer {
         logger.warn(
           `CORS: Blocked origin ${origin}, allowed origins: ${allowedOrigins.join(', ')}`
         );
+        // Don't set CORS header for blocked origins
+      } else {
+        // No origin header - set wildcard if allowed, otherwise no CORS header
+        if (allowedOrigins.includes('*')) {
+          res.setHeader('Access-Control-Allow-Origin', '*');
+        }
       }
 
       res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS, HEAD');
