@@ -23,7 +23,10 @@
     "format": "prettier --write 'src/**/*.ts'",
     "format:check": "prettier --check 'src/**/*.ts'",
     "typecheck": "tsc --noEmit",
-    "clean": "rm -rf dist"
+    "clean": "rm -rf dist",
+    "docker:build": "./scripts/build-with-version.sh",
+    "docker:build:version": "./scripts/build-with-version.sh",
+    "docker:build:push": "./scripts/build-with-version.sh latest emprops emp-job-queue-api --push"
   },
   "dependencies": {
     "@emp/core": "workspace:*",
