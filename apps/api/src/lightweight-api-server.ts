@@ -23,8 +23,33 @@ import {
   WorkerStatusChangedEvent,
 } from '@emp/core';
 import { createRequire } from 'module';
-const require = createRequire(import.meta.url);
-const packageJson = require('../package.json');
+import { fileURLToPath } from 'url';
+import path from 'path';
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+
+let packageJson: any = { version: 'unknown', name: 'api', description: 'API Server' };
+try {
+  const require = createRequire(import.meta.url);
+  // Try different paths for package.json
+  try {
+    packageJson = require('../package.json');
+  } catch (e) {
+    try {
+      packageJson = require('../../package.json');
+    } catch (e2) {
+      // In Docker, package.json might be at the app root
+      try {
+        packageJson = require('/app/apps/api/package.json');
+      } catch (e3) {
+        console.warn('Could not load package.json, using defaults');
+      }
+    }
+  }
+} catch (error) {
+  console.warn('Failed to load package.json:', error);
+}
 
 interface LightweightAPIConfig {
   port: number;

@@ -50,7 +50,7 @@ RUN mkdir -p \
     /workspace/scripts
 
 # Stage 3: Final image
-FROM ai-base
+FROM ai-base as installed-comfy
 
 # No build-time environment variables needed - all handled at runtime
 
@@ -80,6 +80,8 @@ RUN echo "Installing custom nodes (cache bust: $CUSTOM_NODES_CACHE_BUST)" && \
     # Install custom nodes WITHOUT environment variables (no .env files created)
     # Environment variables and .env files will be processed at runtime
     node /service-manager/src/services/comfyui-installer.js --build-time --custom-nodes-only --skip-env
+
+FROM installed-comfy
 
 # Inject machine version and build info AFTER custom nodes (for better caching)
 ARG MACHINE_VERSION=latest

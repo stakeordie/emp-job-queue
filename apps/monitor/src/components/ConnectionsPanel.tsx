@@ -5,6 +5,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { RefreshCw, Monitor, Users, Zap, ChevronDown, ChevronRight } from 'lucide-react';
+import { useMonitorStore } from '@/store';
 
 interface ConnectionData {
   monitor_connections: Array<{
@@ -36,16 +37,29 @@ interface ConnectionData {
 }
 
 export function ConnectionsPanel() {
+  const { connection } = useMonitorStore();
   const [connections, setConnections] = useState<ConnectionData | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [isOpen, setIsOpen] = useState(false);
 
   const fetchConnections = async () => {
+    // Only fetch if connected
+    if (!connection.isConnected) {
+      setLoading(false);
+      setConnections(null);
+      return;
+    }
+
     try {
       setLoading(true);
       setError(null);
-      const response = await fetch('http://localhost:3331/api/connections');
+      
+      // Get API URL from websocket service
+      const websocketUrl = (window as any).websocketService?.getUrl() || 'ws://localhost:3331';
+      const apiUrl = websocketUrl.replace(/^wss?:/, 'http:').replace(/\/$/, '');
+      
+      const response = await fetch(`${apiUrl}/api/connections`);
       
       if (!response.ok) {
         throw new Error(`HTTP ${response.status}: ${response.statusText}`);
@@ -61,10 +75,17 @@ export function ConnectionsPanel() {
   };
 
   useEffect(() => {
-    fetchConnections();
-    const interval = setInterval(fetchConnections, 5000); // Refresh every 5 seconds
-    return () => clearInterval(interval);
-  }, []);
+    // Only fetch when connected
+    if (connection.isConnected) {
+      fetchConnections();
+      const interval = setInterval(fetchConnections, 5000); // Refresh every 5 seconds
+      return () => clearInterval(interval);
+    } else {
+      // Clear data when disconnected
+      setConnections(null);
+      setLoading(false);
+    }
+  }, [connection.isConnected]);
 
   const formatTime = (timestamp: string) => {
     try {
