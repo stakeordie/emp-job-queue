@@ -40,7 +40,7 @@ export const SimpleWorkerCard = memo(function SimpleWorkerCard({ worker }: Simpl
               </span>
               {worker.capabilities?.metadata?.version ? (
                 <span className="text-xs text-muted-foreground">
-                  v{String(worker.capabilities.metadata.version)}
+                  {String(worker.capabilities.metadata.version)}
                 </span>
               ) : null}
             </div>
