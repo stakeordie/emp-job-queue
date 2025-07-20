@@ -46,9 +46,9 @@ function getWorkerVersion(): string {
     const localPackageJsonPath = path.join(currentDir, 'package.json');
     try {
       const packageJson = JSON.parse(readFileSync(localPackageJsonPath, 'utf8'));
-      // If we find a package.json, use its version (but append release tag if missing)
+      // If we find a package.json, use its version directly (git tag already has 'v' prefix)
       const version = packageJson.version || '1.0.0';
-      // For release downloads, append 'release' to distinguish from dev builds
+      // For release downloads, just return the version (which should be the git tag like 'v0.0.46')
       return version === '1.0.0' ? 'v1.0.0-release' : version;
     } catch {
       // Continue to other paths
