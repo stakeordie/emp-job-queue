@@ -21,8 +21,11 @@ export class EventStreamService {
   private monitorWs: WebSocket | null = null;
   private clientWs: WebSocket | null = null;
   private reconnectAttempts = 0;
+  private maxReconnectAttempts = 5;
   private isConnecting = false;
-  private autoConnect = false;  // Must be explicitly enabled for reconnection
+  private autoConnect = true;  // Enable automatic reconnection by default
+  private reconnectDelay = 2000; // Start with 2 second delay
+  private maxReconnectDelay = 30000; // Maximum 30 second delay
   private baseUrl: string = 'http://localhost:3331';
   private monitorId: string = '';
   private subscriptions: SubscriptionTopic[] = [];
@@ -56,8 +59,7 @@ export class EventStreamService {
     }
 
     this.isConnecting = true;
-    this.autoConnect = false; // Never auto-reconnect
-    this.reconnectAttempts = 0;
+    this.autoConnect = true; // Enable auto-reconnect for manual connections
     
     // Generate timestamp-based IDs
     const timestamp = Date.now();
@@ -116,6 +118,21 @@ export class EventStreamService {
       try {
         const data = JSON.parse(event.data);
         
+        // Handle ping/pong messages
+        if (data.type === 'ping') {
+          console.log('[PING-PONG] Received ping from server:', data);
+          // Respond with pong
+          const pongMessage = {
+            type: 'pong',
+            monitor_id: data.monitor_id,
+            timestamp: Date.now(),
+            ping_timestamp: data.timestamp
+          };
+          ws.send(JSON.stringify(pongMessage));
+          console.log('[PING-PONG] Sent pong response:', pongMessage);
+          return;
+        }
+        
         // Debug logging for machine events
         if (data.type && data.type.startsWith('machine_')) {
           console.log('[WebSocket] Machine event received:', data.type, data);
@@ -137,12 +154,17 @@ export class EventStreamService {
       }
     };
 
-    ws.onclose = () => {
-      console.log('[WebSocket] Monitor connection closed');
+    ws.onclose = (event) => {
+      console.log('[WebSocket] Monitor connection closed', { code: event.code, reason: event.reason });
       this.monitorWs = null;
       
-      // Notify UI of disconnection
-      this.onDisconnectCallbacks.forEach(callback => callback());
+      // Attempt reconnection if enabled and not a manual disconnect
+      if (this.autoConnect && event.code !== 1000) { // 1000 = normal closure
+        this.attemptReconnection('monitor');
+      } else {
+        // Notify UI of disconnection only if not reconnecting
+        this.onDisconnectCallbacks.forEach(callback => callback());
+      }
     };
 
     ws.onerror = (error) => {
@@ -162,6 +184,22 @@ export class EventStreamService {
     ws.onmessage = (event) => {
       try {
         const data = JSON.parse(event.data);
+        
+        // Handle ping/pong messages for client connection
+        if (data.type === 'ping') {
+          console.log('[PING-PONG] Received ping from server (client):', data);
+          // Respond with pong
+          const pongMessage = {
+            type: 'pong',
+            client_id: data.client_id,
+            timestamp: Date.now(),
+            ping_timestamp: data.timestamp
+          };
+          ws.send(JSON.stringify(pongMessage));
+          console.log('[PING-PONG] Sent pong response (client):', pongMessage);
+          return;
+        }
+        
         console.log('[WebSocket] Client message received:', data.type);
         
         // Handle client messages (job responses, etc.)
@@ -171,12 +209,17 @@ export class EventStreamService {
       }
     };
 
-    ws.onclose = () => {
-      console.log('[WebSocket] Client connection closed');
+    ws.onclose = (event) => {
+      console.log('[WebSocket] Client connection closed', { code: event.code, reason: event.reason });
       this.clientWs = null;
       
-      // Notify UI of disconnection
-      this.onDisconnectCallbacks.forEach(callback => callback());
+      // Attempt reconnection if enabled and not a manual disconnect
+      if (this.autoConnect && event.code !== 1000) { // 1000 = normal closure
+        this.attemptReconnection('client');
+      } else {
+        // Notify UI of disconnection only if not reconnecting
+        this.onDisconnectCallbacks.forEach(callback => callback());
+      }
     };
 
     ws.onerror = (error) => {
@@ -190,7 +233,9 @@ export class EventStreamService {
         this.clientWs?.readyState === WebSocket.OPEN) {
       
       this.isConnecting = false;
-      this.reconnectAttempts = 0;
+      this.reconnectAttempts = 0; // Reset on successful connection
+      
+      console.log('[WebSocket] Both connections ready - fully connected');
       
       // Notify UI we're fully connected
       this.onConnectCallbacks.forEach(callback => callback());
@@ -219,17 +264,63 @@ export class EventStreamService {
   }
 
   disconnect() {
+    console.log('[WebSocket] Manual disconnect requested');
     this.autoConnect = false; // Disable auto-reconnection
     this.reconnectAttempts = 0; // Reset reconnect attempts
     
     if (this.monitorWs) {
-      this.monitorWs.close();
+      this.monitorWs.close(1000, 'Manual disconnect'); // Normal closure
       this.monitorWs = null;
     }
     if (this.clientWs) {
-      this.clientWs.close();
+      this.clientWs.close(1000, 'Manual disconnect'); // Normal closure
       this.clientWs = null;
     }
+    
+    // Notify UI of disconnection
+    this.onDisconnectCallbacks.forEach(callback => callback());
+  }
+
+  private attemptReconnection(connectionType: 'monitor' | 'client' | 'both' = 'both') {
+    if (!this.autoConnect || this.reconnectAttempts >= this.maxReconnectAttempts) {
+      if (this.reconnectAttempts >= this.maxReconnectAttempts) {
+        console.error('[WebSocket] Max reconnection attempts reached. Manual reconnect required.');
+        this.onConnectionFailedCallbacks.forEach(callback => 
+          callback(`Max reconnection attempts (${this.maxReconnectAttempts}) reached. Please reconnect manually.`)
+        );
+      }
+      return;
+    }
+
+    this.reconnectAttempts++;
+    const delay = Math.min(this.reconnectDelay * Math.pow(2, this.reconnectAttempts - 1), this.maxReconnectDelay);
+    
+    console.log(`[WebSocket] Attempting reconnection ${this.reconnectAttempts}/${this.maxReconnectAttempts} in ${delay}ms (${connectionType})`);
+    
+    setTimeout(() => {
+      if (this.autoConnect) {
+        console.log(`[WebSocket] Executing reconnection attempt ${this.reconnectAttempts}`);
+        
+        // Reset connecting state
+        this.isConnecting = false;
+        
+        // Attempt to reconnect
+        this.connect();
+      }
+    }, delay);
+  }
+
+  // Method to enable/disable auto-reconnection
+  setAutoReconnect(enabled: boolean) {
+    this.autoConnect = enabled;
+    if (!enabled) {
+      this.reconnectAttempts = 0;
+    }
+  }
+
+  // Method to reset reconnection attempts
+  resetReconnectionAttempts() {
+    this.reconnectAttempts = 0;
   }
 
   send(message: BaseMessage): boolean {
@@ -247,6 +338,31 @@ export class EventStreamService {
   isConnected(): boolean {
     return this.monitorWs?.readyState === WebSocket.OPEN && 
            this.clientWs?.readyState === WebSocket.OPEN;
+  }
+
+  getConnectionStatus() {
+    return {
+      connected: this.isConnected(),
+      connecting: this.isConnecting,
+      autoReconnect: this.autoConnect,
+      reconnectAttempts: this.reconnectAttempts,
+      maxReconnectAttempts: this.maxReconnectAttempts,
+      monitorState: this.monitorWs?.readyState ?? 'null',
+      clientState: this.clientWs?.readyState ?? 'null',
+      monitorStateText: this.getReadyStateText(this.monitorWs?.readyState),
+      clientStateText: this.getReadyStateText(this.clientWs?.readyState)
+    };
+  }
+
+  private getReadyStateText(state: number | undefined): string {
+    if (state === undefined) return 'null';
+    switch (state) {
+      case WebSocket.CONNECTING: return 'CONNECTING';
+      case WebSocket.OPEN: return 'OPEN';
+      case WebSocket.CLOSING: return 'CLOSING';
+      case WebSocket.CLOSED: return 'CLOSED';
+      default: return `UNKNOWN(${state})`;
+    }
   }
 
   private sendSubscription() {

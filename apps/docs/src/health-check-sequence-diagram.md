@@ -23,78 +23,78 @@ sequenceDiagram
     participant W as Worker
     participant HM as Health Monitor
     participant CM as Connector Manager
-    participant CC as ComfyUI Connector
-    participant CU as ComfyUI Service
+    participant SC as Service Connector
+    participant SV as External Service
     participant R as Redis
 
     Note over W,R: Normal Job Processing Flow
     W->>R: Request job from Redis
     R->>W: Return job (job_id: abc123)
     W->>CM: Get connector for service_type
-    CM->>W: Return ComfyUI connector
-    W->>CC: Process job (submit to ComfyUI)
-    CC->>CU: POST /prompt (get prompt_id: xyz789)
-    CC->>R: Store service_job_id mapping (abc123 → xyz789)
-    CC->>CU: Connect to WebSocket /ws
-    CU->>CC: WebSocket connected
+    CM->>W: Return Service Connector (ComfyUI/A1111/Simulation)
+    W->>SC: Process job (submit to service)
+    SC->>SV: Submit job (service-specific: ComfyUI prompt, A1111 generate, etc.)
+    SC->>R: Store service_job_id mapping (abc123 → service_id)
+    SC->>SV: Connect for progress updates (WebSocket/polling)
+    SV->>SC: Connection established
     
-    Note over CC,CU: Normal WebSocket Progress Updates
+    Note over SC,SV: Normal Progress Updates (Service-Specific)
     loop Real-time updates
-        CU->>CC: progress: {value: 5, max: 20}
-        CC->>W: Send progress update (25%)
-        CU->>CC: executing: {node_id: "sampler"}
-        CC->>W: Send progress update (50%)
-        CU->>CC: executed: {node_id: "sampler"}
-        CC->>W: Send progress update (100%)
-        CU->>CC: complete_job: {outputs, images, results}
-        CC->>W: Job completed with results
+        SV->>SC: progress update (service-specific format)
+        SC->>W: Send standardized progress update (25%)
+        SV->>SC: processing update
+        SC->>W: Send standardized progress update (50%)
+        SV->>SC: completion signal
+        SC->>W: Send standardized progress update (100%)
+        SV->>SC: complete_job: {results in service format}
+        SC->>W: Job completed with standardized results
         W->>R: Mark job as completed
     end
     
-    alt Normal completion via WebSocket
-        Note over CC,W: ✅ Job completes normally<br/>via WebSocket complete_job message
-    else WebSocket stops updating (race condition)
-        Note over CC,CU: ❌ No WebSocket updates for >30s<br/>complete_job message never received<br/>Job may have completed instantly (cached)<br/>or WebSocket connection lost
+    alt Normal completion
+        Note over SC,W: ✅ Job completes normally<br/>via progress updates and complete_job message
+    else Progress updates stop (race condition)
+        Note over SC,SV: ❌ No progress updates for >30s<br/>complete_job message never received<br/>Job may have completed instantly (cached)<br/>or connection lost
     end
     
     Note over W,R: Health Check Monitoring (Inactivity-Triggered Backup)
     Note over HM: Triggered when WebSocket goes inactive<br/>(no messages received for >30 seconds)
     
-    Note over W,R: WebSocket Inactivity Detected (>30s)
+    Note over W,R: Progress Inactivity Detected (>30s)
     Note over HM: Health check triggered for inactive job
     HM->>CM: Get connector for job service_type
-    CM->>HM: Return ComfyUI connector
-    HM->>CC: healthCheckJob(job_id)
-    CC->>R: Get service_job_id for job
-    R->>CC: Return prompt_id: xyz789
-    CC->>CU: GET /history/xyz789 (check completion)
+    CM->>HM: Return Service Connector (ComfyUI/A1111/Simulation)
+    HM->>SC: healthCheckJob(job_id) - service-specific implementation
+    SC->>R: Get service_job_id for job
+    R->>SC: Return service_id (prompt_id, task_id, etc.)
+    SC->>SV: Check job status (service-specific API)
     
-    alt Job completed in ComfyUI
-        CU->>CC: Return completed history
-        CC->>HM: {action: "complete_job", result: outputs}
+    alt Job completed in Service
+        SV->>SC: Return completed status/results
+        SC->>HM: {action: "complete_job", result: service_outputs}
         HM->>W: Complete job with recovered result
         W->>R: Mark job as completed
-    else Job failed in ComfyUI
-        CU->>CC: Return error status
-        CC->>HM: {action: "fail_job", reason: "service_error"}
+    else Job failed in Service
+        SV->>SC: Return error status
+        SC->>HM: {action: "fail_job", reason: "service_error"}
         HM->>W: Fail job with service error
         W->>R: Mark job as failed
-    else Job still running
-        CU->>CC: Return running status
-        CC->>HM: {action: "continue_monitoring"}
+    else Job still running in Service
+        SV->>SC: Return running/active status
+        SC->>HM: {action: "continue_monitoring"}
         HM->>W: Continue normal monitoring
-    else Job not found in ComfyUI
-        CU->>CC: 404 or empty history
-        CC->>HM: {action: "return_to_queue", reason: "service_job_not_found"}
+    else Job not found in Service
+        SV->>SC: 404 or not found
+        SC->>HM: {action: "return_to_queue", reason: "service_job_not_found"}
         HM->>W: Return job to queue for retry
         W->>R: Return job to pending queue
     end
 
     Note over W,R: Race Condition Prevention
-    Note right of CC: Service job ID mapping enables recovery<br/>even when WebSocket connections fail<br/>or jobs complete instantly
+    Note right of SC: Service job ID mapping enables recovery<br/>across all service types (ComfyUI, A1111, etc.)<br/>even when progress connections fail<br/>or jobs complete instantly
     
     Note over W,R: Key Benefits
-    Note right of HM: - Prevents workers stuck on completed jobs<br/>- Recovers lost job results<br/>- Handles network failures gracefully<br/>- Maintains job queue integrity
+    Note right of HM: - Service-specific health checks (ComfyUI history, A1111 progress, Simulation recovery)<br/>- Prevents workers stuck on completed jobs<br/>- Recovers lost job results across all services<br/>- Handles network failures gracefully<br/>- Maintains job queue integrity
 ```
 
 </FullscreenDiagram>
@@ -108,11 +108,16 @@ sequenceDiagram
 4. **Message Reset**: Any WebSocket message (progress, executing, executed) resets the inactivity timer
 5. **Timer-Based**: Health check runs periodically (every 30s) but only acts on inactive jobs
 
-### Health Check Actions
+### Health Check Actions (Service-Specific)
 - **complete_job**: Job found completed in service, recover results and complete
-- **fail_job**: Job failed in service, mark as failed
+- **fail_job**: Job failed in service, mark as failed  
 - **return_to_queue**: Job not found or submission failed, retry
 - **continue_monitoring**: Job still processing normally
+
+### Service-Specific Health Check Implementations
+- **ComfyUI**: Queries `/history/{prompt_id}` API to check completion status and recover outputs
+- **A1111**: Checks `/sdapi/v1/progress` API and attempts history recovery for completed jobs
+- **Simulation**: Always assumes completion for testing (simulates 1 in 25 jobs missing complete_job message)
 
 ### Service Job ID Mapping
 ```typescript
@@ -128,6 +133,7 @@ await redis.hmset(`job:${jobId}`, {
 ### Configuration
 - `WORKER_HEALTH_CHECK_INTERVAL_MS`: Health check frequency (default: 30000ms)
 - `WORKER_WEBSOCKET_INACTIVITY_TIMEOUT_MS`: WebSocket inactivity threshold (default: 30000ms)
+- `WORKER_SIMULATION_HEALTH_CHECK_FAILURE_RATE`: Simulation failure rate for testing (default: 0.04 = 1 in 25)
 - Health check timeout: 5 seconds per request
 
 ## Architecture Alignment

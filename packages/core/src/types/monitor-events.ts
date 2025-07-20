@@ -154,6 +154,14 @@ export interface JobSubmittedEvent extends BaseMonitorEvent {
   };
 }
 
+export interface JobAcceptedEvent extends BaseMonitorEvent {
+  type: 'job_accepted';
+  job_id: string;
+  worker_id: string;
+  status: string;
+  assigned_at: number;
+}
+
 export interface JobAssignedEvent extends BaseMonitorEvent {
   type: 'job_assigned';
   job_id: string;
@@ -278,6 +286,7 @@ export type MonitorEvent =
   | WorkerStatusChangedEvent
   | ConnectorStatusChangedEvent
   | JobSubmittedEvent
+  | JobAcceptedEvent
   | JobAssignedEvent
   | JobStatusChangedEvent
   | JobProgressEvent

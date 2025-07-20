@@ -12,6 +12,7 @@ export * from './connector-manager.js';
 // Connectors
 export * from './connectors/a1111-connector.js';
 export * from './connectors/comfyui-connector.js';
+export * from './connectors/comfyui-websocket-connector.js';
 export * from './connectors/rest-async-connector.js';
 export * from './connectors/rest-sync-connector.js';
 export * from './connectors/simulation-connector.js';

@@ -23,6 +23,7 @@
     "dev:docs": "turbo run dev --filter=docs",
     "dev:local-redis": "./scripts/dev-local-redis.sh",
     "dev:local-redis:stop": "echo '🛑 Stopping local Redis server...' && brew services stop redis && echo '✅ Local Redis stopped'",
+    "shutdown": "./scripts/shutdown-all.sh",
     "logs": "node scripts/log-viewer.js",
     "logs:all": "node scripts/log-viewer.js all",
     "logs:clear": "node scripts/log-viewer.js clear",

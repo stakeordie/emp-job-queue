@@ -539,4 +539,69 @@ export class A1111Connector extends RestConnector {
     const errorData = responseData as any;
     return errorData.error || 'Unknown A1111 error';
   }
+
+  /**
+   * Health check for stuck A1111 jobs
+   * A1111-specific implementation that checks the progress API and interrupt endpoint
+   */
+  async healthCheckJob(jobId: string): Promise<{ action: string; reason: string; result?: unknown }> {
+    if (!this.redis) {
+      return { action: 'return_to_queue', reason: 'no_redis_connection' };
+    }
+
+    try {
+      logger.info(`A1111 health check for job ${jobId}: checking progress API`);
+      
+      // Check current progress from A1111
+      const progressResponse = await this.makeRequest('GET', '/sdapi/v1/progress');
+      const progressData = await progressResponse.json();
+      
+      // Update last service check
+      await this.redis.hset(`job:${jobId}`, 'last_service_check', new Date().toISOString());
+      
+      // If no progress being reported, job might be stuck or completed
+      if (progressData.progress === 0 && !progressData.active) {
+        logger.info(`A1111 health check: job ${jobId} appears completed (no active progress)`);
+        
+        // Check if there are any recent results we can recover
+        try {
+          const historyResponse = await this.makeRequest('GET', '/sdapi/v1/history');
+          const historyData = await historyResponse.json();
+          
+          // Look for recent results (basic recovery attempt)
+          if (historyData && Array.isArray(historyData) && historyData.length > 0) {
+            const recentResult = historyData[0]; // Most recent result
+            return {
+              action: 'complete_job',
+              reason: 'a1111_found_recent_result',
+              result: {
+                images: recentResult.images || [],
+                info: recentResult.info || {},
+                recovered: true,
+                recovery_method: 'a1111_history_check'
+              }
+            };
+          }
+        } catch (historyError) {
+          logger.warn(`A1111 health check: couldn't check history for job ${jobId}:`, historyError);
+        }
+        
+        // If no results found, return to queue for retry
+        return { action: 'return_to_queue', reason: 'a1111_no_active_progress_no_results' };
+      }
+      
+      // If progress is active, continue monitoring
+      if (progressData.active) {
+        logger.info(`A1111 health check: job ${jobId} still actively processing (${progressData.progress}%)`);
+        return { action: 'continue_monitoring', reason: 'a1111_still_processing' };
+      }
+      
+      // Default case - return to queue
+      return { action: 'return_to_queue', reason: 'a1111_unknown_state' };
+      
+    } catch (error) {
+      logger.error(`A1111 health check failed for job ${jobId}:`, error);
+      return { action: 'return_to_queue', reason: 'a1111_health_check_error' };
+    }
+  }
 }

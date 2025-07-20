@@ -56,7 +56,7 @@ FROM ai-base
 
 # Cache layer 1: Install ComfyUI base (this rarely changes) 
 RUN echo "Installing ComfyUI base..." && \
-    git clone https://github.com/comfyanonymous/ComfyUI.git /workspace/ComfyUI && \
+    git clone -b forward https://github.com/stakeordie/ComfyUI.git /workspace/ComfyUI && \
     cd /workspace/ComfyUI && \
     pip install -r requirements.txt && \
     echo "ComfyUI base installation complete"

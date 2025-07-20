@@ -429,8 +429,28 @@ export abstract class HybridConnector extends BaseConnector {
         const wsUrl = this.hybridConfig.settings.websocket_url;
         const protocol = this.hybridConfig.settings.protocol;
 
-        logger.debug(`Connecting to WebSocket: ${wsUrl}`);
-        this.ws = new WebSocket(wsUrl, protocol);
+        logger.info(`Connecting to WebSocket: ${wsUrl}`);
+        
+        // Create WebSocket options with authentication if needed
+        const wsOptions: any = {};
+        if (protocol) {
+          wsOptions.protocol = protocol;
+        }
+        
+        // Add authentication headers if using basic auth
+        if (this.hybridConfig.auth?.type === 'basic' && this.hybridConfig.auth.username && this.hybridConfig.auth.password) {
+          const credentials = Buffer.from(
+            `${this.hybridConfig.auth.username}:${this.hybridConfig.auth.password}`
+          ).toString('base64');
+          wsOptions.headers = {
+            'Authorization': `Basic ${credentials}`
+          };
+          logger.info(`Adding Basic auth header to WebSocket connection for ${this.connector_id}`);
+        } else {
+          logger.info(`Connecting to WebSocket without auth for ${this.connector_id}`);
+        }
+        
+        this.ws = new WebSocket(wsUrl, wsOptions);
 
         this.ws.on('open', async () => {
           logger.info(`Hybrid connector ${this.connector_id} WebSocket connected to ${wsUrl}`);

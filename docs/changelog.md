@@ -3,6 +3,28 @@
 ## [Unreleased]
 
 ### Added
+- **EmProps Message Compatibility**: Implemented dual WebSocket message format support for EmProps API integration
+  - **EventBroadcaster Enhancement**: Extended to support both monitor and client connections with type-aware message formatting
+  - **EmProps Message Adapter**: Created service to convert internal events to EmProps-compatible format
+  - **Client Connection Management**: Added separate client tracking with job subscriptions and EmProps message format
+  - **Dual Broadcasting**: EventBroadcaster now sends monitor events to monitors and EmProps messages to clients
+  - **WebSocket Debugging**: Added comprehensive debugging endpoints and documentation for WebSocket event flow
+  - **Message Types Supported**: job_accepted, update_job_progress, complete_job with EmProps structure
+  - **Backward Compatibility**: Monitor connections continue receiving original format while clients get EmProps format
+  - **Advances North Star**: Enables integration with existing EmProps infrastructure while maintaining system flexibility
+
+- **ComfyUI WebSocket Connector**: Added dedicated WebSocket-based connector for improved ComfyUI integration
+  - **Real-time Progress Tracking**: Direct WebSocket connection to ComfyUI for immediate progress updates
+  - **Reliable Job Completion**: WebSocket events provide instant notification when jobs complete
+  - **Error Handling**: Comprehensive WebSocket error handling and reconnection logic
+  - **Performance**: Eliminates polling overhead by using event-driven architecture
+  
+- **Enhanced Connector Health Checks**: Added health check methods across all connectors
+  - **A1111 Connector**: Implemented health check to verify service availability and job status
+  - **Simulation Connector**: Added configurable health check responses for testing
+  - **WebSocket Connector**: Health check support for WebSocket-based services
+  - **Unified Interface**: All connectors now support consistent health check API
+
 - **Service Job ID Mapping System**: Implemented comprehensive job tracking for external services (ComfyUI, Ollama, etc.)
   - **Enhanced Job Schema**: Added `service_job_id`, `service_submitted_at`, `last_service_check`, `service_status` fields to track external service job IDs
   - **ComfyUI Connector Enhancement**: Automatically stores ComfyUI prompt_id mapping in Redis immediately after job submission
@@ -47,6 +69,13 @@
   - ConnectionHeader shows simplified UI in production (displays target URL, hides manual controls)
   - Shows "Dev Mode: Auto-connect disabled" message in development when WS URL is available
   - Perfect separation of concerns: developers get control, production gets automation
+
+### Changed
+- **API Server Logging**: Replaced console.log statements with proper logger calls for consistency
+- **TypeScript Types**: Fixed type annotations replacing 'any' with proper types in API server
+- **Code Quality**: Fixed linting issues across API package for better maintainability
+- **Monitor WebSocket Service**: Enhanced with dual status system and broadcast diagram documentation
+- **Redis Job Matching**: Updated findMatchingJob.lua with improved debugging and compatibility
 
 ### Fixed
 - **Critical Job State Race Condition**: Fixed workers getting stuck on jobs that complete instantly or lose WebSocket connection

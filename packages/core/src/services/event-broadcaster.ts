@@ -1,12 +1,14 @@
 /**
  * Event Broadcaster Service
  *
- * Manages real-time event broadcasting to connected monitors.
+ * Manages real-time event broadcasting to connected monitors and clients.
  * Replaces polling-based stats_broadcast with instant event updates.
+ * Supports client-type-aware message formatting for EmProps compatibility.
  */
 
 import WebSocket from 'ws';
 import { Response } from 'express';
+import { logger } from '../utils/logger.js';
 import {
   MonitorEvent,
   SubscriptionTopic,
@@ -25,17 +27,40 @@ import {
   HeartbeatAckEvent,
 } from '../types/monitor-events.js';
 import { JobRequirements, JobStatus } from '../types/job.js';
+// EmProps message types (defined inline to avoid adapter dependency)
+interface EmPropsMessage {
+  type: string;
+  job_id?: string;
+  timestamp: number;
+  [key: string]: any;
+}
 
 // Union type for monitor connections
 type MonitorConnection = WebSocket | Response;
 
+// Client connection interface
+interface ClientConnection {
+  ws: WebSocket;
+  clientId: string;
+  clientType: 'emprops';
+  subscribedJobs: Set<string>;
+}
+
 export class EventBroadcaster {
   private monitors: Map<string, MonitorConnection> = new Map();
   private subscriptions: Map<string, MonitorSubscription> = new Map();
+  private clients: Map<string, ClientConnection> = new Map();
   private eventHistory: MonitorEvent[] = [];
   private maxHistorySize = 1000;
-
+  // DEBUG: Track instance
+  private instanceId = Math.random().toString(36).substring(7);
+  
   constructor() {
+    // DEBUG: Log instance creation
+    logger.debug(`EventBroadcaster instance created: ${this.instanceId}`);
+    
+    // Direct EmProps message creation (no adapter needed)
+    
     // Start heartbeat monitoring
     this.startHeartbeatMonitoring();
   }
@@ -45,31 +70,15 @@ export class EventBroadcaster {
    */
   addMonitor(monitorId: string, connection: MonitorConnection): void {
     // Monitor connected
+    logger.info(`[EventBroadcaster] Adding monitor ${monitorId} - still connected`);
 
     this.monitors.set(monitorId, connection);
+    
+    logger.info(`[EventBroadcaster] Monitor ${monitorId} added successfully. Total monitors: ${this.monitors.size}`);
 
-    // Set up handlers based on connection type
-    if (connection instanceof WebSocket) {
-      // WebSocket handlers
-      connection.on('close', () => {
-        this.removeMonitor(monitorId);
-      });
-
-      connection.on('error', error => {
-        console.error(`[EventBroadcaster] Monitor ${monitorId} error:`, error);
-        this.removeMonitor(monitorId);
-      });
-    } else {
-      // SSE (Response) handlers
-      connection.on('close', () => {
-        this.removeMonitor(monitorId);
-      });
-
-      connection.on('error', error => {
-        console.error(`[EventBroadcaster] SSE Monitor ${monitorId} error:`, error);
-        this.removeMonitor(monitorId);
-      });
-    }
+    // Note: Connection event handlers are managed by the API server
+    // We don't set up duplicate handlers here to avoid conflicts
+    // The API server will call removeMonitor() when connections close
 
     // Initialize subscription with heartbeat tracking
     // Subscribe to all relevant topics by default for monitors
@@ -93,9 +102,85 @@ export class EventBroadcaster {
    * Remove monitor connection
    */
   removeMonitor(monitorId: string): void {
+    logger.info(`[EventBroadcaster] REMOVING monitor ${monitorId} - MONITOR DISCONNECTED!`);
+    logger.info(`[EventBroadcaster] Before removal: ${this.monitors.size} monitors`);
+    
     // Monitor disconnected
     this.monitors.delete(monitorId);
     this.subscriptions.delete(monitorId);
+    
+    logger.info(`[EventBroadcaster] After removal: ${this.monitors.size} monitors remaining`);
+  }
+
+  /**
+   * Register a new client connection
+   */
+  addClient(clientId: string, ws: WebSocket, clientType: 'emprops'): void {
+    logger.debug(`EventBroadcaster.addClient called`, {
+      clientId,
+      clientsBefore: Array.from(this.clients.keys()),
+      wsReadyState: ws.readyState
+    });
+    
+    const connection: ClientConnection = {
+      ws,
+      clientId,
+      clientType,
+      subscribedJobs: new Set(),
+    };
+    
+    this.clients.set(clientId, connection);
+    
+    logger.debug(`Client added to EventBroadcaster`, {
+      clientId,
+      clientsAfter: Array.from(this.clients.keys()),
+      successfullyAdded: this.clients.has(clientId)
+    });
+    
+    // Set up WebSocket handlers
+    ws.on('close', () => {
+      logger.debug(`Client WebSocket closed: ${clientId}`);
+      this.removeClient(clientId);
+    });
+    
+    ws.on('error', error => {
+      logger.error(`EventBroadcaster client error`, { clientId, error });
+      this.removeClient(clientId);
+    });
+  }
+
+  /**
+   * Remove a client connection
+   */
+  removeClient(clientId: string): void {
+    logger.debug(`EventBroadcaster.removeClient called`, {
+      clientId,
+      clientExisted: this.clients.has(clientId)
+    });
+    this.clients.delete(clientId);
+    logger.debug(`Client removed from EventBroadcaster`, {
+      clientsAfter: Array.from(this.clients.keys())
+    });
+  }
+
+  /**
+   * Subscribe client to specific job updates
+   */
+  subscribeClientToJob(clientId: string, jobId: string): void {
+    const client = this.clients.get(clientId);
+    if (client) {
+      client.subscribedJobs.add(jobId);
+    }
+  }
+
+  /**
+   * Unsubscribe client from job updates
+   */
+  unsubscribeClientFromJob(clientId: string, jobId: string): void {
+    const client = this.clients.get(clientId);
+    if (client) {
+      client.subscribedJobs.delete(jobId);
+    }
   }
 
   /**
@@ -131,16 +216,196 @@ export class EventBroadcaster {
     // Store event in history
     this.addToHistory(event);
 
-    // Send to all subscribed monitors
+    logger.debug(`[TRACE 2] EventBroadcaster.broadcast() called`, { 
+      eventType: event.type,
+      eventData: event,
+      instanceId: this.instanceId
+    });
+
+    // Send to all subscribed monitors (original format)
     for (const [monitorId, connection] of this.monitors) {
       if (this.shouldReceiveEvent(monitorId, event)) {
+        logger.debug(`Sending event to monitor`, { monitorId, eventType: event.type });
         this.sendToMonitor(connection, event);
       }
     }
 
+    // Send to relevant clients (with format adaptation for EmProps)
+    logger.debug(`[TRACE 3] Checking clients for event`, { 
+      clientCount: this.clients.size, 
+      eventType: event.type 
+    });
+    this.broadcastToClients(event);
+
     // Debug logging for non-heartbeat events
     if (event.type !== 'heartbeat' && event.type !== 'heartbeat_ack') {
-      // Event broadcasted to monitors
+      // Event broadcasted to monitors and clients
+    }
+  }
+
+  /**
+   * Broadcast event to relevant clients with appropriate formatting
+   */
+  private broadcastToClients(event: MonitorEvent): void {
+    logger.debug(`[TRACE 3] broadcastToClients() - checking ${this.clients.size} clients`);
+    
+    for (const [clientId, client] of this.clients) {
+      logger.debug(`[TRACE 4] Checking if client should receive event`, {
+        clientId,
+        subscribedJobs: Array.from(client.subscribedJobs),
+        eventType: event.type
+      });
+      const shouldReceive = this.shouldClientReceiveEvent(client, event);
+      logger.debug(`Client event filter result`, {
+        clientId,
+        eventType: event.type,
+        shouldReceive
+      });
+      if (shouldReceive) {
+        this.sendToClient(client, event);
+      }
+    }
+  }
+
+  /**
+   * Determine if client should receive this event
+   */
+  private shouldClientReceiveEvent(client: ClientConnection, event: MonitorEvent): boolean {
+    // Job-related events: only send to clients subscribed to that job
+    if (this.isJobEvent(event)) {
+      const jobId = this.getJobIdFromEvent(event);
+      return jobId ? client.subscribedJobs.has(jobId) : false;
+    }
+    
+    // Other events (system-wide): don't send to clients for now
+    // Can be extended later if needed
+    return false;
+  }
+
+  /**
+   * Check if event is job-related
+   */
+  private isJobEvent(event: MonitorEvent): boolean {
+    return [
+      'job_submitted',
+      'job_assigned',
+      'job_status_changed',
+      'update_job_progress',
+      'complete_job',
+      'job_failed',
+    ].includes(event.type);
+  }
+
+  /**
+   * Extract job ID from job-related events
+   */
+  private getJobIdFromEvent(event: MonitorEvent): string | null {
+    if ('job_id' in event) {
+      return event.job_id as string;
+    }
+    return null;
+  }
+
+  /**
+   * Send event to client with EmProps formatting
+   */
+  private sendToClient(client: ClientConnection, event: MonitorEvent): void {
+    logger.debug(`[TRACE 5] sendToClient() called`, {
+      clientId: client.clientId,
+      wsReadyState: client.ws.readyState,
+      wsOpen: WebSocket.OPEN,
+      wsExists: !!client.ws
+    });
+    
+    try {
+      // Create EmProps format message directly
+      const empropsMessage = this.createEmPropsMessage(event);
+      
+      logger.debug(`[TRACE 6] Created EmProps message`, {
+        clientId: client.clientId,
+        originalEventType: event.type,
+        empropsMessage: empropsMessage
+      });
+      
+      if (empropsMessage && client.ws.readyState === WebSocket.OPEN) {
+        const messageString = JSON.stringify(empropsMessage);
+        logger.debug(`[TRACE 7] About to call ws.send()`, {
+          clientId: client.clientId,
+          messagePreview: messageString.substring(0, 200)
+        });
+        client.ws.send(messageString);
+        logger.debug(`[TRACE 8] ws.send() completed successfully`, {
+          clientId: client.clientId
+        });
+      } else {
+        logger.warn(`Cannot send to client - WebSocket not ready`, {
+          clientId: client.clientId,
+          hasEmpropsMessage: !!empropsMessage,
+          wsReadyState: client.ws.readyState
+        });
+      }
+    } catch (error) {
+      logger.error(`[ERROR] Failed to send message to client`, {
+        clientId: client.clientId,
+        error: error instanceof Error ? error.message : String(error),
+        stack: error instanceof Error ? error.stack : undefined
+      });
+    }
+  }
+  
+  /**
+   * Create EmProps format message from monitor event
+   */
+  private createEmPropsMessage(event: MonitorEvent): EmPropsMessage | null {
+    switch (event.type) {
+      case 'job_submitted':
+        // Pass through job_submitted as-is (no translation to job_accepted)
+        return event as EmPropsMessage;
+      
+      case 'update_job_progress':
+        return {
+          type: 'update_job_progress',
+          job_id: event.job_id,
+          progress: event.progress,
+          timestamp: event.timestamp,
+        };
+      
+      case 'complete_job':
+        return {
+          type: 'complete_job',
+          job_id: event.job_id,
+          worker_id: event.worker_id,
+          result: {
+            status: 'success',
+            data: event.result,
+          },
+          timestamp: event.timestamp,
+        };
+      
+      case 'job_failed':
+        return {
+          type: 'complete_job',
+          job_id: event.job_id,
+          worker_id: event.worker_id,
+          result: {
+            status: 'failed',
+            error: event.error,
+          },
+          timestamp: event.timestamp,
+        };
+      
+      case 'job_assigned':
+        return {
+          type: 'job_assigned',
+          job_id: event.job_id,
+          worker_id: event.worker_id,
+          timestamp: event.timestamp,
+        };
+      
+      
+      default:
+        // Event doesn't need EmProps adaptation
+        return null;
     }
   }
 
@@ -582,7 +847,8 @@ export class EventBroadcaster {
       if (connection instanceof WebSocket) {
         // Send via WebSocket
         if (connection.readyState === WebSocket.OPEN) {
-          connection.send(JSON.stringify(event));
+          const eventString = JSON.stringify(event);
+          connection.send(eventString);
         }
       } else {
         // Send via SSE (Response)
@@ -592,7 +858,7 @@ export class EventBroadcaster {
         }
       }
     } catch (error) {
-      console.error('[EventBroadcaster] Error sending event:', error);
+      logger.error('[EventBroadcaster] Error sending event:', error);
     }
   }
 
@@ -615,8 +881,10 @@ export class EventBroadcaster {
 
         if (timeSinceHeartbeat > staleThreshold) {
           // Monitor heartbeat stale, removing
+          logger.info(`[EventBroadcaster] HEARTBEAT TIMEOUT for monitor ${monitorId}. Last heartbeat: ${timeSinceHeartbeat}ms ago (threshold: ${staleThreshold}ms)`);
           this.removeMonitor(monitorId);
         } else {
+          logger.debug(`[EventBroadcaster] Monitor ${monitorId} heartbeat OK - still connected (${timeSinceHeartbeat}ms ago)`);
           // Send heartbeat ack
           const connection = this.monitors.get(monitorId);
           if (connection) {

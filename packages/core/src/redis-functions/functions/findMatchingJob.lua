@@ -391,7 +391,15 @@ redis.register_function('findMatchingJob', function(keys, args)
             'last_status_change', get_iso_timestamp()
           )
           
-          -- Publish assignment event
+          -- FIRST: Publish progress update when job is accepted (EmProps compatible format)
+          redis.call('PUBLISH', 'update_job_progress', cjson.encode({
+            job_id = job_id,
+            worker_id = worker_caps.worker_id,
+            progress = 0,
+            timestamp = tonumber(redis.call('TIME')[1]) * 1000
+          }))
+          
+          -- THEN: Publish assignment event to progress stream
           redis.call('XADD', 'progress:' .. job_id, '*',
             'job_id', job_id,
             'worker_id', worker_caps.worker_id,

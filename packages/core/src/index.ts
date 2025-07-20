@@ -19,3 +19,4 @@ export * from './redis-functions/types.js';
 
 // Services
 export * from './services/event-broadcaster.js';
+export * from './services/emprops-message-adapter.js';

@@ -31,12 +31,16 @@ export class ComfyUIConnector extends HybridConnector {
     const port = parseInt(process.env.WORKER_COMFYUI_PORT || '8188');
     const username = process.env.WORKER_COMFYUI_USERNAME;
     const password = process.env.WORKER_COMFYUI_PASSWORD;
+    
+    // Only use auth for remote connections (not localhost/127.0.0.1)
+    const isRemoteConnection = host !== 'localhost' && host !== '127.0.0.1';
+    const shouldUseAuth = isRemoteConnection && username && password;
 
     const config: Partial<HybridConnectorConfig> = {
       service_type: 'comfyui',
       base_url: `http://${host}:${port}`,
       auth:
-        username && password
+        shouldUseAuth
           ? {
               type: 'basic',
               username,
@@ -58,10 +62,7 @@ export class ComfyUIConnector extends HybridConnector {
         body_format: 'json',
 
         // WebSocket settings
-        websocket_url:
-          username && password
-            ? `ws://${encodeURIComponent(username)}:${encodeURIComponent(password)}@${host}:${port}/ws`
-            : `ws://${host}:${port}/ws`,
+        websocket_url: `ws://${host}:${port}/ws`,
         heartbeat_interval_ms: 30000,
         reconnect_delay_ms: 5000,
         max_reconnect_attempts: 5,

@@ -18,6 +18,7 @@ export class SimulationConnector extends BaseConnector {
   private steps: number;
   private failureRate: number;
   private progressIntervalMs: number;
+  private healthCheckFailureRate: number;
 
   constructor(connectorId: string) {
     // Configuration from environment (matching Python patterns)
@@ -27,6 +28,7 @@ export class SimulationConnector extends BaseConnector {
     const progressIntervalMs = parseInt(
       process.env.WORKER_SIMULATION_PROGRESS_INTERVAL_MS || '200'
     );
+    const healthCheckFailureRate = parseFloat(process.env.WORKER_SIMULATION_HEALTH_CHECK_FAILURE_RATE || '0.04'); // 1 in 25
 
     // Initialize BaseConnector with simulation-specific config
     super(connectorId, {
@@ -50,6 +52,7 @@ export class SimulationConnector extends BaseConnector {
     this.steps = steps;
     this.failureRate = failureRate;
     this.progressIntervalMs = progressIntervalMs;
+    this.healthCheckFailureRate = healthCheckFailureRate;
   }
 
   // BaseConnector implementation methods
@@ -110,8 +113,18 @@ export class SimulationConnector extends BaseConnector {
       // Simulate processing with progress updates
       const stepDuration = this.processingTimeMs / this.steps;
 
+      // Simulate health check failure scenario (1 in 25 jobs don't send complete_job)
+      const shouldSimulateHealthCheckFailure = Math.random() < this.healthCheckFailureRate;
+      
       for (let step = 0; step <= this.steps; step++) {
         const progress = Math.round((step / this.steps) * 100);
+        
+        // Don't send the final progress update if simulating health check failure
+        if (shouldSimulateHealthCheckFailure && step === this.steps) {
+          logger.warn(`Simulation job ${jobData.id}: Simulating missed complete_job message (health check test)`);
+          // Job completes but final progress update is never sent - will trigger health check
+          break;
+        }
 
         await progressCallback({
           job_id: jobData.id,
@@ -194,6 +207,33 @@ export class SimulationConnector extends BaseConnector {
 
   private async sleep(ms: number): Promise<void> {
     return new Promise(resolve => setTimeout(resolve, ms));
+  }
+
+  /**
+   * Health check for stuck simulation jobs
+   * Simulation-specific implementation that always recovers jobs since they complete instantly
+   */
+  async healthCheckJob(jobId: string): Promise<{ action: string; reason: string; result?: unknown }> {
+    logger.info(`Simulation health check for job ${jobId}: assuming completed (simulation always succeeds)`);
+    
+    // For simulation, we always assume the job completed successfully
+    // This simulates the scenario where ComfyUI completed but didn't send complete_job message
+    return {
+      action: 'complete_job',
+      reason: 'simulation_assumed_completed',
+      result: {
+        message: 'Simulation job recovered by health check',
+        steps_completed: this.steps,
+        processing_time_ms: this.processingTimeMs,
+        simulation_id: `sim_recovered_${Date.now()}`,
+        results: {
+          iterations: this.steps,
+          final_value: Math.random() * 100,
+          convergence: true,
+          recovered: true,
+        },
+      },
+    };
   }
 
   // Status reporting is now handled by BaseConnector

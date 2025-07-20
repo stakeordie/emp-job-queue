@@ -178,8 +178,8 @@ export class ConnectorManager implements ConnectorRegistry, ConnectorFactory {
           ConnectorClass = SimulationConnector;
           break;
         case 'comfyui':
-          const { ComfyUIConnector } = await import('./connectors/comfyui-hybrid-connector.js');
-          ConnectorClass = ComfyUIConnector;
+          const { ComfyUIWebSocketConnector } = await import('./connectors/comfyui-websocket-connector.js');
+          ConnectorClass = ComfyUIWebSocketConnector;
           break;
         case 'a1111':
           const { A1111Connector } = await import('./connectors/a1111-connector.js');

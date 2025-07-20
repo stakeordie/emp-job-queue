@@ -393,4 +393,13 @@ export class WebSocketConnector extends BaseConnector {
   getConfiguration(): WebSocketConnectorConfig {
     return { ...this.config } as WebSocketConnectorConfig;
   }
+
+  // Utility method for sending messages
+  protected sendMessage(message: unknown): void {
+    if (this.websocket && this.isConnected) {
+      this.websocket.send(JSON.stringify(message));
+    } else {
+      throw new Error('WebSocket not connected');
+    }
+  }
 }

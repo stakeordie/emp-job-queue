@@ -21,7 +21,6 @@ import {
   JobCompletedEvent,
   JobFailedEvent,
   WorkerStatusChangedEvent,
-  ConnectorStatusChangedEvent,
 } from '@emp/core';
 
 interface LightweightAPIConfig {
@@ -46,6 +45,7 @@ interface MonitorConnection {
 interface ClientConnection {
   ws: WebSocket;
   clientId: string;
+  clientType: 'emprops';
   ipAddress: string;
   userAgent?: string;
   connectedAt: string;
@@ -72,6 +72,16 @@ export class LightweightAPIServer {
   private progressSubscriber: Redis;
   // Track which client submitted which job
   private jobToClientMap = new Map<string, string>();
+  // Monitor ping/pong tracking
+  private monitorData = new Map<
+    string,
+    { isAlive: boolean; missedPongs: number; pingInterval: NodeJS.Timeout }
+  >();
+  // Client ping/pong tracking
+  private clientData = new Map<
+    string,
+    { isAlive: boolean; missedPongs: number; pingInterval: NodeJS.Timeout }
+  >();
 
   constructor(config: LightweightAPIConfig) {
     this.config = config;
@@ -87,6 +97,8 @@ export class LightweightAPIServer {
     // Event broadcaster for real-time updates
     this.eventBroadcaster = new EventBroadcaster();
 
+    // NOTE: EmProps format compatibility now handled directly in EventBroadcaster
+
     this.setupMiddleware();
     this.setupHTTPRoutes();
     this.setupWebSocketHandling();
@@ -97,6 +109,39 @@ export class LightweightAPIServer {
     // Use environment variable for token validation, fallback to hardcoded for dev
     const validToken = process.env.WS_AUTH_TOKEN || '3u8sdj5389fj3kljsf90u';
     return token === validToken;
+  }
+
+  private getWebSocketCloseCodeText(code: number): string {
+    switch (code) {
+      case 1000:
+        return 'Normal Closure';
+      case 1001:
+        return 'Going Away';
+      case 1002:
+        return 'Protocol Error';
+      case 1003:
+        return 'Unsupported Data';
+      case 1004:
+        return 'Reserved';
+      case 1005:
+        return 'No Status Received';
+      case 1006:
+        return 'Abnormal Closure';
+      case 1007:
+        return 'Invalid Frame Payload Data';
+      case 1008:
+        return 'Policy Violation';
+      case 1009:
+        return 'Message Too Big';
+      case 1010:
+        return 'Mandatory Extension';
+      case 1011:
+        return 'Internal Server Error';
+      case 1015:
+        return 'TLS Handshake Failed';
+      default:
+        return 'Unknown';
+    }
   }
 
   private setupMiddleware(): void {
@@ -129,6 +174,60 @@ export class LightweightAPIServer {
     // Health check
     this.app.get('/health', (_req: Request, res: Response) => {
       res.json({ status: 'ok', timestamp: new Date().toISOString() });
+    });
+
+    // DEBUG: Test broadcast endpoint
+    this.app.get('/test-broadcast', (_req: Request, res: Response) => {
+      const testMessage = { type: 'manual_test', timestamp: Date.now() };
+
+      // Test client broadcast
+      logger.info('[TEST] Broadcasting to clients...');
+      const clientResults: Record<string, unknown> = {};
+      (this.eventBroadcaster as any).clients.forEach((client: { ws: WebSocket }, id: string) => {
+        logger.info(`[TEST] Client ${id} - readyState: ${client.ws.readyState}`);
+        try {
+          client.ws.send(JSON.stringify(testMessage));
+          logger.info(`[TEST] Success sending to client ${id}`);
+          clientResults[id] = { sent: true, readyState: client.ws.readyState };
+        } catch (error) {
+          logger.error(`[TEST] Failed sending to client ${id}:`, error);
+          clientResults[id] = {
+            sent: false,
+            error: error instanceof Error ? error.message : String(error),
+            readyState: client.ws.readyState,
+          };
+        }
+      });
+
+      // Test monitor broadcast
+      logger.info('[TEST] Broadcasting to monitors...');
+      const monitorResults: Record<string, unknown> = {};
+      (this.eventBroadcaster as any).monitors.forEach((monitor: WebSocket, id: string) => {
+        logger.info(`[TEST] Monitor ${id}`);
+        if (monitor instanceof WebSocket) {
+          logger.info(`[TEST] Monitor ${id} - readyState: ${monitor.readyState}`);
+          try {
+            monitor.send(JSON.stringify(testMessage));
+            logger.info(`[TEST] Success sending to monitor ${id}`);
+            monitorResults[id] = { sent: true, readyState: monitor.readyState };
+          } catch (error) {
+            logger.error(`[TEST] Failed sending to monitor ${id}:`, error);
+            monitorResults[id] = {
+              sent: false,
+              error: error instanceof Error ? error.message : String(error),
+              readyState: monitor.readyState,
+            };
+          }
+        }
+      });
+
+      res.json({
+        clientCount: (this.eventBroadcaster as any).clients.size,
+        monitorCount: (this.eventBroadcaster as any).monitors.size,
+        eventBroadcasterInstance: (this.eventBroadcaster as any).instanceId,
+        clients: clientResults,
+        monitors: monitorResults,
+      });
     });
 
     // Connections endpoint - show all connected clients
@@ -346,27 +445,96 @@ export class LightweightAPIServer {
 
     this.monitorConnections.set(monitorId, connection);
 
+    // CRITICAL FIX: Add monitor to EventBroadcaster
+    logger.info(`[API] About to add monitor ${monitorId} to EventBroadcaster - still connected`);
+    this.eventBroadcaster.addMonitor(monitorId, ws);
+    logger.info(`[API] Monitor ${monitorId} added to EventBroadcaster successfully`);
+
     logger.info(`Monitor ${monitorId} connected`);
     logger.debug(`📊 Total monitors connected: ${this.monitorConnections.size}`);
 
-    // Set up ping/pong for connection health
-    let isAlive = true;
-    ws.on('pong', () => {
-      isAlive = true;
-    });
+    // DEBUG: Test basic WebSocket communication for monitors
+    setTimeout(() => {
+      try {
+        ws.send(
+          JSON.stringify({
+            type: 'debug_monitor_test',
+            message: 'Monitor WebSocket test',
+            monitorId: monitorId,
+            readyState: ws.readyState,
+            timestamp: Date.now(),
+          })
+        );
+        logger.info(
+          `[DEBUG] Sent test message to monitor ${monitorId}, ws.readyState: ${ws.readyState}`
+        );
+      } catch (error) {
+        logger.error(`[DEBUG] Failed to send test message to monitor ${monitorId}:`, error);
+      }
+    }, 1000);
+
+    // Set up ping/pong for connection health with visible JSON messages
+    interface MonitorData {
+      isAlive: boolean;
+      missedPongs: number;
+      pingInterval: NodeJS.Timeout;
+    }
+
+    if (!this.monitorData) {
+      this.monitorData = new Map<string, MonitorData>();
+    }
+
+    const maxMissedPongs = 3; // Allow 3 missed pongs before disconnecting
 
     const pingInterval = setInterval(() => {
-      if (!isAlive) {
-        // Connection is dead, clean up
-        clearInterval(pingInterval);
-        ws.terminate();
-        this.monitorConnections.delete(monitorId);
-        logger.info(`Monitor ${monitorId} disconnected (ping timeout)`);
-        return;
+      const data = this.monitorData.get(monitorId);
+      if (!data) return;
+
+      if (!data.isAlive) {
+        data.missedPongs++;
+        logger.warn(`Monitor ${monitorId} missed pong ${data.missedPongs}/${maxMissedPongs}`);
+
+        if (data.missedPongs >= maxMissedPongs) {
+          // Connection is dead, clean up
+          clearInterval(pingInterval);
+          this.monitorData.delete(monitorId);
+          logger.info(
+            `Monitor ${monitorId} disconnected (ping timeout after ${maxMissedPongs} missed pongs)`
+          );
+          ws.terminate();
+          this.monitorConnections.delete(monitorId);
+          logger.info(`[API] PING TIMEOUT - Calling EventBroadcaster.removeMonitor(${monitorId})`);
+          this.eventBroadcaster.removeMonitor(monitorId);
+          return;
+        }
       }
-      isAlive = false;
-      ws.ping();
-    }, 30000); // Ping every 30 seconds
+
+      // Only ping if WebSocket is still open
+      if (ws.readyState === WebSocket.OPEN) {
+        data.isAlive = false;
+
+        // Send visible ping message instead of protocol ping
+        const pingMessage = {
+          type: 'ping',
+          monitor_id: monitorId,
+          timestamp: Date.now(),
+        };
+        ws.send(JSON.stringify(pingMessage));
+
+        logger.info(`[PING-PONG] Monitor ${monitorId} visible ping sent 🏓`);
+      } else {
+        clearInterval(pingInterval);
+        this.monitorData.delete(monitorId);
+        logger.info(`[PING-PONG] Monitor ${monitorId} WebSocket not open, stopping ping`);
+      }
+    }, 5000); // Ping every 5 seconds for immediate testing
+
+    // Store monitor data for ping/pong tracking
+    this.monitorData.set(monitorId, {
+      isAlive: true,
+      missedPongs: 0,
+      pingInterval,
+    });
 
     ws.on('message', async (data: Buffer) => {
       try {
@@ -384,17 +552,48 @@ export class LightweightAPIServer {
       }
     });
 
-    ws.on('close', () => {
-      clearInterval(pingInterval);
+    ws.on('close', (code, reason) => {
+      // Clean up ping interval and monitor data
+      const data = this.monitorData.get(monitorId);
+      if (data) {
+        clearInterval(data.pingInterval);
+        this.monitorData.delete(monitorId);
+      }
       this.monitorConnections.delete(monitorId);
-      logger.info(`Monitor ${monitorId} disconnected`);
+      logger.info(
+        `[API] WEBSOCKET CLOSE - Calling EventBroadcaster.removeMonitor(${monitorId}) - Code: ${code}, Reason: ${reason ? reason.toString() : 'none'}`
+      );
+      this.eventBroadcaster.removeMonitor(monitorId);
+
+      const reasonText = reason ? reason.toString() : 'No reason provided';
+      const codeText = this.getWebSocketCloseCodeText(code);
+
+      logger.info(
+        `Monitor ${monitorId} disconnected - Code: ${code} (${codeText}), Reason: ${reasonText}`
+      );
       logger.debug(`📊 Total monitors remaining: ${this.monitorConnections.size}`);
+      logger.debug(
+        `📊 EventBroadcaster monitors remaining: ${this.eventBroadcaster.getMonitorCount()}`
+      );
     });
 
     ws.on('error', error => {
       logger.error(`Monitor WebSocket error for ${monitorId}:`, error);
-      clearInterval(pingInterval);
+      logger.error(`Monitor WebSocket error details:`, {
+        error: error.message,
+        stack: error.stack,
+      });
+      // Clean up ping interval and monitor data
+      const data = this.monitorData.get(monitorId);
+      if (data) {
+        clearInterval(data.pingInterval);
+        this.monitorData.delete(monitorId);
+      }
       this.monitorConnections.delete(monitorId);
+      logger.info(
+        `[API] WEBSOCKET ERROR - Calling EventBroadcaster.removeMonitor(${monitorId}) - Error: ${error.message}`
+      );
+      this.eventBroadcaster.removeMonitor(monitorId);
     });
   }
 
@@ -408,6 +607,9 @@ export class LightweightAPIServer {
     // Parse query parameters for authentication
     const urlParams = new URLSearchParams(url.split('?')[1]);
     const token = urlParams.get('token');
+
+    // All client connections use EmProps format
+    const clientType = 'emprops' as const;
 
     // Validate token if provided
     if (token && !this.isValidToken(token)) {
@@ -436,6 +638,7 @@ export class LightweightAPIServer {
     const connection: ClientConnection = {
       ws,
       clientId,
+      clientType,
       ipAddress: getClientIP(req),
       userAgent: (req as { headers?: { [key: string]: string | string[] | undefined } }).headers?.[
         'user-agent'
@@ -444,16 +647,87 @@ export class LightweightAPIServer {
     };
 
     this.clientConnections.set(clientId, connection);
-    logger.info(`Client ${clientId} connected`);
+    logger.info(`Client ${clientId} connected (type: ${clientType})`);
 
-    // Send welcome message
-    ws.send(
-      JSON.stringify({
-        type: 'connected',
-        client_id: clientId,
-        timestamp: new Date().toISOString(),
-      })
-    );
+    // Register client with EventBroadcaster for real-time events
+    this.eventBroadcaster.addClient(clientId, ws, clientType);
+
+    // Send EmProps-compatible connection_established message to all clients
+    const empropsMessage = {
+      type: 'connection_established',
+      message: 'Connected to server',
+      timestamp: Date.now(),
+    };
+    ws.send(JSON.stringify(empropsMessage));
+    logger.debug(`Sent EmProps connection_established message to ${clientId}`);
+
+    // DEBUG: Test basic WebSocket communication
+    setTimeout(() => {
+      try {
+        ws.send(
+          JSON.stringify({
+            type: 'debug_client_test',
+            message: 'If you see this, WebSocket works',
+            clientId: clientId,
+            readyState: ws.readyState,
+            timestamp: Date.now(),
+          })
+        );
+        logger.info(
+          `[DEBUG] Sent test message to client ${clientId}, ws.readyState: ${ws.readyState}`
+        );
+      } catch (error) {
+        logger.error(`[DEBUG] Failed to send test message to client ${clientId}:`, error);
+      }
+    }, 1000);
+
+    // Set up ping/pong for client connection health with visible JSON messages
+    const clientPingInterval = setInterval(() => {
+      const data = this.clientData.get(clientId);
+      if (!data) return;
+
+      if (!data.isAlive) {
+        data.missedPongs++;
+        logger.warn(`Client ${clientId} missed pong ${data.missedPongs}/${3}`);
+
+        if (data.missedPongs >= 3) {
+          // Connection is dead, clean up
+          clearInterval(clientPingInterval);
+          this.clientData.delete(clientId);
+          logger.info(`Client ${clientId} disconnected (ping timeout after 3 missed pongs)`);
+          ws.terminate();
+          this.clientConnections.delete(clientId);
+          this.eventBroadcaster.removeClient(clientId);
+          return;
+        }
+      }
+
+      // Only ping if WebSocket is still open
+      if (ws.readyState === WebSocket.OPEN) {
+        data.isAlive = false;
+
+        // Send visible ping message instead of protocol ping
+        const pingMessage = {
+          type: 'ping',
+          client_id: clientId,
+          timestamp: Date.now(),
+        };
+        ws.send(JSON.stringify(pingMessage));
+
+        logger.info(`[PING-PONG] Client ${clientId} visible ping sent 🏓`);
+      } else {
+        clearInterval(clientPingInterval);
+        this.clientData.delete(clientId);
+        logger.info(`[PING-PONG] Client ${clientId} WebSocket not open, stopping ping`);
+      }
+    }, 5000); // Ping every 5 seconds for immediate testing
+
+    // Store client data for ping/pong tracking
+    this.clientData.set(clientId, {
+      isAlive: true,
+      missedPongs: 0,
+      pingInterval: clientPingInterval,
+    });
 
     ws.on('message', async (data: Buffer) => {
       try {
@@ -472,13 +746,27 @@ export class LightweightAPIServer {
     });
 
     ws.on('close', () => {
+      // Clean up ping interval and client data
+      const data = this.clientData.get(clientId);
+      if (data) {
+        clearInterval(data.pingInterval);
+        this.clientData.delete(clientId);
+      }
       this.clientConnections.delete(clientId);
+      this.eventBroadcaster.removeClient(clientId);
       logger.info(`Client ${clientId} disconnected`);
     });
 
     ws.on('error', error => {
       logger.error(`Client WebSocket error for ${clientId}:`, error);
+      // Clean up ping interval and client data
+      const data = this.clientData.get(clientId);
+      if (data) {
+        clearInterval(data.pingInterval);
+        this.clientData.delete(clientId);
+      }
       this.clientConnections.delete(clientId);
+      this.eventBroadcaster.removeClient(clientId);
     });
   }
 
@@ -538,7 +826,9 @@ export class LightweightAPIServer {
     switch (message.type) {
       case 'submit_job':
         try {
-          const jobId = await this.submitJob(message.data as Record<string, unknown>);
+          // Extract message_id if provided for job ID consistency
+          const messageId = message.message_id as string | undefined;
+          const jobId = await this.submitJob(message.data as Record<string, unknown>, messageId);
           ws.send(
             JSON.stringify({
               type: 'job_submitted',
@@ -640,6 +930,18 @@ export class LightweightAPIServer {
         }
         break;
 
+      case 'pong':
+        // Handle pong response from client
+        logger.info(`[PING-PONG] Received pong from client ${clientId}:`, message);
+        // Reset missed pongs counter for this client
+        if (this.clientData.has(clientId)) {
+          const data = this.clientData.get(clientId)!;
+          data.missedPongs = 0;
+          data.isAlive = true;
+          this.clientData.set(clientId, data);
+        }
+        break;
+
       default:
         ws.send(
           JSON.stringify({
@@ -735,6 +1037,19 @@ export class LightweightAPIServer {
         );
         break;
 
+      case 'pong':
+        // Handle pong response from monitor
+        // Reset missed pongs counter for this monitor
+        if (this.monitorData.has(monitorId)) {
+          const data = this.monitorData.get(monitorId)!;
+          data.missedPongs = 0;
+          data.isAlive = true;
+          this.monitorData.set(monitorId, data);
+        }
+        // Update EventBroadcaster heartbeat to prevent timeout removal
+        this.eventBroadcaster.updateHeartbeat(monitorId);
+        break;
+
       default:
         ws.send(
           JSON.stringify({
@@ -758,18 +1073,19 @@ export class LightweightAPIServer {
           logger.info(`Received submit_job message:`, JSON.stringify(message, null, 2));
           const jobData = message as Record<string, unknown>;
           logger.info(`Job data: ${JSON.stringify(jobData, null, 2)}`);
-          const jobId = await this.submitJob(jobData);
+          // Extract message_id if provided for job ID consistency (EmProps compatibility)
+          const messageId = message.message_id as string | undefined;
+          const jobId = await this.submitJob(jobData, messageId);
 
           // Track that this client submitted this job
           this.jobToClientMap.set(jobId, clientId);
 
-          ws.send(
-            JSON.stringify({
-              type: 'job_submitted',
-              job_id: jobId,
-              message_id: message.id,
-              timestamp: new Date().toISOString(),
-            })
+          // Subscribe client to this job's updates via EventBroadcaster
+          this.eventBroadcaster.subscribeClientToJob(clientId, jobId);
+
+          // EmProps clients get updates via EventBroadcaster (no direct response needed)
+          logger.debug(
+            `Client ${clientId} will receive updates via EventBroadcaster for job ${jobId}`
           );
 
           // Note: Job submission event will be broadcasted from submitJob method with proper JobSubmittedEvent format
@@ -826,6 +1142,18 @@ export class LightweightAPIServer {
               timestamp: new Date().toISOString(),
             })
           );
+        }
+        break;
+
+      case 'pong':
+        // Handle pong response from client
+        logger.info(`[PING-PONG] Received pong from client ${clientId}:`, message);
+        // Reset missed pongs counter for this client
+        if (this.clientData.has(clientId)) {
+          const data = this.clientData.get(clientId)!;
+          data.missedPongs = 0;
+          data.isAlive = true;
+          this.clientData.set(clientId, data);
         }
         break;
 
@@ -1394,44 +1722,8 @@ export class LightweightAPIServer {
     }
   }
 
-  private broadcastToMonitors(
-    event:
-      | JobSubmittedEvent
-      | JobAssignedEvent
-      | JobStatusChangedEvent
-      | JobProgressEvent
-      | JobCompletedEvent
-      | JobFailedEvent
-      | WorkerStatusChangedEvent
-      | ConnectorStatusChangedEvent
-  ): void {
-    // Use the unified WebSocket broadcast method
-    this.broadcastToWebSocketMonitors(event);
-  }
-
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  private broadcastToWebSocketMonitors(event: any): void {
-    const eventJson = JSON.stringify(event);
-    logger.info(
-      `📡 Broadcasting ${event.type} to ${this.monitorConnections.size} WebSocket monitors`
-    );
-
-    // Broadcast to WebSocket monitors
-    for (const [monitorId, connection] of this.monitorConnections) {
-      if (connection.ws.readyState === WebSocket.OPEN) {
-        // Check if monitor is subscribed to this event type
-        const eventType = event.type as string;
-        const isSubscribed = this.isMonitorSubscribedToEvent(connection, eventType);
-
-        if (isSubscribed) {
-          connection.ws.send(eventJson);
-          logger.debug(`📡 Sent ${event.type} to WebSocket monitor ${monitorId}`);
-        } else {
-          logger.debug(`📡 WebSocket Monitor ${monitorId} not subscribed to ${event.type}`);
-        }
-      }
-    }
-  }
+  // NOTE: Direct broadcast methods removed - all events now go through EventBroadcaster
+  // for unified monitoring and client handling with proper job subscription filtering
 
   private extractMachineIdFromWorkerId(workerId: string): string {
     // For new worker naming: "basic-machine-local-worker-0"
@@ -1506,7 +1798,7 @@ export class LightweightAPIServer {
         this.eventBroadcaster.broadcastMachineStartup(machineId, 'starting', hostInfo);
 
         // Also broadcast to WebSocket monitors
-        this.broadcastToWebSocketMonitors({
+        this.eventBroadcaster.broadcast({
           type: 'machine_startup',
           machine_id: machineId,
           phase: 'starting',
@@ -1601,7 +1893,7 @@ export class LightweightAPIServer {
         );
 
         // Also broadcast to WebSocket monitors
-        this.broadcastToWebSocketMonitors({
+        this.eventBroadcaster.broadcast({
           type: 'machine_shutdown',
           machine_id: machineId,
           reason: eventData.reason || 'Machine shutdown',
@@ -1676,7 +1968,7 @@ export class LightweightAPIServer {
       if (updateType === 'initial' || updateType === 'periodic') {
         // Broadcast machine update for periodic refreshes
         // Broadcast to WebSocket monitors
-        this.broadcastToWebSocketMonitors({
+        this.eventBroadcaster.broadcast({
           type: 'machine_update',
           machine_id: machineId,
           status_data: statusData,
@@ -1685,7 +1977,7 @@ export class LightweightAPIServer {
       } else if (updateType === 'event_driven') {
         // Broadcast specific status changes for immediate updates
         // Broadcast to WebSocket monitors
-        this.broadcastToWebSocketMonitors({
+        this.eventBroadcaster.broadcast({
           type: 'machine_status_change',
           machine_id: machineId,
           status_data: statusData,
@@ -1840,9 +2132,18 @@ export class LightweightAPIServer {
           logger.info(
             `📊 Received real-time progress: job ${progressData.job_id}: ${progressData.progress}% (status: ${progressData.status})`
           );
+          logger.info(
+            `[JOB PROGRESS] Received progress update - Monitor still connected: ${this.eventBroadcaster.getMonitorCount()} monitors`
+          );
 
           // Broadcast the progress update immediately
+          logger.info(
+            `[JOB PROGRESS] About to broadcast progress - Monitor still connected: ${this.eventBroadcaster.getMonitorCount()} monitors`
+          );
           await this.broadcastProgress(progressData.job_id, progressData);
+          logger.info(
+            `[JOB PROGRESS] After broadcasting progress - Monitor still connected: ${this.eventBroadcaster.getMonitorCount()} monitors`
+          );
         } catch (error) {
           logger.error('Error processing progress message:', error);
         }
@@ -1851,6 +2152,9 @@ export class LightweightAPIServer {
           const statusData = JSON.parse(message);
           logger.info(
             `👷 Received real-time worker status: ${statusData.worker_id}: ${statusData.new_status} (job: ${statusData.current_job_id || 'none'})`
+          );
+          logger.info(
+            `[JOB CLAIMED] Worker status change - Monitor still connected: ${this.eventBroadcaster.getMonitorCount()} monitors`
           );
 
           // Create and broadcast worker status event
@@ -1862,10 +2166,16 @@ export class LightweightAPIServer {
             current_job_id: statusData.current_job_id,
             timestamp: statusData.timestamp,
           };
-          this.broadcastToMonitors(workerStatusEvent);
+          logger.info(
+            `[JOB CLAIMED] About to broadcast worker status - Monitor still connected: ${this.eventBroadcaster.getMonitorCount()} monitors`
+          );
+          this.eventBroadcaster.broadcast(workerStatusEvent);
 
           logger.info(
             `📢 Broadcasted worker status change: ${statusData.worker_id} -> ${statusData.new_status}`
+          );
+          logger.info(
+            `[JOB CLAIMED] After broadcasting worker status - Monitor still connected: ${this.eventBroadcaster.getMonitorCount()} monitors`
           );
         } catch (error) {
           logger.error('Error processing worker status message:', error);
@@ -1876,13 +2186,22 @@ export class LightweightAPIServer {
           logger.info(
             `🎉 Received job completion: job ${completionData.job_id} completed by worker ${completionData.worker_id}`
           );
+          logger.info(
+            `[JOB COMPLETE] Received completion - Monitor still connected: ${this.eventBroadcaster.getMonitorCount()} monitors`
+          );
 
           // Add a small delay before broadcasting completion to ensure any pending progress updates are processed first
           // This prevents the race condition where completion events arrive before final progress updates
           setTimeout(async () => {
+            logger.info(
+              `[JOB COMPLETE] About to broadcast completion - Monitor still connected: ${this.eventBroadcaster.getMonitorCount()} monitors`
+            );
             await this.broadcastCompletion(completionData.job_id, completionData);
             logger.info(
               `📢 Broadcasted job completion event to clients and monitors: ${completionData.job_id}`
+            );
+            logger.info(
+              `[JOB COMPLETE] After broadcasting completion - Monitor still connected: ${this.eventBroadcaster.getMonitorCount()} monitors`
             );
           }, 100); // 100ms delay to allow pending progress updates to be processed
         } catch (error) {
@@ -1937,7 +2256,7 @@ export class LightweightAPIServer {
           this.eventBroadcaster.broadcastMachineDisconnected(machineId, 'Status timeout (30s)');
 
           // Also broadcast to WebSocket monitors
-          this.broadcastToWebSocketMonitors({
+          this.eventBroadcaster.broadcast({
             type: 'machine_disconnected',
             machine_id: machineId,
             reason: 'Status timeout (30s)',
@@ -1974,7 +2293,7 @@ export class LightweightAPIServer {
           assigned_at: Date.now(),
           timestamp: Date.now(),
         };
-        this.broadcastToMonitors(jobAssignedEvent);
+        this.eventBroadcaster.broadcast(jobAssignedEvent);
       } else if (status === JobStatus.IN_PROGRESS) {
         const jobStatusEvent: JobStatusChangedEvent = {
           type: 'job_status_changed',
@@ -1984,7 +2303,7 @@ export class LightweightAPIServer {
           worker_id: workerId,
           timestamp: Date.now(),
         };
-        this.broadcastToMonitors(jobStatusEvent);
+        this.eventBroadcaster.broadcast(jobStatusEvent);
       } else if (status === JobStatus.COMPLETED) {
         const jobCompletedEvent: JobCompletedEvent = {
           type: 'complete_job',
@@ -1994,7 +2313,7 @@ export class LightweightAPIServer {
           completed_at: Date.now(),
           timestamp: Date.now(),
         };
-        this.broadcastToMonitors(jobCompletedEvent);
+        this.eventBroadcaster.broadcast(jobCompletedEvent);
       } else if (status === JobStatus.FAILED) {
         const jobFailedEvent: JobFailedEvent = {
           type: 'job_failed',
@@ -2004,7 +2323,7 @@ export class LightweightAPIServer {
           failed_at: Date.now(),
           timestamp: Date.now(),
         };
-        this.broadcastToMonitors(jobFailedEvent);
+        this.eventBroadcaster.broadcast(jobFailedEvent);
       }
 
       logger.debug(`Broadcasted job status change: ${jobId} -> ${status}`);
@@ -2038,7 +2357,7 @@ export class LightweightAPIServer {
         current_job_id: workerData.current_job_id,
         timestamp: Date.now(),
       };
-      this.broadcastToMonitors(workerStatusEvent);
+      this.eventBroadcaster.broadcast(workerStatusEvent);
 
       logger.info(`📢 Broadcasted worker status change: ${workerId} ${oldStatus} -> ${newStatus}`);
     } catch (error) {
@@ -2061,9 +2380,12 @@ export class LightweightAPIServer {
       };
 
       // Broadcast to monitors
-      this.broadcastToMonitors(jobProgressEvent);
+      this.eventBroadcaster.broadcast(jobProgressEvent);
 
-      // Broadcast to WebSocket connections (clients)
+      // Broadcast to clients via EventBroadcaster (with EmProps format adaptation)
+      this.eventBroadcaster.broadcast(jobProgressEvent);
+
+      // Legacy: Also broadcast to WebSocket connections directly (for backward compatibility)
       for (const [_clientId, connection] of this.wsConnections) {
         if (connection.subscribedJobs.has(jobId)) {
           try {
@@ -2110,7 +2432,7 @@ export class LightweightAPIServer {
         assigned_at: Date.now(),
         timestamp: Date.now(),
       };
-      this.broadcastToMonitors(jobAssignedEvent);
+      this.eventBroadcaster.broadcast(jobAssignedEvent);
       this.broadcastJobEventToClient(jobId, jobAssignedEvent);
     } else if (status === 'processing') {
       // Broadcast job processing start
@@ -2122,7 +2444,7 @@ export class LightweightAPIServer {
         worker_id: progressData.worker_id || 'unknown',
         timestamp: Date.now(),
       };
-      this.broadcastToMonitors(jobStatusEvent);
+      this.eventBroadcaster.broadcast(jobStatusEvent);
       this.broadcastJobEventToClient(jobId, jobStatusEvent);
     } else if (status === 'completed') {
       // Broadcast job completion
@@ -2134,7 +2456,7 @@ export class LightweightAPIServer {
         completed_at: Date.now(),
         timestamp: Date.now(),
       };
-      this.broadcastToMonitors(jobCompletedEvent);
+      this.eventBroadcaster.broadcast(jobCompletedEvent);
       this.broadcastJobEventToClient(jobId, jobCompletedEvent);
 
       // Clean up job-to-client mapping for completed jobs
@@ -2149,7 +2471,8 @@ export class LightweightAPIServer {
         failed_at: Date.now(),
         timestamp: Date.now(),
       };
-      this.broadcastToMonitors(jobFailedEvent);
+      this.eventBroadcaster.broadcast(jobFailedEvent);
+
       this.broadcastJobEventToClient(jobId, jobFailedEvent);
 
       // Clean up job-to-client mapping for failed jobs
@@ -2171,7 +2494,7 @@ export class LightweightAPIServer {
       timestamp: completionData.timestamp,
     };
 
-    // Broadcast to monitors as JobCompletedEvent
+    // Create completion event for monitors (original format)
     const jobCompletedEvent: JobCompletedEvent = {
       type: 'complete_job',
       job_id: jobId,
@@ -2180,9 +2503,12 @@ export class LightweightAPIServer {
       completed_at: completionData.timestamp as number,
       timestamp: completionData.timestamp as number,
     };
-    this.broadcastToMonitors(jobCompletedEvent);
 
-    // Broadcast to WebSocket connections (clients subscribed to this job)
+    // Broadcast to both monitors and clients via EventBroadcaster
+    // EventBroadcaster will automatically format for each connection type
+    this.eventBroadcaster.broadcast(jobCompletedEvent);
+
+    // Legacy: Also broadcast to WebSocket connections directly (for backward compatibility)
     for (const [_clientId, connection] of this.wsConnections) {
       if (connection.subscribedJobs.has(jobId)) {
         try {
@@ -2218,10 +2544,22 @@ export class LightweightAPIServer {
     }
   }
 
-  private async submitJob(jobData: Record<string, unknown>): Promise<string> {
+  private async submitJob(
+    jobData: Record<string, unknown>,
+    providedJobId?: string
+  ): Promise<string> {
     // Submit job directly to Redis (no hub orchestration)
+    // Use provided job ID (for EmProps compatibility) or generate new one
 
-    const jobId = uuidv4();
+    const jobId = providedJobId || uuidv4();
+    if (providedJobId) {
+      logger.info(`[JOB SUBMIT START] Using provided job ID: ${jobId} (EmProps compatibility)`);
+    } else {
+      logger.info(`[JOB SUBMIT START] Generated new job ID: ${jobId}`);
+    }
+    logger.info(
+      `[JOB SUBMIT START] Job ${jobId} - Monitor still connected: ${this.eventBroadcaster.getMonitorCount()} monitors`
+    );
     const now = new Date().toISOString();
 
     const job: Job = {
@@ -2248,6 +2586,9 @@ export class LightweightAPIServer {
     logger.info(`Job:`, JSON.stringify(job, null, 2));
 
     // Store job in Redis
+    logger.info(
+      `[JOB SUBMIT] Storing job ${jobId} in Redis - Monitor still connected: ${this.eventBroadcaster.getMonitorCount()} monitors`
+    );
     await this.redis.hmset(`job:${jobId}`, {
       id: job.id,
       service_required: job.service_required,
@@ -2287,8 +2628,11 @@ export class LightweightAPIServer {
     );
 
     await this.redis.zadd('jobs:pending', score, jobId);
+    logger.info(
+      `[JOB SUBMIT] Job ${jobId} added to pending queue - Monitor still connected: ${this.eventBroadcaster.getMonitorCount()} monitors`
+    );
 
-    // Broadcast job_submitted event to monitors
+    // Create job_submitted event for monitors (original format)
     const jobSubmittedEvent: JobSubmittedEvent = {
       type: 'job_submitted',
       job_id: jobId,
@@ -2308,7 +2652,15 @@ export class LightweightAPIServer {
       },
       timestamp: Date.now(),
     };
-    this.broadcastToMonitors(jobSubmittedEvent);
+
+    logger.debug('[TRACE 1] Job submitted, about to broadcast', {
+      jobId,
+      eventBroadcasterInstance: (this.eventBroadcaster as any).instanceId,
+    });
+
+    // Broadcast job_submitted to both monitors and clients via EventBroadcaster
+    this.eventBroadcaster.broadcast(jobSubmittedEvent);
+
     logger.info(`📢 [DEBUG] Broadcasted job_submitted event for ${jobId}`);
 
     logger.info(`Job ${jobId} submitted via lightweight API (${job.service_required})`);
@@ -2408,7 +2760,7 @@ export class LightweightAPIServer {
         failed_at: Date.now(),
         timestamp: Date.now(),
       };
-      this.broadcastToMonitors(jobFailedEvent);
+      this.eventBroadcaster.broadcast(jobFailedEvent);
 
       logger.info(`Job ${jobId} cancelled successfully (was ${currentStatus})`);
     } catch (error) {
@@ -2814,7 +3166,7 @@ export class LightweightAPIServer {
       this.eventBroadcaster.broadcastMachineShutdown(machineId, 'Machine deleted by user request');
 
       // Also broadcast to WebSocket monitors
-      this.broadcastToWebSocketMonitors({
+      this.eventBroadcaster.broadcast({
         type: 'machine_shutdown',
         machine_id: machineId,
         reason: 'Machine deleted by user request',
@@ -2886,7 +3238,7 @@ export class LightweightAPIServer {
       this.eventBroadcaster.broadcastWorkerDisconnected(workerId, workerId);
 
       // Also broadcast to WebSocket monitors
-      this.broadcastToWebSocketMonitors({
+      this.eventBroadcaster.broadcast({
         type: 'worker_disconnected',
         worker_id: workerId,
         machine_id: workerId,
