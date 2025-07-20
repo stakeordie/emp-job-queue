@@ -1,7 +1,7 @@
 {
   "name": "@emp/custom-nodes",
   "version": "1.0.0",
-  "description": "EmProps custom ComfyUI nodes",
+  "description": "EmProps AI Backend custom ComfyUI nodes",
   "type": "module",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",

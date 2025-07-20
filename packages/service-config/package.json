@@ -1,7 +1,7 @@
 {
   "name": "@emp/service-config",
   "version": "1.0.0",
-  "description": "EmProps service configuration and ComfyUI node management",
+  "description": "EmProps AI Backend service configuration and ComfyUI node management",
   "type": "module",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",

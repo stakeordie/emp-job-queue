@@ -178,7 +178,8 @@
       "Bash(./bundle-worker.sh:*)",
       "Bash(tree:*)",
       "Bash(git clone:*)",
-      "Bash(echo:*)"
+      "Bash(echo:*)",
+      "mcp__ide__getDiagnostics"
     ],
     "deny": []
   }

@@ -11,7 +11,7 @@ PROJECT_DIR="$(cd "$SCRIPT_DIR/../../.." && pwd)"
 # Default values
 DEFAULT_TAG="latest"
 DEFAULT_REGISTRY="emprops"
-DEFAULT_IMAGE_NAME="emp-job-queue-api"
+DEFAULT_IMAGE_NAME="emp-ai-backend-api"
 
 # Parse command line arguments
 VERSION="${1:-$DEFAULT_TAG}"

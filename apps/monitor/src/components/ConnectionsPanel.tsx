@@ -6,6 +6,7 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { RefreshCw, Monitor, Users, Zap, ChevronDown, ChevronRight } from 'lucide-react';
 import { useMonitorStore } from '@/store';
+import { websocketService } from '@/services/websocket';
 
 interface ConnectionData {
   monitor_connections: Array<{
@@ -55,9 +56,15 @@ export function ConnectionsPanel() {
       setLoading(true);
       setError(null);
       
-      // Get API URL from websocket service
-      const websocketUrl = (window as unknown as { websocketService?: { getUrl?: () => string } }).websocketService?.getUrl?.() || 'ws://localhost:3331';
-      const apiUrl = websocketUrl.replace(/^wss?:/, 'http:').replace(/\/$/, '');
+      // Get API URL from websocket service (same logic as fetchApiVersion in store)
+      const websocketUrl = websocketService.getUrl();
+      
+      // Convert WebSocket URL to HTTP URL for the API
+      let apiUrl = 'http://localhost:3331';
+      if (websocketUrl) {
+        const url = new URL(websocketUrl);
+        apiUrl = `${url.protocol === 'wss:' ? 'https:' : 'http:'}//${url.host}`;
+      }
       
       const response = await fetch(`${apiUrl}/api/connections`);
       

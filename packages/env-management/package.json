@@ -1,7 +1,7 @@
 {
   "name": "@emp/env-management",
   "version": "1.0.0",
-  "description": "Environment management utilities for EmProps Job Queue",
+  "description": "Environment management utilities for EmProps AI Backend",
   "type": "module",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",

@@ -1,7 +1,7 @@
 {
   "name": "api",
   "version": "1.0.0",
-  "description": "Lightweight API server for emp-job-queue",
+  "description": "Lightweight API server for emp-ai-backend",
   "type": "module",
   "packageManager": "pnpm@10.12.4",
   "main": "dist/src/index.js",
@@ -26,7 +26,7 @@
     "clean": "rm -rf dist",
     "docker:build": "./scripts/build-with-version.sh",
     "docker:build:version": "./scripts/build-with-version.sh",
-    "docker:build:push": "./scripts/build-with-version.sh latest emprops emp-job-queue-api --push"
+    "docker:build:push": "./scripts/build-with-version.sh latest emprops emp-ai-backend-api --push"
   },
   "dependencies": {
     "@emp/core": "workspace:*",

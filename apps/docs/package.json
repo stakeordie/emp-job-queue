@@ -1,7 +1,7 @@
 {
   "name": "docs",
   "version": "1.0.0",
-  "description": "EmProps Job Queue Documentation using VitePress",
+  "description": "EmProps AI Backend Documentation using VitePress",
   "type": "module",
   "packageManager": "pnpm@10.12.4",
   "scripts": {

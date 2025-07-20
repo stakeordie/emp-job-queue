@@ -1,7 +1,7 @@
 {
-  "name": "emp-job-queue",
+  "name": "emp-ai-backend",
   "version": "1.0.0",
-  "description": "EmProps Job Queue System - TypeScript rebuild of emp-redis",
+  "description": "EmProps AI Backend - Distributed AI workload orchestration with specialized machine pools",
   "private": true,
   "type": "module",
   "scripts": {

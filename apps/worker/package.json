@@ -1,7 +1,7 @@
 {
   "name": "worker",
   "version": "1.0.0",
-  "description": "TypeScript Redis-direct workers for emp-job-queue",
+  "description": "TypeScript Redis-direct workers for emp-ai-backend",
   "type": "module",
   "packageManager": "pnpm@10.12.4",
   "main": "dist/index.js",
