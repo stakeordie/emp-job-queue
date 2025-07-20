@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -43,7 +43,7 @@ export function ConnectionsPanel() {
   const [error, setError] = useState<string | null>(null);
   const [isOpen, setIsOpen] = useState(false);
 
-  const fetchConnections = async () => {
+  const fetchConnections = useCallback(async () => {
     // Only fetch if connected
     if (!connection.isConnected) {
       setLoading(false);
@@ -56,7 +56,7 @@ export function ConnectionsPanel() {
       setError(null);
       
       // Get API URL from websocket service
-      const websocketUrl = (window as any).websocketService?.getUrl() || 'ws://localhost:3331';
+      const websocketUrl = (window as unknown as { websocketService?: { getUrl?: () => string } }).websocketService?.getUrl?.() || 'ws://localhost:3331';
       const apiUrl = websocketUrl.replace(/^wss?:/, 'http:').replace(/\/$/, '');
       
       const response = await fetch(`${apiUrl}/api/connections`);
@@ -72,7 +72,7 @@ export function ConnectionsPanel() {
     } finally {
       setLoading(false);
     }
-  };
+  }, [connection.isConnected]);
 
   useEffect(() => {
     // Only fetch when connected
@@ -85,7 +85,7 @@ export function ConnectionsPanel() {
       setConnections(null);
       setLoading(false);
     }
-  }, [connection.isConnected]);
+  }, [connection.isConnected, fetchConnections]);
 
   const formatTime = (timestamp: string) => {
     try {

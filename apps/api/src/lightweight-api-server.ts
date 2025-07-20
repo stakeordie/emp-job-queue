@@ -23,26 +23,27 @@ import {
   WorkerStatusChangedEvent,
 } from '@emp/core';
 import { createRequire } from 'module';
-import { fileURLToPath } from 'url';
-import path from 'path';
 
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
+interface PackageInfo {
+  version: string;
+  name: string;
+  description: string;
+}
 
-let packageJson: any = { version: 'unknown', name: 'api', description: 'API Server' };
+let packageJson: PackageInfo = { version: 'unknown', name: 'api', description: 'API Server' };
 try {
   const require = createRequire(import.meta.url);
   // Try different paths for package.json
   try {
     packageJson = require('../package.json');
-  } catch (e) {
+  } catch (_e) {
     try {
       packageJson = require('../../package.json');
-    } catch (e2) {
+    } catch (_e2) {
       // In Docker, package.json might be at the app root
       try {
         packageJson = require('/app/apps/api/package.json');
-      } catch (e3) {
+      } catch (_e3) {
         console.warn('Could not load package.json, using defaults');
       }
     }
