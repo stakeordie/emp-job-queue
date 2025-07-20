@@ -37,7 +37,8 @@ export class ComfyUIWebSocketConnector extends BaseConnector {
     const host = process.env.WORKER_COMFYUI_HOST || 'localhost';
     const port = parseInt(process.env.WORKER_COMFYUI_PORT || '8188');
     const isSecure = process.env.WORKER_COMFYUI_SECURE === 'true';
-    const protocol = isSecure ? 'wss' : 'ws';
+    const wsProtocol = isSecure ? 'wss' : 'ws';
+    const httpProtocol = isSecure ? 'https' : 'http';
     
     // Authentication for remote connections
     const username = process.env.WORKER_COMFYUI_USERNAME;
@@ -53,15 +54,15 @@ export class ComfyUIWebSocketConnector extends BaseConnector {
     if (!websocketUrl) {
       if (shouldUseAuth && username && password) {
         // Basic auth in URL
-        websocketUrl = `${protocol}://${encodeURIComponent(username)}:${encodeURIComponent(password)}@${host}:${port}/ws`;
+        websocketUrl = `${wsProtocol}://${encodeURIComponent(username)}:${encodeURIComponent(password)}@${host}:${port}/ws`;
       } else {
-        websocketUrl = `${protocol}://${host}:${port}/ws`;
+        websocketUrl = `${wsProtocol}://${host}:${port}/ws`;
       }
     }
 
     super(connectorId, {
       service_type: 'comfyui',
-      base_url: `${protocol}://${host}:${port}`,
+      base_url: websocketUrl,
       timeout_seconds: parseInt(process.env.WORKER_COMFYUI_TIMEOUT_SECONDS || '300'),
       retry_attempts: parseInt(process.env.WORKER_COMFYUI_RETRY_ATTEMPTS || '3'),
       retry_delay_seconds: parseInt(process.env.WORKER_COMFYUI_RETRY_DELAY_SECONDS || '2'),
@@ -118,7 +119,7 @@ export class ComfyUIWebSocketConnector extends BaseConnector {
       return {
         service_name: 'ComfyUI WebSocket',
         service_version: 'forward-branch',
-        base_url: (this.config.settings as any).websocket_url || 'ws://localhost:8188/ws',
+        base_url: this.config.base_url,
         status: this.isConnected ? 'online' : 'offline',
         capabilities: {
           supported_formats: ['png', 'jpg', 'webp'],

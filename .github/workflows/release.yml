@@ -100,11 +100,11 @@ jobs:
         chmod +x worker-release/redis-direct-worker.js
         rm worker-release/redis-direct-worker.cjs worker-release/redis-direct-worker-clean.cjs
         
-        # Create a minimal package.json for the bundled worker
-        cat > worker-release/package.json << 'EOF'
+        # Create a minimal package.json for the bundled worker with release version
+        cat > worker-release/package.json << EOF
         {
           "name": "emp-job-queue-worker",
-          "version": "1.0.0",
+          "version": "${{ steps.get_tag.outputs.tag }}",
           "description": "Bundled Redis worker for EmProps GPU job queue system",
           "main": "redis-direct-worker.js",
           "bin": {

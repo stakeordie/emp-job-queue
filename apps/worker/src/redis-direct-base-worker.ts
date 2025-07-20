@@ -11,6 +11,7 @@
 import { ConnectorManager } from './connector-manager.js';
 import { RedisDirectWorkerClient } from './redis-direct-worker-client.js';
 import { JobHealthMonitor, HealthCheckResult } from './job-health-monitor.js';
+import path from 'path';
 import {
   WorkerCapabilities,
   WorkerStatus,
@@ -37,6 +38,20 @@ function getWorkerVersion(): string {
     // For releases: CI/CD should set WORKER_VERSION env var from git tag
     if (process.env.WORKER_VERSION) {
       return process.env.WORKER_VERSION;
+    }
+
+    // For downloaded releases, check if package.json exists in same directory as worker
+    // PM2 runs from /tmp/worker_gpu{N} directory
+    const currentDir = process.cwd();
+    const localPackageJsonPath = path.join(currentDir, 'package.json');
+    try {
+      const packageJson = JSON.parse(readFileSync(localPackageJsonPath, 'utf8'));
+      // If we find a package.json, use its version (but append release tag if missing)
+      const version = packageJson.version || '1.0.0';
+      // For release downloads, append 'release' to distinguish from dev builds
+      return version === '1.0.0' ? 'v1.0.0-release' : version;
+    } catch {
+      // Continue to other paths
     }
 
     // In container, try to read from bundled worker package.json

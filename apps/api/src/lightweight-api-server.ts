@@ -183,7 +183,8 @@ export class LightweightAPIServer {
       // Test client broadcast
       logger.info('[TEST] Broadcasting to clients...');
       const clientResults: Record<string, unknown> = {};
-      (this.eventBroadcaster as any).clients.forEach((client: { ws: WebSocket }, id: string) => {
+      const broadcaster = this.eventBroadcaster as unknown as { clients: Map<string, { ws: WebSocket }> };
+      broadcaster.clients.forEach((client: { ws: WebSocket }, id: string) => {
         logger.info(`[TEST] Client ${id} - readyState: ${client.ws.readyState}`);
         try {
           client.ws.send(JSON.stringify(testMessage));
@@ -202,7 +203,8 @@ export class LightweightAPIServer {
       // Test monitor broadcast
       logger.info('[TEST] Broadcasting to monitors...');
       const monitorResults: Record<string, unknown> = {};
-      (this.eventBroadcaster as any).monitors.forEach((monitor: WebSocket, id: string) => {
+      const monitorBroadcaster = this.eventBroadcaster as unknown as { monitors: Map<string, WebSocket> };
+      monitorBroadcaster.monitors.forEach((monitor: WebSocket, id: string) => {
         logger.info(`[TEST] Monitor ${id}`);
         if (monitor instanceof WebSocket) {
           logger.info(`[TEST] Monitor ${id} - readyState: ${monitor.readyState}`);
@@ -222,9 +224,9 @@ export class LightweightAPIServer {
       });
 
       res.json({
-        clientCount: (this.eventBroadcaster as any).clients.size,
-        monitorCount: (this.eventBroadcaster as any).monitors.size,
-        eventBroadcasterInstance: (this.eventBroadcaster as any).instanceId,
+        clientCount: broadcaster.clients.size,
+        monitorCount: monitorBroadcaster.monitors.size,
+        eventBroadcasterInstance: (this.eventBroadcaster as unknown as { instanceId: string }).instanceId,
         clients: clientResults,
         monitors: monitorResults,
       });
@@ -2655,7 +2657,7 @@ export class LightweightAPIServer {
 
     logger.debug('[TRACE 1] Job submitted, about to broadcast', {
       jobId,
-      eventBroadcasterInstance: (this.eventBroadcaster as any).instanceId,
+      eventBroadcasterInstance: (this.eventBroadcaster as unknown as { instanceId: string }).instanceId,
     });
 
     // Broadcast job_submitted to both monitors and clients via EventBroadcaster
