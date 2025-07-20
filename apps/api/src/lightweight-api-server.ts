@@ -145,18 +145,27 @@ export class LightweightAPIServer {
   }
 
   private setupMiddleware(): void {
-    // CORS support
+    // CORS support - Enhanced for remote connections
     this.app.use((req, res, next) => {
       const allowedOrigins = this.config.corsOrigins || ['*'];
       const origin = req.headers.origin;
 
-      if (allowedOrigins.includes('*') || (origin && allowedOrigins.includes(origin))) {
-        res.setHeader('Access-Control-Allow-Origin', origin || '*');
+      // Log CORS requests for debugging
+      if (origin) {
+        logger.debug(`CORS request from origin: ${origin}, allowed: ${allowedOrigins.join(', ')}`);
       }
 
-      res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
-      res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
+      if (allowedOrigins.includes('*') || (origin && allowedOrigins.includes(origin))) {
+        res.setHeader('Access-Control-Allow-Origin', origin || '*');
+      } else if (allowedOrigins.includes('*')) {
+        // Fallback: if wildcard is allowed, always set it
+        res.setHeader('Access-Control-Allow-Origin', '*');
+      }
+
+      res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS, HEAD');
+      res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Requested-With, Accept, Origin');
       res.setHeader('Access-Control-Allow-Credentials', 'true');
+      res.setHeader('Access-Control-Max-Age', '86400'); // Cache preflight for 24 hours
 
       if (req.method === 'OPTIONS') {
         res.sendStatus(200);
@@ -171,9 +180,24 @@ export class LightweightAPIServer {
   }
 
   private setupHTTPRoutes(): void {
-    // Health check
-    this.app.get('/health', (_req: Request, res: Response) => {
-      res.json({ status: 'ok', timestamp: new Date().toISOString() });
+    // Health check with CORS debugging
+    this.app.get('/health', (req: Request, res: Response) => {
+      const healthInfo = {
+        status: 'ok',
+        timestamp: new Date().toISOString(),
+        cors: {
+          origin: req.headers.origin || 'no-origin',
+          allowedOrigins: this.config.corsOrigins || ['*'],
+          userAgent: req.headers['user-agent'] || 'unknown',
+        },
+        connections: {
+          monitors: this.eventBroadcaster.getMonitorCount(),
+          workers: Array.from((this.eventBroadcaster as unknown as { workers: Map<string, unknown> }).workers.keys()).length,
+        },
+      };
+      
+      logger.info(`Health check from ${req.headers.origin || 'unknown origin'}`);
+      res.json(healthInfo);
     });
 
     // DEBUG: Test broadcast endpoint
