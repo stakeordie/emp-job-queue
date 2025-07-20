@@ -1,6 +1,10 @@
 # Simplified Dockerfile for CI that builds everything in one stage
 FROM node:20-alpine
 
+# Version and build date injection
+ARG API_VERSION=latest
+ARG BUILD_DATE
+
 # Enable corepack for pnpm
 RUN corepack enable
 
@@ -14,6 +18,12 @@ COPY . .
 RUN pnpm install --no-frozen-lockfile && \
     pnpm --filter @emp/core build && \
     pnpm --filter api build
+
+# Inject version into API package.json
+RUN if [ "$API_VERSION" != "latest" ]; then \
+      cd apps/api && \
+      sed -i "s/\"version\": \"[^\"]*\"/\"version\": \"${API_VERSION}\"/" package.json; \
+    fi
 
 # Create non-root user
 RUN addgroup -g 1001 -S nodejs && \

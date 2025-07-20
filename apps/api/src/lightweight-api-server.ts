@@ -22,6 +22,9 @@ import {
   JobFailedEvent,
   WorkerStatusChangedEvent,
 } from '@emp/core';
+import { createRequire } from 'module';
+const require = createRequire(import.meta.url);
+const packageJson = require('../package.json');
 
 interface LightweightAPIConfig {
   port: number;
@@ -157,13 +160,13 @@ export class LightweightAPIServer {
 
       if (allowedOrigins.includes('*') || (origin && allowedOrigins.includes(origin))) {
         res.setHeader('Access-Control-Allow-Origin', origin || '*');
-      } else if (allowedOrigins.includes('*')) {
-        // Fallback: if wildcard is allowed, always set it
-        res.setHeader('Access-Control-Allow-Origin', '*');
       }
 
       res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS, HEAD');
-      res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Requested-With, Accept, Origin');
+      res.setHeader(
+        'Access-Control-Allow-Headers',
+        'Content-Type, Authorization, X-Requested-With, Accept, Origin'
+      );
       res.setHeader('Access-Control-Allow-Credentials', 'true');
       res.setHeader('Access-Control-Max-Age', '86400'); // Cache preflight for 24 hours
 
@@ -192,12 +195,31 @@ export class LightweightAPIServer {
         },
         connections: {
           monitors: this.eventBroadcaster.getMonitorCount(),
-          workers: Array.from((this.eventBroadcaster as unknown as { workers: Map<string, unknown> }).workers.keys()).length,
+          workers: Array.from(
+            (this.eventBroadcaster as unknown as { workers: Map<string, unknown> }).workers.keys()
+          ).length,
         },
       };
-      
+
       logger.info(`Health check from ${req.headers.origin || 'unknown origin'}`);
       res.json(healthInfo);
+    });
+
+    // Version endpoint
+    this.app.get('/version', (_req: Request, res: Response) => {
+      const versionInfo = {
+        api_version: packageJson.version,
+        name: packageJson.name,
+        description: packageJson.description,
+        node_version: process.version,
+        platform: process.platform,
+        arch: process.arch,
+        uptime_seconds: Math.floor(process.uptime()),
+        timestamp: new Date().toISOString(),
+        environment: process.env.NODE_ENV || 'unknown',
+        build_date: process.env.BUILD_DATE || 'unknown',
+      };
+      res.json(versionInfo);
     });
 
     // DEBUG: Test broadcast endpoint
