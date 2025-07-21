@@ -7,7 +7,7 @@
   "types": "dist/index.d.ts",
   "files": [
     "dist/",
-    "nodes/",
+    "src/",
     "requirements.txt",
     "__init__.py",
     "utils.py"
@@ -15,7 +15,7 @@
   "scripts": {
     "build": "tsc",
     "dev": "tsc --watch",
-    "test": "python -m pytest tests/",
+    "test": "python -m pytest src/tests/",
     "test:js": "vitest",
     "lint": "eslint src/",
     "typecheck": "tsc --noEmit"

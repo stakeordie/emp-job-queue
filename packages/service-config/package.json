@@ -29,8 +29,8 @@
   },
   "exports": {
     ".": "./dist/index.js",
-    "./comfy-nodes": "./config_nodes.json",
-    "./workflows": "./workflows",
+    "./comfy-nodes": "./comfy-nodes/config_nodes.json",
+    "./workflows": "./shared-configs/workflows",
     "./types": "./dist/types.js"
   }
 }

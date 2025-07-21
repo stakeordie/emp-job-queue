@@ -1,0 +1,109 @@
+{
+  "8": {
+    "inputs": {
+      "samples": ["36", 0],
+      "vae": ["14", 2]
+    },
+    "class_type": "VAEDecode",
+    "_meta": {
+      "title": "VAE Decode"
+    }
+  },
+  "14": {
+    "inputs": {
+      "ckpt_name": "Juggernaut-XI-byRunDiffusion.safetensors"
+    },
+    "class_type": "CheckpointLoaderSimple",
+    "_meta": {
+      "title": "Load Checkpoint Base"
+    }
+  },
+  "36": {
+    "inputs": {
+      "seed": 605194069621202,
+      "steps": 25,
+      "cfg": 1,
+      "sampler_name": "dpmpp_2m",
+      "scheduler": "ddim_uniform",
+      "denoise": 0.7000000000000001,
+      "model": ["14", 0],
+      "positive": ["41", 0],
+      "negative": ["42", 0],
+      "latent_image": ["39", 0]
+    },
+    "class_type": "KSampler",
+    "_meta": {
+      "title": "KSampler"
+    }
+  },
+  "39": {
+    "inputs": {
+      "pixels": ["40", 0],
+      "vae": ["14", 2]
+    },
+    "class_type": "VAEEncode",
+    "_meta": {
+      "title": "VAE Encode"
+    }
+  },
+  "40": {
+    "inputs": {
+      "upscale_method": "nearest-exact",
+      "width": 1024,
+      "height": 1024,
+      "crop": "center",
+      "image": ["44", 0]
+    },
+    "class_type": "ImageScale",
+    "_meta": {
+      "title": "Upscale Image"
+    }
+  },
+  "41": {
+    "inputs": {
+      "text": "a dog in a car",
+      "clip": ["14", 1]
+    },
+    "class_type": "CLIPTextEncode",
+    "_meta": {
+      "title": "CLIP Text Encode (Prompt)"
+    }
+  },
+  "42": {
+    "inputs": {
+      "text": "test",
+      "clip": ["14", 1]
+    },
+    "class_type": "CLIPTextEncode",
+    "_meta": {
+      "title": "CLIP Text Encode (Prompt)"
+    }
+  },
+  "43": {
+    "inputs": {
+      "provider": "azure",
+      "prefix": "uploads/",
+      "filename": "image.png",
+      "bucket": "emprops-share",
+      "images": ["8", 0]
+    },
+    "class_type": "EmProps_Cloud_Storage_Saver",
+    "_meta": {
+      "title": "EmProps Cloud Storage Saver"
+    }
+  },
+  "44": {
+    "inputs": {
+      "source_type": "public_download",
+      "image": "example.png",
+      "provider": "azure",
+      "cloud_key": "",
+      "bucket": "emprops-share",
+      "url": "https://cdn.emprops.ai/generations/4e62f321-dc11-4f31-aad1-b9c0200d916a/18d1b33b-9378-4f5a-953d-2435c843a20a/0/42152/txt2img-comfy.png"
+    },
+    "class_type": "EmProps_Image_Loader",
+    "_meta": {
+      "title": "EmProps Image Loader"
+    }
+  }
+}

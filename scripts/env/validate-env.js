@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 
-import { EnvironmentValidator } from '../../packages/env-management/dist/index.js';
+import { EnvironmentValidator } from '../../packages/env-management/dist/src/index.js';
 import chalk from 'chalk';
 import * as fs from 'fs';
 import * as path from 'path';

@@ -179,7 +179,11 @@
       "Bash(tree:*)",
       "Bash(git clone:*)",
       "Bash(echo:*)",
-      "mcp__ide__getDiagnostics"
+      "mcp__ide__getDiagnostics",
+      "Bash(eslint:*)",
+      "Bash(./scripts/build-with-version.sh:*)",
+      "Bash(sudo rm:*)",
+      "Bash(ecli env:*)"
     ],
     "deny": []
   }

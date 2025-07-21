@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 
-import { EnvironmentBuilder } from '../../packages/env-management/dist/index.js';
+import { EnvironmentBuilder } from '../../packages/env-management/dist/src/index.js';
 import chalk from 'chalk';
 
 async function listProfiles() {

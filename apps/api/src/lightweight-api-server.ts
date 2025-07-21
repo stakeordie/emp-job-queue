@@ -1567,6 +1567,8 @@ export class LightweightAPIServer {
       };
 
       await this.redis.hset(`machine:${machineId}:info`, machineInfo);
+      // Set TTL for machine info to expire after 120 seconds without updates
+      await this.redis.expire(`machine:${machineId}:info`, 120);
 
       // Store/update worker data for each worker in the machine
       if (statusData.structure?.workers && statusData.status?.workers) {
@@ -1589,6 +1591,8 @@ export class LightweightAPIServer {
             };
 
             await this.redis.hset(`worker:${workerId}`, workerData);
+            // Set TTL for worker info to expire after 120 seconds without updates
+            await this.redis.expire(`worker:${workerId}`, 120);
           }
         }
       }
@@ -1860,46 +1864,215 @@ export class LightweightAPIServer {
 
   /**
    * Check for machines that haven't sent status updates and mark them as disconnected
+   * Now includes Redis-based stale detection that survives API server restarts
    */
   private async checkForStaleMachines(): Promise<void> {
     const now = Date.now();
     const staleThreshold = 30000; // 30 seconds
 
+    // Check in-memory tracked machines (traditional method)
     for (const [machineId, lastSeen] of this.machineLastSeen.entries()) {
       const timeSinceLastSeen = now - lastSeen;
 
       if (timeSinceLastSeen > staleThreshold) {
-        logger.warn(
-          `🔴 Machine ${machineId} is stale (${Math.round(timeSinceLastSeen / 1000)}s since last status)`
-        );
+        await this.markMachineAsStale(machineId, lastSeen, 'Status timeout (30s)');
+      }
+    }
 
-        try {
-          // Mark machine as disconnected in Redis
-          await this.redis.hset(`machine:${machineId}:info`, {
-            status: 'disconnected',
-            last_activity: new Date(lastSeen).toISOString(),
-            disconnected_at: new Date().toISOString(),
-          });
+    // Check Redis directly for machines with expired TTL or stale data
+    // This handles machines that were registered before API server restart
+    await this.checkRedisForStaleMachines();
+  }
 
-          // Broadcast machine disconnected event to monitors
-          this.eventBroadcaster.broadcastMachineDisconnected(machineId, 'Status timeout (30s)');
+  /**
+   * Check Redis directly for stale machines that may not be in memory
+   */
+  private async checkRedisForStaleMachines(): Promise<void> {
+    try {
+      // Scan for all machine info keys
+      const keys = await this.redis.keys('machine:*:info');
 
-          // Also broadcast to WebSocket monitors
-          this.eventBroadcaster.broadcast({
-            type: 'machine_disconnected',
-            machine_id: machineId,
-            reason: 'Status timeout (30s)',
-            timestamp: Date.now(),
-          });
+      for (const key of keys) {
+        const machineId = key.split(':')[1];
 
-          // Remove from tracking to avoid repeated warnings
-          this.machineLastSeen.delete(machineId);
+        // Check TTL - if TTL is < 30 seconds, the machine is about to expire
+        const ttl = await this.redis.ttl(key);
 
-          logger.info(`📢 Broadcasted disconnection for stale machine: ${machineId}`);
-        } catch (error) {
-          logger.error(`Failed to mark machine ${machineId} as disconnected:`, error);
+        if (ttl === -1) {
+          // Key exists but has no TTL - this is a legacy stale entry
+          logger.warn(`🔴 Found machine ${machineId} without TTL, cleaning up`);
+          await this.cleanupStaleMachine(machineId, 'No TTL (legacy data)');
+        } else if (ttl < 30 && ttl > 0) {
+          // Machine will expire soon and hasn't sent updates
+          const machineData = await this.redis.hgetall(key);
+          const lastActivity = machineData.last_activity;
+
+          if (lastActivity) {
+            const lastSeen = new Date(lastActivity).getTime();
+            const timeSinceLastSeen = Date.now() - lastSeen;
+
+            if (timeSinceLastSeen > 60000) {
+              // 60 seconds without update
+              logger.warn(
+                `🔴 Machine ${machineId} is stale (${Math.round(timeSinceLastSeen / 1000)}s since last activity)`
+              );
+              await this.markMachineAsStale(machineId, lastSeen, 'Redis TTL expiring');
+            }
+          }
         }
       }
+    } catch (error) {
+      logger.error('Error checking Redis for stale machines:', error);
+    }
+  }
+
+  /**
+   * Mark a machine as stale and broadcast disconnection
+   */
+  private async markMachineAsStale(
+    machineId: string,
+    lastSeen: number,
+    reason: string
+  ): Promise<void> {
+    try {
+      // Mark machine as disconnected in Redis
+      await this.redis.hset(`machine:${machineId}:info`, {
+        status: 'disconnected',
+        last_activity: new Date(lastSeen).toISOString(),
+        disconnected_at: new Date().toISOString(),
+      });
+
+      // Broadcast machine disconnected event to monitors
+      this.eventBroadcaster.broadcastMachineDisconnected(machineId, reason);
+
+      // Also broadcast to WebSocket monitors
+      this.eventBroadcaster.broadcast({
+        type: 'machine_disconnected',
+        machine_id: machineId,
+        reason: reason,
+        timestamp: Date.now(),
+      });
+
+      // Remove from tracking to avoid repeated warnings
+      this.machineLastSeen.delete(machineId);
+      this.unifiedMachineStatus.delete(machineId);
+
+      logger.info(`✅ Marked machine ${machineId} as disconnected: ${reason}`);
+    } catch (error) {
+      logger.error(`Failed to mark machine ${machineId} as disconnected:`, error);
+    }
+  }
+
+  /**
+   * Completely remove stale machine data from Redis
+   */
+  private async cleanupStaleMachine(machineId: string, reason: string): Promise<void> {
+    try {
+      // Remove machine info
+      await this.redis.del(`machine:${machineId}:info`);
+
+      // Find and remove associated workers
+      const workerKeys = await this.redis.keys(`worker:*`);
+      for (const workerKey of workerKeys) {
+        const workerData = await this.redis.hgetall(workerKey);
+        if (workerData.machine_id === machineId) {
+          await this.redis.del(workerKey);
+          logger.debug(`Cleaned up worker key: ${workerKey}`);
+        }
+      }
+
+      // Broadcast machine disconnected event
+      this.eventBroadcaster.broadcast({
+        type: 'machine_disconnected',
+        machine_id: machineId,
+        reason: reason,
+        timestamp: Date.now(),
+      });
+
+      // Remove from in-memory tracking
+      this.machineLastSeen.delete(machineId);
+      this.unifiedMachineStatus.delete(machineId);
+
+      logger.info(`✅ Completely cleaned up stale machine ${machineId}: ${reason}`);
+    } catch (error) {
+      logger.error(`Failed to cleanup stale machine ${machineId}:`, error);
+    }
+  }
+
+  /**
+   * Cleanup stale machine and worker data on API server startup
+   * This handles phantom machines left over from previous server instances
+   */
+  private async startupCleanup(): Promise<void> {
+    try {
+      logger.info('🧹 Starting cleanup of stale machine data...');
+
+      let cleanedMachines = 0;
+      let cleanedWorkers = 0;
+
+      // Find all machine keys
+      const machineKeys = await this.redis.keys('machine:*:info');
+
+      for (const key of machineKeys) {
+        const machineId = key.split(':')[1];
+        const ttl = await this.redis.ttl(key);
+
+        if (ttl === -1) {
+          // No TTL set - legacy data that needs cleanup
+          logger.info(`🔴 Found legacy machine ${machineId} without TTL, removing`);
+          await this.cleanupStaleMachine(machineId, 'Startup cleanup (no TTL)');
+          cleanedMachines++;
+        } else if (ttl < 60) {
+          // TTL exists but machine will expire soon - likely stale
+          const machineData = await this.redis.hgetall(key);
+          const lastActivity = machineData.last_activity;
+
+          if (lastActivity) {
+            const timeSinceLastActivity = Date.now() - new Date(lastActivity).getTime();
+
+            if (timeSinceLastActivity > 300000) {
+              // 5 minutes old
+              logger.info(
+                `🔴 Found stale machine ${machineId} (${Math.round(timeSinceLastActivity / 1000)}s old), removing`
+              );
+              await this.cleanupStaleMachine(machineId, 'Startup cleanup (stale)');
+              cleanedMachines++;
+            }
+          }
+        }
+      }
+
+      // Find orphaned workers (workers without valid machines)
+      const workerKeys = await this.redis.keys('worker:*');
+      const validMachineIds = new Set();
+
+      // Get list of valid machine IDs
+      const remainingMachineKeys = await this.redis.keys('machine:*:info');
+      for (const key of remainingMachineKeys) {
+        validMachineIds.add(key.split(':')[1]);
+      }
+
+      // Clean up workers without valid machines
+      for (const workerKey of workerKeys) {
+        const workerData = await this.redis.hgetall(workerKey);
+        const machineId = workerData.machine_id;
+
+        if (!machineId || !validMachineIds.has(machineId)) {
+          logger.info(`🔴 Found orphaned worker ${workerKey}, removing`);
+          await this.redis.del(workerKey);
+          cleanedWorkers++;
+        }
+      }
+
+      if (cleanedMachines > 0 || cleanedWorkers > 0) {
+        logger.info(
+          `✅ Startup cleanup completed: ${cleanedMachines} machines, ${cleanedWorkers} workers removed`
+        );
+      } else {
+        logger.info('✅ Startup cleanup completed: no stale data found');
+      }
+    } catch (error) {
+      logger.error('Error during startup cleanup:', error);
     }
   }
 
@@ -2891,6 +3064,9 @@ export class LightweightAPIServer {
       // Enable keyspace notifications for progress streaming
       // K = Keyspace events, $ = String commands, s = Stream commands, E = Keyevent, x = Expired
       await this.redis.config('SET', 'notify-keyspace-events', 'Ks$Ex');
+
+      // Clean up any stale machine data from previous API server instances
+      await this.startupCleanup();
 
       // Redis functions are pre-installed on Railway Redis instance
       // Use CLI command `pnpm redis:functions:install` to install them manually

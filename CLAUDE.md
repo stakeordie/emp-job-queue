@@ -88,7 +88,7 @@ When given a task, analyze and respond with:
 - ✅ Does this improve user wait times or resource utilization?
 
 ### 3. Commit Process
-1. **Update Changelog**: Add entry to `/docs/changelog.md` with north star context
+1. **Update Changelog**: Add entry to `/apps/docs/src/changelog.md` with north star context
 2. **Quality Checks**: `pnpm lint`, `pnpm typecheck`, `pnpm build`
 3. **Alignment Check**: Confirm change advances north star goals
 4. **Commit**: `git commit -m "type(scope): description - advances [north star goal]"`

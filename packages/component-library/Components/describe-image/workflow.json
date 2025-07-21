@@ -1,0 +1,72 @@
+{
+  "661": {
+    "inputs": {
+      "source_type": "public_download",
+      "image": "example.png",
+      "provider": "azure",
+      "cloud_key": "",
+      "bucket": "emprops-share",
+      "url": "https://cdn.emprops.ai/generations/4e62f321-dc11-4f31-aad1-b9c0200d916a/18d1b33b-9378-4f5a-953d-2435c843a20a/0/42152/txt2img-comfy.png"
+    },
+    "class_type": "EmProps_Image_Loader",
+    "_meta": {
+      "title": "EmProps Image Loader"
+    }
+  },
+  "665": {
+    "inputs": {
+      "String": [
+        "666",
+        0
+      ],
+      "Regex": "The image is ",
+      "ReplaceWith": ""
+    },
+    "class_type": "ReplaceString",
+    "_meta": {
+      "title": "Replace String"
+    }
+  },
+  "666": {
+    "inputs": {
+      "model": "llava:7b-v1.6-vicuna-q2_K (Q2_K, 3.2GB)",
+      "custom_model": "qwen2.5vl:3b",
+      "api_host": "http://localhost:11434",
+      "timeout": 300,
+      "temperature": 0.2,
+      "top_k": 40,
+      "top_p": 0.9,
+      "repeat_penalty": 1.1,
+      "seed_number": 42,
+      "num_ctx": 2048,
+      "max_tokens": 200,
+      "keep_model_alive": -1,
+      "system_context": "You are a helpful AI assistant specialized in generating detailed and accurate textual descriptions of images. Your task is to analyze the information provided about an image and create a clear, concise, and informative description. Focus on the key elements of the image, such as objects, people, actions, and the overall scene. Ensure the description is easy to understand and relevant to the context.",
+      "prompt": "Describe the following image in detail, focusing on its key elements such as objects, people, actions, and the overall scene. Provide a clear and concise description that highlights the most important aspects. Image:",
+      "images": [
+        "661",
+        0
+      ]
+    },
+    "class_type": "OllamaImageDescriber",
+    "_meta": {
+      "title": "🦙 Ollama Image Describer 🦙"
+    }
+  },
+  "668": {
+    "inputs": {
+      "text": [
+        "665",
+        0
+      ],
+      "provider": "azure",
+      "prefix": "uploads/",
+      "filename": "text.txt",
+      "bucket": "emprops-share"
+    },
+    "class_type": "EmProps_Text_Cloud_Storage_Saver",
+    "_meta": {
+      "title": "EmProps Text Cloud Storage Saver"
+    }
+  }
+}

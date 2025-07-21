@@ -1,0 +1,68 @@
+{
+  "config": {
+    "groupOrder": ["main", "advanced"],
+    "componentGroup": "video"
+  },
+  "fields": [
+    {
+      "id": "seed",
+      "name": "Seed",
+      "type": "optional_input",
+      "display": true,
+      "group": "advanced",
+      "input_type": "number",
+      "constraints": {
+        "min": 0,
+        "max": 999999,
+        "step": 1
+      }
+    },
+    {
+      "id": "promptImage",
+      "name": "Prompt Image",
+      "type": "image_loader",
+      "default": "",
+      "display": true,
+      "group": "main"
+    },
+    {
+      "id": "promptText",
+      "name": "Prompt Text",
+      "type": "prompt_editor",
+      "placeholder": "Enter a prompt...",
+      "default": "",
+      "display": true,
+      "group": "main"
+    },
+    {
+      "id": "watermark",
+      "name": "Watermark",
+      "type": "checkbox",
+      "default": false,
+      "display": true,
+      "group": "main"
+    },
+    {
+      "id": "duration",
+      "name": "Duration",
+      "type": "slider",
+      "default": 5,
+      "constraints": {
+        "min": 5,
+        "max": 10,
+        "step": 1
+      },
+      "display": true,
+      "group": "main"
+    },
+    {
+      "id": "ratio",
+      "name": "Ratio",
+      "type": "select",
+      "default": "1280:768",
+      "conf_file": "runwayml_ratios.json",
+      "display": true,
+      "group": "main"
+    }
+  ]
+}

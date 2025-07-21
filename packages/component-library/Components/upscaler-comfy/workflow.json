@@ -1,0 +1,59 @@
+{
+  "67": {
+    "inputs": {
+      "upscale_model": ["68", 0],
+      "image": ["106", 0]
+    },
+    "class_type": "ImageUpscaleWithModel",
+    "_meta": {
+      "title": "Upscale Image (using Model)"
+    }
+  },
+  "68": {
+    "inputs": {
+      "model_name": "4x-UltraSharp.pth"
+    },
+    "class_type": "UpscaleModelLoader",
+    "_meta": {
+      "title": "Load Upscale Model"
+    }
+  },
+  "104": {
+    "inputs": {
+      "upscale_method": "nearest-exact",
+      "scale_by": 4,
+      "image": ["67", 0]
+    },
+    "class_type": "ImageScaleBy",
+    "_meta": {
+      "title": "Upscale Image By"
+    }
+  },
+  "105": {
+    "inputs": {
+      "provider": "azure",
+      "prefix": "uploads/",
+      "filename": "image.png",
+      "bucket": "emprops-share",
+      "images": ["104", 0]
+    },
+    "class_type": "EmProps_Cloud_Storage_Saver",
+    "_meta": {
+      "title": "EmProps Cloud Storage Saver"
+    }
+  },
+  "106": {
+    "inputs": {
+      "source_type": "public_download",
+      "image": "example.png",
+      "provider": "azure",
+      "cloud_key": "",
+      "bucket": "emprops-share",
+      "url": "https://cdn.emprops.ai/generations/4e62f321-dc11-4f31-aad1-b9c0200d916a/f89302ed-7cab-4fc0-b009-7d6e386c7d57/0/42154/txt2img-flux.png"
+    },
+    "class_type": "EmProps_Image_Loader",
+    "_meta": {
+      "title": "EmProps Image Loader"
+    }
+  }
+}
