@@ -2,7 +2,7 @@ import { BaseMessage } from '@/types/message';
 import type { 
   MonitorEvent,
   SubscriptionTopic
-} from '@emp/core';
+} from '@emp/core/types';
 
 /**
  * WebSocketService handles monitor connections using WebSocket only:

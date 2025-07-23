@@ -3,7 +3,7 @@ import { subscribeWithSelector } from 'zustand/middleware';
 import { Job, Worker, Machine, WorkerCapabilities, WorkerStatus, JobStatus, JobRequirements, ConnectionState, UIState, LogEntry } from '@/types';
 import { SyncJobStateMessage, CancelJobMessage } from '@/types/message';
 import { websocketService } from '@/services/websocket';
-import type { MonitorEvent } from '@emp/core';
+import type { MonitorEvent } from '@emp/core/types';
 import { throttle } from '@/utils/throttle';
 // import { batchUpdates } from '@/utils/throttle'; // Unused but kept for future use
 

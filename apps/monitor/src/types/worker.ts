@@ -3,7 +3,7 @@ export type {
   WorkerCapabilities,
   WorkerInfo as Worker,
   WorkerInfo,
-} from '@emp/core';
+} from '@emp/core/types';
 
 // Re-export enum as value for runtime use
-export { WorkerStatus } from '@emp/core';
+export { WorkerStatus } from '@emp/core/types';

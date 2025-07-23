@@ -24,7 +24,7 @@ const getConnectionPresets = () => {
       const connections = JSON.parse(connectionsEnv);
       const presets: Record<string, { websocket: string; auth: string; name: string }> = {};
       
-      connections.forEach((conn: any) => {
+      connections.forEach((conn: { NAME: string; WS_URL: string; AUTH_KEY?: string }) => {
         const name = conn.NAME.toLowerCase();
         presets[name] = {
           websocket: `http://${conn.WS_URL}`,
