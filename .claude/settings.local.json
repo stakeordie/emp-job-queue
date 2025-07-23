@@ -183,7 +183,10 @@
       "Bash(eslint:*)",
       "Bash(./scripts/build-with-version.sh:*)",
       "Bash(sudo rm:*)",
-      "Bash(ecli env:*)"
+      "Bash(ecli env:*)",
+      "Bash(git rebase:*)",
+      "Bash(apps/machine/generate-docker-compose.sh:*)",
+      "Bash(grep -i \"cdn\\|bucket\" apps/machine/config_nodes.json)"
     ],
     "deny": []
   }

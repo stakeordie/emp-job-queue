@@ -4,7 +4,7 @@ import { EnvironmentBuilder } from '../../packages/env-management/dist/src/index
 import chalk from 'chalk';
 
 const args = process.argv.slice(2);
-const configDir = process.cwd() + '/config';
+const configDir = process.cwd();
 const builder = new EnvironmentBuilder(configDir);
 
 // Parse arguments
@@ -19,7 +19,11 @@ const getArgValue = (flag) => {
   return args[index + 1];
 };
 
-const profile = getArgValue('profile');
+// Handle positional argument as profile name
+const firstArg = args[0];
+const isPositionalProfile = firstArg && !firstArg.startsWith('--');
+
+const profile = getArgValue('profile') || (isPositionalProfile ? firstArg : null);
 const redis = getArgValue('redis');
 const api = getArgValue('api');
 const machine = getArgValue('machine');

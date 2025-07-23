@@ -3,7 +3,7 @@
 import { Command } from 'commander';
 import chalk from 'chalk';
 import * as path from 'path';
-import { EnvironmentBuilder, EnvironmentValidator } from '../src/index.js';
+import { EnvironmentBuilder } from '../src/index.js';
 
 const program = new Command();
 
@@ -73,69 +73,7 @@ program
     }
   });
 
-program
-  .command('validate')
-  .description('Validate current environment')
-  .option('-e, --env <path>', 'Environment file to validate', '.env.local')
-  .option('-p, --profile <name>', 'Profile to validate against')
-  .action(async (options) => {
-    const configDir = process.cwd();
-    const validator = new EnvironmentValidator();
-
-    try {
-      let profile;
-      if (options.profile) {
-        const { readFileSync } = await import('fs');
-        const profilePath = path.join(configDir, 'config', 'environments', 'profiles', `${options.profile}.json`);
-        profile = JSON.parse(readFileSync(profilePath, 'utf8'));
-      }
-
-      console.log(chalk.blue(`Validating environment: ${options.env}`));
-      const result = await validator.validateEnvironment(options.env, profile);
-
-      if (result.success) {
-        console.log(chalk.green('✅ Environment validation passed'));
-      } else {
-        console.log(chalk.red('❌ Environment validation failed'));
-      }
-
-      // Show check results
-      const checks = [
-        { name: 'Variables', status: result.checks.variables },
-        { name: 'Services', status: result.checks.services },
-        { name: 'Ports', status: result.checks.ports },
-        { name: 'Network', status: result.checks.network }
-      ];
-
-      checks.forEach(check => {
-        const icon = check.status ? '✅' : '❌';
-        console.log(`  ${icon} ${check.name}`);
-      });
-
-      // Show errors
-      if (result.errors.length > 0) {
-        console.log(chalk.red('\nErrors:'));
-        result.errors.forEach(error => {
-          console.log(chalk.red(`  • ${error}`));
-        });
-      }
-
-      // Show warnings
-      if (result.warnings.length > 0) {
-        console.log(chalk.yellow('\nWarnings:'));
-        result.warnings.forEach(warning => {
-          console.log(chalk.yellow(`  • ${warning}`));
-        });
-      }
-
-      if (!result.success) {
-        process.exit(1);
-      }
-    } catch (error) {
-      console.error(chalk.red(`❌ Validation error: ${error}`));
-      process.exit(1);
-    }
-  });
+// Validation is now handled automatically by service interfaces during build
 
 program
   .command('list')

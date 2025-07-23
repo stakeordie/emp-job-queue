@@ -2,18 +2,92 @@
   "name": "Full Local Development",
   "description": "All components running locally for offline development",
   "components": {
-    "redis": "local",
-    "api": "local",
-    "machine": "local",
-    "monitor": "local",
-    "comfy": "local"
+    "redis": [
+      "default",
+      "local"
+    ],
+    "api": [
+      "default",
+      "local"
+    ],
+    "machine": [
+      "default",
+      "local"
+    ],
+    "worker": [
+      "default",
+      "local"
+    ],
+    "monitor": [
+      "default",
+      "local"
+    ],
+    "comfyui": [
+      "default",
+      "local"
+    ],
+    "simulation": [
+      "default",
+      "big"
+    ]
+  },
+  "services": {
+    "setup": {
+      "command": "echo 'Cleaning up port conflicts...' && pkill -f 'port.*3331' || pkill -f 'port.*3333' || true",
+      "background": false,
+      "delay": 1000
+    },
+    "redis": {
+      "command": "dev:local-redis",
+      "depends_on": [
+        "setup"
+      ],
+      "delay": 3000,
+      "background": true
+    },
+    "api": {
+      "command": "dev",
+      "filter": "api",
+      "depends_on": [
+        "redis"
+      ],
+      "delay": 2000,
+      "background": true
+    },
+    "monitor": {
+      "command": "dev",
+      "filter": "monitor",
+      "depends_on": [
+        "redis",
+        "api"
+      ],
+      "delay": 2000,
+      "background": true
+    },
+    "machine": {
+      "command": "machine:local:up:build",
+      "depends_on": [
+        "redis",
+        "api"
+      ],
+      "delay": 5000,
+      "background": true
+    }
   },
   "secrets": [
     "AWS_ACCESS_KEY_ID",
     "AWS_SECRET_ACCESS_KEY_ENCODED"
   ],
   "validation": {
-    "required_services": ["redis"],
-    "port_conflicts": [6379, 3331, 3333, 8188, 9090]
+    "required_services": [
+      "redis"
+    ],
+    "port_conflicts": [
+      6379,
+      3331,
+      3333,
+      8188,
+      9090
+    ]
   }
 }
