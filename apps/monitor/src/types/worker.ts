@@ -3,7 +3,7 @@ export type {
   WorkerCapabilities,
   WorkerInfo as Worker,
   WorkerInfo,
-} from '@emp/core/dist/types/worker.js';
+} from '@emp/core';
 
 // Re-export enum as value for runtime use
-export { WorkerStatus } from '@emp/core/dist/types/worker.js';
+export { WorkerStatus } from '@emp/core';
