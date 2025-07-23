@@ -25,6 +25,7 @@ const serviceModules = {
   'port-cleanup': './port-cleanup-service.js',
   'comfyui': './comfyui-service.js',
   'comfyui-installer': './comfyui-installer.js',
+  'comfyui-env-creator': './comfyui-env-creator.js',
   'simulation': './simulation-service.js',
   'runtime-env-creator': './runtime-env-creator.js'
 };
@@ -137,7 +138,14 @@ async function runStandaloneService() {
     await service.start();
     logger.info(`${serviceName} started successfully in standalone mode`);
 
-    // Keep process alive
+    // One-time setup services should exit after completion
+    const oneTimeServices = ['shared-setup', 'comfyui-env-creator', 'port-cleanup'];
+    if (oneTimeServices.includes(serviceName)) {
+      logger.info(`${serviceName} is a one-time setup service, exiting after completion`);
+      process.exit(0);
+    }
+
+    // Keep long-running services alive
     process.stdin.resume();
 
   } catch (error) {

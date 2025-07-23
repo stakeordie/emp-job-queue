@@ -103,9 +103,9 @@ function buildConfig() {
       id: process.env.MACHINE_ID || process.env.CONTAINER_NAME,
       testMode: process.env.TEST_MODE === 'true',
       gpu: {
-        count: parseInt(process.env.NUM_GPUS || '1'),
-        memoryGB: parseInt(process.env.GPU_MEMORY_GB || '16'),
-        model: process.env.GPU_MODEL
+        count: parseInt(process.env.MACHINE_NUM_GPUS || '2'),
+        memoryGB: parseInt(process.env.MACHINE_GPU_MEMORY_GB || '16'),
+        model: process.env.MACHINE_GPU_MODEL || 'Unknown'
       }
     },
     redis: {
@@ -121,27 +121,27 @@ function buildConfig() {
     },
     services: {
       nginx: {
-        enabled: process.env.ENABLE_NGINX === 'true',
+        enabled: process.env.MACHINE_ENABLE_NGINX === 'true',
         port: parseInt(process.env.NGINX_PORT || '80')
       },
       comfyui: {
-        enabled: process.env.ENABLE_COMFYUI !== 'false',
+        enabled: process.env.MACHINE_ENABLE_COMFYUI === 'true',
         basePort: parseInt(process.env.COMFYUI_BASE_PORT || '8188')
       },
       automatic1111: {
-        enabled: process.env.ENABLE_A1111 === 'true',
+        enabled: process.env.MACHINE_ENABLE_A1111 === 'true',
         basePort: parseInt(process.env.A1111_BASE_PORT || '3001')
       },
       redisWorker: {
-        enabled: process.env.ENABLE_REDIS_WORKERS !== 'false'
+        enabled: process.env.MACHINE_ENABLE_REDIS_WORKERS === 'true'
       },
       ollama: {
-        enabled: process.env.ENABLE_OLLAMA === 'true',
+        enabled: process.env.MACHINE_ENABLE_OLLAMA === 'true',
         port: parseInt(process.env.OLLAMA_PORT || '11434'),
         models: process.env.OLLAMA_MODELS?.split(',').map(s => s.trim())
       },
       simulation: {
-        enabled: process.env.ENABLE_SIMULATION === 'true',
+        enabled: process.env.MACHINE_ENABLE_SIMULATION === 'true',
         port: parseInt(process.env.SIMULATION_PORT || '8299')
       }
     },

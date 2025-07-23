@@ -30,6 +30,15 @@ async function main() {
     pm2Mode: true
   });
 
+  // Check if health server is already running (indicates previous instance)
+  await checkForExistingInstance();
+
+  // Clean up any existing PM2 processes before starting
+  await cleanupExistingPM2Processes();
+
+  // Generate PM2 ecosystem config based on current configuration
+  await generatePM2EcosystemConfig();
+
   startTime = Date.now();
 
   try {
@@ -50,7 +59,7 @@ async function main() {
     await verifyPM2Services();
 
     // Start health check server
-    startHealthServer();
+    await startHealthServer();
     
     // Machine is now ready - status aggregator will handle all reporting
     const startupTime = Date.now() - startTime;
@@ -94,16 +103,16 @@ async function startPM2Services() {
     }
     
     // Get GPU count for all services
-    const gpuCount = parseInt(process.env.NUM_GPUS || '2');
+    const gpuCount = parseInt(process.env.MACHINE_NUM_GPUS || '2');
     
-    // Start ComfyUI installer if enabled
-    const enableComfyUI = process.env.ENABLE_COMFYUI === 'true';
+    // Start ComfyUI env creator if enabled  
+    const enableComfyUI = process.env.MACHINE_ENABLE_COMFYUI === 'true';
     if (enableComfyUI) {
-      await pm2Manager.pm2Exec('start /workspace/pm2-ecosystem.config.cjs --only comfyui-installer');
-      logger.info('ComfyUI installer service started');
+      await pm2Manager.pm2Exec('start /workspace/pm2-ecosystem.config.cjs --only comfyui-env-creator');
+      logger.info('ComfyUI env creator service started');
       
-      // Wait for ComfyUI installation to complete
-      await new Promise(resolve => setTimeout(resolve, 10000));
+      // Wait for ComfyUI env setup to complete (much faster than full installation)
+      await new Promise(resolve => setTimeout(resolve, 3000));
       
       // Start ComfyUI service instances (per GPU)
       const comfyuiServices = [];
@@ -114,10 +123,24 @@ async function startPM2Services() {
       if (comfyuiServices.length > 0) {
         await pm2Manager.pm2Exec(`start /workspace/pm2-ecosystem.config.cjs --only ${comfyuiServices.join(',')}`);
         logger.info(`ComfyUI service instances started: ${comfyuiServices.join(', ')}`);
+        
+        // Wait for ComfyUI services to be ready before starting workers
+        logger.info('Waiting for ComfyUI services to initialize...');
+        await new Promise(resolve => setTimeout(resolve, 5000));
       }
     }
     
-    // Start worker services (per GPU)
+    // Start simulation service BEFORE workers (so workers can connect to it)
+    if (process.env.MACHINE_ENABLE_SIMULATION === 'true') {
+      await pm2Manager.pm2Exec('start /workspace/pm2-ecosystem.config.cjs --only simulation');
+      logger.info('Simulation service started');
+      
+      // Wait for simulation service to be ready
+      logger.info('Waiting for simulation service to initialize...');
+      await new Promise(resolve => setTimeout(resolve, 3000));
+    }
+    
+    // Start worker services LAST (after ComfyUI and simulation are ready)
     const workerServices = [];
     for (let gpu = 0; gpu < gpuCount; gpu++) {
       workerServices.push(`redis-worker-gpu${gpu}`);
@@ -126,12 +149,6 @@ async function startPM2Services() {
     if (workerServices.length > 0) {
       await pm2Manager.pm2Exec(`start /workspace/pm2-ecosystem.config.cjs --only ${workerServices.join(',')}`);
       logger.info(`Worker services started: ${workerServices.join(', ')}`);
-    }
-    
-    // Start simulation service if enabled
-    if (process.env.ENABLE_SIMULATION === 'true') {
-      await pm2Manager.pm2Exec('start /workspace/pm2-ecosystem.config.cjs --only simulation');
-      logger.info('Simulation service started');
     }
     
     // Save process list
@@ -191,10 +208,154 @@ async function verifyPM2Services() {
 }
 
 /**
+ * Generate PM2 ecosystem config based on current machine configuration
+ */
+async function generatePM2EcosystemConfig() {
+  try {
+    logger.info('Generating PM2 ecosystem config...');
+    logger.debug('Config services:', config.services);
+    
+    // Diagnostic: Check working directory and file existence
+    const fs = await import('fs');
+    logger.info(`Current working directory: ${process.cwd()}`);
+    logger.info(`Checking for generate-pm2-ecosystem.js in /workspace...`);
+    
+    try {
+      const workspaceFiles = fs.readdirSync('/workspace');
+      logger.info(`Files in /workspace: ${workspaceFiles.slice(0, 10).join(', ')}${workspaceFiles.length > 10 ? '...' : ''}`);
+    } catch (err) {
+      logger.error('Could not read /workspace directory:', err.message);
+    }
+    
+    const ecosystemExists = fs.existsSync('/workspace/generate-pm2-ecosystem.js');
+    logger.info(`generate-pm2-ecosystem.js exists in /workspace: ${ecosystemExists}`);
+    
+    // Also check service-manager directory
+    try {
+      const serviceFiles = fs.readdirSync('/service-manager');
+      logger.info(`Files in /service-manager: ${serviceFiles.slice(0, 10).join(', ')}${serviceFiles.length > 10 ? '...' : ''}`);
+      const ecosystemInService = fs.existsSync('/service-manager/generate-pm2-ecosystem.js');
+      logger.info(`generate-pm2-ecosystem.js exists in /service-manager: ${ecosystemInService}`);
+    } catch (err) {
+      logger.error('Could not read /service-manager directory:', err.message);
+    }
+    
+    // Check service configuration from config object
+    const enableComfyUI = config.services?.comfyui?.enabled || false;
+    const enableSimulation = config.services?.simulation?.enabled || false;
+    const enableRedisWorker = config.services?.redisWorker?.enabled || false;
+    
+    logger.info('Service flags:', {
+      enableComfyUI,
+      enableSimulation,
+      enableRedisWorker
+    });
+    
+    const { execa } = await import('execa');
+    await execa('node', ['generate-pm2-ecosystem.js'], {
+      cwd: '/service-manager',
+      env: {
+        ...process.env,
+        MACHINE_NUM_GPUS: config.machine.gpu.count.toString(),
+        MACHINE_ENABLE_COMFYUI: enableComfyUI ? 'true' : 'false',
+        MACHINE_ENABLE_SIMULATION: enableSimulation ? 'true' : 'false',
+        MACHINE_ENABLE_REDIS_WORKERS: enableRedisWorker ? 'true' : 'false'
+      }
+    });
+    
+    logger.info('PM2 ecosystem config generated successfully');
+    
+    // Log the generated config file contents for debugging
+    try {
+      const fs = await import('fs');
+      const configContent = fs.readFileSync('/workspace/pm2-ecosystem.config.cjs', 'utf8');
+      logger.info('Generated ecosystem config contents:');
+      console.log(configContent);
+    } catch (error) {
+      logger.error('Failed to read generated ecosystem config:', error);
+    }
+  } catch (error) {
+    logger.error('Failed to generate PM2 ecosystem config:', error);
+    throw error;
+  }
+}
+
+/**
+ * Clean up any existing PM2 processes that might be holding ports
+ */
+async function cleanupExistingPM2Processes() {
+  try {
+    logger.info('Checking for existing PM2 processes...');
+    
+    // First, ensure PM2 daemon is running
+    try {
+      await pm2Manager.pm2Exec('ping');
+      logger.debug('PM2 daemon is responsive');
+    } catch (error) {
+      logger.info('PM2 daemon not running, will be started automatically');
+      return; // No cleanup needed if daemon isn't running
+    }
+    
+    // Get list of PM2 processes
+    const processes = await pm2Manager.list();
+    
+    // Check if processes is actually an array (not an error message)
+    if (Array.isArray(processes) && processes.length > 0) {
+      logger.warn(`Found ${processes.length} existing PM2 processes, cleaning up...`);
+      
+      // Stop all existing processes
+      await pm2Manager.killAll();
+      
+      logger.info('Cleaned up existing PM2 processes');
+      
+      // Wait a bit for processes to fully terminate
+      await new Promise(resolve => setTimeout(resolve, 3000));
+    } else {
+      logger.debug('No existing PM2 processes found');
+    }
+  } catch (error) {
+    logger.warn('Could not cleanup existing PM2 processes:', error.message || error);
+    // Continue anyway - might be first run or PM2 not initialized
+  }
+}
+
+/**
+ * Check if there's already an instance running
+ */
+async function checkForExistingInstance() {
+  const healthPort = parseInt(process.env.MACHINE_HEALTH_PORT || '9090');
+  
+  try {
+    const response = await fetch(`http://localhost:${healthPort}/health`, {
+      method: 'GET',
+      timeout: 2000
+    });
+    
+    if (response.ok) {
+      const health = await response.json();
+      logger.warn('Found existing instance running:', health);
+      logger.warn('This might indicate the entrypoint script is being run multiple times');
+      logger.warn('Continuing anyway, but this may cause port conflicts...');
+    }
+  } catch (error) {
+    // No existing instance found or not responding - this is good
+    logger.debug('No existing instance detected on health port');
+  }
+}
+
+/**
  * Start health check HTTP server
  */
-function startHealthServer() {
-  const port = process.env.HEALTH_PORT || 9090;
+async function startHealthServer() {
+  const port = parseInt(process.env.MACHINE_HEALTH_PORT || '9090');
+  
+  // Check if port is in use and cleanup if needed
+  try {
+    await cleanupHealthPort(port);
+  } catch (error) {
+    logger.error(`Failed to cleanup health server port ${port}:`, error);
+    throw error;
+  }
   
   const server = http.createServer(async (req, res) => {
     const url = new URL(req.url, `http://${req.headers.host}`);
@@ -395,7 +556,85 @@ function startHealthServer() {
 
   server.on('error', (error) => {
     logger.error('Health server error:', error);
+    if (error.code === 'EADDRINUSE') {
+      logger.error(`Port ${port} is already in use. This might indicate a previous instance is still running.`);
+      process.exit(1);
+    }
   });
+}
+
+/**
+ * Cleanup health server port if it's in use
+ */
+async function cleanupHealthPort(port) {
+  const net = await import('net');
+  const { execa } = await import('execa');
+  
+  // Check if port is in use
+  const isInUse = await new Promise((resolve) => {
+    const server = net.createServer();
+    server.listen(port, () => {
+      server.close(() => resolve(false));
+    });
+    server.on('error', () => resolve(true));
+  });
+  
+  if (!isInUse) {
+    logger.debug(`Health server port ${port} is available`);
+    return;
+  }
+  
+  logger.warn(`Health server port ${port} is in use, attempting cleanup...`);
+  
+  try {
+    // Find process using the port
+    const { stdout } = await execa('lsof', ['-ti', `:${port}`]);
+    const pid = parseInt(stdout.trim());
+    
+    if (pid) {
+      logger.info(`Killing process ${pid} using port ${port}`);
+      
+      // Try graceful shutdown first
+      try {
+        process.kill(pid, 'SIGTERM');
+        await new Promise(resolve => setTimeout(resolve, 2000));
+        
+        // Check if still running
+        try {
+          process.kill(pid, 0);
+          logger.info(`Process ${pid} still alive, force killing...`);
+          process.kill(pid, 'SIGKILL');
+          await new Promise(resolve => setTimeout(resolve, 1000));
+        } catch {
+          // Process is dead
+        }
+      } catch (error) {
+        logger.debug(`Error killing process ${pid}:`, error.message);
+      }
+      
+      // Verify port is now free
+      const stillInUse = await new Promise((resolve) => {
+        const server = net.createServer();
+        server.listen(port, () => {
+          server.close(() => resolve(false));
+        });
+        server.on('error', () => resolve(true));
+      });
+      
+      if (stillInUse) {
+        logger.error(`Port ${port} is still in use after cleanup. Manual intervention may be required.`);
+        throw new Error(`Unable to free port ${port}`);
+      } else {
+        logger.info(`Successfully freed health server port ${port}`);
+      }
+    }
+  } catch (error) {
+    if (error.message.includes('Unable to free port')) {
+      throw error;
+    }
+    logger.warn(`Could not find process using port ${port}, but port appears in use:`, error.message);
+    // Continue anyway - might be a networking issue
+  }
 }
 
 /**

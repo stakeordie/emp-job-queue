@@ -19,7 +19,21 @@ export default class ComfyUIService extends BaseService {
     this.logFile = path.join(this.workDir, 'logs', `output-gpu${this.gpu}.log`);
     this.testMode = process.env.TEST_MODE === 'true';
     this.mockGpu = process.env.MOCK_GPU === '1'; // Legacy support
+    
+    // Auto-detect CPU mode: check if NVIDIA GPU is available
     this.cpuMode = process.env.COMFYUI_CPU_MODE === 'true';
+    if (!this.cpuMode) {
+      // Try to detect if GPU is available
+      try {
+        const { execaSync } = require('execa');
+        execaSync('nvidia-smi', { timeout: 1000 });
+        this.logger.info('NVIDIA GPU detected, running in GPU mode');
+      } catch (error) {
+        this.logger.info('No NVIDIA GPU detected, enabling CPU mode automatically');
+        this.cpuMode = true;
+      }
+    }
+    
     this.comfyArgs = process.env.COMFY_ARGS || '';
   }
 
@@ -220,15 +234,17 @@ export default class ComfyUIService extends BaseService {
       '--listen',
       '0.0.0.0',
       '--port',
-      this.port.toString(),
-      '--extra-model-paths-config',
-      process.env.WORKSPACE_DIR ? `${process.env.WORKSPACE_DIR}/shared/comfy_dir_config.yaml` : '/workspace/shared/comfy_dir_config.yaml'
+      this.port.toString()
     ];
 
     // Add mode-specific args
     if (this.testMode || this.mockGpu || this.cpuMode) {
       this.logger.info(`Adding --cpu flag (Test Mode: ${this.testMode}, CPU Mode: ${this.cpuMode})`);
       cmd.push('--cpu');
+    } else {
+      // Add GPU device specification for GPU mode
+      this.logger.info(`Adding --cuda-device ${this.gpu} for GPU mode`);
+      cmd.push('--cuda-device', this.gpu.toString());
     }
 
     // Add additional args if provided and not conflicting

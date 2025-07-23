@@ -112,10 +112,22 @@ class PM2ServiceManager {
     };
   }
 
+  // Get raw PM2 process list
+  async list() {
+    const list = await this.pm2Exec('jlist');
+    return JSON.parse(list);
+  }
+
+  // Kill all PM2 processes
+  async killAll() {
+    console.log('Killing all PM2 processes...');
+    await this.pm2Exec('kill');
+    console.log('All PM2 processes killed');
+  }
+
   // Get all services status
   async getAllServicesStatus() {
-    const list = await this.pm2Exec('jlist');
-    const processes = JSON.parse(list);
+    const processes = await this.list();
     
     return processes.map(service => ({
       name: service.name,

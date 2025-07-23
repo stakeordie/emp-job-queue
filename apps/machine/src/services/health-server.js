@@ -6,13 +6,14 @@ import { versionService } from './version-service.js';
 const logger = createLogger('health-server');
 
 export default class HealthServer extends BaseService {
-  constructor(options = {}, config, orchestrator) {
+  constructor(options = {}, config, pm2Manager) {
     super('health-server', options);
     this.config = config;
-    this.orchestrator = orchestrator;
+    this.pm2Manager = pm2Manager;
     this.port = options.port || 9090;
     this.server = null;
     this.app = null;
+    this.startTime = Date.now(); // Track when health server started
   }
 
   async onStart() {
@@ -57,26 +58,18 @@ export default class HealthServer extends BaseService {
 
   async handleHealth(req, res) {
     try {
-      const services = this.orchestrator.services;
-      const healthChecks = [];
+      const services = await this.pm2Manager.getAllServicesStatus();
+      const healthChecks = services.map(service => ({
+        service: service.name,
+        healthy: service.status === 'online',
+        status: service.status,
+        pid: service.pid,
+        cpu: service.cpu,
+        memory: service.memory,
+        uptime: service.uptime,
+        restarts: service.restarts
+      }));
       
-      for (const [serviceName, service] of services) {
-        try {
-          const isHealthy = await service.isHealthy();
-          healthChecks.push({
-            service: serviceName,
-            healthy: isHealthy,
-            status: service.status
-          });
-        } catch (error) {
-          healthChecks.push({
-            service: serviceName,
-            healthy: false,
-            status: 'error',
-            error: error.message
-          });
-        }
-      }
       
       const allHealthy = healthChecks.every(check => check.healthy);
       
@@ -103,7 +96,7 @@ export default class HealthServer extends BaseService {
       res.json({
         machine_id: this.config.machine.id,
         timestamp: new Date().toISOString(),
-        uptime_ms: this.orchestrator.startTime ? Date.now() - this.orchestrator.startTime : 0,
+        uptime_ms: this.startTime ? Date.now() - this.startTime : 0,
         services: serviceStatus
       });
     } catch (error) {
