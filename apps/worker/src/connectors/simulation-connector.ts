@@ -40,7 +40,7 @@ export class SimulationConnector extends BaseConnector {
       retry_attempts: 3,
       retry_delay_seconds: 1,
       health_check_interval_seconds: 30,
-      max_concurrent_jobs: 5,
+      max_concurrent_jobs: parseInt(process.env.SIMULATION_MAX_CONCURRENT_JOBS || '1'),
       settings: {
         min_processing_time_ms: processingTimeMs,
         max_processing_time_ms: processingTimeMs,

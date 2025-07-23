@@ -16,24 +16,50 @@ import { useMonitorStore } from "@/store"
 import { useState, useEffect } from "react"
 import Link from "next/link"
 
-// Environment presets
-const CONNECTION_PRESETS = {
-  local: {
-    websocket: 'http://localhost:3331',
-    auth: '3u8sdj5389fj3kljsf90u',
-    name: 'Local Dev'
-  },
-  railway: {
-    websocket: 'wss://redisserver-production.up.railway.app',
-    auth: '3u8sdj5389fj3kljsf90u',
-    name: 'Railway (Old)'
-  },
-  railwaynew: {
-    websocket: 'wss://emp-job-queue-production.up.railway.app',
-    auth: '3u8sdj5389fj3kljsf90u',
-    name: 'Railway (New)'
+// Environment presets - load from environment variable
+const getConnectionPresets = () => {
+  try {
+    const connectionsEnv = process.env.CONNECTIONS;
+    if (connectionsEnv) {
+      const connections = JSON.parse(connectionsEnv);
+      const presets: Record<string, { websocket: string; auth: string; name: string }> = {};
+      
+      connections.forEach((conn: any) => {
+        const name = conn.NAME.toLowerCase();
+        presets[name] = {
+          websocket: `http://${conn.WS_URL}`,
+          auth: conn.AUTH_KEY || '3u8sdj5389fj3kljsf90u',
+          name: conn.NAME
+        };
+      });
+      
+      return presets;
+    }
+  } catch (error) {
+    console.warn('Failed to parse CONNECTIONS environment variable:', error);
   }
+  
+  // Fallback to hardcoded presets if env var is not available
+  return {
+    local: {
+      websocket: 'http://localhost:3331',
+      auth: '3u8sdj5389fj3kljsf90u',
+      name: 'Local Dev'
+    },
+    railway: {
+      websocket: 'wss://redisserver-production.up.railway.app',
+      auth: '3u8sdj5389fj3kljsf90u',
+      name: 'Railway (Old)'
+    },
+    railwaynew: {
+      websocket: 'wss://emp-job-queue-production.up.railway.app',
+      auth: '3u8sdj5389fj3kljsf90u',
+      name: 'Railway (New)'
+    }
+  };
 };
+
+const CONNECTION_PRESETS = getConnectionPresets();
 
 export function ConnectionHeader() {
   const { connection, connect, disconnect, setConnection, refreshMonitor, apiVersion, fetchApiVersion } = useMonitorStore();

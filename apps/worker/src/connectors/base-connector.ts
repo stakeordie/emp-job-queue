@@ -103,7 +103,8 @@ export abstract class BaseConnector implements ConnectorInterface {
 
   protected async initializeRedisConnection(): Promise<void> {
     this.hubRedisUrl = process.env.HUB_REDIS_URL || 'redis://localhost:6379';
-    this.workerId = process.env.WORKER_ID || 'unknown-worker';
+    const workerIdPrefix = process.env.WORKER_ID || 'worker';
+    this.workerId = `${workerIdPrefix}-${process.pid}`;
 
     try {
       this.redis = new Redis(this.hubRedisUrl, {

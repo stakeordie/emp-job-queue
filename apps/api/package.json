@@ -11,7 +11,7 @@
   },
   "scripts": {
     "build": "tsc",
-    "dev": "mkdir -p ../../logs && echo '   - Logs:         pnpm logs:api' && echo '   - All Logs:     pnpm logs:all' && tsx watch --inspect=0 src/index.ts 2>&1 | tee ../../logs/api.log",
+    "dev": "mkdir -p ../../logs && echo '   - Logs:         pnpm logs:api' && echo '   - All Logs:     pnpm logs:all' && tsx watch src/index.ts 2>&1 | tee ../../logs/api.log",
     "start": "node dist/src/index.js",
     "test": "vitest run",
     "test:watch": "vitest",

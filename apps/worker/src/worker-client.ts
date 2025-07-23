@@ -84,7 +84,7 @@ export class WorkerClient {
         wsUrl.searchParams.set('type', 'worker');
         wsUrl.searchParams.set('id', this.workerId);
 
-        const authToken = process.env.WORKER_WEBSOCKET_AUTH_TOKEN;
+        const authToken = process.env.WEBSOCKET_AUTH_TOKEN;
         if (authToken) {
           wsUrl.searchParams.set('auth', authToken);
         }

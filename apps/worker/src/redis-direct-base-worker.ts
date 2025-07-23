@@ -36,8 +36,8 @@ import os from 'os';
 function getWorkerVersion(): string {
   try {
     // For releases: CI/CD should set WORKER_VERSION env var from git tag
-    if (process.env.WORKER_VERSION) {
-      return process.env.WORKER_VERSION;
+    if (process.env.VERSION) {
+      return process.env.VERSION;
     }
 
     // For downloaded releases, check if package.json exists in same directory as worker
@@ -104,9 +104,9 @@ export class RedisDirectBaseWorker {
     this.redisClient = new RedisDirectWorkerClient(hubRedisUrl, workerId);
 
     // Initialize job health monitor
-    const healthCheckIntervalMs = parseInt(process.env.WORKER_HEALTH_CHECK_INTERVAL_MS || '30000');
+    const healthCheckIntervalMs = parseInt(process.env.HEALTH_CHECK_INTERVAL_MS || '30000');
     const inactivityTimeoutMs = parseInt(
-      process.env.WORKER_WEBSOCKET_INACTIVITY_TIMEOUT_MS || '30000'
+      process.env.WEBSOCKET_INACTIVITY_TIMEOUT_MS || '30000'
     );
     this.jobHealthMonitor = new JobHealthMonitor(
       connectorManager,
@@ -115,10 +115,10 @@ export class RedisDirectBaseWorker {
     );
 
     // Configuration from environment - match existing patterns
-    this.pollIntervalMs = parseInt(process.env.WORKER_POLL_INTERVAL_MS || '1000'); // Faster polling for Redis-direct
+    this.pollIntervalMs = parseInt(process.env.POLL_INTERVAL_MS || '1000'); // Faster polling for Redis-direct
     // ENFORCED: Workers process exactly ONE job at a time - no concurrency within a worker
     this.maxConcurrentJobs = 1; // NEVER change this - workers are single-job processors
-    this.jobTimeoutMinutes = parseInt(process.env.WORKER_JOB_TIMEOUT_MINUTES || '30');
+    this.jobTimeoutMinutes = parseInt(process.env.JOB_TIMEOUT_MINUTES || '30');
 
     // Build capabilities
     this.capabilities = this.buildCapabilities();
@@ -136,8 +136,8 @@ export class RedisDirectBaseWorker {
   private buildCapabilities(): WorkerCapabilities {
     // Services this worker can handle
     const services = (
-      process.env.WORKER_SERVICES ||
-      process.env.WORKER_CONNECTORS ||
+      process.env.CONNECTORS ||
+      process.env.SERVICES ||
       'comfyui,a1111'
     )
       .split(',')
@@ -269,16 +269,16 @@ export class RedisDirectBaseWorker {
       capabilities.availability = process.env.WORKER_AVAILABILITY;
     }
 
-    if (process.env.WORKER_DEBUGGING_ENABLED) {
-      capabilities.debugging_enabled = process.env.WORKER_DEBUGGING_ENABLED === 'true';
+    if (process.env.DEBUGGING_ENABLED) {
+      capabilities.debugging_enabled = process.env.DEBUGGING_ENABLED === 'true';
     }
 
     if (process.env.WORKER_EXPERIMENTAL_MODE) {
       capabilities.experimental_mode = process.env.WORKER_EXPERIMENTAL_MODE === 'true';
     }
 
-    if (process.env.WORKER_DEVELOPMENT_MODE) {
-      capabilities.development_mode = process.env.WORKER_DEVELOPMENT_MODE === 'true';
+    if (process.env.DEVELOPMENT_MODE) {
+      capabilities.development_mode = process.env.DEVELOPMENT_MODE === 'true';
     }
 
     if (process.env.WORKER_MEMORY_CONSTRAINED) {

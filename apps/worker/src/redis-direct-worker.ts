@@ -8,7 +8,8 @@ import { logger } from '@emp/core';
 import os from 'os';
 
 // Worker configuration from environment
-const WORKER_ID = process.env.WORKER_ID || `worker-${process.pid}`;
+const WORKER_ID_PREFIX = process.env.WORKER_ID || 'worker';
+const WORKER_ID = `${WORKER_ID_PREFIX}-${process.pid}`;
 const HUB_REDIS_URL = process.env.HUB_REDIS_URL || 'redis://localhost:6379';
 const MACHINE_ID = process.env.MACHINE_ID || os.hostname();
 

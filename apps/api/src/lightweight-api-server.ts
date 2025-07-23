@@ -2181,44 +2181,10 @@ export class LightweightAPIServer {
         timestamp: Date.now(),
       };
 
-      // Broadcast to monitors
+      // Broadcast to both monitors and clients via EventBroadcaster
       this.eventBroadcaster.broadcast(jobProgressEvent);
 
-      // Broadcast to clients via EventBroadcaster (with EmProps format adaptation)
-      this.eventBroadcaster.broadcast(jobProgressEvent);
 
-      // Legacy: Also broadcast to WebSocket connections directly (for backward compatibility)
-      for (const [_clientId, connection] of this.wsConnections) {
-        if (connection.subscribedJobs.has(jobId)) {
-          try {
-            connection.ws.send(JSON.stringify(jobProgressEvent));
-          } catch (error) {
-            logger.error(
-              `Failed to send WebSocket progress to client ${connection.clientId}:`,
-              error
-            );
-            this.wsConnections.delete(connection.clientId);
-          }
-        }
-      }
-
-      // Also broadcast to the client that submitted this job
-      const submittingClientId = this.jobToClientMap.get(jobId);
-      if (submittingClientId) {
-        const clientConnection = this.clientConnections.get(submittingClientId);
-        if (clientConnection && clientConnection.ws.readyState === WebSocket.OPEN) {
-          try {
-            clientConnection.ws.send(JSON.stringify(jobProgressEvent));
-            logger.debug(`Sent progress update to job submitter client ${submittingClientId}`);
-          } catch (error) {
-            logger.error(
-              `Failed to send progress to submitting client ${submittingClientId}:`,
-              error
-            );
-            this.clientConnections.delete(submittingClientId);
-          }
-        }
-      }
     }
 
     // Check if this is a status change (assigned/processing/completed/failed)
@@ -2309,21 +2275,10 @@ export class LightweightAPIServer {
     // Broadcast to both monitors and clients via EventBroadcaster
     // EventBroadcaster will automatically format for each connection type
     this.eventBroadcaster.broadcast(jobCompletedEvent);
+    
+    // Use new function to broadcast to the specific client that submitted this job
+    this.broadcastJobEventToClient(jobId, jobCompletedEvent);
 
-    // Legacy: Also broadcast to WebSocket connections directly (for backward compatibility)
-    for (const [_clientId, connection] of this.wsConnections) {
-      if (connection.subscribedJobs.has(jobId)) {
-        try {
-          connection.ws.send(JSON.stringify(completionMessage));
-        } catch (error) {
-          logger.error(
-            `Failed to send WebSocket completion to client ${connection.clientId}:`,
-            error
-          );
-          this.wsConnections.delete(connection.clientId);
-        }
-      }
-    }
 
     // Also broadcast to the client that submitted this job
     const submittingClientId = this.jobToClientMap.get(jobId);
@@ -2331,7 +2286,7 @@ export class LightweightAPIServer {
       const clientConnection = this.clientConnections.get(submittingClientId);
       if (clientConnection && clientConnection.ws.readyState === clientConnection.ws.OPEN) {
         try {
-          clientConnection.ws.send(JSON.stringify(completionMessage));
+          // clientConnection.ws.send(JSON.stringify(completionMessage)); // Legacy - causes duplicates
           logger.debug(`Sent completion update to job submitter client ${submittingClientId}`);
         } catch (error) {
           logger.error(
