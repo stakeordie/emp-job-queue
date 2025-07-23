@@ -117,7 +117,23 @@ Recent Job Results ({recentCompletedJobs.length}/10)
                   {/* Job Info */}
                   <div className="text-xs text-muted-foreground">
                     <p className="font-medium truncate">{job.id}</p>
-                    <p>{job.job_type} • {job.completed_at ? new Date(job.completed_at).toLocaleString() : 'N/A'}</p>
+                    <p>
+                      {job.job_type} • 
+                      {job.workflow_priority !== undefined ? (
+                        <span className="text-blue-600 font-medium">
+                          Priority: {job.workflow_priority} (workflow)
+                        </span>
+                      ) : (
+                        <span>Priority: {job.priority}</span>
+                      )}
+                      {job.workflow_id && (
+                        <span className="text-purple-600 font-medium">
+                          {` • 🔗 ${job.workflow_id}`}
+                          {job.step_number !== undefined && ` (step ${job.step_number})`}
+                        </span>
+                      )}
+                    </p>
+                    <p>{job.completed_at ? new Date(job.completed_at).toLocaleString() : 'N/A'}</p>
                   </div>
                 </div>
               );

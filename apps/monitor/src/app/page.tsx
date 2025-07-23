@@ -298,11 +298,25 @@ function Home({ isJobPanelOpen }: HomeProps) {
                         <div className="flex-1">
                           <p className="font-medium text-sm">{job.id}</p>
                           <p className="text-xs text-muted-foreground">
-                            {job.job_type} | Priority: {job.priority}
-                            {job.workflow_id && ` | Workflow: ${job.workflow_id}`}
-                            {job.workflow_priority !== undefined && ` | W.Priority: ${job.workflow_priority}`}
-                            {job.workflow_datetime && ` | ${new Date(job.workflow_datetime).toLocaleTimeString()}`}
-                            {job.step_number !== undefined && ` | Step: ${job.step_number}`}
+                            {job.job_type} | 
+                            {job.workflow_priority !== undefined ? (
+                              <span className="text-blue-600 font-medium">
+                                Priority: {job.workflow_priority} (workflow override from {job.priority})
+                              </span>
+                            ) : (
+                              <span>Priority: {job.priority}</span>
+                            )}
+                            {job.workflow_id && (
+                              <span className="text-purple-600 font-medium">
+                                {` | 🔗 Workflow: ${job.workflow_id}`}
+                                {job.step_number !== undefined && ` (step ${job.step_number})`}
+                              </span>
+                            )}
+                            {job.workflow_datetime && (
+                              <span className="text-green-600">
+                                {` | ⏱️ ${formatRelativeTime(job.workflow_datetime)} (${new Date(job.workflow_datetime).toLocaleString()})`}
+                              </span>
+                            )}
                           </p>
                         </div>
                       </div>
@@ -451,11 +465,25 @@ function Home({ isJobPanelOpen }: HomeProps) {
                         <div>
                           <p className="font-medium">{job.id}</p>
                           <p className="text-xs text-muted-foreground">
-                            {job.job_type} | Priority: {job.priority}
-                            {job.workflow_id && ` | Workflow: ${job.workflow_id}`}
-                            {job.workflow_priority !== undefined && ` | W.Priority: ${job.workflow_priority}`}
-                            {job.workflow_datetime && ` | ${new Date(job.workflow_datetime).toLocaleTimeString()}`}
-                            {job.step_number !== undefined && ` | Step: ${job.step_number}`}
+                            {job.job_type} | 
+                            {job.workflow_priority !== undefined ? (
+                              <span className="text-blue-600 font-medium">
+                                Priority: {job.workflow_priority} (workflow override from {job.priority})
+                              </span>
+                            ) : (
+                              <span>Priority: {job.priority}</span>
+                            )}
+                            {job.workflow_id && (
+                              <span className="text-purple-600 font-medium">
+                                {` | 🔗 Workflow: ${job.workflow_id}`}
+                                {job.step_number !== undefined && ` (step ${job.step_number})`}
+                              </span>
+                            )}
+                            {job.workflow_datetime && (
+                              <span className="text-green-600">
+                                {` | ⏱️ ${formatRelativeTime(job.workflow_datetime)} (${new Date(job.workflow_datetime).toLocaleString()})`}
+                              </span>
+                            )}
                           </p>
                         </div>
                       </div>
@@ -512,11 +540,25 @@ function Home({ isJobPanelOpen }: HomeProps) {
                         <div>
                           <p className="font-medium">{job.id}</p>
                           <p className="text-xs text-muted-foreground">
-                            {job.job_type} | Priority: {job.priority}
-                            {job.workflow_id && ` | Workflow: ${job.workflow_id}`}
-                            {job.workflow_priority !== undefined && ` | W.Priority: ${job.workflow_priority}`}
-                            {job.workflow_datetime && ` | ${new Date(job.workflow_datetime).toLocaleTimeString()}`}
-                            {job.step_number !== undefined && ` | Step: ${job.step_number}`}
+                            {job.job_type} | 
+                            {job.workflow_priority !== undefined ? (
+                              <span className="text-blue-600 font-medium">
+                                Priority: {job.workflow_priority} (workflow override from {job.priority})
+                              </span>
+                            ) : (
+                              <span>Priority: {job.priority}</span>
+                            )}
+                            {job.workflow_id && (
+                              <span className="text-purple-600 font-medium">
+                                {` | 🔗 Workflow: ${job.workflow_id}`}
+                                {job.step_number !== undefined && ` (step ${job.step_number})`}
+                              </span>
+                            )}
+                            {job.workflow_datetime && (
+                              <span className="text-green-600">
+                                {` | ⏱️ ${formatRelativeTime(job.workflow_datetime)} (${new Date(job.workflow_datetime).toLocaleString()})`}
+                              </span>
+                            )}
                           </p>
                         </div>
                       </div>

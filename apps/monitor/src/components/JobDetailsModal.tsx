@@ -110,18 +110,36 @@ export function JobDetailsModal({ job, workers, isOpen, onClose }: JobDetailsMod
                 </div>
                 <div>
                   <p className="text-sm font-medium">Priority</p>
-                  <p className="text-sm text-muted-foreground">{job.priority}</p>
+                  {job.workflow_priority !== undefined ? (
+                    <div className="space-y-1">
+                      <p className="text-sm text-blue-600 font-medium">
+                        {job.workflow_priority} (workflow override)
+                      </p>
+                      <p className="text-xs text-muted-foreground">
+                        Original job priority: {job.priority}
+                      </p>
+                    </div>
+                  ) : (
+                    <p className="text-sm text-muted-foreground">{job.priority}</p>
+                  )}
                 </div>
                 {job.workflow_id && (
                   <>
                     <div>
-                      <p className="text-sm font-medium">Workflow</p>
-                      <p className="text-sm text-muted-foreground font-mono">{job.workflow_id}</p>
+                      <p className="text-sm font-medium">🔗 Workflow</p>
+                      <p className="text-sm text-purple-600 font-mono font-medium">{job.workflow_id}</p>
+                      {job.step_number !== undefined && (
+                        <p className="text-xs text-muted-foreground">Step {job.step_number}</p>
+                      )}
                     </div>
-                    <div>
-                      <p className="text-sm font-medium">Workflow Priority</p>
-                      <p className="text-sm text-muted-foreground">{job.workflow_priority}</p>
-                    </div>
+                    {job.workflow_datetime && (
+                      <div>
+                        <p className="text-sm font-medium">⏱️ Workflow Created</p>
+                        <p className="text-sm text-green-600 font-medium">
+                          {new Date(job.workflow_datetime).toLocaleString()}
+                        </p>
+                      </div>
+                    )}
                   </>
                 )}
                 <div>
