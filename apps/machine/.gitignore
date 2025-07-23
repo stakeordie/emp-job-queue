@@ -45,3 +45,9 @@ temp/
 
 # Worker downloads
 worker_gpu*/
+
+# Docker build artifacts
+.workspace-packages/
+
+# Archive files
+archive/
