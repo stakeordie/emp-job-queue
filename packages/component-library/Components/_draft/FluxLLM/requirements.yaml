@@ -16,19 +16,19 @@ models:
     commit: 0ef5fff
     bearer: ${HF_TOKEN}
     location: models/diffusion_models/
-- name: ae.safetensors
+  - name: ae.safetensors
     address: https://huggingface.co/black-forest-labs/FLUX.1-dev/resolve/main/ae.safetensors
     command: wget --header="Authorization: Bearer ${HF_TOKEN}" https://huggingface.co/black-forest-labs/FLUX.1-dev/resolve/main/ae.safetensors
     commit: 0ef5fff
     bearer: ${HF_TOKEN}
     location: models/vae/
-- name: LexicaDAT2_otf
-  address: https://drive.google.com/uc?export=download&confirm=1&id=1Vx4kqcpPKfUpYSFpK_0XRZ7h64nosraW
-  command: gdown https://drive.google.com/uc?id=1Vx4kqcpPKfUpYSFpK_0XRZ7h64nosraW
-  location: models/vae/
-- name: 4xFaceUpDAT
-  address: https://drive.google.com/uc?export=download&confirm=1&id=1d3wPbtjFcgCkWAMVFQalOuQHdiNmfc5i
-  command: gdown https://drive.google.com/uc?id=1d3wPbtjFcgCkWAMVFQalOuQHdiNmfc5i
+  - name: LexicaDAT2_otf
+    address: https://drive.google.com/uc?export=download&confirm=1&id=1Vx4kqcpPKfUpYSFpK_0XRZ7h64nosraW
+    command: gdown https://drive.google.com/uc?id=1Vx4kqcpPKfUpYSFpK_0XRZ7h64nosraW
+    location: models/vae/
+  - name: 4xFaceUpDAT
+    address: https://drive.google.com/uc?export=download&confirm=1&id=1d3wPbtjFcgCkWAMVFQalOuQHdiNmfc5i
+    command: gdown https://drive.google.com/uc?id=1d3wPbtjFcgCkWAMVFQalOuQHdiNmfc5i
 custom_nodes:
   - name: ComfyUI-Impact-Pack
     commit: c3eed09

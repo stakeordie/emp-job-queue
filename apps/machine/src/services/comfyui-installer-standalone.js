@@ -28,6 +28,7 @@ class StandaloneComfyUIInstaller {
     this.isBuildTime = process.argv.includes('--build-time');
     this.customNodesOnly = process.argv.includes('--custom-nodes-only');
     this.skipEnv = process.argv.includes('--skip-env');
+    this.skipRequirements = process.argv.includes('--skip-requirements');
   }
 
   async run() {
@@ -120,8 +121,8 @@ class StandaloneComfyUIInstaller {
 
       logger.debug(`✅ Cloned ${node.name}`);
 
-      // Install requirements if specified and not skipping
-      if (node.requirements && !this.skipEnv) {
+      // Install requirements if specified and not skipping requirements
+      if (node.requirements && !this.skipRequirements) {
         const requirementsPath = path.join(nodePath, 'requirements.txt');
         if (await fs.pathExists(requirementsPath)) {
           logger.debug(`Installing requirements for ${node.name}`);
@@ -132,8 +133,8 @@ class StandaloneComfyUIInstaller {
         }
       }
 
-      // Create .env file if specified and not skipping
-      if (node.env && !this.skipEnv) {
+      // Create .env file if specified and not skipping env (at build time, we skip .env but not requirements)
+      if (node.env && !this.skipEnv && !this.isBuildTime) {
         const envPath = path.join(nodePath, '.env');
         const envContent = Object.entries(node.env)
           .map(([key, value]) => `${key}=${value}`)
@@ -153,6 +154,10 @@ class StandaloneComfyUIInstaller {
       // Try to load from config_nodes.json first
       if (await fs.pathExists(this.configPath)) {
         const configData = await fs.readJson(this.configPath);
+        // Normalize the config structure - handle both 'nodes' and 'custom_nodes'
+        if (configData.custom_nodes && !configData.nodes) {
+          configData.nodes = configData.custom_nodes;
+        }
         return configData;
       }
       

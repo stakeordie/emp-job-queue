@@ -49,47 +49,64 @@ RUN mkdir -p \
     /workspace/.pm2 \
     /workspace/scripts
 
-# Stage 3: Final image
-FROM ai-base as installed-comfy
+# Stage 3: Bundle standalone installer  
+FROM node:18-slim AS installer-builder
+WORKDIR /build
+COPY package.json pnpm-lock.yaml* ./
+COPY .workspace-packages/ ./.workspace-packages/
+RUN npm install -g pnpm && \
+    # Remove workspace references for standalone build
+    sed -i 's/"@emp\/service-config": "workspace:\*"/"@emp\/service-config": "file:.workspace-packages\/service-config"/' package.json && \
+    sed -i 's/"@emp\/custom-nodes": "workspace:\*"/"@emp\/custom-nodes": "file:.workspace-packages\/custom-nodes"/' package.json && \
+    pnpm install --prod --no-frozen-lockfile --ignore-workspace
 
-# No build-time environment variables needed - all handled at runtime
+COPY src/services/comfyui-installer-standalone.js ./installer.js
+# Create package.json for ES module support
+RUN echo '{"type": "module"}' > installer-package.json
+# Create properly bundled executable file
+RUN cat installer.js | sed '1{/^#!/d;}' > installer-bundle.js && \
+    sed -i '1i#!/usr/bin/env node' installer-bundle.js && \
+    chmod +x installer-bundle.js
 
-# Cache layer 1: Install ComfyUI base (this rarely changes) 
+# Stage 4: ComfyUI base (runs in parallel with installer build)
+FROM ai-base AS comfyui-base
 RUN echo "Installing ComfyUI base..." && \
     git clone -b forward https://github.com/stakeordie/ComfyUI.git /workspace/ComfyUI && \
     cd /workspace/ComfyUI && \
     pip install -r requirements.txt && \
     echo "ComfyUI base installation complete"
 
-# Cache layer 2: Copy workspace packages for dependencies
-COPY .workspace-packages/ /service-manager/.workspace-packages/
+# Stage 5: Custom nodes installation (combines previous stages)
+FROM comfyui-base AS with-custom-nodes
+# Copy bundled installer and dependencies from builder stage
+COPY --from=installer-builder /build/node_modules /installer/node_modules  
+COPY --from=installer-builder /build/installer-bundle.js /installer/
+COPY --from=installer-builder /build/installer-package.json /installer/package.json
+COPY --from=installer-builder /build/.workspace-packages /installer/.workspace-packages
 
-# Cache layer 3: Copy custom nodes configuration for better custom nodes caching
+# Copy custom nodes config
 COPY config_nodes.json /workspace/config_nodes.json
 
-# Cache layer 4: Copy standalone installer and minimal dependencies
-COPY src/services/comfyui-installer-standalone.js /service-manager/src/services/
-COPY package.json pnpm-lock.yaml* /service-manager/
-
-# Install workspace packages locally first, then install machine dependencies
-RUN cd /service-manager && \
-    # Remove workspace references from package.json for Docker build and use relative paths
-    sed -i 's/"@emp\/service-config": "workspace:\*"/"@emp\/service-config": "file:.workspace-packages\/service-config"/' package.json && \
-    sed -i 's/"@emp\/custom-nodes": "workspace:\*"/"@emp\/custom-nodes": "file:.workspace-packages\/custom-nodes"/' package.json && \
-    # Install dependencies using file: references
-    pnpm install --prod --no-frozen-lockfile --ignore-workspace
-
-# Cache layer 5: Install custom nodes (this layer will cache if config_nodes.json doesn't change)
+# Install custom nodes using bundled installer (cached until config changes)
 ARG CUSTOM_NODES_CACHE_BUST=default
 ENV CUSTOM_NODES_CACHE_BUST=${CUSTOM_NODES_CACHE_BUST}
-
 RUN echo "Installing custom nodes (cache bust: $CUSTOM_NODES_CACHE_BUST)" && \
-    # Install custom nodes WITHOUT environment variables (no .env files created)
-    # Environment variables and .env files will be processed at runtime
-    node /service-manager/src/services/comfyui-installer-standalone.js --build-time --custom-nodes-only --skip-env
+    cd /installer && \
+    NODE_PATH=/installer/node_modules node installer-bundle.js --build-time --custom-nodes-only
 
-# Cache layer 6: Copy the rest of the service source code (changes frequently)
+# Stage 6: Final image with service source code
+FROM with-custom-nodes AS installed-comfy
+
+# Copy service source code (changes frequently but doesn't affect custom nodes cache)
 COPY src/ /service-manager/src/
+COPY package.json pnpm-lock.yaml* /service-manager/
+COPY .workspace-packages/ /service-manager/.workspace-packages/
+
+# Install service dependencies
+RUN cd /service-manager && \
+    sed -i 's/"@emp\/service-config": "workspace:\*"/"@emp\/service-config": "file:.workspace-packages\/service-config"/' package.json && \
+    sed -i 's/"@emp\/custom-nodes": "workspace:\*"/"@emp\/custom-nodes": "file:.workspace-packages\/custom-nodes"/' package.json && \
+    pnpm install --prod --no-frozen-lockfile --ignore-workspace
 
 FROM installed-comfy
 
@@ -107,6 +124,7 @@ ENV BUILD_DATE=${BUILD_DATE}
 
 # Cache layer 6: Copy remaining application files
 COPY scripts/ /service-manager/scripts/
+COPY generate-pm2-ecosystem.js /service-manager/generate-pm2-ecosystem.js
 
 # Set up environment
 ENV NODE_ENV=production \
@@ -118,6 +136,12 @@ ENV NODE_ENV=production \
 
 # Copy PM2 ecosystem config to workspace (needed by PM2)
 RUN cp /service-manager/scripts/pm2-ecosystem.config.cjs /workspace/pm2-ecosystem.config.cjs
+
+# Create env files script
+RUN echo 'import EnvCreator from "../src/services/comfyui-env-creator.js";\n\
+const creator = new EnvCreator({}, {});\n\
+await creator.onStart();\n\
+console.log("Environment files created successfully");' > /service-manager/scripts/create-env-files.mjs
 
 # Create startup script that runs our Node.js app as PID 1
 RUN echo '#!/bin/bash\n\
@@ -135,7 +159,7 @@ pnpm install\n\
 \n\
 # Create runtime .env files for custom nodes before starting services\n\
 echo "Creating runtime .env files for custom nodes..."\n\
-node src/services/runtime-env-creator.js\n\
+node /service-manager/scripts/create-env-files.mjs\n\
 \n\
 # Start the main application\n\
 exec node src/index-pm2.js' > /entrypoint.sh && \

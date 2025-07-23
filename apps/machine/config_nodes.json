@@ -21,6 +21,7 @@
         "CLOUD_MODELS_CONTAINER": "${CLOUD_MODELS_CONTAINER}",
         "CLOUD_STORAGE_TEST_CONTAINER": "${CLOUD_STORAGE_TEST_CONTAINER}",
         "CLOUD_PROVIDER": "${CLOUD_PROVIDER}",
+        "CLOUD_CDN_URL": "${CLOUD_CDN_URL}",
         "STATIC_MODELS": "${STATIC_MODELS}",
         "EMPROPS_DEBUG_LOGGING": "${EMPROPS_DEBUG_LOGGING}",
         "HF_TOKEN": "${HF_TOKEN}",
@@ -348,6 +349,11 @@
     {
       "name": "comfyui-kokoro",
       "url": "git clone https://github.com/stavsap/comfyui-kokoro",
+      "requirements": true
+    },
+    {
+      "name": "ComfyUI-KLingAI-API",
+      "url": "https://github.com/KwaiVGI/ComfyUI-KLingAI-API.git",
       "requirements": true
     }
   ]
