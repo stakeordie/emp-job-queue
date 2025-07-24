@@ -1,0 +1,13 @@
+{
+  "name": "@emp/service-manager",
+  "version": "1.0.0",
+  "description": "Service manager for EmProps machines",
+  "main": "generate-pm2-ecosystem.js",
+  "type": "module",
+  "private": true,
+  "dependencies": {
+    "execa": "^8.0.1",
+    "winston": "^3.11.0",
+    "uuid": "^9.0.1"
+  }
+}

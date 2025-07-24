@@ -1,0 +1,66 @@
+# Base Machine Foundation
+# Provides core worker functionality for all EmProps machines
+FROM node:18-bullseye
+
+# Build args for layer cache control
+ARG BASE_BUST=0
+RUN echo "Base cache bust: $BASE_BUST" > /dev/null
+
+# System dependencies (stable - rarely changes)
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    curl \
+    wget \
+    unzip \
+    git \
+    build-essential \
+    python3 \
+    python3-pip \
+    python3-venv \
+    lsof \
+    procps \
+    htop \
+    vim \
+    nano \
+    && rm -rf /var/lib/apt/lists/*
+
+# Install PM2 globally (stable dependency)
+RUN npm install -g pm2@latest
+
+# Create workspace directories
+RUN mkdir -p /workspace /service-manager /workspace/logs
+WORKDIR /workspace
+
+# Copy base machine package.json first (for Docker layer caching)
+COPY package.json package-lock.json* ./
+RUN npm install --production
+
+# Copy base machine source code
+COPY src/ ./src/
+COPY config/ ./config/
+COPY scripts/ ./scripts/
+
+# Copy service manager (shared across all machine types)
+COPY service-manager/ /service-manager/
+WORKDIR /service-manager
+RUN npm install --production
+
+# Set up service manager permissions
+RUN chmod +x /service-manager/scripts/*.sh
+RUN chmod +x /service-manager/*.js
+
+# Back to workspace
+WORKDIR /workspace
+
+# Copy PM2 ecosystem generator
+COPY generate-pm2-ecosystem.js ./
+RUN chmod +x generate-pm2-ecosystem.js
+
+# Create shared directories that all machines need
+RUN mkdir -p /workspace/shared /workspace/data /workspace/models
+
+# Health check
+HEALTHCHECK --interval=30s --timeout=10s --start-period=60s --retries=3 \
+    CMD curl -f http://localhost:9090/health || exit 1
+
+# Default command - specialized machines will override this
+CMD ["node", "src/index.js"]
