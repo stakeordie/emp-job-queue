@@ -8,6 +8,11 @@ import {
   JobData,
   JobResult,
   ProgressCallback,
+  HealthCheckCapabilities,
+  ServiceJobStatus,
+  ServiceSupportValidation,
+  HealthCheckClass,
+  HealthCheckRequirements,
   logger,
 } from '@emp/core';
 import Redis from 'ioredis';
@@ -319,6 +324,27 @@ export abstract class BaseConnector implements ConnectorInterface {
         await this.initializeRedisConnection();
       }
 
+      // Validate service support before proceeding
+      const validation = await this.validateServiceSupport();
+      
+      if (validation.recommendedAction === 'fail') {
+        const errorMsg = `Service validation failed for ${this.service_type} connector ${this.connector_id}: ${validation.errors.join(', ')}`;
+        logger.error(errorMsg);
+        this.currentStatus = 'error';
+        await this.reportStatus('error', errorMsg);
+        throw new Error(errorMsg);
+      }
+      
+      if (validation.recommendedAction === 'warn') {
+        logger.warn(
+          `${this.service_type} connector ${this.connector_id} has limited capabilities: ${validation.warnings.join(', ')}`
+        );
+      }
+      
+      logger.info(
+        `${this.service_type} connector ${this.connector_id} validation: ${validation.supportLevel} support level`
+      );
+
       // Call subclass initialization
       await this.initializeService();
 
@@ -418,4 +444,144 @@ export abstract class BaseConnector implements ConnectorInterface {
   abstract cancelJob(jobId: string): Promise<void>;
   abstract updateConfiguration(config: ConnectorConfig): Promise<void>;
   abstract getConfiguration(): ConnectorConfig;
+  
+  // New failure recovery methods - subclasses must implement
+  abstract getHealthCheckCapabilities(): HealthCheckCapabilities;
+  abstract queryJobStatus(serviceJobId: string): Promise<ServiceJobStatus>;
+  
+  // Service support validation - implemented in base class with subclass override capability
+  async validateServiceSupport(): Promise<ServiceSupportValidation> {
+    try {
+      const capabilities = this.getHealthCheckCapabilities();
+      const requiredClass = this.getRequiredHealthCheckClass();
+      const requirements = this.getHealthCheckRequirements(requiredClass);
+      
+      const missingCapabilities: string[] = [];
+      const warnings: string[] = [];
+      const errors: string[] = [];
+      
+      // Check required capabilities against what the service supports
+      if (requirements.required.basicHealthCheck && !capabilities.supportsBasicHealthCheck) {
+        missingCapabilities.push('basicHealthCheck');
+        errors.push('Service does not support basic health checking - connector cannot verify service availability');
+      }
+      
+      if (requirements.required.jobStatusQuery && !capabilities.supportsJobStatusQuery) {
+        missingCapabilities.push('jobStatusQuery');
+        errors.push('Service does not support job status querying - connector cannot implement failure recovery');
+      }
+      
+      if (requirements.required.jobCancellation && !capabilities.supportsJobCancellation) {
+        missingCapabilities.push('jobCancellation');
+        warnings.push('Service does not support job cancellation - timeout handling will be limited');
+      }
+      
+      if (requirements.required.serviceRestart && !capabilities.supportsServiceRestart) {
+        missingCapabilities.push('serviceRestart');
+        warnings.push('Service does not support restart - manual intervention required for service recovery');
+      }
+      
+      if (requirements.required.queueIntrospection && !capabilities.supportsQueueIntrospection) {
+        missingCapabilities.push('queueIntrospection');
+        warnings.push('Service does not support queue introspection - load balancing will be limited');
+      }
+      
+      // Determine support level and recommended action
+      let supportLevel: 'full' | 'partial' | 'minimal' | 'unsupported';
+      let recommendedAction: 'proceed' | 'warn' | 'fail';
+      
+      if (errors.length > 0) {
+        supportLevel = 'unsupported';
+        recommendedAction = 'fail';
+      } else if (missingCapabilities.length === 0) {
+        supportLevel = 'full';
+        recommendedAction = 'proceed';
+      } else if (warnings.length > 0) {
+        supportLevel = 'partial';
+        recommendedAction = 'warn';
+      } else {
+        supportLevel = 'minimal';
+        recommendedAction = 'proceed';
+      }
+      
+      return {
+        isSupported: supportLevel !== 'unsupported',
+        supportLevel,
+        missingCapabilities,
+        warnings,
+        errors,
+        recommendedAction
+      };
+      
+    } catch (error) {
+      return {
+        isSupported: false,
+        supportLevel: 'unsupported',
+        missingCapabilities: ['validation_failed'],
+        warnings: [],
+        errors: [`Failed to validate service support: ${error instanceof Error ? error.message : 'Unknown error'}`],
+        recommendedAction: 'fail'
+      };
+    }
+  }
+  
+  // Health check class determination - subclasses can override
+  protected getRequiredHealthCheckClass(): HealthCheckClass {
+    // Default to STANDARD for production use
+    return HealthCheckClass.STANDARD;
+  }
+  
+  // Health check requirements - based on class level
+  protected getHealthCheckRequirements(healthCheckClass: HealthCheckClass): HealthCheckRequirements {
+    switch (healthCheckClass) {
+      case HealthCheckClass.MINIMAL:
+        return {
+          class: HealthCheckClass.MINIMAL,
+          required: {
+            basicHealthCheck: true,
+            jobStatusQuery: false,
+            jobCancellation: false,
+            serviceRestart: false,
+            queueIntrospection: false,
+          },
+          description: 'Minimal health checking - service availability only',
+          failureRecoveryCapable: false,
+        };
+        
+      case HealthCheckClass.STANDARD:
+        return {
+          class: HealthCheckClass.STANDARD,
+          required: {
+            basicHealthCheck: true,
+            jobStatusQuery: true,
+            jobCancellation: false,
+            serviceRestart: false,
+            queueIntrospection: false,
+          },
+          description: 'Standard health checking - service availability + job status querying',
+          failureRecoveryCapable: true,
+        };
+        
+      case HealthCheckClass.ADVANCED:
+        return {
+          class: HealthCheckClass.ADVANCED,
+          required: {
+            basicHealthCheck: true,
+            jobStatusQuery: true,
+            jobCancellation: true,
+            serviceRestart: true,
+            queueIntrospection: true,
+          },
+          description: 'Advanced health checking - full failure recovery and service management',
+          failureRecoveryCapable: true,
+        };
+        
+      case HealthCheckClass.CUSTOM:
+        // Subclasses must override this method for custom requirements
+        throw new Error('Custom health check class requires subclass implementation of getHealthCheckRequirements()');
+        
+      default:
+        throw new Error(`Unknown health check class: ${healthCheckClass}`);
+    }
+  }
 }

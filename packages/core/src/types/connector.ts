@@ -18,6 +18,11 @@ export interface ConnectorInterface {
   checkHealth(): Promise<boolean>;
   getAvailableModels(): Promise<string[]>;
   getServiceInfo(): Promise<ServiceInfo>;
+  
+  // Failure recovery capabilities (required for robust job management)
+  getHealthCheckCapabilities(): HealthCheckCapabilities;
+  queryJobStatus(serviceJobId: string): Promise<ServiceJobStatus>;
+  validateServiceSupport(): Promise<ServiceSupportValidation>;
 
   // Status reporting
   startStatusReporting?(): void;
@@ -179,6 +184,84 @@ export interface WebSocketConnectorConfig extends ConnectorConfig {
     reconnect_delay_ms?: number;
     max_reconnect_attempts?: number;
   };
+}
+
+// Health Check Framework - Required capabilities for failure recovery
+export interface HealthCheckCapabilities {
+  // Basic health checking
+  supportsBasicHealthCheck: boolean;
+  basicHealthCheckEndpoint?: string;
+  
+  // Job status querying (critical for failure recovery)
+  supportsJobStatusQuery: boolean;
+  jobStatusQueryEndpoint?: string;
+  jobStatusQueryMethod?: 'GET' | 'POST';
+  
+  // Job cancellation (required for timeout handling)
+  supportsJobCancellation: boolean;
+  jobCancellationEndpoint?: string;
+  jobCancellationMethod?: 'POST' | 'DELETE';
+  
+  // Service restart/recovery
+  supportsServiceRestart: boolean;
+  serviceRestartEndpoint?: string;
+  
+  // Queue introspection (helpful for load balancing)
+  supportsQueueIntrospection: boolean;
+  queueIntrospectionEndpoint?: string;
+  
+  // Custom health check requirements
+  customHealthCheckRequirements?: string[];
+  minimumApiVersion?: string;
+}
+
+export interface ServiceJobStatus {
+  serviceJobId: string;
+  status: 'pending' | 'running' | 'completed' | 'failed' | 'cancelled' | 'unknown';
+  progress?: number; // 0-100
+  startedAt?: string;
+  completedAt?: string;
+  errorMessage?: string;
+  canReconnect: boolean; // Can we reconnect to this job?
+  canCancel: boolean;    // Can we cancel this job?
+  metadata?: Record<string, unknown>;
+}
+
+export interface ServiceSupportValidation {
+  isSupported: boolean;
+  supportLevel: 'full' | 'partial' | 'minimal' | 'unsupported';
+  missingCapabilities: string[];
+  warnings: string[];
+  errors: string[];
+  recommendedAction: 'proceed' | 'warn' | 'fail';
+}
+
+// Health Check Classes - Different levels of support required
+export enum HealthCheckClass {
+  // Minimal - Can only check if service is alive (basic deployment)
+  MINIMAL = 'minimal',
+  
+  // Standard - Can check health + query job status (production ready)
+  STANDARD = 'standard', 
+  
+  // Advanced - Full failure recovery support (enterprise ready)
+  ADVANCED = 'advanced',
+  
+  // Custom - Service has unique requirements
+  CUSTOM = 'custom'
+}
+
+export interface HealthCheckRequirements {
+  class: HealthCheckClass;
+  required: {
+    basicHealthCheck: boolean;
+    jobStatusQuery: boolean;
+    jobCancellation: boolean;
+    serviceRestart: boolean;
+    queueIntrospection: boolean;
+  };
+  description: string;
+  failureRecoveryCapable: boolean;
 }
 
 export interface SimulationConnectorConfig extends ConnectorConfig {
