@@ -1,0 +1,44 @@
+{
+  "name": "Development Mixed",
+  "description": "Local development with production API and development Redis",
+  "components": {
+    "api": [
+      "default",
+      "production"
+    ],
+    "machine": [
+      "default",
+      "production"
+    ],
+    "worker": [
+      "default",
+      "production"
+    ],
+    "monitor": [
+      "default",
+      "production"
+    ],
+    "redis": [
+      "default",
+      "production"
+    ],
+    "storage-provider": [
+      "default",
+      "production"
+    ],
+    "api-tokens": [
+      "default"
+    ],
+    "comfyui": [
+      "default",
+      "production"
+    ],
+    "ollama": [
+      "default"
+    ],
+    "simulation": [
+      "production"
+    ]
+  },
+  "services": {}
+}

@@ -15,11 +15,6 @@ export const MachineEnvInterface = {
     "MACHINE_ID": "MACHINE_ID",
     "MACHINE_CONTAINER_NAME": "MACHINE_ID",
     
-    // Machine hardware configuration
-    "MACHINE_NUM_GPUS": "SIMULATION_NUM_GPUS",
-    "MACHINE_GPU_MEMORY_GB": "SIMULATION_GPU_MEMORY_GB",
-    "MACHINE_GPU_MODEL": "SIMULATION_GPU_MODEL",
-    
     // Machine service enablement flags
     "MACHINE_ENABLE_COMFYUI": "MACHINE_ENABLE_COMFYUI",
     "MACHINE_ENABLE_REDIS_WORKERS": "MACHINE_ENABLE_REDIS_WORKERS",
@@ -52,6 +47,11 @@ export const MachineEnvInterface = {
   },
   
   optional: {
+    // Machine hardware configuration
+    "MACHINE_NUM_GPUS": "SIMULATION_NUM_GPUS",
+    "MACHINE_GPU_MEMORY_GB": "SIMULATION_GPU_MEMORY_GB",
+    "MACHINE_GPU_MODEL": "SIMULATION_GPU_MODEL",
+    
     // Machine service flags
     "MACHINE_ENABLE_NGINX": "MACHINE_ENABLE_NGINX",
     "MACHINE_ENABLE_A1111": "MACHINE_ENABLE_A1111", 
