@@ -4,7 +4,7 @@ import type { DefaultTheme, UserConfig } from 'vitepress'
 
 const config = defineConfig({
   cacheDir: '.vitepress/.cache',
-  outDir: '../../dist',
+  outDir: '.vitepress/dist',
   title: "EmProps Job Queue",
   description: "Documentation for the EmProps Job Queue System",
   base: '/',

@@ -3,5 +3,6 @@
     "silent": true
   },
   "trailingSlash": false,
-  "cleanUrls": true
+  "cleanUrls": true,
+  "outputDirectory": "src/.vitepress/dist"
 }
