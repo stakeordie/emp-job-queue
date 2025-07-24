@@ -1,0 +1,50 @@
+{
+  "name": "@emp/api-machine",
+  "version": "0.1.0",
+  "description": "Lightweight API machine for external service integration with EmProps Job Queue",
+  "main": "src/index.js",
+  "type": "module",
+  "packageManager": "pnpm@10.12.4",
+  "scripts": {
+    "start": "node src/index.js",
+    "dev": "node --watch src/index.js",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:ui": "vitest --ui",
+    "test:coverage": "vitest run --coverage",
+    "lint": "eslint src/**/*.js",
+    "lint:fix": "eslint src/**/*.js --fix",
+    "docker:build": "./scripts/build-with-version.sh",
+    "docker:build:push": "./scripts/build-with-version.sh latest emprops api-machine --push"
+  },
+  "dependencies": {
+    "@emp/core": "workspace:*",
+    "axios": "^1.6.8",
+    "dotenv": "^16.4.5",
+    "express": "^4.21.2",
+    "ioredis": "^5.6.1",
+    "joi": "^17.12.2",
+    "uuid": "^9.0.1",
+    "winston": "^3.13.0",
+    "ws": "^8.18.3"
+  },
+  "devDependencies": {
+    "@types/node": "^20.12.7",
+    "eslint": "^8.57.0",
+    "vitest": "^3.2.4",
+    "@vitest/ui": "^3.2.4"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "keywords": [
+    "api",
+    "openai",
+    "simulation",
+    "redis",
+    "worker",
+    "railway"
+  ],
+  "author": "EmProps",
+  "license": "MIT"
+}
