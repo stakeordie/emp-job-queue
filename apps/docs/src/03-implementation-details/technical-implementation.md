@@ -4,7 +4,7 @@ This guide provides detailed technical diagrams and implementation details for t
 
 ## Service Startup Sequence
 
-<fullscreen>
+<FullscreenDiagram>
 ```mermaid
 sequenceDiagram
     participant Docker as Docker Container
@@ -17,12 +17,12 @@ sequenceDiagram
     Note over Docker,Health: Machine Startup Sequence
     
     Docker->>Base: Container starts
-    Base->>Base: Load configuration<br/>Detect machine type
+    Base->>Base: Load configuration\nDetect machine type
     
     Base->>PM2: Check for existing processes
     PM2->>PM2: Cleanup existing PM2 processes
     
-    Base->>Base: Generate PM2 ecosystem config<br/>Based on machine type
+    Base->>Base: Generate PM2 ecosystem config\nBased on machine type
     
     Base->>Redis: Initialize status aggregator
     Redis->>Redis: Register machine in queue
@@ -53,33 +53,33 @@ sequenceDiagram
     
     Note over Docker,Health: Machine ready for jobs
 ```
-</fullscreen>
+</FullscreenDiagram>
 
 ## Redis Job Matching Algorithm
 
-<fullscreen>
+<FullscreenDiagram>
 ```mermaid
 flowchart TD
     START[Worker requests job] --> CHECK_QUEUE{Jobs in queue?}
     
     CHECK_QUEUE -->|No| WAIT[Wait and retry]
-    CHECK_QUEUE -->|Yes| GET_CAPS[Get worker capabilities<br/>• machine_type: gpu/api<br/>• connectors: [comfyui, openai...]<br/>• gpu_count, memory, etc.]
+    CHECK_QUEUE -->|Yes| GET_CAPS[Get worker capabilities\n• machine_type: gpu/api\n• connectors: [comfyui, openai...]\n• gpu_count, memory, etc.]
     
     GET_CAPS --> SCAN_JOBS[Scan job queue for matches]
     
-    SCAN_JOBS --> MATCH_CHECK{Job requirements match<br/>worker capabilities?}
+    SCAN_JOBS --> MATCH_CHECK{Job requirements match\nworker capabilities?}
     
     MATCH_CHECK -->|No| NEXT_JOB[Check next job]
-    MATCH_CHECK -->|Yes| CLAIM_ATOMIC[Atomic job claim<br/>Redis SCRIPT execution]
+    MATCH_CHECK -->|Yes| CLAIM_ATOMIC[Atomic job claim\nRedis SCRIPT execution]
     
     CLAIM_ATOMIC --> CLAIMED{Successfully claimed?}
     
     CLAIMED -->|No| NEXT_JOB
-    CLAIMED -->|Yes| ASSIGN[Assign job to worker<br/>Update job status: processing]
+    CLAIMED -->|Yes| ASSIGN[Assign job to worker\nUpdate job status: processing]
     
     ASSIGN --> PROCESS[Worker processes job]
     
-    PROCESS --> COMPLETE[Job completion<br/>Update status: completed]
+    PROCESS --> COMPLETE[Job completion\nUpdate status: completed]
     
     NEXT_JOB --> SCAN_JOBS
     WAIT --> CHECK_QUEUE
@@ -92,50 +92,78 @@ flowchart TD
     style CLAIMED fill:#f3e5f5
     style COMPLETE fill:#c8e6c9
 ```
-</fullscreen>
+</FullscreenDiagram>
 
 ## Docker Layer Caching Strategy
 
-<fullscreen>
+<FullscreenDiagram>
 ```mermaid
 graph TB
     subgraph "Cache Optimization Flow"
         
         subgraph "Layer 1: System (Cache: Months)"
-            L1A[Ubuntu 18.04 Base<br/>~200MB]
-            L1B[Node.js 18 Runtime<br/>~150MB]  
-            L1C[System Packages<br/>apt-get install<br/>~300MB]
+            L1A[Ubuntu 18.04 Base
+~200MB]
+            L1B[Node.js 18 Runtime
+~150MB]  
+            L1C[System Packages
+apt-get install
+~300MB]
         end
         
         subgraph "Layer 2: Dependencies (Cache: Weeks)"
-            L2A[PM2 Global Install<br/>~50MB]
-            L2B[Node.js Base Packages<br/>package.json dependencies<br/>~200MB]
-            L2C[Python Base Libraries<br/>pip install basics<br/>~150MB]
+            L2A[PM2 Global Install
+~50MB]
+            L2B[Node.js Base Packages
+package.json dependencies
+~200MB]
+            L2C[Python Base Libraries
+pip install basics
+~150MB]
         end
         
         subgraph "Layer 3: Application (Cache: Days)"
-            L3A[Base Machine Code<br/>src/ directory<br/>~10MB]
-            L3B[Service Manager<br/>PM2 ecosystem logic<br/>~5MB]
-            L3C[Health Monitoring<br/>HTTP endpoints<br/>~5MB]
+            L3A[Base Machine Code
+src/ directory
+~10MB]
+            L3B[Service Manager
+PM2 ecosystem logic
+~5MB]
+            L3C[Health Monitoring
+HTTP endpoints
+~5MB]
         end
         
         subgraph "Layer 4A: GPU Extensions (Cache: Hours)"
-            L4A1[CUDA Toolkit<br/>~2GB]
-            L4A2[PyTorch + GPU<br/>~1.5GB]
-            L4A3[ComfyUI Clone<br/>~100MB]
-            L4A4[Custom Nodes Install<br/>~500MB]
+            L4A1[CUDA Toolkit
+~2GB]
+            L4A2[PyTorch + GPU
+~1.5GB]
+            L4A3[ComfyUI Clone
+~100MB]
+            L4A4[Custom Nodes Install
+~500MB]
         end
         
         subgraph "Layer 4B: API Extensions (Cache: Hours)"
-            L4B1[API Client Libraries<br/>openai, replicate<br/>~50MB]
-            L4B2[HTTP Utilities<br/>axios, fetch<br/>~20MB]
-            L4B3[API Connectors<br/>Custom code<br/>~10MB]
+            L4B1[API Client Libraries
+openai, replicate
+~50MB]
+            L4B2[HTTP Utilities
+axios, fetch
+~20MB]
+            L4B3[API Connectors
+Custom code
+~10MB]
         end
         
         subgraph "Layer 5: Config (Cache: None)"
-            L5A[Environment Variables<br/>Runtime configuration]
-            L5B[Service Configuration<br/>PM2 ecosystem.config.js]
-            L5C[API Keys & Secrets<br/>Runtime injection]
+            L5A[Environment Variables
+Runtime configuration]
+            L5B[Service Configuration
+PM2 ecosystem.config.js]
+            L5C[API Keys & Secrets
+Runtime injection]
         end
     end
     
@@ -171,17 +199,20 @@ graph TB
     style L5B fill:#f5f5f5
     style L5C fill:#f5f5f5
 ```
-</fullscreen>
+</FullscreenDiagram>
 
 ## Service Communication Patterns
 
-<fullscreen>
+<FullscreenDiagram>
 ```mermaid
 graph TB
     subgraph "GPU Machine Communication"
-        GPU_WORKER[Redis Worker GPU0<br/>Port: Internal] 
-        GPU_COMFY[ComfyUI Service<br/>Port: 8188]
-        GPU_HEALTH[Health Server<br/>Port: 9090]
+        GPU_WORKER[Redis Worker GPU0
+Port: Internal] 
+        GPU_COMFY[ComfyUI Service
+Port: 8188]
+        GPU_HEALTH[Health Server
+Port: 9090]
         
         GPU_WORKER -.->|HTTP| GPU_COMFY
         GPU_WORKER -->|Redis| REDIS_QUEUE
@@ -190,9 +221,12 @@ graph TB
     end
     
     subgraph "API Machine Communication"
-        API_WORKER[Redis Worker API0<br/>Port: Internal]
-        API_OPENAI[OpenAI Connector<br/>Port: Internal]
-        API_HEALTH[Health Server<br/>Port: 9090]
+        API_WORKER[Redis Worker API0
+Port: Internal]
+        API_OPENAI[OpenAI Connector
+Port: Internal]
+        API_HEALTH[Health Server
+Port: 9090]
         
         API_WORKER -.->|Direct Call| API_OPENAI
         API_WORKER -->|Redis| REDIS_QUEUE
@@ -201,9 +235,12 @@ graph TB
     end
     
     subgraph "External Systems"
-        REDIS_QUEUE[(Redis Queue<br/>Job Management)]
-        OPENAI_API[OpenAI API<br/>External Service]
-        MONITOR_UI[Monitor UI<br/>WebSocket Client]
+        REDIS_QUEUE[(Redis Queue
+Job Management)]
+        OPENAI_API[OpenAI API
+External Service]
+        MONITOR_UI[Monitor UI
+WebSocket Client]
     end
     
     API_OPENAI -.->|HTTPS| OPENAI_API
@@ -219,11 +256,11 @@ graph TB
     style OPENAI_API fill:#ffebee
     style MONITOR_UI fill:#e8f5e8
 ```
-</fullscreen>
+</FullscreenDiagram>
 
 ## Error Handling & Recovery
 
-<fullscreen>
+<FullscreenDiagram>
 ```mermaid
 stateDiagram-v2
     [*] --> Healthy: Service starts
@@ -261,35 +298,59 @@ stateDiagram-v2
         • Container exit
     end note
 ```
-</fullscreen>
+</FullscreenDiagram>
 
 ## Performance Monitoring
 
-<fullscreen>
+<FullscreenDiagram>
 ```mermaid
 graph TD
     subgraph "Metrics Collection"
-        PM2_METRICS[PM2 Process Metrics<br/>• CPU usage<br/>• Memory usage<br/>• Restart count<br/>• Uptime]
+        PM2_METRICS[PM2 Process Metrics
+• CPU usage
+• Memory usage
+• Restart count
+• Uptime]
         
-        SYSTEM_METRICS[System Metrics<br/>• GPU utilization<br/>• Disk I/O<br/>• Network traffic<br/>• Temperature]
+        SYSTEM_METRICS[System Metrics
+• GPU utilization
+• Disk I/O
+• Network traffic
+• Temperature]
         
-        APP_METRICS[Application Metrics<br/>• Job completion time<br/>• Queue wait time<br/>• Error rates<br/>• Throughput]
+        APP_METRICS[Application Metrics
+• Job completion time
+• Queue wait time
+• Error rates
+• Throughput]
     end
     
     subgraph "Health Endpoints"
-        HEALTH_CHECK[/health<br/>Overall status<br/>Boolean healthy]
+        HEALTH_CHECK[/health
+Overall status
+Boolean healthy]
         
-        STATUS_DETAIL[/status<br/>Detailed metrics<br/>JSON response]
+        STATUS_DETAIL[/status
+Detailed metrics
+JSON response]
         
-        METRICS_EXPORT[/metrics<br/>Prometheus format<br/>Time series data]
+        METRICS_EXPORT[/metrics
+Prometheus format
+Time series data]
     end
     
     subgraph "Monitoring Integration"
-        REDIS_PUB[Redis Pub/Sub<br/>Real-time updates<br/>15-second intervals]
+        REDIS_PUB[Redis Pub/Sub
+Real-time updates
+15-second intervals]
         
-        WEBSOCKET_UI[WebSocket Monitor<br/>Live dashboard<br/>Machine cards]
+        WEBSOCKET_UI[WebSocket Monitor
+Live dashboard
+Machine cards]
         
-        PROMETHEUS[Prometheus<br/>Metrics scraping<br/>Alerting rules]
+        PROMETHEUS[Prometheus
+Metrics scraping
+Alerting rules]
     end
     
     PM2_METRICS --> STATUS_DETAIL
@@ -311,35 +372,53 @@ graph TD
     style REDIS_PUB fill:#ffebee
     style WEBSOCKET_UI fill:#f9fbe7
 ```
-</fullscreen>
+</FullscreenDiagram>
 
 ## Configuration Management
 
-<fullscreen>
+<FullscreenDiagram>
 ```mermaid
 flowchart LR
     subgraph "Configuration Sources (Priority Order)"
-        ENV_VARS[Environment Variables<br/>Highest Priority<br/>Runtime overrides]
+        ENV_VARS[Environment Variables
+Highest Priority
+Runtime overrides]
         
-        CONFIG_FILES[Configuration Files<br/>Machine-specific<br/>JSON/YAML configs]
+        CONFIG_FILES[Configuration Files
+Machine-specific
+JSON/YAML configs]
         
-        DEFAULTS[Default Values<br/>Lowest Priority<br/>Hardcoded fallbacks]
+        DEFAULTS[Default Values
+Lowest Priority
+Hardcoded fallbacks]
     end
     
     subgraph "Configuration Processing"
-        LOADER[Configuration Loader<br/>Hierarchical merge<br/>Validation & typing]
+        LOADER[Configuration Loader
+Hierarchical merge
+Validation & typing]
         
-        SCHEMA[Configuration Schema<br/>Type definitions<br/>Required fields]
+        SCHEMA[Configuration Schema
+Type definitions
+Required fields]
         
-        COMPUTED[Computed Configuration<br/>Final merged config<br/>Environment variables]
+        COMPUTED[Computed Configuration
+Final merged config
+Environment variables]
     end
     
     subgraph "Configuration Usage"
-        PM2_GEN[PM2 Ecosystem Generator<br/>Service definitions<br/>Environment per service]
+        PM2_GEN[PM2 Ecosystem Generator
+Service definitions
+Environment per service]
         
-        SERVICE_CONFIG[Service Configuration<br/>Runtime parameters<br/>Connection strings]
+        SERVICE_CONFIG[Service Configuration
+Runtime parameters
+Connection strings]
         
-        HEALTH_CONFIG[Health Configuration<br/>Check intervals<br/>Timeout values]
+        HEALTH_CONFIG[Health Configuration
+Check intervals
+Timeout values]
     end
     
     ENV_VARS --> LOADER
@@ -361,45 +440,65 @@ flowchart LR
     style COMPUTED fill:#c8e6c9
     style PM2_GEN fill:#f9fbe7
 ```
-</fullscreen>
+</FullscreenDiagram>
 
 ## Deployment Pipeline
 
-<fullscreen>
+<FullscreenDiagram>
 ```mermaid
 graph TB
     subgraph "Development Phase"
-        CODE[Code Changes<br/>Feature development<br/>Bug fixes]
+        CODE[Code Changes\nFeature development\nBug fixes]
         
-        BUILD_LOCAL[Local Build<br/>./build-machines.sh<br/>Test locally]
+        BUILD_LOCAL[Local Build\n./build-machines.sh\nTest locally]
         
-        UNIT_TESTS[Unit Tests<br/>Service logic<br/>Configuration validation]
+        UNIT_TESTS[Unit Tests\nService logic\nConfiguration validation]
     end
     
     subgraph "CI/CD Pipeline"
-        TRIGGER[Git Push<br/>Trigger CI/CD<br/>GitHub Actions]
+        TRIGGER[Git Push
+Trigger CI/CD
+GitHub Actions]
         
-        BUILD_CI[CI Build<br/>Multi-arch images<br/>Layer optimization]
+        BUILD_CI[CI Build
+Multi-arch images
+Layer optimization]
         
-        INTEGRATION_TESTS[Integration Tests<br/>Redis connectivity<br/>Health checks]
+        INTEGRATION_TESTS[Integration Tests
+Redis connectivity
+Health checks]
         
-        SECURITY_SCAN[Security Scanning<br/>Vulnerability assessment<br/>Dependency audit]
+        SECURITY_SCAN[Security Scanning
+Vulnerability assessment
+Dependency audit]
     end
     
     subgraph "Staging Deployment"
-        PUSH_REGISTRY[Push to Registry<br/>Docker Hub/ECR<br/>Tagged images]
+        PUSH_REGISTRY[Push to Registry
+Docker Hub/ECR
+Tagged images]
         
-        DEPLOY_STAGE[Deploy Staging<br/>Test environment<br/>Full functionality]
+        DEPLOY_STAGE[Deploy Staging
+Test environment
+Full functionality]
         
-        E2E_TESTS[End-to-End Tests<br/>Job processing<br/>Monitor integration]
+        E2E_TESTS[End-to-End Tests
+Job processing
+Monitor integration]
     end
     
     subgraph "Production Deployment"
-        DEPLOY_PROD[Production Deploy<br/>Rolling update<br/>Zero downtime]
+        DEPLOY_PROD[Production Deploy
+Rolling update
+Zero downtime]
         
-        HEALTH_CHECKS[Health Validation<br/>All services online<br/>Queue connectivity]
+        HEALTH_CHECKS[Health Validation
+All services online
+Queue connectivity]
         
-        MONITORING[Production Monitoring<br/>Metrics collection<br/>Alert validation]
+        MONITORING[Production Monitoring
+Metrics collection
+Alert validation]
     end
     
     CODE --> BUILD_LOCAL --> UNIT_TESTS
@@ -418,37 +517,72 @@ graph TB
     style DEPLOY_PROD fill:#c8e6c9
     style MONITORING fill:#e0f2f1
 ```
-</fullscreen>
+</FullscreenDiagram>
 
 ## Resource Allocation Strategy
 
-<fullscreen>
+<FullscreenDiagram>
 ```mermaid
 graph TB
     subgraph "Resource Pools"
-        FAST_POOL[Fast Lane Pool<br/>API Machines<br/>• 2 CPU, 4GB RAM<br/>• No GPU required<br/>• High concurrency]
+        FAST_POOL[Fast Lane Pool
+API Machines
+• 2 CPU, 4GB RAM
+• No GPU required
+• High concurrency]
         
-        STANDARD_POOL[Standard Pool<br/>GPU Machines<br/>• 8 CPU, 32GB RAM<br/>• RTX 4090 (24GB)<br/>• ComfyUI optimized]
+        STANDARD_POOL[Standard Pool
+GPU Machines
+• 8 CPU, 32GB RAM
+• RTX 4090 (24GB)
+• ComfyUI optimized]
         
-        HEAVY_POOL[Heavy Pool<br/>High-End Machines<br/>• 16 CPU, 64GB RAM<br/>• Multi-GPU setup<br/>• Video processing]
+        HEAVY_POOL[Heavy Pool
+High-End Machines
+• 16 CPU, 64GB RAM
+• Multi-GPU setup
+• Video processing]
     end
     
     subgraph "Job Classification"
-        CLASSIFY[Job Classifier<br/>Analyze requirements<br/>Route to appropriate pool]
+        CLASSIFY[Job Classifier
+Analyze requirements
+Route to appropriate pool]
         
-        QUICK_JOBS[Quick Jobs<br/>• Text generation<br/>• Simple image ops<br/>• API calls<br/>→ Fast Lane]
+        QUICK_JOBS[Quick Jobs
+• Text generation
+• Simple image ops
+• API calls
+→ Fast Lane]
         
-        STANDARD_JOBS[Standard Jobs<br/>• Image generation<br/>• ComfyUI workflows<br/>• Model inference<br/>→ Standard Pool]
+        STANDARD_JOBS[Standard Jobs
+• Image generation
+• ComfyUI workflows
+• Model inference
+→ Standard Pool]
         
-        HEAVY_JOBS[Heavy Jobs<br/>• Video generation<br/>• Large model training<br/>• Batch processing<br/>→ Heavy Pool]
+        HEAVY_JOBS[Heavy Jobs
+• Video generation
+• Large model training
+• Batch processing
+→ Heavy Pool]
     end
     
     subgraph "Auto-Scaling"
-        METRICS[Resource Metrics<br/>• Queue depth<br/>• Processing time<br/>• Success rates]
+        METRICS[Resource Metrics
+• Queue depth
+• Processing time
+• Success rates]
         
-        SCALER[Auto Scaler<br/>• Scale up on demand<br/>• Scale down on idle<br/>• Cost optimization]
+        SCALER[Auto Scaler
+• Scale up on demand
+• Scale down on idle
+• Cost optimization]
         
-        ALERTS[Scaling Alerts<br/>• Resource exhaustion<br/>• Performance degradation<br/>• Cost thresholds]
+        ALERTS[Scaling Alerts
+• Resource exhaustion
+• Performance degradation
+• Cost thresholds]
     end
     
     CLASSIFY --> QUICK_JOBS --> FAST_POOL
@@ -467,7 +601,7 @@ graph TB
     style CLASSIFY fill:#fff3e0
     style SCALER fill:#e8f5e8
 ```
-</fullscreen>
+</FullscreenDiagram>
 
 ## Implementation Checklist
 

@@ -4,27 +4,44 @@ The EmProps infrastructure has evolved to a sophisticated layered Docker archite
 
 ## Architecture Overview
 
-<fullscreen>
+<FullscreenDiagram>
 ```mermaid
 graph TB
     subgraph "Specialized Machine Types"
-        GPU[GPU Machine<br/>ComfyUI + Custom Nodes<br/>CUDA Runtime<br/>Per-GPU Scaling]
-        API[API Machine<br/>OpenAI + Replicate + RunPod<br/>HTTP Clients<br/>CPU Optimized]
-        HYBRID[Hybrid Machine<br/>Both GPU + API<br/>Full Capability<br/>Resource Flexible]
+        GPU[GPU Machine
+ComfyUI + Custom Nodes
+CUDA Runtime
+Per-GPU Scaling]
+        API[API Machine
+OpenAI + Replicate + RunPod
+HTTP Clients
+CPU Optimized]
+        HYBRID[Hybrid Machine
+Both GPU + API
+Full Capability
+Resource Flexible]
     end
     
     subgraph "Base Machine Foundation"
-        PM2[PM2 Service Management<br/>Dynamic Ecosystem Generation]
-        REDIS[Redis Communication<br/>Job Queue + Status Reporting]
-        HEALTH[Health Monitoring<br/>HTTP Endpoints + Diagnostics]
-        CONFIG[Configuration System<br/>Environment + Secrets]
-        SHUTDOWN[Graceful Shutdown<br/>Job Redistribution]
+        PM2[PM2 Service Management
+Dynamic Ecosystem Generation]
+        REDIS[Redis Communication
+Job Queue + Status Reporting]
+        HEALTH[Health Monitoring
+HTTP Endpoints + Diagnostics]
+        CONFIG[Configuration System
+Environment + Secrets]
+        SHUTDOWN[Graceful Shutdown
+Job Redistribution]
     end
     
     subgraph "Docker Base Layers"
-        NODE[Node.js 18 Runtime<br/>System Dependencies]
-        TOOLS[Build Tools + Utilities<br/>PM2 Global Installation]
-        NET[Network Tools<br/>Monitoring Utilities]
+        NODE[Node.js 18 Runtime
+System Dependencies]
+        TOOLS[Build Tools + Utilities
+PM2 Global Installation]
+        NET[Network Tools
+Monitoring Utilities]
     end
     
     GPU --> PM2
@@ -46,35 +63,54 @@ graph TB
     style NODE fill:#fafafa
     style TOOLS fill:#fafafa
 ```
-</fullscreen>
+</FullscreenDiagram>
 
 ## Docker Layer Strategy
 
 The architecture uses optimal Docker layer caching to minimize build times and maximize efficiency:
 
-<fullscreen>
+<FullscreenDiagram>
 ```mermaid
 graph TD
     subgraph "Layer 1: System Foundation (Rarely Changes)"
-        A[Ubuntu Base Image<br/>Node.js 18<br/>System Packages<br/>Build Tools]
+        A[Ubuntu Base Image
+Node.js 18
+System Packages
+Build Tools]
     end
     
     subgraph "Layer 2: Runtime Dependencies (Changes Infrequently)"
-        B[PM2 Global<br/>Node.js Packages<br/>Python Runtime<br/>Common Utilities]
+        B[PM2 Global
+Node.js Packages
+Python Runtime
+Common Utilities]
     end
     
     subgraph "Layer 3: Base Machine Code (Changes Occasionally)"
-        C[Base Worker Logic<br/>Service Management<br/>Health Monitoring<br/>Redis Integration]
+        C[Base Worker Logic
+Service Management
+Health Monitoring
+Redis Integration]
     end
     
     subgraph "Layer 4: Specialized Extensions"
-        D1[GPU Extensions<br/>CUDA Toolkit<br/>ComfyUI<br/>Custom Nodes]
-        D2[API Extensions<br/>HTTP Libraries<br/>API Connectors<br/>Client SDKs]
+        D1[GPU Extensions
+CUDA Toolkit
+ComfyUI
+Custom Nodes]
+        D2[API Extensions
+HTTP Libraries
+API Connectors
+Client SDKs]
     end
     
     subgraph "Layer 5: Configuration (Changes Frequently)"
-        E1[GPU Config<br/>ComfyUI Settings<br/>Model Paths]
-        E2[API Config<br/>API Keys<br/>Rate Limits]
+        E1[GPU Config
+ComfyUI Settings
+Model Paths]
+        E2[API Config
+API Keys
+Rate Limits]
     end
     
     A --> B
@@ -97,11 +133,11 @@ graph TD
     style E1 fill:#fce4ec
     style E2 fill:#fff8e1
 ```
-</fullscreen>
+</FullscreenDiagram>
 
 ## Service Architecture by Machine Type
 
-<fullscreen>
+<FullscreenDiagram>
 ```mermaid
 graph LR
     subgraph "GPU Machine Services"
@@ -133,7 +169,9 @@ graph LR
     end
     
     subgraph "Redis Job Queue"
-        QUEUE[(Job Queue<br/>Status Updates<br/>Machine Registry)]
+        QUEUE[(Job Queue
+Status Updates
+Machine Registry)]
     end
     
     GPU_WORKER1 --> QUEUE
@@ -152,36 +190,50 @@ graph LR
     style HYB_SHARED fill:#e8f5e8
     style QUEUE fill:#fff3e0
 ```
-</fullscreen>
+</FullscreenDiagram>
 
 ## PM2 Ecosystem Generation
 
 The base machine dynamically generates PM2 configurations based on machine type and available resources:
 
-<fullscreen>
+<FullscreenDiagram>
 ```mermaid
 flowchart TD
-    START[Machine Startup] --> DETECT[Detect Machine Type<br/>MACHINE_TYPE env var]
+    START[Machine Startup] --> DETECT[Detect Machine Type
+MACHINE_TYPE env var]
     
     DETECT --> GPU_CHECK{GPU Machine?}
     DETECT --> API_CHECK{API Machine?}
     DETECT --> HYBRID_CHECK{Hybrid Machine?}
     
-    GPU_CHECK -->|Yes| GPU_SERVICES[Generate GPU Services<br/>• comfyui-gpu0..N<br/>• redis-worker-gpu0..N]
-    API_CHECK -->|Yes| API_SERVICES[Generate API Services<br/>• openai-connector<br/>• replicate-connector<br/>• runpod-connector<br/>• redis-worker-api0..N]
+    GPU_CHECK -->|Yes| GPU_SERVICES[Generate GPU Services
+• comfyui-gpu0..N
+• redis-worker-gpu0..N]
+    API_CHECK -->|Yes| API_SERVICES[Generate API Services
+• openai-connector
+• replicate-connector
+• runpod-connector
+• redis-worker-api0..N]
     HYBRID_CHECK -->|Yes| BOTH_SERVICES[Generate Both GPU + API Services]
     
-    GPU_SERVICES --> SHARED_SETUP[Add Shared Services<br/>• shared-setup<br/>• simulation<br/>• health-monitor]
+    GPU_SERVICES --> SHARED_SETUP[Add Shared Services
+• shared-setup
+• simulation
+• health-monitor]
     API_SERVICES --> SHARED_SETUP
     BOTH_SERVICES --> SHARED_SETUP
     
-    SHARED_SETUP --> GENERATE[Write PM2 Ecosystem Config<br/>/workspace/pm2-ecosystem.config.cjs]
+    SHARED_SETUP --> GENERATE[Write PM2 Ecosystem Config
+/workspace/pm2-ecosystem.config.cjs]
     
-    GENERATE --> START_PM2[Start PM2 Services<br/>Sequential Startup Order]
+    GENERATE --> START_PM2[Start PM2 Services
+Sequential Startup Order]
     
-    START_PM2 --> VERIFY[Verify Services Online<br/>Health Check All Services]
+    START_PM2 --> VERIFY[Verify Services Online
+Health Check All Services]
     
-    VERIFY --> SUCCESS[Machine Ready<br/>Health Endpoint Active]
+    VERIFY --> SUCCESS[Machine Ready
+Health Endpoint Active]
     
     style START fill:#e8f5e8
     style DETECT fill:#fff3e0
@@ -190,11 +242,11 @@ flowchart TD
     style BOTH_SERVICES fill:#e8f5e8
     style SUCCESS fill:#c8e6c9
 ```
-</fullscreen>
+</FullscreenDiagram>
 
 ## Job Flow Architecture
 
-<fullscreen>
+<FullscreenDiagram>
 ```mermaid
 sequenceDiagram
     participant Client as API Client
@@ -206,7 +258,7 @@ sequenceDiagram
     Note over Client,Monitor: Job Submission & Processing Flow
     
     Client->>Queue: Submit Job
-    Note right of Queue: Job includes:<br/>• type: 'comfyui' | 'openai' | 'replicate'<br/>• capabilities: ['gpu', 'cuda'] | ['api']<br/>• parameters: {...}
+    Note right of Queue: Job includes:\n• type: 'comfyui' | 'openai' | 'replicate'\n• capabilities: ['gpu', 'cuda'] | ['api']\n• parameters: {...}
     
     Queue->>Queue: Store job with capabilities
     
@@ -235,31 +287,53 @@ sequenceDiagram
     
     Note over Client,Monitor: Machines auto-select jobs based on capabilities
 ```
-</fullscreen>
+</FullscreenDiagram>
 
 ## Health Monitoring & Service Management
 
-<fullscreen>
+<FullscreenDiagram>
 ```mermaid
 graph TB
     subgraph "Health Check Endpoints"
-        HEALTH["/health<br/>Overall system health<br/>200/503 status"]
-        STATUS["/status<br/>Detailed service info<br/>Memory, CPU, PIDs"]
-        READY["/ready<br/>Readiness check<br/>For load balancers"]
-        PM2_LIST["/pm2/list<br/>Service list<br/>Real-time status"]
-        PM2_LOGS["/pm2/logs?service=X<br/>Service logs<br/>Streaming/static"]
+        HEALTH["/health
+Overall system health
+200/503 status"]
+        STATUS["/status
+Detailed service info
+Memory, CPU, PIDs"]
+        READY["/ready
+Readiness check
+For load balancers"]
+        PM2_LIST["/pm2/list
+Service list
+Real-time status"]
+        PM2_LOGS["/pm2/logs?service=X
+Service logs
+Streaming/static"]
     end
     
     subgraph "Service Management"
-        RESTART_MACHINE["/restart/machine<br/>Full machine restart<br/>Graceful shutdown"]
-        RESTART_SERVICE["/restart/service?service=X<br/>Individual service restart<br/>PM2 restart"]
-        REFRESH_STATUS["/refresh-status<br/>Trigger immediate status<br/>Redis broadcast"]
+        RESTART_MACHINE["/restart/machine
+Full machine restart
+Graceful shutdown"]
+        RESTART_SERVICE["/restart/service?service=X
+Individual service restart
+PM2 restart"]
+        REFRESH_STATUS["/refresh-status
+Trigger immediate status
+Redis broadcast"]
     end
     
     subgraph "Monitoring Integration"
-        REDIS_PUB[(Redis Pub/Sub<br/>machine:status<br/>Real-time updates)]
-        WEBSOCKET[WebSocket Monitor<br/>Real-time UI<br/>Machine cards]
-        ALERTS[Alert System<br/>Service failures<br/>Resource limits]
+        REDIS_PUB[(Redis Pub/Sub
+machine:status
+Real-time updates)]
+        WEBSOCKET[WebSocket Monitor
+Real-time UI
+Machine cards]
+        ALERTS[Alert System
+Service failures
+Resource limits]
     end
     
     HEALTH --> REDIS_PUB
@@ -277,41 +351,65 @@ graph TB
     style REDIS_PUB fill:#fff3e0
     style WEBSOCKET fill:#e8f5e8
 ```
-</fullscreen>
+</FullscreenDiagram>
 
 ## Deployment Scenarios
 
-<fullscreen>
+<FullscreenDiagram>
 ```mermaid
 graph TB
     subgraph "Production Deployment Options"
         
         subgraph "Fast Lane Pool (API Machines)"
-            API1[API Machine 1<br/>2 CPU, 4GB RAM<br/>OpenAI + Replicate]
-            API2[API Machine 2<br/>2 CPU, 4GB RAM<br/>RunPod + Custom APIs]
-            API3[API Machine N<br/>Horizontal scaling<br/>Auto-scaling enabled]
+            API1[API Machine 1
+2 CPU, 4GB RAM
+OpenAI + Replicate]
+            API2[API Machine 2
+2 CPU, 4GB RAM
+RunPod + Custom APIs]
+            API3[API Machine N
+Horizontal scaling
+Auto-scaling enabled]
         end
         
         subgraph "Standard Pool (GPU Machines)"
-            GPU1[GPU Machine 1<br/>RTX 4090, 32GB RAM<br/>ComfyUI + Custom Nodes]
-            GPU2[GPU Machine 2<br/>RTX 4090, 32GB RAM<br/>ComfyUI + Custom Nodes]
-            GPU3[GPU Machine N<br/>Elastic scaling<br/>SALAD/vast.ai]
+            GPU1[GPU Machine 1
+RTX 4090, 32GB RAM
+ComfyUI + Custom Nodes]
+            GPU2[GPU Machine 2
+RTX 4090, 32GB RAM
+ComfyUI + Custom Nodes]
+            GPU3[GPU Machine N
+Elastic scaling
+SALAD/vast.ai]
         end
         
         subgraph "Heavy Pool (High-End GPU)"
-            HEAVY1[Heavy Machine 1<br/>RTX 4090 x2, 64GB RAM<br/>Video processing]
-            HEAVY2[Heavy Machine 2<br/>RTX 4090 x4, 128GB RAM<br/>Large model inference]
+            HEAVY1[Heavy Machine 1
+RTX 4090 x2, 64GB RAM
+Video processing]
+            HEAVY2[Heavy Machine 2
+RTX 4090 x4, 128GB RAM
+Large model inference]
         end
         
         subgraph "Hybrid Pool (Mixed Workloads)"
-            HYBRID1[Hybrid Machine<br/>RTX 4090 + 16GB RAM<br/>Both GPU + API jobs]
+            HYBRID1[Hybrid Machine
+RTX 4090 + 16GB RAM
+Both GPU + API jobs]
         end
     end
     
     subgraph "Central Infrastructure"
-        REDIS[(Redis Cluster<br/>Job Queue<br/>Status Aggregation)]
-        MONITOR[Monitor UI<br/>Real-time Dashboard<br/>Machine Management]
-        API_SERVER[API Server<br/>Job Submission<br/>Result Retrieval]
+        REDIS[(Redis Cluster
+Job Queue
+Status Aggregation)]
+        MONITOR[Monitor UI
+Real-time Dashboard
+Machine Management]
+        API_SERVER[API Server
+Job Submission
+Result Retrieval]
     end
     
     API1 --> REDIS
@@ -336,11 +434,11 @@ graph TB
     style REDIS fill:#fff3e0
     style MONITOR fill:#f9fbe7
 ```
-</fullscreen>
+</FullscreenDiagram>
 
 ## Build Performance Optimization
 
-<fullscreen>
+<FullscreenDiagram>
 ```mermaid
 gantt
     title Build Time Comparison: Current vs Unified Architecture
@@ -365,35 +463,54 @@ gantt
     90% Cache Hit Rate       :milestone, m1, 720s
     50% Faster Development   :milestone, m2, 720s
 ```
-</fullscreen>
+</FullscreenDiagram>
 
 ## Migration Strategy
 
 The migration from the current monolithic machine to the unified architecture follows a careful, backward-compatible approach:
 
-<fullscreen>
+<FullscreenDiagram>
 ```mermaid
 flowchart TD
-    CURRENT[Current Machine<br/>apps/machine/] --> BACKUP[Backup Current<br/>apps/machine-backup/]
+    CURRENT[Current Machine
+apps/machine/] --> BACKUP[Backup Current
+apps/machine-backup/]
     
-    BACKUP --> BASE[Create Base Machine<br/>apps/machine-base/<br/>Extract common functionality]
+    BACKUP --> BASE[Create Base Machine
+apps/machine-base/
+Extract common functionality]
     
-    BASE --> GPU_EXT[Create GPU Extension<br/>apps/machine-gpu/<br/>Add ComfyUI + CUDA]
+    BASE --> GPU_EXT[Create GPU Extension
+apps/machine-gpu/
+Add ComfyUI + CUDA]
     
-    BASE --> API_EXT[Create API Extension<br/>apps/machine-api/<br/>Add API connectors]
+    BASE --> API_EXT[Create API Extension
+apps/machine-api/
+Add API connectors]
     
-    GPU_EXT --> BUILD[Build Docker Images<br/>./build-machines.sh all]
+    GPU_EXT --> BUILD[Build Docker Images
+./build-machines.sh all]
     API_EXT --> BUILD
     
-    BUILD --> TEST[Test Locally<br/>Verify functionality<br/>Health checks]
+    BUILD --> TEST[Test Locally
+Verify functionality
+Health checks]
     
-    TEST --> DEPLOY_STAGE[Deploy to Staging<br/>Parallel testing<br/>Performance validation]
+    TEST --> DEPLOY_STAGE[Deploy to Staging
+Parallel testing
+Performance validation]
     
-    DEPLOY_STAGE --> VALIDATE[Validate Production<br/>Job processing<br/>Resource utilization]
+    DEPLOY_STAGE --> VALIDATE[Validate Production
+Job processing
+Resource utilization]
     
-    VALIDATE --> CUTOVER[Production Cutover<br/>Rolling deployment<br/>Monitor & rollback ready]
+    VALIDATE --> CUTOVER[Production Cutover
+Rolling deployment
+Monitor & rollback ready]
     
-    CUTOVER --> CLEANUP[Cleanup Old Images<br/>Remove legacy code<br/>Update documentation]
+    CUTOVER --> CLEANUP[Cleanup Old Images
+Remove legacy code
+Update documentation]
     
     style CURRENT fill:#ffebee
     style BACKUP fill:#fff3e0
@@ -407,7 +524,7 @@ flowchart TD
     style CUTOVER fill:#c8e6c9
     style CLEANUP fill:#f5f5f5
 ```
-</fullscreen>
+</FullscreenDiagram>
 
 ## Key Benefits Summary
 
