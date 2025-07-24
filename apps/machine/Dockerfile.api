@@ -1,0 +1,64 @@
+# API Machine Dockerfile
+# Extends base machine with API client libraries and HTTP utilities
+FROM machine-base:latest
+
+LABEL maintainer="EmProps Infrastructure Team"
+LABEL version="1.0.0"
+LABEL description="API machine with OpenAI, Replicate, RunPod connectors for AI API processing"
+
+# Switch to root for system installations
+USER root
+
+# Install additional HTTP utilities and SSL certificates
+RUN apt-get update && apt-get install -y \
+    ca-certificates \
+    curl \
+    wget \
+    && rm -rf /var/lib/apt/lists/*
+
+# Install Python packages for API processing
+RUN pip3 install --no-cache-dir \
+    requests \
+    httpx \
+    aiohttp \
+    pillow \
+    numpy \
+    openai \
+    replicate
+
+# Install additional Node.js packages for API connectors
+WORKDIR /workspace
+RUN npm install --save \
+    axios \
+    node-fetch \
+    form-data \
+    mime-types \
+    uuid
+
+# Set API-specific environment variables
+ENV MACHINE_TYPE=api
+ENV MACHINE_NUM_GPUS=0
+ENV MACHINE_ENABLE_COMFYUI=false
+ENV MACHINE_ENABLE_API=true
+ENV MACHINE_ENABLE_REDIS_WORKERS=true
+ENV MACHINE_API_WORKER_COUNT=2
+ENV MACHINE_API_CONNECTORS=openai,replicate,runpod
+
+# API Keys (will be provided at runtime)
+ENV OPENAI_API_KEY=""
+ENV REPLICATE_API_TOKEN=""
+ENV RUNPOD_API_KEY=""
+
+# API timeout settings
+ENV API_TIMEOUT=300000
+ENV API_MAX_RETRIES=3
+
+# Create API-specific directories
+RUN mkdir -p {config,cache,temp} && \
+    chown -R appuser:appuser /workspace
+
+# Switch back to non-root user
+USER appuser
+
+# Default command
+CMD ["node", "src/machine-manager.js"]

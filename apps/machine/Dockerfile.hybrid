@@ -1,0 +1,84 @@
+# Hybrid Machine Dockerfile
+# Extends base machine with both GPU and API capabilities
+FROM machine-base:latest
+
+LABEL maintainer="EmProps Infrastructure Team"
+LABEL version="1.0.0"
+LABEL description="Hybrid machine with both GPU (ComfyUI) and API connector capabilities"
+
+# Switch to root for system installations
+USER root
+
+# Install CUDA runtime
+ENV NVIDIA_VISIBLE_DEVICES all
+ENV NVIDIA_DRIVER_CAPABILITIES compute,utility
+ENV CUDA_VERSION=11.8
+
+# Install CUDA toolkit and drivers
+RUN wget https://developer.download.nvidia.com/compute/cuda/repos/ubuntu2004/x86_64/cuda-keyring_1.0-1_all.deb && \
+    dpkg -i cuda-keyring_1.0-1_all.deb && \
+    apt-get update && \
+    apt-get install -y cuda-runtime-11-8 ca-certificates && \
+    rm cuda-keyring_1.0-1_all.deb && \
+    rm -rf /var/lib/apt/lists/*
+
+# Install Python packages for both GPU and API support
+RUN pip3 install --no-cache-dir \
+    torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu118 \
+    numpy pillow opencv-python transformers diffusers accelerate xformers \
+    requests httpx aiohttp openai replicate
+
+# Install Node.js packages for API connectors
+WORKDIR /workspace
+RUN npm install --save \
+    axios node-fetch form-data mime-types uuid
+
+# Install ComfyUI
+RUN git clone https://github.com/comfyanonymous/ComfyUI.git && \
+    cd ComfyUI && \
+    pip3 install -r requirements.txt
+
+# Install ComfyUI custom nodes (from config)
+COPY comfyui-config/ ./comfyui-config/
+RUN if [ -f comfyui-config/config_nodes.json ]; then \
+        node src/services/comfyui/comfyui-installer.js --install-nodes-from-config comfyui-config/config_nodes.json; \
+    fi
+
+# Create directories for both GPU and API functionality
+RUN mkdir -p ComfyUI/{models,input,output,temp,custom_nodes} && \
+    mkdir -p shared/{models,custom_nodes,workflows} && \
+    mkdir -p {config,cache,temp} && \
+    chown -R appuser:appuser /workspace
+
+# Set hybrid-specific environment variables
+ENV MACHINE_TYPE=hybrid
+ENV MACHINE_NUM_GPUS=1
+ENV MACHINE_ENABLE_COMFYUI=true
+ENV MACHINE_ENABLE_API=true
+ENV MACHINE_ENABLE_REDIS_WORKERS=true
+ENV MACHINE_API_WORKER_COUNT=2
+ENV MACHINE_API_CONNECTORS=openai,replicate,runpod
+
+# ComfyUI environment variables
+ENV COMFYUI_PORT=8188
+ENV COMFYUI_LISTEN=0.0.0.0
+ENV COMFYUI_ENABLE_CORS_HEADER=*
+ENV COMFYUI_AUTO_LAUNCH_BROWSER=false
+
+# API Keys (will be provided at runtime)
+ENV OPENAI_API_KEY=""
+ENV REPLICATE_API_TOKEN=""
+ENV RUNPOD_API_KEY=""
+
+# API timeout settings
+ENV API_TIMEOUT=300000
+ENV API_MAX_RETRIES=3
+
+# Expose ComfyUI ports
+EXPOSE 8188 8189 8190 8191
+
+# Switch back to non-root user
+USER appuser
+
+# Default command
+CMD ["node", "src/machine-manager.js"]

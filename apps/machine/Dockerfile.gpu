@@ -1,0 +1,73 @@
+# GPU Machine Dockerfile
+# Extends base machine with CUDA, ComfyUI, and GPU-specific dependencies
+FROM machine-base:latest
+
+LABEL maintainer="EmProps Infrastructure Team"
+LABEL version="1.0.0"
+LABEL description="GPU machine with ComfyUI and CUDA support for AI workload processing"
+
+# Switch to root for system installations
+USER root
+
+# Install CUDA runtime (use NVIDIA's official runtime image approach)
+ENV NVIDIA_VISIBLE_DEVICES all
+ENV NVIDIA_DRIVER_CAPABILITIES compute,utility
+ENV CUDA_VERSION=11.8
+
+# Install CUDA toolkit and drivers
+RUN wget https://developer.download.nvidia.com/compute/cuda/repos/ubuntu2004/x86_64/cuda-keyring_1.0-1_all.deb && \
+    dpkg -i cuda-keyring_1.0-1_all.deb && \
+    apt-get update && \
+    apt-get install -y cuda-runtime-11-8 && \
+    rm cuda-keyring_1.0-1_all.deb && \
+    rm -rf /var/lib/apt/lists/*
+
+# Install Python packages for GPU support
+RUN pip3 install --no-cache-dir \
+    torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu118 \
+    numpy \
+    pillow \
+    opencv-python \
+    transformers \
+    diffusers \
+    accelerate \
+    xformers
+
+# Install ComfyUI
+WORKDIR /workspace
+RUN git clone https://github.com/comfyanonymous/ComfyUI.git && \
+    cd ComfyUI && \
+    pip3 install -r requirements.txt
+
+# Install ComfyUI custom nodes (from config)
+COPY comfyui-config/ ./comfyui-config/
+RUN if [ -f comfyui-config/config_nodes.json ]; then \
+        node src/services/comfyui/comfyui-installer.js --install-nodes-from-config comfyui-config/config_nodes.json; \
+    fi
+
+# Create ComfyUI directories and set permissions
+RUN mkdir -p ComfyUI/{models,input,output,temp,custom_nodes} && \
+    mkdir -p shared/{models,custom_nodes,workflows} && \
+    chown -R appuser:appuser /workspace
+
+# Set GPU-specific environment variables
+ENV MACHINE_TYPE=gpu
+ENV MACHINE_NUM_GPUS=1
+ENV MACHINE_ENABLE_COMFYUI=true
+ENV MACHINE_ENABLE_API=false
+ENV MACHINE_ENABLE_REDIS_WORKERS=true
+
+# ComfyUI environment variables
+ENV COMFYUI_PORT=8188
+ENV COMFYUI_LISTEN=0.0.0.0
+ENV COMFYUI_ENABLE_CORS_HEADER=*
+ENV COMFYUI_AUTO_LAUNCH_BROWSER=false
+
+# Expose ComfyUI ports (8188-8191 for up to 4 GPUs)
+EXPOSE 8188 8189 8190 8191
+
+# Switch back to non-root user
+USER appuser
+
+# Default command
+CMD ["node", "src/machine-manager.js"]

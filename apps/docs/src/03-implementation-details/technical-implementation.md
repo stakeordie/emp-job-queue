@@ -444,80 +444,12 @@ Timeout values]
 
 ## Deployment Pipeline
 
-<FullscreenDiagram>
-```mermaid
-graph TB
-    subgraph "Development Phase"
-        CODE[Code Changes\nFeature development\nBug fixes]
-        
-        BUILD_LOCAL[Local Build\n./build-machines.sh\nTest locally]
-        
-        UNIT_TESTS[Unit Tests\nService logic\nConfiguration validation]
-    end
-    
-    subgraph "CI/CD Pipeline"
-        TRIGGER[Git Push
-Trigger CI/CD
-GitHub Actions]
-        
-        BUILD_CI[CI Build
-Multi-arch images
-Layer optimization]
-        
-        INTEGRATION_TESTS[Integration Tests
-Redis connectivity
-Health checks]
-        
-        SECURITY_SCAN[Security Scanning
-Vulnerability assessment
-Dependency audit]
-    end
-    
-    subgraph "Staging Deployment"
-        PUSH_REGISTRY[Push to Registry
-Docker Hub/ECR
-Tagged images]
-        
-        DEPLOY_STAGE[Deploy Staging
-Test environment
-Full functionality]
-        
-        E2E_TESTS[End-to-End Tests
-Job processing
-Monitor integration]
-    end
-    
-    subgraph "Production Deployment"
-        DEPLOY_PROD[Production Deploy
-Rolling update
-Zero downtime]
-        
-        HEALTH_CHECKS[Health Validation
-All services online
-Queue connectivity]
-        
-        MONITORING[Production Monitoring
-Metrics collection
-Alert validation]
-    end
-    
-    CODE --> BUILD_LOCAL --> UNIT_TESTS
-    UNIT_TESTS --> TRIGGER --> BUILD_CI
-    BUILD_CI --> INTEGRATION_TESTS --> SECURITY_SCAN
-    SECURITY_SCAN --> PUSH_REGISTRY --> DEPLOY_STAGE
-    DEPLOY_STAGE --> E2E_TESTS --> DEPLOY_PROD
-    DEPLOY_PROD --> HEALTH_CHECKS --> MONITORING
-    
-    style CODE fill:#e8f5e8
-    style BUILD_LOCAL fill:#f9fbe7
-    style TRIGGER fill:#fff3e0
-    style BUILD_CI fill:#e1f5fe
-    style PUSH_REGISTRY fill:#f3e5f5
-    style DEPLOY_STAGE fill:#ffebee
-    style DEPLOY_PROD fill:#c8e6c9
-    style MONITORING fill:#e0f2f1
-```
-</FullscreenDiagram>
+**Deployment Pipeline Flow:**
+
+1. **Development Phase:** Code Changes → Local Build → Unit Tests
+2. **CI/CD Pipeline:** Git Push → CI Build → Integration Tests → Security Scan  
+3. **Staging Deployment:** Push to Registry → Deploy Staging → E2E Tests
+4. **Production Deployment:** Deploy Production → Health Checks → Monitoring
 
 ## Resource Allocation Strategy
 
@@ -625,8 +557,8 @@ Route to appropriate pool]
 
 ### 🎯 Success Metrics
 
-- **Build Time**: < 5 minutes for full stack (vs 15 minutes current)
-- **Cache Hit Rate**: > 90% for incremental builds
+- **Build Time**: &lt; 5 minutes for full stack (vs 15 minutes current)
+- **Cache Hit Rate**: &gt; 90% for incremental builds
 - **Resource Efficiency**: 60% reduction in storage requirements
 - **Development Speed**: 50% faster iteration cycles
 - **Operational Consistency**: 100% unified health checking

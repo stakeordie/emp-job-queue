@@ -1,0 +1,207 @@
+module.exports = {
+  "apps": [
+    {
+      "name": "shared-setup",
+      "script": "/workspace/src/services/shared/shared-setup-service.js",
+      "interpreter": "node",
+      "args": [],
+      "env": {
+        "NODE_ENV": "development",
+        "MACHINE_TYPE": "hybrid",
+        "MACHINE_ID": "unified-machine-local"
+      },
+      "autorestart": false,
+      "max_restarts": 3,
+      "min_uptime": "10s",
+      "log_date_format": "YYYY-MM-DD HH:mm:ss Z",
+      "merge_logs": true,
+      "out_file": "/workspace/logs/shared-setup-out.log",
+      "error_file": "/workspace/logs/shared-setup-error.log",
+      "combine_logs": true,
+      "log_file": "/workspace/logs/shared-setup-combined.log"
+    },
+    {
+      "name": "simulation",
+      "script": "/workspace/src/services/shared/simulation-service.js",
+      "interpreter": "node",
+      "args": [],
+      "env": {
+        "NODE_ENV": "development",
+        "MACHINE_TYPE": "hybrid",
+        "MACHINE_ID": "unified-machine-local",
+        "SIMULATION_PORT": "8080"
+      },
+      "autorestart": true,
+      "max_restarts": 10,
+      "min_uptime": "10s",
+      "log_date_format": "YYYY-MM-DD HH:mm:ss Z",
+      "merge_logs": true,
+      "out_file": "/workspace/logs/simulation-out.log",
+      "error_file": "/workspace/logs/simulation-error.log",
+      "combine_logs": true,
+      "log_file": "/workspace/logs/simulation-combined.log"
+    },
+    {
+      "name": "comfyui-gpu0",
+      "script": "/workspace/src/services/comfyui/comfyui-service.js",
+      "interpreter": "node",
+      "args": [],
+      "env": {
+        "NODE_ENV": "development",
+        "MACHINE_TYPE": "hybrid",
+        "MACHINE_ID": "unified-machine-local",
+        "GPU_ID": "0",
+        "CUDA_VISIBLE_DEVICES": "0",
+        "COMFYUI_PORT": "8188",
+        "COMFYUI_GPU_ID": "0",
+        "COMFYUI_LISTEN": "0.0.0.0",
+        "COMFYUI_ENABLE_CORS_HEADER": "*",
+        "COMFYUI_AUTO_LAUNCH_BROWSER": "false"
+      },
+      "autorestart": true,
+      "max_restarts": 10,
+      "min_uptime": "30s",
+      "log_date_format": "YYYY-MM-DD HH:mm:ss Z",
+      "merge_logs": true,
+      "out_file": "/workspace/logs/comfyui-gpu0-out.log",
+      "error_file": "/workspace/logs/comfyui-gpu0-error.log",
+      "combine_logs": true,
+      "log_file": "/workspace/logs/comfyui-gpu0-combined.log"
+    },
+    {
+      "name": "openai-connector",
+      "script": "/workspace/src/services/api-connectors/openai-connector.js",
+      "interpreter": "node",
+      "args": [],
+      "env": {
+        "NODE_ENV": "development",
+        "MACHINE_TYPE": "hybrid",
+        "MACHINE_ID": "unified-machine-local",
+        "CONNECTOR_TYPE": "openai"
+      },
+      "autorestart": true,
+      "max_restarts": 10,
+      "min_uptime": "10s",
+      "log_date_format": "YYYY-MM-DD HH:mm:ss Z",
+      "merge_logs": true,
+      "out_file": "/workspace/logs/openai-connector-out.log",
+      "error_file": "/workspace/logs/openai-connector-error.log",
+      "combine_logs": true,
+      "log_file": "/workspace/logs/openai-connector-combined.log"
+    },
+    {
+      "name": "replicate-connector",
+      "script": "/workspace/src/services/api-connectors/replicate-connector.js",
+      "interpreter": "node",
+      "args": [],
+      "env": {
+        "NODE_ENV": "development",
+        "MACHINE_TYPE": "hybrid",
+        "MACHINE_ID": "unified-machine-local",
+        "CONNECTOR_TYPE": "replicate"
+      },
+      "autorestart": true,
+      "max_restarts": 10,
+      "min_uptime": "10s",
+      "log_date_format": "YYYY-MM-DD HH:mm:ss Z",
+      "merge_logs": true,
+      "out_file": "/workspace/logs/replicate-connector-out.log",
+      "error_file": "/workspace/logs/replicate-connector-error.log",
+      "combine_logs": true,
+      "log_file": "/workspace/logs/replicate-connector-combined.log"
+    },
+    {
+      "name": "runpod-connector",
+      "script": "/workspace/src/services/api-connectors/runpod-connector.js",
+      "interpreter": "node",
+      "args": [],
+      "env": {
+        "NODE_ENV": "development",
+        "MACHINE_TYPE": "hybrid",
+        "MACHINE_ID": "unified-machine-local",
+        "CONNECTOR_TYPE": "runpod"
+      },
+      "autorestart": true,
+      "max_restarts": 10,
+      "min_uptime": "10s",
+      "log_date_format": "YYYY-MM-DD HH:mm:ss Z",
+      "merge_logs": true,
+      "out_file": "/workspace/logs/runpod-connector-out.log",
+      "error_file": "/workspace/logs/runpod-connector-error.log",
+      "combine_logs": true,
+      "log_file": "/workspace/logs/runpod-connector-combined.log"
+    },
+    {
+      "name": "redis-worker-gpu0",
+      "script": "/workspace/src/services/shared/redis-worker-service.js",
+      "interpreter": "node",
+      "args": [],
+      "env": {
+        "NODE_ENV": "development",
+        "MACHINE_TYPE": "hybrid",
+        "MACHINE_ID": "unified-machine-local",
+        "WORKER_TYPE": "gpu",
+        "WORKER_ID": "gpu0",
+        "GPU_ID": "0",
+        "CUDA_VISIBLE_DEVICES": "0",
+        "COMFYUI_PORT": "8188",
+        "REDIS_URL": "redis://localhost:6379"
+      },
+      "autorestart": true,
+      "max_restarts": 10,
+      "min_uptime": "10s",
+      "log_date_format": "YYYY-MM-DD HH:mm:ss Z",
+      "merge_logs": true,
+      "out_file": "/workspace/logs/redis-worker-gpu0-out.log",
+      "error_file": "/workspace/logs/redis-worker-gpu0-error.log",
+      "combine_logs": true,
+      "log_file": "/workspace/logs/redis-worker-gpu0-combined.log"
+    },
+    {
+      "name": "redis-worker-api0",
+      "script": "/workspace/src/services/shared/redis-worker-service.js",
+      "interpreter": "node",
+      "args": [],
+      "env": {
+        "NODE_ENV": "development",
+        "MACHINE_TYPE": "hybrid",
+        "MACHINE_ID": "unified-machine-local",
+        "WORKER_TYPE": "api",
+        "WORKER_ID": "api0",
+        "REDIS_URL": "redis://localhost:6379"
+      },
+      "autorestart": true,
+      "max_restarts": 10,
+      "min_uptime": "10s",
+      "log_date_format": "YYYY-MM-DD HH:mm:ss Z",
+      "merge_logs": true,
+      "out_file": "/workspace/logs/redis-worker-api0-out.log",
+      "error_file": "/workspace/logs/redis-worker-api0-error.log",
+      "combine_logs": true,
+      "log_file": "/workspace/logs/redis-worker-api0-combined.log"
+    },
+    {
+      "name": "redis-worker-api1",
+      "script": "/workspace/src/services/shared/redis-worker-service.js",
+      "interpreter": "node",
+      "args": [],
+      "env": {
+        "NODE_ENV": "development",
+        "MACHINE_TYPE": "hybrid",
+        "MACHINE_ID": "unified-machine-local",
+        "WORKER_TYPE": "api",
+        "WORKER_ID": "api1",
+        "REDIS_URL": "redis://localhost:6379"
+      },
+      "autorestart": true,
+      "max_restarts": 10,
+      "min_uptime": "10s",
+      "log_date_format": "YYYY-MM-DD HH:mm:ss Z",
+      "merge_logs": true,
+      "out_file": "/workspace/logs/redis-worker-api1-out.log",
+      "error_file": "/workspace/logs/redis-worker-api1-error.log",
+      "combine_logs": true,
+      "log_file": "/workspace/logs/redis-worker-api1-combined.log"
+    }
+  ]
+};

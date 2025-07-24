@@ -438,32 +438,19 @@ Result Retrieval]
 
 ## Build Performance Optimization
 
-<FullscreenDiagram>
-```mermaid
-gantt
-    title Build Time Comparison: Current vs Unified Architecture
-    dateFormat X
-    axisFormat %s
-    
-    section Current Architecture
-    Full GPU Machine Build    :done, curr1, 0, 900s
-    Incremental Update       :done, curr2, 900s, 1200s
-    
-    section Unified Architecture - First Build
-    Base Machine Layer       :done, base1, 0, 180s
-    GPU Extension Layer      :done, gpu1, 180s, 480s
-    API Extension Layer      :done, api1, 180s, 360s
-    
-    section Unified Architecture - Cached Build
-    Base Machine (Cached)    :done, base2, 600s, 630s
-    GPU Extension (Cached)   :done, gpu2, 630s, 720s
-    API Extension (Cached)   :done, api2, 630s, 690s
-    
-    section Benefits
-    90% Cache Hit Rate       :milestone, m1, 720s
-    50% Faster Development   :milestone, m2, 720s
-```
-</FullscreenDiagram>
+**Build Time Comparison:**
+
+| Architecture | Component | Build Time |
+|-------------|-----------|------------|
+| **Current** | Full GPU Machine Build | 15 minutes |
+| **Current** | Incremental Update | 5 minutes |
+| **Unified** | Base Machine Layer | 3 minutes |
+| **Unified** | GPU Extension Layer | 5 minutes |
+| **Unified** | API Extension Layer | 3 minutes |
+
+**Key Benefits:**
+- 90% Cache Hit Rate for faster rebuilds
+- 50% Faster Development iteration cycles
 
 ## Migration Strategy
 

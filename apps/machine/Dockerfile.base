@@ -1,0 +1,70 @@
+# Base Machine Dockerfile
+# Foundation layer for all EmProps machine types (GPU, API, Hybrid)
+FROM node:18-bullseye
+
+LABEL maintainer="EmProps Infrastructure Team"
+LABEL version="1.0.0"
+LABEL description="Base machine foundation for EmProps AI workload processing"
+
+# Install system dependencies
+RUN apt-get update && apt-get install -y \
+    python3 \
+    python3-pip \
+    python3-dev \
+    build-essential \
+    git \
+    curl \
+    wget \
+    unzip \
+    htop \
+    vim \
+    jq \
+    netcat \
+    && rm -rf /var/lib/apt/lists/*
+
+# Install PM2 globally
+RUN npm install -g pm2@latest
+
+# Create workspace directory
+WORKDIR /workspace
+
+# Copy package.json first for better Docker layer caching
+COPY package*.json ./
+
+# Install Node.js dependencies
+RUN npm ci --only=production && npm cache clean --force
+
+# Create necessary directories
+RUN mkdir -p /workspace/{logs,data,shared,models}
+
+# Copy source code
+COPY src/ ./src/
+COPY *.js ./
+
+# Set proper permissions
+RUN chmod +x src/machine-manager.js
+RUN chmod +x src/config/ecosystem-generator.js
+
+# Create non-root user for security
+RUN groupadd -r appuser && useradd -r -g appuser -d /workspace -s /bin/bash appuser
+RUN chown -R appuser:appuser /workspace
+
+# Environment variables
+ENV NODE_ENV=production
+ENV MACHINE_TYPE=base
+ENV MACHINE_ID=base-machine
+ENV MACHINE_HEALTH_PORT=9090
+ENV REDIS_URL=redis://localhost:6379
+
+# Health check
+HEALTHCHECK --interval=30s --timeout=5s --start-period=60s --retries=3 \
+    CMD curl -f http://localhost:${MACHINE_HEALTH_PORT}/health || exit 1
+
+# Switch to non-root user
+USER appuser
+
+# Expose ports
+EXPOSE 9090
+
+# Default command
+CMD ["node", "src/machine-manager.js"]
