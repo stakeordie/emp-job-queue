@@ -2957,26 +2957,90 @@ export class LightweightAPIServer {
         return;
       }
 
-      // If worker has active jobs, reset them to pending
+      // If worker has active jobs, handle them with proper retry logic
       if (workerData.current_job_id) {
         const jobId = workerData.current_job_id;
-        logger.info(`🔄 Resetting job ${jobId} from worker ${workerId} to pending`);
+        logger.info(`🔄 Processing job ${jobId} from failed worker ${workerId} with retry logic`);
 
         const jobData = await this.redis.hgetall(`job:${jobId}`);
         if (jobData.id) {
-          await this.redis.hset(`job:${jobId}`, {
-            ...jobData,
-            status: 'pending',
-            worker_id: '',
-            assigned_at: '',
-            started_at: '',
-          });
+          // Convert Redis hash data to Job object
+          const job = {
+            id: jobData.id,
+            retry_count: parseInt(jobData.retry_count || '0'),
+            max_retries: parseInt(jobData.max_retries || '3'),
+            worker_id: jobData.worker_id || '',
+            priority: parseInt(jobData.priority || '50'),
+            workflow_priority: jobData.workflow_priority ? parseInt(jobData.workflow_priority) : undefined,
+            workflow_datetime: jobData.workflow_datetime ? parseInt(jobData.workflow_datetime) : undefined,
+            created_at: jobData.created_at,
+          };
 
-          // Re-add to pending queue with original priority
-          const priority = parseInt(jobData.priority || '50');
-          const timestamp = parseInt(jobData.created_at) || Date.now();
-          const score = priority * Math.pow(10, 15) - timestamp / 1000;
-          await this.redis.zadd('jobs:pending', score, jobId);
+          // Apply proper retry logic with limits
+          const newRetryCount = job.retry_count + 1;
+          const maxRetries = job.max_retries;
+
+          if (newRetryCount >= maxRetries) {
+            // Job exceeded max retries - fail it permanently
+            logger.warn(
+              `Job ${jobId} exceeded max retries (${newRetryCount}/${maxRetries}) - marking as failed due to worker failure`
+            );
+
+            await this.redis.hset(`job:${jobId}`, {
+              ...jobData,
+              status: 'failed',
+              failed_at: new Date().toISOString(),
+              retry_count: newRetryCount.toString(),
+              last_failed_worker: workerId,
+              worker_id: '',
+              assigned_at: '',
+              started_at: '',
+            });
+
+            // Store in failed jobs with error details
+            await this.redis.hset(
+              'jobs:failed',
+              jobId,
+              JSON.stringify({
+                error: `Worker disconnected/timeout: ${workerId}`,
+                failed_at: new Date().toISOString(),
+                retry_count: newRetryCount,
+                max_retries: maxRetries,
+              })
+            );
+            await this.redis.expire('jobs:failed', 7 * 24 * 60 * 60); // 7 days
+
+            // Remove from any active job tracking
+            await this.redis.hdel(`jobs:active:${workerId}`, jobId);
+
+            logger.info(`❌ Job ${jobId} permanently failed after ${newRetryCount} attempts`);
+          } else {
+            // Job can be retried - increment retry count and requeue
+            logger.info(
+              `Job ${jobId} will be retried (${newRetryCount}/${maxRetries}) - returning to queue`
+            );
+
+            await this.redis.hset(`job:${jobId}`, {
+              ...jobData,
+              status: 'pending',
+              worker_id: '',
+              assigned_at: '',
+              started_at: '',
+              retry_count: newRetryCount.toString(),
+              last_failed_worker: workerId,
+            });
+
+            // Re-add to pending queue with workflow-aware scoring (same logic as redis-service.ts)
+            const effectivePriority = job.workflow_priority || job.priority;
+            const effectiveDateTime = job.workflow_datetime || Date.parse(job.created_at);
+            const score = effectivePriority * 1000000 + (Number.MAX_SAFE_INTEGER - effectiveDateTime);
+            await this.redis.zadd('jobs:pending', score, jobId);
+
+            // Remove from worker's active jobs
+            await this.redis.hdel(`jobs:active:${workerId}`, jobId);
+
+            logger.info(`🔄 Job ${jobId} requeued for retry ${newRetryCount}/${maxRetries}`);
+          }
         }
       }
 
