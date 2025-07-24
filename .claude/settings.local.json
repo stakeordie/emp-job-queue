@@ -186,7 +186,11 @@
       "Bash(ecli env:*)",
       "Bash(git rebase:*)",
       "Bash(apps/machine/generate-docker-compose.sh:*)",
-      "Bash(grep -i \"cdn\\|bucket\" apps/machine/config_nodes.json)"
+      "Bash(grep -i \"cdn\\|bucket\" apps/machine/config_nodes.json)",
+      "Bash(vercel link:*)",
+      "Bash(vercel:*)",
+      "Bash(git checkout:*)",
+      "Bash(git remote add:*)"
     ],
     "deny": []
   }
