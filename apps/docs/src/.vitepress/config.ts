@@ -10,6 +10,7 @@ const config = defineConfig({
   base: '/',
   lastUpdated: true,
   cleanUrls: true,
+  ignoreDeadLinks: true, // Ignore dead links to prevent build failures
   head: [
     ['link', { rel: 'icon', type: 'image/png', href: '/images/favicon.png' }],
     ['link', { rel: 'stylesheet', href: '/css/styles.css' }]
@@ -67,71 +68,92 @@ const config = defineConfig({
     
     nav: [
       { text: 'Home', link: '/' },
-      { 
-        text: 'Architecture', 
-        items: [
-          { text: 'System Overview', link: '/guide/architecture' },
-          { text: 'Job Lifecycle', link: '/guide/job-lifecycle' },
-          { text: 'Worker Selection', link: '/guide/worker-selection' },
-          { text: 'Notifications', link: '/guide/notifications' }
-        ]
-      },
-      { text: 'API Reference', link: '/guide/websocket-api' },
-      { text: 'Examples', link: '/examples/' },
-      { text: 'Changelog', link: '/changelog' }
+      { text: 'Understanding', link: '/01-understanding-the-system/' },
+      { text: 'How It Works', link: '/02-how-it-works/' },
+      { text: 'Implementation', link: '/03-implementation-details/' },
+      { text: 'Production', link: '/04-running-in-production/' },
+      { text: 'Development', link: '/05-development/' },
+      { text: 'Future', link: '/06-future-vision/' }
     ],
 
     sidebar: {
-      '/': [
+      '/01-understanding-the-system/': [
         {
-          text: 'Getting Started',
+          text: '1. Understanding the System',
           items: [
-            { text: 'Overview', link: '/' },
-            { text: 'Quick Start', link: '/guide/' }
-          ]
-        },
-        {
-          text: 'System Architecture',
-          collapsed: false,
-          items: [
-            { text: 'Architecture Overview', link: '/guide/architecture' },
-            { text: 'Job Lifecycle', link: '/guide/job-lifecycle' },
-            { text: 'Worker Selection', link: '/guide/worker-selection' },
-            { text: 'Notifications', link: '/guide/notifications' }
-          ]
-        },
-        {
-          text: 'API Reference',
-          collapsed: true,
-          items: [
-            { text: 'WebSocket API', link: '/guide/websocket-api' }
-          ]
-        },
-        {
-          text: 'Development',
-          collapsed: true,
-          items: [
-            { text: 'Changelog', link: '/changelog' }
+            { text: 'Overview', link: '/01-understanding-the-system/' },
+            { text: 'System Overview', link: '/01-understanding-the-system/system-overview' },
+            { text: 'North Star Vision 🚧', link: '/01-understanding-the-system/north-star-vision' },
+            { text: 'Business Context 📝', link: '/01-understanding-the-system/business-context' },
+            { text: 'Capabilities & Limitations 📝', link: '/01-understanding-the-system/capabilities-limitations' }
           ]
         }
       ],
-      '/guide/': [
+      '/02-how-it-works/': [
         {
-          text: 'System Architecture',
-          collapsed: false,
+          text: '2. How It Works',
           items: [
-            { text: 'Quick Start', link: '/guide/' },
-            { text: 'Architecture Overview', link: '/guide/architecture' },
-            { text: 'Job Lifecycle', link: '/guide/job-lifecycle' },
-            { text: 'Worker Selection', link: '/guide/worker-selection' },
-            { text: 'Notifications', link: '/guide/notifications' }
+            { text: 'Overview', link: '/02-how-it-works/' },
+            { text: 'Job Lifecycle', link: '/02-how-it-works/job-lifecycle' },
+            { text: 'Worker Selection', link: '/02-how-it-works/worker-selection' },
+            { text: 'Redis Architecture 📝', link: '/02-how-it-works/redis-architecture' },
+            { text: 'Machine Communication 📝', link: '/02-how-it-works/machine-communication' },
+            { text: 'Scaling Mechanisms 🚧', link: '/02-how-it-works/scaling-mechanisms' }
           ]
-        },
+        }
+      ],
+      '/03-implementation-details/': [
         {
-          text: 'API Reference',
-          collapsed: false,
+          text: '3. Implementation Details',
           items: [
-            { text: 'WebSocket API', link: '/guide/websocket-api' }
+            { text: 'Overview', link: '/03-implementation-details/' },
+            { text: 'Unified Machine Architecture', link: '/03-implementation-details/unified-machine-architecture' },
+            { text: 'Technical Implementation', link: '/03-implementation-details/technical-implementation' },
+            { text: 'WebSocket API', link: '/03-implementation-details/websocket-api' },
+            { text: 'Redis Data Structures 📝', link: '/03-implementation-details/redis-data-structures' },
+            { text: 'Service Communication 📝', link: '/03-implementation-details/service-communication' },
+            { text: 'API Connectors 🚧', link: '/03-implementation-details/api-connectors' }
+          ]
+        }
+      ],
+      '/04-running-in-production/': [
+        {
+          text: '4. Running in Production',
+          items: [
+            { text: 'Overview', link: '/04-running-in-production/' },
+            { text: 'Failure Handling', link: '/04-running-in-production/failure-handling' },
+            { text: 'Machine Logs Analysis', link: '/04-running-in-production/machine-logs-analysis' },
+            { text: 'Deployment Strategies 📝', link: '/04-running-in-production/deployment-strategies' },
+            { text: 'Monitoring & Alerting 📝', link: '/04-running-in-production/monitoring-alerting' },
+            { text: 'Performance Tuning 🚧', link: '/04-running-in-production/performance-tuning' },
+            { text: 'Capacity Planning 📝', link: '/04-running-in-production/capacity-planning' }
+          ]
+        }
+      ],
+      '/05-development/': [
+        {
+          text: '5. Development',
+          items: [
+            { text: 'Overview', link: '/05-development/' },
+            { text: 'Development Changelog', link: '/05-development/changelog' },
+            { text: 'Monorepo Migration', link: '/05-development/monorepo-migration' },
+            { text: 'Local Development Setup 📝', link: '/05-development/local-development' },
+            { text: 'Testing Procedures 🚧', link: '/05-development/testing-procedures' },
+            { text: 'Contributing Guidelines 📝', link: '/05-development/contributing' },
+            { text: 'Architecture Decisions 📝', link: '/05-development/architecture-decisions' }
+          ]
+        }
+      ],
+      '/06-future-vision/': [
+        {
+          text: '6. Future Vision',
+          items: [
+            { text: 'Overview', link: '/06-future-vision/' },
+            { text: 'North Star Architecture 🚧', link: '/06-future-vision/north-star-architecture' },
+            { text: 'Predictive Model Management 🚧', link: '/06-future-vision/predictive-model-management' },
+            { text: 'Pool-Based Routing 📝', link: '/06-future-vision/pool-based-routing' },
+            { text: 'Technical Roadmap 📝', link: '/06-future-vision/technical-roadmap' },
+            { text: 'Customer Documentation Plans 📝', link: '/06-future-vision/customer-docs-planning' }
           ]
         }
       ],

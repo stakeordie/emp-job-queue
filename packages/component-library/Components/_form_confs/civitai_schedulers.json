@@ -1,0 +1,62 @@
+[
+  {
+    "name": "ddim",
+    "value": "DDIM"
+  },
+  {
+    "name": "ddpm",
+    "value": "DDPM"
+  },
+  {
+    "name": "deis",
+    "value": "DEIS"
+  },
+  {
+    "name": "dpm2m",
+    "value": "DPM2M"
+  },
+  {
+    "name": "dpmsde",
+    "value": "DPMSDE"
+  },
+  {
+    "name": "dpm2sa",
+    "value": "DPM2SA"
+  },
+  {
+    "name": "eulera",
+    "value": "EulerA"
+  },
+  {
+    "name": "euler",
+    "value": "Euler"
+  },
+  {
+    "name": "heun",
+    "value": "Heun"
+  },
+  {
+    "name": "dpm2karras",
+    "value": "DPM2Karras"
+  },
+  {
+    "name": "dpm2akarras",
+    "value": "DPM2AKarras"
+  },
+  {
+    "name": "dpm2mkarras",
+    "value": "DPM2MKarras"
+  },
+  {
+    "name": "lcm",
+    "value": "LCM"
+  },
+  {
+    "name": "lms",
+    "value": "LMS"
+  },
+  {
+    "name": "unipc",
+    "value": "UniPC"
+  }
+]

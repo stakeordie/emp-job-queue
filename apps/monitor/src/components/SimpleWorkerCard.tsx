@@ -17,15 +17,14 @@ interface SimpleWorkerCardProps {
 export const SimpleWorkerCard = memo(function SimpleWorkerCard({ worker }: SimpleWorkerCardProps) {
   const [showDetails, setShowDetails] = useState(false);
 
-  const isProcessing = worker.status === 'processing' || worker.status === 'busy';
+  const isProcessing = worker.status === 'busy';
   
   return (
     <>
       <div
         onClick={() => setShowDetails(true)}
         className={`
-          w-[200px] h-[40px] px-3 py-2 rounded border cursor-pointer
-          flex items-center justify-center
+          w-full px-3 py-2 rounded border cursor-pointer
           transition-all duration-300 ease-in-out
           ${isProcessing 
             ? 'bg-blue-500 text-white border-blue-600 animate-pulse' 
@@ -33,22 +32,76 @@ export const SimpleWorkerCard = memo(function SimpleWorkerCard({ worker }: Simpl
           }
         `}
       >
-        <span className="text-sm font-medium truncate">
-          {worker.id}
-        </span>
+        <div className="flex flex-col gap-2">
+          <div className="flex items-center justify-between">
+            <div className="flex flex-col gap-1">
+              <span className="text-xs font-medium truncate">
+                {worker.worker_id}
+              </span>
+              {worker.capabilities?.metadata?.version ? (
+                <span className="text-xs text-muted-foreground">
+                  {String(worker.capabilities.metadata.version)}
+                </span>
+              ) : null}
+            </div>
+            {isProcessing && (
+              <Badge variant="secondary" className="text-xs">
+                Processing
+              </Badge>
+            )}
+          </div>
+          <div className="flex flex-wrap gap-1">
+            {worker.capabilities?.services?.map((service: string) => {
+              const connectorStatus = worker.connector_statuses?.[service];
+              const status = connectorStatus?.status;
+              
+              // Determine badge variant and color based on connector status
+              const getBadgeConfig = (status?: string) => {
+                switch (status) {
+                  case 'active':
+                    return { variant: 'default' as const, color: 'bg-green-500', label: 'Active' };
+                  case 'inactive':
+                    return { variant: 'secondary' as const, color: 'bg-blue-500', label: 'Idle' };
+                  case 'waiting_for_service':
+                    return { variant: 'secondary' as const, color: 'bg-yellow-500', label: 'Waiting' };
+                  case 'connecting':
+                    return { variant: 'secondary' as const, color: 'bg-orange-500', label: 'Connecting' };
+                  case 'error':
+                    return { variant: 'destructive' as const, color: 'bg-red-500', label: 'Error' };
+                  default:
+                    return { variant: 'outline' as const, color: 'bg-gray-400', label: 'Unknown' };
+                }
+              };
+              
+              const config = getBadgeConfig(status);
+              
+              return (
+                <Badge
+                  key={service}
+                  variant={config.variant}
+                  className="text-xs px-2 py-0.5 h-5"
+                  title={connectorStatus?.error_message || `Status: ${status || 'unknown'} (${config.label})`}
+                >
+                  <div className={`w-1.5 h-1.5 rounded-full mr-1 ${config.color}`} />
+                  {service}
+                </Badge>
+              );
+            })}
+          </div>
+        </div>
       </div>
 
       <Dialog open={showDetails} onOpenChange={setShowDetails}>
         <DialogContent className="sm:max-w-[425px]">
           <DialogHeader>
-            <DialogTitle>{worker.id}</DialogTitle>
+            <DialogTitle>{worker.worker_id}</DialogTitle>
           </DialogHeader>
           <div className="space-y-4">
             <div>
               <p className="text-sm font-medium mb-1">Status</p>
               <Badge variant={
                 worker.status === 'idle' ? 'default' : 
-                worker.status === 'processing' || worker.status === 'busy' ? 'secondary' :
+                worker.status === 'busy' ? 'secondary' :
                 worker.status === 'error' || worker.status === 'offline' ? 'destructive' : 
                 'outline'
               }>
@@ -59,10 +112,12 @@ export const SimpleWorkerCard = memo(function SimpleWorkerCard({ worker }: Simpl
             <div>
               <p className="text-sm font-medium mb-1">Capabilities</p>
               <div className="space-y-1 text-sm text-muted-foreground">
-                <p>GPU: {worker.capabilities.gpu_model}</p>
-                <p>VRAM: {worker.capabilities.gpu_memory_gb}GB</p>
-                {worker.capabilities.cpu_cores && <p>CPU Cores: {worker.capabilities.cpu_cores}</p>}
-                {worker.capabilities.ram_gb && <p>RAM: {worker.capabilities.ram_gb}GB</p>}
+                <p>GPU: {worker.capabilities?.hardware?.gpu_model || 'Unknown'}</p>
+                <p>VRAM: {(worker.capabilities?.hardware?.gpu_memory_gb || 'Unknown')}GB</p>
+                {worker.capabilities?.hardware?.ram_gb && <p>RAM: {worker.capabilities.hardware.ram_gb}GB</p>}
+                {worker.capabilities?.metadata?.version ? (
+                  <p>Version: {String(worker.capabilities.metadata.version)}</p>
+                ) : null}
               </div>
             </div>
 
@@ -70,36 +125,67 @@ export const SimpleWorkerCard = memo(function SimpleWorkerCard({ worker }: Simpl
               <div>
                 <p className="text-sm font-medium mb-1">Services</p>
                 <div className="flex flex-wrap gap-1">
-                  {worker.capabilities.services.map((service) => (
-                    <Badge key={service} variant="outline" className="text-xs">
-                      {service}
-                    </Badge>
-                  ))}
+                  {worker.capabilities?.services?.map((service: string) => {
+                    const connectorStatus = worker.connector_statuses?.[service];
+                    const status = connectorStatus?.status;
+                    
+                    // Determine badge variant and color based on connector status
+                    const getBadgeConfig = (status?: string) => {
+                      switch (status) {
+                        case 'active':
+                          return { variant: 'default' as const, color: 'bg-green-500', label: 'Active' };
+                        case 'inactive':
+                          return { variant: 'secondary' as const, color: 'bg-blue-500', label: 'Idle' };
+                        case 'error':
+                          return { variant: 'destructive' as const, color: 'bg-red-500', label: 'Error' };
+                        default:
+                          return { variant: 'outline' as const, color: 'bg-gray-400', label: 'Unknown' };
+                      }
+                    };
+                    
+                    const config = getBadgeConfig(status);
+                    
+                    return (
+                      <Badge 
+                        key={service} 
+                        variant={config.variant}
+                        className="text-xs"
+                        title={connectorStatus?.error_message || `Status: ${status || 'unknown'} (${config.label})`}
+                      >
+                        <div className={`w-2 h-2 rounded-full mr-1 ${config.color}`} />
+                        {service}
+                      </Badge>
+                    );
+                  })}
                 </div>
               </div>
             )}
 
-            {worker.current_job_id && (
+            {worker.current_jobs && worker.current_jobs.length > 0 && (
               <div>
-                <p className="text-sm font-medium mb-1">Current Job</p>
-                <p className="text-sm font-mono text-muted-foreground">
-                  {worker.current_job_id}
-                </p>
+                <p className="text-sm font-medium mb-1">Current Jobs</p>
+                <div className="space-y-1">
+                  {worker.current_jobs.map((jobId: string) => (
+                    <p key={jobId} className="text-sm font-mono text-muted-foreground">
+                      {jobId}
+                    </p>
+                  ))}
+                </div>
               </div>
             )}
 
             <div>
               <p className="text-sm font-medium mb-1">Statistics</p>
               <div className="flex gap-4 text-sm text-muted-foreground">
-                <span>Completed: {worker.jobs_completed}</span>
-                <span>Failed: {worker.jobs_failed}</span>
+                <span>Completed: {worker.total_jobs_completed}</span>
+                <span>Failed: {worker.total_jobs_failed}</span>
               </div>
             </div>
 
-            {worker.machine_id && (
+            {worker.capabilities?.machine_id && (
               <div>
                 <p className="text-sm font-medium mb-1">Machine ID</p>
-                <p className="text-sm text-muted-foreground">{worker.machine_id}</p>
+                <p className="text-sm text-muted-foreground">{worker.capabilities?.machine_id}</p>
               </div>
             )}
           </div>

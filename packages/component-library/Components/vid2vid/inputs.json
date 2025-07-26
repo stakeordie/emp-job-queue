@@ -1,0 +1,50 @@
+{
+  "6": {
+    "text": {
+      "value": "prompt",
+      "type": "prompt",
+      "is_required": true
+    }
+  },
+  "7": {
+    "text": {
+      "value": "negative_prompt",
+      "type": "prompt",
+      "is_required": true
+    }
+  },
+  "179": {
+    "url": {
+      "value": "video",
+      "type": "asset",
+      "is_required": true
+    }
+  },
+  "380": {
+    "url": {
+      "value": "image",
+      "type": "asset",
+      "is_required": true
+    }
+  },
+  "378": {
+    "s3_prefix": {
+      "value": "prefix",
+      "is_required": true
+    },
+    "s3_bucket": {
+      "value": "bucket",
+      "is_required": true
+    },
+    "filename_prefix": {
+      "value": "filename",
+      "is_required": false
+    }
+  },
+  "340": {
+    "seed": {
+      "value": "seed",
+      "is_required": true
+    }
+  }
+}

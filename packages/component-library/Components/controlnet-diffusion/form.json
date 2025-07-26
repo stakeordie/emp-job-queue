@@ -1,0 +1,83 @@
+{
+  "config": {
+    "groupOrder": ["basic", "advanced"],
+    "maxNumberOfGenerations": 1,
+    "componentGroup": "image"
+  },
+  "fields": [
+    {
+      "id": "seed",
+      "name": "Seed",
+      "type": "optional_input",
+      "display": true,
+      "group": "advanced",
+      "input_type": "number",
+      "constraints": {
+        "min": 0,
+        "max": 999999,
+        "step": 1
+      }
+    },
+    {
+      "id": "controlnet_type",
+      "name": "Controlnet Type",
+      "type": "select",
+      "default": "cannyv2",
+      "conf_file": "controlnet_types.json",
+      "display": true,
+      "group": ["basic", "advanced"]
+    },
+    {
+      "id": "controlnet_image",
+      "name": "Controlnet Image",
+      "type": "image_loader",
+      "display": true,
+      "group": ["basic", "advanced"]
+    },
+    {
+      "id": "denoising",
+      "name": "Denoising Strength",
+      "type": "slider",
+      "default": 0.35,
+      "constraints": {
+        "min": 0,
+        "max": 1,
+        "step": 0.001
+      },
+      "display": true,
+      "group": ["basic", "advanced"]
+    },
+    {
+      "id": "use_style_image",
+      "name": "Use Style Image",
+      "type": "checkbox",
+      "default": false,
+      "display": true,
+      "group": ["advanced"]
+    },
+    {
+      "id": "style_image",
+      "name": "Style Image",
+      "type": "image_loader",
+      "required": false,
+      "display": true,
+      "group": ["advanced"]
+    },
+    {
+      "id": "prompt",
+      "name": "Prompt",
+      "type": "prompt_editor",
+      "default": "",
+      "display": true,
+      "group": ["basic", "advanced"]
+    },
+    {
+      "id": "negative_prompt",
+      "name": "Negative Prompt",
+      "type": "prompt_editor",
+      "default": "",
+      "display": true,
+      "group": ["advanced"]
+    }
+  ]
+}

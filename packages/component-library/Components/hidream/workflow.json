@@ -1,0 +1,571 @@
+{
+  "3": {
+    "inputs": {
+      "seed": 357124274333447,
+      "steps": [
+        "111",
+        0
+      ],
+      "cfg": [
+        "121",
+        0
+      ],
+      "sampler_name": [
+        "126",
+        0
+      ],
+      "scheduler": [
+        "125",
+        0
+      ],
+      "denoise": 1,
+      "model": [
+        "70",
+        0
+      ],
+      "positive": [
+        "92",
+        0
+      ],
+      "negative": [
+        "117",
+        0
+      ],
+      "latent_image": [
+        "53",
+        0
+      ]
+    },
+    "class_type": "KSampler",
+    "_meta": {
+      "title": "KSampler"
+    }
+  },
+  "8": {
+    "inputs": {
+      "samples": [
+        "3",
+        0
+      ],
+      "vae": [
+        "91",
+        0
+      ]
+    },
+    "class_type": "VAEDecode",
+    "_meta": {
+      "title": "VAE Decode"
+    }
+  },
+  "40": {
+    "inputs": {
+      "text": "bad ugly jpeg artifacts",
+      "clip": [
+        "94",
+        0
+      ]
+    },
+    "class_type": "CLIPTextEncode",
+    "_meta": {
+      "title": "Negative Prompt"
+    }
+  },
+  "53": {
+    "inputs": {
+      "width": 1024,
+      "height": 1024,
+      "batch_size": 1
+    },
+    "class_type": "EmptySD3LatentImage",
+    "_meta": {
+      "title": "EmptySD3LatentImage"
+    }
+  },
+  "70": {
+    "inputs": {
+      "shift": [
+        "107",
+        0
+      ],
+      "model": [
+        "83",
+        0
+      ]
+    },
+    "class_type": "ModelSamplingSD3",
+    "_meta": {
+      "title": "ModelSamplingSD3"
+    }
+  },
+  "83": {
+    "inputs": {
+      "unet_name": [
+        "104",
+        0
+      ]
+    },
+    "class_type": "UnetLoaderGGUF",
+    "_meta": {
+      "title": "Unet Loader (GGUF)"
+    }
+  },
+  "84": {
+    "inputs": {
+      "url": "https://huggingface.co/Comfy-Org/HiDream-I1_ComfyUI/resolve/main/split_files/text_encoders/t5xxl_fp8_e4m3fn_scaled.safetensors",
+      "save_to": "text_encoders",
+      "filename": "t5xxl_fp8_e4m3fn_scaled.safetensors",
+      "token_provider": "None",
+      "token": "",
+      "test_with_copy": false,
+      "source_filename": ""
+    },
+    "class_type": "EmProps_Asset_Downloader",
+    "_meta": {
+      "title": "EmProps Asset Downloader"
+    }
+  },
+  "85": {
+    "inputs": {
+      "url": "https://huggingface.co/city96/HiDream-I1-Full-gguf/resolve/main/hidream-i1-full-Q8_0.gguf",
+      "save_to": "diffusion_models",
+      "filename": "hidream-i1-full-Q8_0.gguf",
+      "token_provider": "None",
+      "token": "",
+      "test_with_copy": false,
+      "source_filename": ""
+    },
+    "class_type": "EmProps_Asset_Downloader",
+    "_meta": {
+      "title": "EmProps Asset Downloader"
+    }
+  },
+  "86": {
+    "inputs": {
+      "url": "https://huggingface.co/Comfy-Org/HiDream-I1_ComfyUI/resolve/main/split_files/text_encoders/llama_3.1_8b_instruct_fp8_scaled.safetensors",
+      "save_to": "text_encoders",
+      "filename": "llama_3.1_8b_instruct_fp8_scaled.safetensors",
+      "token_provider": "None",
+      "token": "",
+      "test_with_copy": false,
+      "source_filename": ""
+    },
+    "class_type": "EmProps_Asset_Downloader",
+    "_meta": {
+      "title": "EmProps Asset Downloader"
+    }
+  },
+  "87": {
+    "inputs": {
+      "url": "https://huggingface.co/Comfy-Org/HiDream-I1_ComfyUI/resolve/main/split_files/text_encoders/clip_g_hidream.safetensors",
+      "save_to": "text_encoders",
+      "filename": "clip_g_hidream.safetensors",
+      "token_provider": "None",
+      "token": "",
+      "test_with_copy": false,
+      "source_filename": ""
+    },
+    "class_type": "EmProps_Asset_Downloader",
+    "_meta": {
+      "title": "EmProps Asset Downloader"
+    }
+  },
+  "88": {
+    "inputs": {
+      "url": "https://huggingface.co/Comfy-Org/HiDream-I1_ComfyUI/resolve/main/split_files/text_encoders/clip_l_hidream.safetensors",
+      "save_to": "text_encoders",
+      "filename": "clip_l_hidream.safetensors",
+      "token_provider": "None",
+      "token": "",
+      "test_with_copy": false,
+      "source_filename": ""
+    },
+    "class_type": "EmProps_Asset_Downloader",
+    "_meta": {
+      "title": "EmProps Asset Downloader"
+    }
+  },
+  "90": {
+    "inputs": {
+      "url": "https://huggingface.co/UmeAiRT/ComfyUI-Auto_installer/resolve/027bd76c3514d062a2190c84c1598a7fb7dd7ebb/models/vae/ae.safetensors",
+      "save_to": "vae",
+      "filename": "ae.safetensors",
+      "token_provider": "None",
+      "token": "",
+      "test_with_copy": false,
+      "source_filename": ""
+    },
+    "class_type": "EmProps_Asset_Downloader",
+    "_meta": {
+      "title": "EmProps Asset Downloader"
+    }
+  },
+  "91": {
+    "inputs": {
+      "vae_name": [
+        "90",
+        1
+      ]
+    },
+    "class_type": "EmProps_VAE_Loader",
+    "_meta": {
+      "title": "EmProps VAE Loader"
+    }
+  },
+  "92": {
+    "inputs": {
+      "text": "Pixel art cave scene, Sega Genesis style. Prehistoric family silhouettes facing cave wall with handprint paintings. Campfire behind them casting shadows on wall. Warm orange firelight, retro gaming graphics.",
+      "clip": [
+        "94",
+        0
+      ]
+    },
+    "class_type": "CLIPTextEncode",
+    "_meta": {
+      "title": "Positive Prompt"
+    }
+  },
+  "94": {
+    "inputs": {
+      "clip_name1": [
+        "88",
+        1
+      ],
+      "clip_name2": [
+        "87",
+        1
+      ],
+      "clip_name3": [
+        "84",
+        1
+      ],
+      "clip_name4": [
+        "86",
+        1
+      ],
+      "device": "default"
+    },
+    "class_type": "EmProps_QuadrupleCLIP_Loader",
+    "_meta": {
+      "title": "EmProps QuadrupleCLIP Loader"
+    }
+  },
+  "95": {
+    "inputs": {
+      "url": "https://huggingface.co/calcuis/hidream-gguf/resolve/main/hidream-i1-fast-q8_0.gguf",
+      "save_to": "diffusion_models",
+      "filename": "hidream-i1-fast-q8_0.gguf",
+      "token_provider": "None",
+      "token": "",
+      "test_with_copy": false,
+      "source_filename": ""
+    },
+    "class_type": "EmProps_Asset_Downloader",
+    "_meta": {
+      "title": "EmProps Asset Downloader"
+    }
+  },
+  "100": {
+    "inputs": {
+      "url": "https://huggingface.co/calcuis/hidream-gguf/resolve/main/hidream-i1-dev-q8_0.gguf",
+      "save_to": "diffusion_models",
+      "filename": "hidream-i1-dev-q8_0.gguf",
+      "token_provider": "None",
+      "token": "",
+      "test_with_copy": false,
+      "source_filename": ""
+    },
+    "class_type": "EmProps_Asset_Downloader",
+    "_meta": {
+      "title": "EmProps Asset Downloader"
+    }
+  },
+  "104": {
+    "inputs": {
+      "index": [
+        "106",
+        0
+      ],
+      "value0": [
+        "95",
+        1
+      ],
+      "value1": [
+        "100",
+        1
+      ],
+      "value2": [
+        "85",
+        1
+      ]
+    },
+    "class_type": "InversionDemoLazyIndexSwitch",
+    "_meta": {
+      "title": "Lazy Index Switch"
+    }
+  },
+  "150": {
+    "inputs": {
+      "provider": "azure",
+      "prefix": "uploads/",
+      "filename": "image.png",
+      "bucket": "emprops-share",
+      "images": [
+        "8",
+        0
+      ]
+    },
+    "class_type": "EmProps_Cloud_Storage_Saver",
+    "_meta": {
+      "title": "EmProps Cloud Storage Saver"
+    }
+  },
+  "106": {
+    "inputs": {
+      "value": 0
+    },
+    "class_type": "Int Input [Dream]",
+    "_meta": {
+      "title": "✍ Int Input"
+    }
+  },
+  "107": {
+    "inputs": {
+      "index": [
+        "106",
+        0
+      ],
+      "value0": [
+        "109",
+        0
+      ],
+      "value1": [
+        "110",
+        0
+      ],
+      "value2": [
+        "109",
+        0
+      ]
+    },
+    "class_type": "InversionDemoLazyIndexSwitch",
+    "_meta": {
+      "title": "Lazy Index Switch"
+    }
+  },
+  "109": {
+    "inputs": {
+      "value": 3
+    },
+    "class_type": "Float Input [Dream]",
+    "_meta": {
+      "title": "✍ Float Input"
+    }
+  },
+  "110": {
+    "inputs": {
+      "value": 6
+    },
+    "class_type": "Float Input [Dream]",
+    "_meta": {
+      "title": "✍ Float Input"
+    }
+  },
+  "111": {
+    "inputs": {
+      "index": [
+        "106",
+        0
+      ],
+      "value0": [
+        "114",
+        0
+      ],
+      "value1": [
+        "115",
+        0
+      ],
+      "value2": [
+        "116",
+        0
+      ]
+    },
+    "class_type": "InversionDemoLazyIndexSwitch",
+    "_meta": {
+      "title": "Lazy Index Switch"
+    }
+  },
+  "114": {
+    "inputs": {
+      "value": 16
+    },
+    "class_type": "Int Input [Dream]",
+    "_meta": {
+      "title": "✍ Int Input"
+    }
+  },
+  "115": {
+    "inputs": {
+      "value": 28
+    },
+    "class_type": "Int Input [Dream]",
+    "_meta": {
+      "title": "✍ Int Input"
+    }
+  },
+  "116": {
+    "inputs": {
+      "value": 50
+    },
+    "class_type": "Int Input [Dream]",
+    "_meta": {
+      "title": "✍ Int Input"
+    }
+  },
+  "117": {
+    "inputs": {
+      "index": [
+        "106",
+        0
+      ],
+      "value0": [
+        "118",
+        0
+      ],
+      "value1": [
+        "118",
+        0
+      ],
+      "value2": [
+        "40",
+        0
+      ]
+    },
+    "class_type": "InversionDemoLazyIndexSwitch",
+    "_meta": {
+      "title": "Lazy Index Switch"
+    }
+  },
+  "118": {
+    "inputs": {
+      "text": "",
+      "clip": [
+        "94",
+        0
+      ]
+    },
+    "class_type": "CLIPTextEncode",
+    "_meta": {
+      "title": "Negative Prompt"
+    }
+  },
+  "119": {
+    "inputs": {
+      "value": 1
+    },
+    "class_type": "Float Input [Dream]",
+    "_meta": {
+      "title": "✍ Float Input"
+    }
+  },
+  "120": {
+    "inputs": {
+      "value": 5
+    },
+    "class_type": "Float Input [Dream]",
+    "_meta": {
+      "title": "✍ Float Input"
+    }
+  },
+  "121": {
+    "inputs": {
+      "index": [
+        "106",
+        0
+      ],
+      "value0": [
+        "119",
+        0
+      ],
+      "value1": [
+        "119",
+        0
+      ],
+      "value2": [
+        "120",
+        0
+      ]
+    },
+    "class_type": "InversionDemoLazyIndexSwitch",
+    "_meta": {
+      "title": "Lazy Index Switch"
+    }
+  },
+  "122": {
+    "inputs": {
+      "sampler_name": "uni_pc",
+      "scheduler": "simple"
+    },
+    "class_type": "SeargeSamplerInputs",
+    "_meta": {
+      "title": "Sampler Settings"
+    }
+  },
+  "123": {
+    "inputs": {
+      "sampler_name": "lcm",
+      "scheduler": "normal"
+    },
+    "class_type": "SeargeSamplerInputs",
+    "_meta": {
+      "title": "Sampler Settings"
+    }
+  },
+  "125": {
+    "inputs": {
+      "index": [
+        "106",
+        0
+      ],
+      "value0": [
+        "123",
+        1
+      ],
+      "value1": [
+        "123",
+        1
+      ],
+      "value2": [
+        "122",
+        1
+      ]
+    },
+    "class_type": "InversionDemoLazyIndexSwitch",
+    "_meta": {
+      "title": "Lazy Index Switch"
+    }
+  },
+  "126": {
+    "inputs": {
+      "index": [
+        "106",
+        0
+      ],
+      "value0": [
+        "123",
+        0
+      ],
+      "value1": [
+        "123",
+        0
+      ],
+      "value2": [
+        "122",
+        0
+      ]
+    },
+    "class_type": "InversionDemoLazyIndexSwitch",
+    "_meta": {
+      "title": "Lazy Index Switch"
+    }
+  }
+}

@@ -1,0 +1,299 @@
+# WebSocket Broadcast Architecture
+
+This document provides an interactive mermaid diagram showing the message flow architecture between monitors and clients in the Job Queue API.
+
+## System Overview
+
+The Job Queue API supports two distinct WebSocket connection types:
+
+1. **Monitor Connections** (`/ws/monitor/`) - System-wide monitoring with original message format
+2. **Client Connections** (`/ws/client/`) - Job-specific updates with EmProps message format
+
+## Job Lifecycle Events
+
+The system generates distinct events at different stages:
+
+1. **`job_submitted`** (monitors) / **`job_accepted`** (clients) - Job added to pending queue
+2. **`job_assigned`** (both) - Worker has claimed the job from the queue  
+3. **`update_job_progress`** (both) - Progress updates during execution
+4. **`complete_job`** (both) - Job finished successfully or failed
+
+## Interactive Architecture Diagram
+
+<FullscreenDiagram>
+
+```mermaid
+graph TB
+    subgraph "Clients"
+        Monitor[Monitor UI<br/>System-wide visibility]
+        EmProps[EmProps API<br/>Job-specific updates]
+    end
+    
+    subgraph "Job Queue API"
+        WSHandler[WebSocket Handler]
+        EventBroadcaster[EventBroadcaster]
+        MonitorConns[Monitor Connections]
+        ClientConns[Client Connections]
+    end
+    
+    subgraph "Event Sources"
+        Workers[Worker Services]
+        Machines[Machine Services]
+        API[API Server<br/>Job Lifecycle]
+    end
+    
+    %% Connections
+    Monitor -->|/ws/monitor/| WSHandler
+    EmProps -->|/ws/client/| WSHandler
+    
+    WSHandler --> MonitorConns
+    WSHandler --> ClientConns
+    
+    %% Event Flow
+    Workers --> EventBroadcaster
+    Machines --> EventBroadcaster
+    API --> EventBroadcaster
+    
+    %% Message Routing
+    EventBroadcaster -->|All Events<br/>Original Format| MonitorConns
+    EventBroadcaster -->|Job Events Only<br/>EmProps Format| ClientConns
+    
+    MonitorConns --> Monitor
+    ClientConns --> EmProps
+    
+    %% Styling
+    classDef client fill:#e1f5fe,stroke:#01579b,stroke-width:2px
+    classDef server fill:#fff3e0,stroke:#e65100,stroke-width:2px
+    classDef source fill:#e8f5e8,stroke:#1b5e20,stroke-width:2px
+    
+    class Monitor,EmProps client
+    class WSHandler,EventBroadcaster,MonitorConns,ClientConns server
+    class Workers,Machines,Jobs source
+```
+
+</FullscreenDiagram>
+
+## Connection URL Patterns
+
+<FullscreenDiagram>
+
+```mermaid
+sequenceDiagram
+    participant Monitor as Monitor UI
+    participant Client1 as EmProps Client 1
+    participant Client2 as EmProps Client 2
+    participant WSHandler as WebSocket Handler
+    participant EventBroadcaster as EventBroadcaster
+    
+    Note over Monitor, EventBroadcaster: Monitor Connection Flow
+    Monitor->>WSHandler: Connect ws://host/ws/monitor/monitor-123
+    WSHandler->>EventBroadcaster: addMonitor(monitorId, ws)
+    EventBroadcaster->>Monitor: {"type": "connected", "timestamp": ...}
+    
+    Note over Client1, EventBroadcaster: Client Connections
+    Client1->>WSHandler: Connect ws://host/ws/client/client-456
+    WSHandler->>EventBroadcaster: addClient(client-456, ws, 'emprops')
+    EventBroadcaster->>Client1: {"type": "connection_established", "message": "Connected to server"}
+    
+    Client2->>WSHandler: Connect ws://host/ws/client/client-789
+    WSHandler->>EventBroadcaster: addClient(client-789, ws, 'emprops')
+    EventBroadcaster->>Client2: {"type": "connection_established", "message": "Connected to server"}
+    
+    Note over Monitor, EventBroadcaster: 1. Job Submission
+    Client1->>WSHandler: Submit Job job-123
+    WSHandler->>EventBroadcaster: subscribeClientToJob(client-456, job-123)
+    WSHandler->>EventBroadcaster: broadcastJobSubmitted + broadcastJobAccepted
+    
+    EventBroadcaster->>Monitor: {"type": "job_submitted", "job_id": "job-123", "job_data": {...}}
+    EventBroadcaster->>Client1: {"type": "job_accepted", "job_id": "job-123", "status": "queued"}
+    Note over Client2: ❌ No message - not subscribed to job-123
+    
+    Note over Monitor, EventBroadcaster: 2. Worker Claims Job
+    WSHandler->>EventBroadcaster: Worker claims job via findMatchingJob()
+    EventBroadcaster->>Monitor: {"type": "job_assigned", "job_id": "job-123", "worker_id": "worker-1"}
+    EventBroadcaster->>Client1: {"type": "job_assigned", "job_id": "job-123", "worker_id": "worker-1"}
+    Note over Client2: ❌ No message - not subscribed to job-123
+    
+    Note over Monitor, EventBroadcaster: 3. Job Progress
+    WSHandler->>EventBroadcaster: broadcastJobProgress(job-123, 50%)
+    EventBroadcaster->>Monitor: {"type": "update_job_progress", "job_id": "job-123", "progress": 0.5}
+    EventBroadcaster->>Client1: {"type": "update_job_progress", "job_id": "job-123", "progress": 0.5}
+    Note over Client2: ❌ No message - not subscribed to job-123
+```
+
+</FullscreenDiagram>
+
+## Message Format Comparison
+
+<FullscreenDiagram>
+
+```mermaid
+graph LR
+    subgraph "Internal Event"
+        Event[Job Lifecycle Event<br/>Generated by System]
+    end
+    
+    subgraph "Monitor Message (Original)"
+        MonitorMsg["<b>job_submitted</b><br/>{<br/>  type: 'job_submitted',<br/>  job_id: 'job-123',<br/>  job_data: {<br/>    id: 'job-123',<br/>    job_type: 'comfyui',<br/>    status: 'pending',<br/>    priority: 5,<br/>    requirements: {...},<br/>    created_at: 1642700000000<br/>  },<br/>  timestamp: 1642700000000<br/>}"]
+    end
+    
+    subgraph "Client Message (EmProps)"
+        ClientMsg["<b>job_accepted</b><br/>{<br/>  type: 'job_accepted',<br/>  job_id: 'job-123',<br/>  status: 'queued',<br/>  timestamp: 1642700000000<br/>}"]
+    end
+    
+    Event --> MonitorMsg
+    Event --> ClientMsg
+    
+    %% Styling
+    classDef event fill:#e8f5e8,stroke:#1b5e20,stroke-width:2px
+    classDef monitor fill:#e1f5fe,stroke:#01579b,stroke-width:2px
+    classDef client fill:#f3e5f5,stroke:#4a148c,stroke-width:2px
+    
+    class Event event
+    class MonitorMsg monitor
+    class ClientMsg client
+```
+
+</FullscreenDiagram>
+
+## Event Filtering Logic
+
+<FullscreenDiagram>
+
+```mermaid
+flowchart TD
+    Event[Event Generated] --> Router{EventBroadcaster}
+    
+    Router --> MonitorPath[Monitor Path]
+    Router --> ClientPath[Client Path]
+    
+    MonitorPath --> MonitorTopic{Topic Subscribed?}
+    MonitorTopic -->|Yes| MonitorSend[Send to Monitor<br/>Original Format]
+    MonitorTopic -->|No| MonitorReject[Skip Monitor]
+    
+    ClientPath --> IsJobEvent{Is Job Event?}
+    IsJobEvent -->|Yes| JobSubscribed{Client Subscribed<br/>to this Job?}
+    IsJobEvent -->|No| ClientReject[Skip Client]
+    JobSubscribed -->|Yes| ClientSend[Send to Client<br/>EmProps Format]
+    JobSubscribed -->|No| ClientReject
+    
+    %% Examples
+    MonitorTopic -.-> TopicList[Topics: workers, machines,<br/>jobs, system_stats, heartbeat]
+    JobSubscribed -.-> SubCheck[client.subscribedJobs<br/>has job_id]
+    
+    %% Styling
+    classDef decision fill:#fff3e0,stroke:#e65100,stroke-width:2px
+    classDef success fill:#e8f5e8,stroke:#1b5e20,stroke-width:2px
+    classDef skip fill:#f5f5f5,stroke:#757575,stroke-width:1px
+    classDef info fill:#e3f2fd,stroke:#1976d2,stroke-width:1px
+    
+    class Router,MonitorTopic,IsJobEvent,JobSubscribed decision
+    class MonitorSend,ClientSend success
+    class MonitorReject,ClientReject skip
+    class TopicList,SubCheck info
+```
+
+</FullscreenDiagram>
+
+## Job Lifecycle Message Flow
+
+<FullscreenDiagram>
+
+```mermaid
+sequenceDiagram
+    participant Client as EmProps Client
+    participant API as Job Queue API
+    participant Worker as Worker Service
+    participant Monitor as Monitor UI
+    
+    Note over Client, Monitor: Job Submission Phase
+    Client->>API: Submit Job (REST)
+    API->>API: Auto-subscribe client to job
+    API->>Monitor: job_submitted (original format)
+    API->>Client: job_accepted (EmProps format)
+    
+    Note over Client, Monitor: Job Assignment Phase
+    API->>Worker: Assign job via Redis
+    Worker->>API: Job claimed
+    API->>Monitor: job_assigned (original format)
+    API->>Client: No message (not progress update)
+    
+    Note over Client, Monitor: Job Execution Phase
+    Worker->>API: Progress updates (25%, 50%, 75%)
+    loop Progress Updates
+        API->>Monitor: update_job_progress (original format)
+        API->>Client: update_job_progress (EmProps format)
+    end
+    
+    Note over Client, Monitor: Job Completion Phase
+    Worker->>API: Job completed with result
+    API->>Monitor: complete_job {result: {...}}
+    API->>Client: complete_job {result: {status: "success", data: {...}}}
+    
+    Note over Client, Monitor: Error Handling
+    alt Job Fails
+        Worker->>API: Job failed with error
+        API->>Monitor: job_failed {error: "..."}
+        API->>Client: complete_job {result: {status: "failed", error: "..."}}
+    end
+```
+
+</FullscreenDiagram>
+
+## Implementation Architecture
+
+<FullscreenDiagram>
+
+```mermaid
+graph TB
+    subgraph "Key Files"
+        API[lightweight-api-server.ts<br/>WebSocket Handler]
+        Broadcaster[event-broadcaster.ts<br/>Message Routing]
+        Types[monitor-events.ts<br/>Type Definitions]
+    end
+    
+    subgraph "Connection Logic"
+        URLCheck[URL Pattern Check]
+        MonitorConn[Monitor Connection<br/>/ws/monitor/]
+        ClientConn[Client Connection<br/>/ws/client/]
+    end
+    
+    subgraph "Message Flow"
+        EventGen[Event Generation]
+        MonitorMsg[Monitor Message<br/>Original Format]
+        ClientMsg[Client Message<br/>EmProps Format]
+    end
+    
+    API --> URLCheck
+    URLCheck --> MonitorConn
+    URLCheck --> ClientConn
+    
+    MonitorConn --> Broadcaster
+    ClientConn --> Broadcaster
+    
+    Broadcaster --> EventGen
+    EventGen --> MonitorMsg
+    EventGen --> ClientMsg
+    
+    Types -.-> Broadcaster
+    
+    %% Styling
+    classDef file fill:#e3f2fd,stroke:#0277bd,stroke-width:2px
+    classDef connection fill:#fff3e0,stroke:#e65100,stroke-width:2px
+    classDef message fill:#e8f5e8,stroke:#1b5e20,stroke-width:2px
+    
+    class API,Broadcaster,Types file
+    class URLCheck,MonitorConn,ClientConn connection
+    class EventGen,MonitorMsg,ClientMsg message
+```
+
+</FullscreenDiagram>
+
+## Key Benefits
+
+- **Clear Separation**: Monitors get system-wide view, clients get job-specific updates
+- **Format Optimization**: Each connection type receives messages in optimal format
+- **No Translation Layer**: Events created directly in correct format at source
+- **Backward Compatibility**: Monitor functionality unchanged
+- **EmProps Integration**: Full compatibility with EmProps API expectations
+- **Efficient Filtering**: Job subscriptions prevent unnecessary message routing

@@ -1,0 +1,141 @@
+{
+  "config": {
+    "groupOrder": ["basic", "main", "advanced"],
+    "maxNumberOfGenerations": 1,
+    "componentGroup": "image"
+  },
+  "fields": [
+    {
+      "id": "seed",
+      "name": "Seed",
+      "type": "optional_input",
+      "display": true,
+      "group": "advanced",
+      "input_type": "number",
+      "constraints": {
+        "min": 0,
+        "max": 999999,
+        "step": 1
+      }
+    },
+    {
+      "id": "image",
+      "name": "Image",
+      "type": "image_loader",
+      "default": "",
+      "display": true,
+      "group": ["basic", "main", "advanced"]
+    },
+    {
+      "id": "prompt",
+      "name": "Prompt",
+      "type": "prompt_editor",
+      "default": "",
+      "display": true,
+      "group": ["basic", "main", "advanced"]
+    },
+    {
+      "id": "negative_prompt",
+      "name": "Negative Prompt",
+      "type": "prompt_editor",
+      "default": "",
+      "display": true,
+      "group": ["main", "advanced"]
+    },
+    {
+      "id": "use_upscale",
+      "name": "Upscale Image",
+      "type": "checkbox",
+      "default": true,
+      "display": true,
+      "group": "advanced"
+    },
+    {
+      "id": "use_color_match",
+      "name": "Color Matcher",
+      "type": "checkbox",
+      "default": true,
+      "display": true,
+      "group": "advanced"
+    },
+    {
+      "id": "output_size",
+      "name": "Output Resolution (Longest Side)",
+      "type": "select",
+      "default": 2048,
+      "conf_file": "output-size.json",
+      "display": true,
+      "group": ["main", "advanced"]
+    },
+    {
+      "id": "tile_size",
+      "name": "Size of Tiles (Smaller = Finer Grain)",
+      "type": "select",
+      "default": 768,
+      "conf_file": "tile-size.json",
+      "display": true,
+      "group": ["main", "advanced"]
+    },
+    {
+      "id": "denoising",
+      "name": "Denoising Strength",
+      "type": "slider",
+      "default": 0.35,
+      "constraints": {
+        "min": 0,
+        "max": 1,
+        "step": 0.001
+      },
+      "display": true,
+      "group": ["main", "advanced"]
+    },
+    {
+      "id": "controlnet_strength",
+      "name": "ControlNet Strength",
+      "type": "slider",
+      "default": 0.5,
+      "constraints": {
+        "min": 0,
+        "max": 1,
+        "step": 0.001
+      },
+      "display": true,
+      "group": "advanced"
+    },
+    {
+      "id": "steps",
+      "name": "Steps",
+      "type": "slider",
+      "default": 20,
+      "constraints": {
+        "min": 1,
+        "max": 60,
+        "step": 1
+      },
+      "display": true,
+      "group": ["main", "advanced"]
+    },
+    {
+      "id": "sampler",
+      "name": "Sampler",
+      "type": "select",
+      "default": "dpmpp_2m",
+      "conf_file": "samplers.json",
+      "display": true,
+      "group": "advanced"
+    },
+    {
+      "id": "cfg",
+      "name": "Guidance (CFG)",
+      "type": "slider",
+      "default": 8,
+      "constraints": {
+        "min": 0,
+        "max": 50,
+        "step": 0.01
+      },
+      "display": true,
+      "group": "advanced"
+    }
+  ]
+}

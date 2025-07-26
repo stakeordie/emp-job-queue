@@ -1,0 +1,69 @@
+{
+  "421": {
+    "url": {
+      "value": "controlnet_image",
+      "is_required": true
+    }
+  },
+  "27": {
+    "seed": {
+      "value": "seed",
+      "is_required": true
+    }
+  },
+  "33": {
+    "value": {
+      "value": "negative_prompt",
+      "default": "embedding:negativeXL_D, (worst quality, low quality, normal quality:1.5)",
+      "is_required": false
+    }
+  },
+  "35": {
+    "bool": {
+      "value": "use_style_image",
+      "default": true,
+      "is_required": false
+    }
+  },
+  "420": {
+    "url": {
+      "value": "style_image",
+      "is_required": false
+    }
+  },
+  "283": {
+    "select_item": {
+      "value": "controlnet_type",
+      "default": "cannyv2",
+      "is_required": false
+    }
+  },
+  "370": {
+    "body": {
+      "value": "prompt",
+      "default": "",
+      "is_required": false
+    }
+  },
+  "417": {
+    "value": {
+      "value": "denoising",
+      "default": 0.5,
+      "is_required": false
+    }
+  },
+  "419": {
+    "prefix": {
+      "value": "prefix",
+      "is_required": true
+    },
+    "filename": {
+      "value": "filename",
+      "is_required": true
+    },
+    "bucket": {
+      "value": "bucket",
+      "is_required": true
+    }
+  }
+}

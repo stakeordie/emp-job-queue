@@ -1,5 +1,6 @@
 export * from './job';
 export * from './worker';
+export * from './machine';
 export * from './message';
 
 // UI State Types
@@ -8,6 +9,7 @@ export interface ConnectionState {
   isReconnecting: boolean;
   lastHeartbeat: Date | null;
   reconnectAttempts: number;
+  error?: string; // Connection error message
 }
 
 export interface UIState {

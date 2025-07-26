@@ -1,0 +1,48 @@
+{
+  "config": {
+    "groupOrder": ["main", "advanced"],
+    "maxNumberOfGenerations": 6,
+    "componentGroup": "image"
+  },
+  "fields": [
+    {
+      "id": "image",
+      "name": "Image",
+      "type": "image_loader",
+      "default": "",
+      "display": true,
+      "group": ["main", "advanced"]
+    },
+    {
+      "name": "Model",
+      "id": "model",
+      "type": "select",
+      "default": "4x-UltraSharp.pth",
+      "conf_file": "upscale-models.json",
+      "display": true,
+      "group": ["main", "advanced"]
+    },
+    {
+      "name": "Scale By",
+      "id": "scale_by",
+      "type": "slider",
+      "default": 2,
+      "constraints": {
+        "min": 2,
+        "max": 4,
+        "step": 1
+      },
+      "display": true,
+      "group": ["main", "advanced"]
+    },
+    {
+      "name": "Upscale Method",
+      "id": "upscale_method",
+      "type": "select",
+      "default": "nearest-exact",
+      "conf_file": "upscale-method.json",
+      "display": true,
+      "group": "advanced"
+    }
+  ]
+}

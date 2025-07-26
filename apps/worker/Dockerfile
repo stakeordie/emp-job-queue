@@ -1,0 +1,60 @@
+# Dockerfile for Redis-Direct Workers
+# Phase 1B - Workers that poll Redis directly without WebSocket hub
+
+FROM node:20-alpine AS base
+
+# Install dependencies for production
+RUN apk add --no-cache libc6-compat
+
+WORKDIR /app
+
+# Copy package files
+COPY package.json pnpm-lock.yaml ./
+COPY pnpm-workspace.yaml ./
+
+# Install pnpm
+RUN npm install -g pnpm@10.10.0
+
+# Install dependencies
+RUN pnpm install --frozen-lockfile
+
+# Build stage
+FROM base AS builder
+
+WORKDIR /app
+
+# Install all dependencies (including dev)
+RUN pnpm install --frozen-lockfile
+
+# Copy source code
+COPY . .
+
+# Build core package first
+RUN pnpm --filter=@emp/core build
+# Build worker package
+RUN pnpm --filter=worker build
+
+# Production stage
+FROM node:20-alpine AS runner
+
+WORKDIR /app
+
+# Create non-root user
+RUN addgroup -g 1001 -S nodejs
+RUN adduser -S nodejs -u 1001
+
+# Copy built application
+COPY --from=builder --chown=nodejs:nodejs /app/apps ./apps
+COPY --from=builder --chown=nodejs:nodejs /app/packages ./packages
+COPY --from=builder --chown=nodejs:nodejs /app/node_modules ./node_modules
+COPY --from=builder --chown=nodejs:nodejs /app/package.json ./package.json
+
+USER nodejs
+
+# Health check - verify worker can connect to Redis
+HEALTHCHECK --interval=30s --timeout=10s --start-period=10s --retries=3 \
+  CMD node -e "require('ioredis').createClient(process.env.HUB_REDIS_URL).ping().then(() => process.exit(0)).catch(() => process.exit(1))"
+
+# Start the Redis-direct worker
+WORKDIR /app/apps/worker
+CMD ["node", "dist/redis-direct-worker.js"]

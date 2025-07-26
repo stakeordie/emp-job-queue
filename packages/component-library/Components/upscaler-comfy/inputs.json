@@ -1,0 +1,41 @@
+{
+  "68": {
+    "ckpt_name": {
+      "value": "model",
+      "default": "4x-UltraSharp.pth",
+      "is_required": false
+    }
+  },
+  "106": {
+    "url": {
+      "value": "image",
+      "is_required": true
+    }
+  },
+  "104": {
+    "scale_by": {
+      "value": "scale_by",
+      "default": 2,
+      "is_required": false
+    },
+    "upscale_method": {
+      "value": "upscale_method",
+      "default": "nearest-exact",
+      "is_required": false
+    }
+  },
+  "105": {
+    "prefix": {
+      "value": "prefix",
+      "is_required": true
+    },
+    "filename": {
+      "value": "filename",
+      "is_required": true
+    },
+    "bucket": {
+      "value": "bucket",
+      "is_required": true
+    }
+  }
+}
