@@ -49,7 +49,18 @@ export type {
   A1111ConnectorConfig,
   ComfyUIConnectorConfig,
   WebSocketConnectorConfig,
+  HealthCheckCapabilities,
+  ServiceJobStatus,
+  ServiceSupportValidation,
+  HealthCheckRequirements,
+  SimulationConnectorConfig,
+  ServiceCapabilities,
+  ResourceUsage,
+  OutputFile,
 } from './connector.js';
+
+// Export HealthCheckClass enum separately since it's not an interface
+export { HealthCheckClass } from './connector.js';
 
 // Monitor event types
 export * from './monitor-events.js';
