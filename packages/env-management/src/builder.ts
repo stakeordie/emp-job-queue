@@ -104,12 +104,10 @@ export class EnvironmentBuilder {
       // All services validated successfully - now generate all .env files
       for (const [serviceName, serviceInterface] of availableInterfaces) {
         // Generate the service's env file
-        // Get location from interface, then default
-        const interfaceLocation = serviceInterface?.location
-          ? `${serviceInterface.location}/.env`
-          : null;
-        const defaultPath = `apps/${serviceName}/.env`;
-        const outputPath = interfaceLocation || defaultPath;
+        // Get location and custom filename from interface
+        const location = serviceInterface?.location || `apps/${serviceName}`;
+        const fileName = serviceInterface?.file_name || '.env';
+        const outputPath = path.join(location, fileName);
 
         // Ensure directory exists
         const outputDir = path.dirname(outputPath);

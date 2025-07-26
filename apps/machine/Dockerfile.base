@@ -1,25 +1,27 @@
 # Base Machine Dockerfile
-# Foundation layer for all EmProps machine types (GPU, API, Hybrid)
-FROM node:18-bullseye
+# Foundation layer for all EmProps machine types (GPU, API, Hybrid) with CUDA support
+FROM pytorch/pytorch:2.7.0-cuda12.8-cudnn9-devel
 
 LABEL maintainer="EmProps Infrastructure Team"
 LABEL version="1.0.0"
 LABEL description="Base machine foundation for EmProps AI workload processing"
 
-# Install system dependencies
-RUN apt-get update && apt-get install -y \
+# Install Node.js 18 and system dependencies
+RUN apt-get update && \
+    apt-get install -y curl && \
+    curl -fsSL https://deb.nodesource.com/setup_18.x | bash - && \
+    apt-get install -y \
+    nodejs \
     python3 \
     python3-pip \
     python3-dev \
     build-essential \
-    git \
-    curl \
-    wget \
-    unzip \
-    htop \
-    vim \
-    jq \
-    netcat \
+    git git-lfs \
+    wget curl jq tar nano net-tools lsof \
+    nginx ffmpeg libsm6 libxext6 rsync \
+    libgoogle-perftools-dev cmake ninja-build \
+    openssh-client sudo cron zstd ca-certificates \
+    unzip htop vim netcat \
     && rm -rf /var/lib/apt/lists/*
 
 # Install PM2 globally
@@ -28,11 +30,17 @@ RUN npm install -g pm2@latest
 # Create workspace directory
 WORKDIR /workspace
 
-# Copy package.json first for better Docker layer caching
+# Copy package.json and workspace packages for better Docker layer caching
 COPY package*.json ./
+COPY .workspace-packages/ ./.workspace-packages/
 
-# Install Node.js dependencies
-RUN npm ci --only=production && npm cache clean --force
+# Install pnpm and dependencies
+RUN npm install -g pnpm@10.12.4 && \
+    sed -i 's/"@emp\/core": "workspace:\*"/"@emp\/core": "file:.workspace-packages\/core"/' package.json && \
+    sed -i 's/"@emp\/service-config": "workspace:\*"/"@emp\/service-config": "file:.workspace-packages\/service-config"/' package.json && \
+    sed -i 's/"@emp\/custom-nodes": "workspace:\*"/"@emp\/custom-nodes": "file:.workspace-packages\/custom-nodes"/' package.json && \
+    pnpm install --prod --no-frozen-lockfile --ignore-workspace && \
+    pnpm store prune
 
 # Create necessary directories
 RUN mkdir -p /workspace/{logs,data,shared,models}
@@ -45,9 +53,7 @@ COPY *.js ./
 RUN chmod +x src/machine-manager.js
 RUN chmod +x src/config/ecosystem-generator.js
 
-# Create non-root user for security
-RUN groupadd -r appuser && useradd -r -g appuser -d /workspace -s /bin/bash appuser
-RUN chown -R appuser:appuser /workspace
+# Running as root (machines need system access)
 
 # Environment variables
 ENV NODE_ENV=production
@@ -60,8 +66,7 @@ ENV REDIS_URL=redis://localhost:6379
 HEALTHCHECK --interval=30s --timeout=5s --start-period=60s --retries=3 \
     CMD curl -f http://localhost:${MACHINE_HEALTH_PORT}/health || exit 1
 
-# Switch to non-root user
-USER appuser
+# Run as root for system access
 
 # Expose ports
 EXPOSE 9090

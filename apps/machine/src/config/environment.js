@@ -186,6 +186,14 @@ try {
   }
   
   config = value;
+  
+  // 🔍 DEBUG: Log full parsed and validated config
+  console.log('=== ENVIRONMENT.JS CONFIG DEBUG ===');
+  console.log('Final validated config object:');
+  console.log(JSON.stringify(config, null, 2));
+  console.log('=== END CONFIG DEBUG ===');
+  console.log('');
+  
   logger.info('Configuration loaded successfully', {
     gpuCount: config.machine.gpu.count,
     services: Object.entries(config.services)

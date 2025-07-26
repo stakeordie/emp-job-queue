@@ -2,7 +2,7 @@
   "name": "Development Mixed",
   "description": "Local development with production API and development Redis",
   "components": {
-    "api": [
+    "redis-api": [
       "default",
       "production"
     ],

@@ -1,11 +1,12 @@
 #!/usr/bin/env node
 
-import { EnvironmentBuilder } from '../../packages/env-management/dist/src/index.js';
+import { EnvironmentBuilder, ComposeBuilder } from '../../packages/env-management/dist/src/index.js';
 import chalk from 'chalk';
 
 const args = process.argv.slice(2);
 const configDir = process.cwd();
 const builder = new EnvironmentBuilder(configDir);
+const composeBuilder = new ComposeBuilder(configDir);
 
 // Parse arguments
 const getArgValue = (flag) => {
@@ -30,6 +31,7 @@ const machine = getArgValue('machine');
 const monitor = getArgValue('monitor');
 const comfy = getArgValue('comfy');
 const output = getArgValue('output') || '.env.local';
+const skipCompose = args.includes('--skip-compose');
 
 async function buildEnvironment() {
   try {
@@ -66,6 +68,31 @@ async function buildEnvironment() {
         result.warnings.forEach(warning => {
           console.log(chalk.yellow(`⚠️  ${warning}`));
         });
+      }
+
+      // Generate Docker Compose files unless skipped
+      if (!skipCompose) {
+        console.log(chalk.blue('🐳 Generating Docker Compose files...'));
+        
+        try {
+          const composeResults = await composeBuilder.buildComposeFilesFromProfile(profile || 'full-local');
+          
+          if (composeResults.length > 0) {
+            console.log(chalk.green('✅ Docker Compose files generated:'));
+            composeResults.forEach(composeResult => {
+              if (composeResult.success) {
+                console.log(chalk.gray(`  ${composeResult.composeInterface.name}: ${composeResult.filePath}`));
+              } else {
+                console.log(chalk.red(`  ❌ ${composeResult.composeInterface.name}: ${composeResult.error}`));
+              }
+            });
+          } else {
+            console.log(chalk.yellow('ℹ️  No compose interfaces found for this profile'));
+          }
+        } catch (composeError) {
+          console.log(chalk.yellow(`⚠️  Compose generation failed: ${composeError.message}`));
+          console.log(chalk.gray('   Environment files were still created successfully'));
+        }
       }
     } else {
       console.error(chalk.red('❌ Failed to build environment:'));

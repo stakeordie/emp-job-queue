@@ -6,23 +6,24 @@
 export const ApiEnvInterface = {
   name: "api",
   location: "apps/api",
+  file_name: ".env",
   
   required: {
     // Core Redis connection for job brokering
     "REDIS_URL": "REDIS_URL",
     
     // HTTP server configuration
-    "PORT": "API_PORT",
-    "HOST": "API_HOST",
+    "PORT": "REDIS-API_PORT",
+    "HOST": "REDIS-API_HOST",
   },
   
   optional: {
     // CORS and security
-    "CORS_ORIGINS": "API_CORS_ORIGINS",
-    "AUTH_TOKEN": "API_AUTH_TOKEN",
+    "CORS_ORIGINS": "REDIS-API_CORS_ORIGINS",
+    "AUTH_TOKEN": "REDIS-API_AUTH_TOKEN",
     
     // Performance tuning
-    "LOG_LEVEL": "API_LOG_LEVEL",
+    "LOG_LEVEL": "REDIS-API_LOG_LEVEL",
   },
   
   defaults: {

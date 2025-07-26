@@ -4,6 +4,7 @@ import * as path from 'path';
 export interface ServiceInterface {
   name: string;
   location?: string; // Where to place the .env file (e.g., "apps/api")
+  file_name?: string; // Custom filename for the .env file (e.g., ".env.gpu")
   required: Record<string, string>; // app_var: system_var mapping
   optional?: Record<string, string>;
   defaults?: Record<string, string>;
@@ -41,7 +42,9 @@ export class ServiceInterfaceManager {
 
         // Dynamic import for ES modules
         try {
-          const module = await import(filePath);
+          // Convert to file:// URL for proper import
+          const fileUrl = `file://${path.resolve(filePath)}`;
+          const module = await import(fileUrl);
           const interfaceName = `${serviceName.charAt(0).toUpperCase()}${serviceName.slice(1)}EnvInterface`;
           const serviceInterface = module[interfaceName];
 

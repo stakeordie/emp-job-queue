@@ -41,7 +41,17 @@
     "machine:build": "cd apps/machine && pnpm docker:build:version",
     "machine:logs": "cd apps/machine && docker compose --env-file .env logs -f",
     "machine:status": "curl -s http://localhost:9092/health | jq || echo '❌ Health check failed'",
-    "machine:push": ""
+    "machine:push": "",
+    "machine:base:build": "cd apps/machine && pnpm build:workspace-packages && pnpm build:base",
+    "machine:gpu:build": "cd apps/machine && pnpm build:gpu",
+    "machine:api:build": "cd apps/machine && pnpm build:api",
+    "machine:hybrid:build": "cd apps/machine && pnpm build:hybrid",
+    "machine:base:build:fresh": "cd apps/machine && pnpm build:workspace-packages && docker compose -f docker-compose.base.yml build --no-cache",
+    "machine:gpu:build:fresh": "cd apps/machine && pnpm build:gpu:fresh",
+    "machine:api:build:fresh": "cd apps/machine && pnpm build:api:fresh",
+    "machine:hybrid:build:fresh": "cd apps/machine && docker compose -f docker-compose.hybrid.yml build --no-cache",
+    "machine:gpu:up": "cd apps/machine && pnpm down:gpu && pnpm up:gpu",
+    "machine:api:up": "cd apps/machine && pnpm down:api && pnpm up:api"
   },
   "devDependencies": {
     "@typescript-eslint/eslint-plugin": "^6.21.0",

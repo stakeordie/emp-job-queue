@@ -22,6 +22,7 @@ echo -e "${YELLOW}Machine directory: ${MACHINE_DIR}${NC}"
 # Build required workspace packages first
 echo -e "${YELLOW}Building required workspace packages...${NC}"
 cd "$ROOT_DIR"
+pnpm --filter @emp/core build
 pnpm --filter @emp/service-config build
 pnpm --filter @emp/custom-nodes build
 
@@ -34,6 +35,7 @@ rm -rf .workspace-packages
 mkdir -p .workspace-packages
 
 # Copy built workspace packages to Docker context
+cp -r "$ROOT_DIR/packages/core" .workspace-packages/
 cp -r "$ROOT_DIR/packages/service-config" .workspace-packages/
 cp -r "$ROOT_DIR/packages/custom-nodes" .workspace-packages/
 

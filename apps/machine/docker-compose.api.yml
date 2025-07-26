@@ -1,0 +1,41 @@
+# This file is dynamically generated for api_machine
+# Machine type: api_machine
+# Generated on: 2025-07-25T22:10:15.797Z
+
+services:
+  api-machine:
+    build:
+      context: .
+      dockerfile: Dockerfile.api
+      args:
+        CACHE_BUST: ${CACHE_BUST:-1}
+    image: ${MACHINE_IMAGE:-api_machine:latest}
+    platform: linux/amd64
+    container_name: ${MACHINE_CONTAINER_NAME:-api_machine}
+    hostname: ${MACHINE_CONTAINER_NAME:-api_machine}
+    restart: "no"  # Controlled by API instead of Docker
+    
+    # Fast shutdown for elastic scaling
+    stop_grace_period: 2s
+    stop_signal: SIGTERM
+    
+    # Environment from .env.api
+    env_file:
+      - .env.api
+    
+    environment:
+      # Docker runtime
+      - NODE_ENV=production
+
+    ports:
+      - "9090:9090"
+    
+    working_dir: /workspace
+    
+    # Resource limits
+    deploy:
+      resources:
+        limits:
+          memory: 8G
+        reservations:
+          memory: 2G

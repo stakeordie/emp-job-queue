@@ -44,21 +44,14 @@ ENV MACHINE_ENABLE_REDIS_WORKERS=true
 ENV MACHINE_API_WORKER_COUNT=2
 ENV MACHINE_API_CONNECTORS=openai,replicate,runpod
 
-# API Keys (will be provided at runtime)
-ENV OPENAI_API_KEY=""
-ENV REPLICATE_API_TOKEN=""
-ENV RUNPOD_API_KEY=""
+# API Keys will be provided at runtime via .env.api
 
 # API timeout settings
 ENV API_TIMEOUT=300000
 ENV API_MAX_RETRIES=3
 
 # Create API-specific directories
-RUN mkdir -p {config,cache,temp} && \
-    chown -R appuser:appuser /workspace
-
-# Switch back to non-root user
-USER appuser
+RUN mkdir -p {config,cache,temp}
 
 # Default command
 CMD ["node", "src/machine-manager.js"]

@@ -1,0 +1,58 @@
+# This file is dynamically generated for hybrid_machine
+# Machine type: hybrid_machine
+# Generated on: 2025-07-25T22:10:15.798Z
+
+services:
+  hybrid-machine:
+    build:
+      context: .
+      dockerfile: Dockerfile.hybrid
+      args:
+        CACHE_BUST: ${CACHE_BUST:-1}
+        # Build args from environment
+        AWS_ACCESS_KEY_ID: ${AWS_ACCESS_KEY_ID}
+        AWS_SECRET_ACCESS_KEY_ENCODED: ${AWS_SECRET_ACCESS_KEY_ENCODED}
+        AWS_DEFAULT_REGION: ${AWS_DEFAULT_REGION}
+        AZURE_STORAGE_ACCOUNT: ${AZURE_STORAGE_ACCOUNT}
+        AZURE_STORAGE_KEY: ${AZURE_STORAGE_KEY}
+        CLOUD_STORAGE_CONTAINER: ${CLOUD_STORAGE_CONTAINER}
+        CLOUD_PROVIDER: ${CLOUD_PROVIDER}
+        HF_TOKEN: ${HF_TOKEN}
+        CIVITAI_TOKEN: ${CIVITAI_TOKEN}
+        OPENAI_API_KEY: ${OPENAI_API_KEY}
+    image: ${MACHINE_IMAGE:-hybrid_machine:latest}
+    platform: linux/amd64
+    container_name: ${MACHINE_CONTAINER_NAME:-hybrid_machine}
+    hostname: ${MACHINE_CONTAINER_NAME:-hybrid_machine}
+    restart: "no"  # Controlled by API instead of Docker
+    
+    # Fast shutdown for elastic scaling
+    stop_grace_period: 2s
+    stop_signal: SIGTERM
+    
+    # Environment from .env.hybrid
+    env_file:
+      - .env.hybrid
+    
+    environment:
+      # Docker runtime
+      - NODE_ENV=production
+      # GPU access
+      - NVIDIA_VISIBLE_DEVICES=all  
+      - NVIDIA_DRIVER_CAPABILITIES=compute,utility
+
+    ports:
+      - "9090:9090"
+    
+    working_dir: /workspace
+    
+    # Resource limits
+    deploy:
+      resources:
+        limits:
+          memory: 8G
+        reservations:
+          memory: 2G
+    
+    # GPU runtime (comment out for macOS/non-NVIDIA development)
+    # runtime: nvidia

@@ -8,8 +8,8 @@
 import { createLogger } from './utils/logger.js';
 import config from './config/environment.js';
 import PM2ServiceManager from './lib/pm2-manager.js';
-import { MachineStatusAggregator } from './services/shared/machine-status-aggregator.js';
-import { HealthServer } from './services/shared/health-server.js';
+import { MachineStatusAggregator } from './services/machine-status-aggregator.js';
+import HealthServer from './services/health-server.js';
 
 const logger = createLogger('unified-machine');
 
@@ -244,7 +244,7 @@ async function generatePM2EcosystemConfig() {
     });
     
     const { execa } = await import('execa');
-    await execa('node', ['./config/ecosystem-generator.js'], {
+    await execa('node', ['src/config/ecosystem-generator.js'], {
       cwd: '/workspace',
       env: {
         ...process.env,

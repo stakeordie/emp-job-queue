@@ -1,0 +1,25 @@
+{
+  "name": "Test Machine Generation",
+  "description": "Test profile for machine-specific environment generation",
+  "components": {
+    "redis": [
+      "default",
+      "local"
+    ],
+    "machine": [
+      "default",
+      "local"
+    ],
+    "worker": [
+      "default",
+      "local"
+    ],
+    "api-tokens": [
+      "default"
+    ],
+    "storage-provider": [
+      "default"
+    ]
+  },
+  "services": {}
+}

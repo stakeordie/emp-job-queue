@@ -1,0 +1,41 @@
+{
+  "name": "API Machine Weather Test",
+  "description": "Test profile for API machine with weather service workers",
+  "components": {
+    "redis": [
+      "default",
+      "local"
+    ],
+    "redis-api": [
+      "default", 
+      "local"
+    ],
+    "machine": [
+      "default",
+      "local"
+    ],
+    "worker": [
+      "default",
+      "local"
+    ],
+    "storage-provider": [
+      "default",
+      "local"
+    ],
+    "api-tokens": [
+      "default"
+    ],
+    "monitor": [
+      "default",
+      "local"
+    ],
+    "comfyui": [
+      "default",
+      "local"
+    ],
+    "ollama": [
+      "default"
+    ]
+  },
+  "services": {}
+}

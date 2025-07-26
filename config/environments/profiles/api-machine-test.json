@@ -1,0 +1,41 @@
+{
+  "name": "API Machine Test",
+  "description": "Test profile specifically for API machine with file_name feature",
+  "components": {
+    "redis": [
+      "default",
+      "local"
+    ],
+    "machine": [
+      "default",
+      "local"
+    ],
+    "worker": [
+      "default",
+      "local"
+    ],
+    "api-tokens": [
+      "default"
+    ],
+    "storage-provider": [
+      "default"
+    ],
+    "redis-api": [
+      "default",
+      "local"
+    ],
+    "monitor": [
+      "default",
+      "local"
+    ],
+    "comfyui": [
+      "default",
+      "local"
+    ],
+    "ollama": [
+      "default",
+      "local"
+    ]
+  },
+  "services": {}
+}

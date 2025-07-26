@@ -1,0 +1,169 @@
+/**
+ * Machine Service Environment Interface
+ * Container orchestration and service management
+ */
+
+export const GpuMachineEnvInterface = {
+  name: "gpu_machine",
+  location: "apps/machine",
+  file_name: ".env.gpu",
+  
+  required: {
+    // Redis connection (used by both machine and workers)
+    "HUB_REDIS_URL": "REDIS_URL", // VERIFIED: Used in standalone-wrapper.js:67, environment.js:112
+
+    // Machine identity and Redis connection
+    "MACHINE_ID": "GPU-MACHINE_ID", // VERIFIED: Used in environment.js:103, ecosystem-generator.js:39, etc.
+    "MACHINE_CONTAINER_NAME": "GPU-MACHINE_ID", // VERIFIED: Container naming in docker-compose
+
+    // Expose Ports
+    "MACHINE_EXPOSE_PORTS": "GPU-MACHINE_EXPOSE_PORTS", // VERIFIED: Used for docker-compose conditional ports
+
+    // Has GPU
+    "MACHINE_HAS_GPU": "GPU-MACHINE_HAS_GPU", // VERIFIED: Used for docker-compose GPU runtime
+
+    // NOT FOUND IN CODE - COMMENTING OUT
+    // "WORKER_RAM_GB": "GPU-MACHINE_RAM_GB",
+    // "WORKER_MAX_CONCURRENT_JOBS": "GPU-MACHINE_MAX_CONCURRENT_JOBS",
+    // "WORKER_JOB_TIMEOUT_MINUTES": "GPU-MACHINE_JOB_TIMEOUT_MINUTES",
+
+    // PM2 Service Management
+    // "PM2_HOME": "MACHINE_PM2_HOME", // VERIFIED: Used in pm2-manager.js:16 BUT has default '/workspace/.pm2' - moving to optional
+    "MACHINE_STATUS_UPDATE_INTERVAL_SECONDS": "MACHINE_STATUS_UPDATE_INTERVAL_SECONDS", // VERIFIED: Used in machine-status-aggregator.js:28
+    
+    // Machine service enablement flags
+    "MACHINE_ENABLE_COMFYUI": "GPU-MACHINE_ENABLE_COMFYUI", // VERIFIED: Used in ecosystem-generator.js:12
+    "MACHINE_ENABLE_REDIS_WORKERS": "GPU-MACHINE_ENABLE_REDIS_WORKERS", // VERIFIED: Used in ecosystem-generator.js:14
+    "MACHINE_ENABLE_SIMULATION": "GPU-MACHINE_ENABLE_SIMULATION", // VERIFIED: Used in index-pm2.js:134
+    // "MACHINE_ENABLE_NGINX": "GPU-MACHINE_ENABLE_NGINX", // NOT FOUND IN CODE
+    // "MACHINE_ENABLE_A1111": "GPU-MACHINE_ENABLE_A1111", // NOT FOUND IN CODE
+    // "MACHINE_ENABLE_OLLAMA": "GPU-MACHINE_ENABLE_OLLAMA", // NOT FOUND IN CODE
+
+    // TODO: ADD TO COMPONENTS - Machine service enablement
+    "MACHINE_ENABLE_API": "GPU-MACHINE_ENABLE_API", // VERIFIED: Used in ecosystem-generator.js:13
+
+    // Credentials - NOT DIRECTLY USED BY MACHINE CODE BUT MAY BE USED BY WORKERS/NODES
+    // KEEPING FOR NOW BUT SHOULD VERIFY WITH WORKER CODE
+    "MACHINE_HF_TOKEN": "API-TOKENS_HF_TOKEN",
+    "MACHINE_CIVITAI_TOKEN": "API-TOKENS_CIVITAI_TOKEN",
+    "MACHINE_OPENAI_API-TOKEN": "API-TOKENS_OPENAI_API_KEY",
+    "MACHINE_OLLAMA_PORT": "OLLAMA_PORT",
+    "MACHINE_OLLAMA_HOST": "OLLAMA_HOST",
+    "MACHINE_CLOUD_CDN_URL": "STORAGE-PROVIDER_CDN_URL",
+    "MACHINE_AWS_ACCESS_KEY_ID": "STORAGE-PROVIDER_AWS_ACCESS_KEY_ID",
+    "MACHINE_AWS_SECRET_ACCESS_KEY_ENCODED": "STORAGE-PROVIDER_AWS_SECRET_ACCESS_KEY_ENCODED",
+    "MACHINE_AWS_DEFAULT_REGION": "STORAGE-PROVIDER_AWS_DEFAULT_REGION",
+    "MACHINE_GOOGLE_APPLICATION_CREDENTIALS": "STORAGE-PROVIDER_GOOGLE_APPLICATION_CREDENTIALS",
+    "MACHINE_AZURE_STORAGE_ACCOUNT": "STORAGE-PROVIDER_AZURE_STORAGE_ACCOUNT",
+    "MACHINE_AZURE_STORAGE_KEY": "STORAGE-PROVIDER_AZURE_KEY",
+    "MACHINE_CLOUD_PROVIDER": "STORAGE-PROVIDER_CURRENT_PROVIDER",
+    "MACHINE_CLOUD_STORAGE_CONTAINER": "STORAGE-PROVIDER_CONTAINER",
+
+    // Worker ComfyUI connection (uses values from ComfyUI component)
+    // "WORKER_COMFYUI_REMOTE": "COMFYUI_REMOTE", // NOT FOUND IN MACHINE CODE
+    "WORKER_COMFYUI_HOST": "COMFYUI_HOST", // VERIFIED: Used in redis-worker-service.js:245,265
+    "WORKER_COMFYUI_PORT": "COMFYUI_BASE_PORT", // VERIFIED: Used in redis-worker-service.js:246,266
+    "WORKER_COMFYUI_USERNAME": "COMFYUI_USERNAME", // VERIFIED: Used in redis-worker-service.js:247,267
+    "WORKER_COMFYUI_PASSWORD": "COMFYUI_PASSWORD", // VERIFIED: Used in redis-worker-service.js:248,268
+  },
+  
+  optional: {
+    // Machine hardware configuration
+    "MACHINE_NUM_GPUS": "GPU-MACHINE_NUM_GPUS", // VERIFIED: Used in environment.js:106, ecosystem-generator.js:11
+    "MACHINE_GPU_MEMORY_GB": "GPU-MACHINE_GPU_MEMORY_GB", // VERIFIED: Used in environment.js:107
+    "MACHINE_GPU_MODEL": "GPU-MACHINE_GPU_MODEL", // VERIFIED: Used in environment.js:108
+
+    // CUDA configuration
+    // "CUDA_VISIBLE_DEVICES": "GPU-MACHINE_CUDA_VISIBLE_DEVICES", // NOT FOUND IN CODE
+    "GPU_ID": "GPU-MACHINE_GPU_ID", // VERIFIED: Used in standalone-wrapper.js:50
+    
+    // Machine monitoring and health
+    "MACHINE_HEALTH_PORT": "GPU-MACHINE_HEALTH_PORT", // VERIFIED: Used in machine-manager.js:301, index-pm2.js:326,350
+    // "MACHINE_LOG_LEVEL": "GPU-MACHINE_LOG_LEVEL", // NOT FOUND as MACHINE_LOG_LEVEL (only LOG_LEVEL)
+    // "MACHINE_TEST_MODE": "GPU-MACHINE_TEST_MODE", // NOT FOUND as MACHINE_TEST_MODE (only TEST_MODE)
+
+    // TODO: ADD TO COMPONENTS - Need these for code to work
+    "LOG_LEVEL": "GPU-MACHINE_LOG_LEVEL", // VERIFIED: Used in logger.js:63,80
+    "TEST_MODE": "GPU-MACHINE_TEST_MODE", // VERIFIED: Used in environment.js:104
+    "NODE_ENV": "DEPLOYMENT_NODE_ENV", // VERIFIED: Used in logger.js:68, ecosystem-generator.js:37,57,etc
+    "CONTAINER_NAME": "GPU-MACHINE_CONTAINER_NAME", // VERIFIED: Used in logger.js:74, version-service.js:95
+    "MACHINE_TYPE": "GPU-MACHINE_TYPE", // VERIFIED: Used in ecosystem-generator.js:10
+    "MACHINE_API_WORKER_COUNT": "GPU-MACHINE_API_WORKER_COUNT", // VERIFIED: Used in ecosystem-generator.js:15
+    "PM2_HOME": "MACHINE_PM2_HOME", // VERIFIED: Used in pm2-manager.js:16 - has default but good to be explicit
+
+    // Worker ComfyUI configuration
+    "WORKER_COMFYUI_TIMEOUT_SECONDS": "COMFYUI_TIMEOUT_SECONDS", // VERIFIED: Used in redis-worker-service.js:249,269
+    "WORKER_COMFYUI_MAX_CONCURRENT_JOBS": "COMFYUI_MAX_CONCURRENT_JOBS", // VERIFIED: Used in redis-worker-service.js:250,270
+
+    // Worker configuration
+    "WORKER_CONNECTORS": "GPU-MACHINE_WORKER_CONNECTORS", // VERIFIED: Used in standalone-wrapper.js:81
+    "WORKER_WEBSOCKET_AUTH_TOKEN": "REDIS_PASSWORD", // VERIFIED: Used in standalone-wrapper.js:68
+
+    // TODO: ADD TO COMPONENTS - Simulation service configuration
+    "SIMULATION_PORT": "SIMULATION_PORT", // VERIFIED: Used in simulation-service.js:11, ecosystem-generator.js:60
+    "SIMULATION_HOST": "SIMULATION_HOST", // VERIFIED: Used in simulation-service.js:12
+    "SIMULATION_PROCESSING_TIME": "SIMULATION_PROCESSING_TIME", // VERIFIED: Used in simulation-server.js:24
+    "SIMULATION_STEPS": "SIMULATION_STEPS", // VERIFIED: Used in simulation-server.js:25
+    "SIMULATION_FAILURE_RATE": "SIMULATION_FAILURE_RATE", // VERIFIED: Used in simulation-server.js:26
+    "SIMULATION_PROGRESS_INTERVAL_MS": "SIMULATION_PROGRESS_INTERVAL_MS", // VERIFIED: Used in simulation-server.js:27
+
+    // TODO: ADD TO COMPONENTS - ComfyUI installation configuration
+    "COMFYUI_PORT_START": "COMFYUI_BASE_PORT", // VERIFIED: Used in comfyui-installer.js:37, standalone-wrapper.js:90
+    "COMFYUI_REPO_URL": "COMFYUI_REPO_URL", // VERIFIED: Used in comfyui-installer.js:32,611
+    "COMFYUI_BRANCH": "COMFYUI_BRANCH", // VERIFIED: Used in comfyui-installer.js:33,612
+    "COMFYUI_COMMIT": "COMFYUI_COMMIT", // VERIFIED: Used in comfyui-installer.js:34,613
+
+    // NOT FOUND IN CODE - COMMENTING OUT
+    // "WORKER_MAX_BATCH_SIZE": "GPU-MACHINE_MAX_BATCH_SIZE",
+    // "WORKER_MEMORY_CONSTRAINED": "GPU-MACHINE_MEMORY_CONSTRAINED",
+    // "WORKER_PERFORMANCE_TIER": "GPU-MACHINE_PERFORMANCE_TIER",
+    // "WORKER_HEARTBEAT_INTERVAL": "MACHINE_HEARTBEAT_INTERVAL",
+    // "WORKER_HEARTBEAT_TIMEOUT_SEC": "MACHINE_HEARTBEAT_TIMEOUT_SEC",
+    // "WORKER_POLL_INTERVAL_MS": "MACHINE_POLL_INTERVAL_MS",
+    // "WORKER_WEBSOCKET_RECONNECT_DELAY_MS": "MACHINE_WEBSOCKET_RECONNECT_DELAY_MS",
+    // "WORKER_WEBSOCKET_MAX_RECONNECT_ATTEMPTS": "MACHINE_WEBSOCKET_MAX_RECONNECT_ATTEMPTS",
+    // "COMFYUI_BASE_PORT": "GPU-MACHINE_COMFYUI_BASE_PORT", // Duplicate of COMFYUI_PORT_START
+    // "A1111_BASE_PORT": "GPU-MACHINE_A1111_BASE_PORT",
+    // "OLLAMA_PORT": "GPU-MACHINE_OLLAMA_PORT", // Already in required section
+    // "WORKER_DASHBOARD_ENABLED": "MACHINE_DASHBOARD_ENABLED",
+    // "WORKER_DASHBOARD_PORT": "MACHINE_DASHBOARD_PORT",
+    // "WORKER_DEBUGGING_ENABLED": "MACHINE_DEBUGGING_ENABLED",
+    // "WORKER_DEVELOPMENT_MODE": "MACHINE_DEVELOPMENT_MODE",
+    // "DISABLE_FILE_LOGGING": "MACHINE_DISABLE_FILE_LOGGING",
+    // "CUSTOMER_ISOLATION": "PLATFORM_CUSTOMER_ISOLATION",
+
+    // Custom ComfyUI Nodes Environment Variables (unprefixed - what the nodes expect)
+    // KEEPING THESE AS THEY ARE PASSED THROUGH TO COMFYUI NODES
+    "AWS_ACCESS_KEY_ID": "STORAGE-PROVIDER_AWS_ACCESS_KEY_ID",
+    "AWS_SECRET_ACCESS_KEY_ENCODED": "STORAGE-PROVIDER_AWS_SECRET_ACCESS_KEY_ENCODED",
+    "AWS_DEFAULT_REGION": "STORAGE-PROVIDER_AWS_DEFAULT_REGION",
+    "GOOGLE_APPLICATION_CREDENTIALS": "STORAGE-PROVIDER_GOOGLE_APPLICATION_CREDENTIALS",
+    "AZURE_STORAGE_ACCOUNT": "STORAGE-PROVIDER_AZURE_STORAGE_ACCOUNT", 
+    "AZURE_STORAGE_KEY": "STORAGE-PROVIDER_AZURE_KEY",
+    "CLOUD_PROVIDER": "STORAGE-PROVIDER_CURRENT_PROVIDER",
+    "CLOUD_STORAGE_CONTAINER": "STORAGE-PROVIDER_CONTAINER",
+    "CLOUD_CDN_URL": "STORAGE-PROVIDER_CDN_URL",
+    "HF_TOKEN": "API-TOKENS_HF_TOKEN",
+    "CIVITAI_TOKEN": "API-TOKENS_CIVITAI_TOKEN",
+    "OPENAI_API_KEY": "API-TOKENS_OPENAI_API_KEY",
+    "OLLAMA_HOST": "OLLAMA_HOST",
+    "OLLAMA_PORT": "OLLAMA_PORT",
+    "OLLAMA_DEFAULT_MODEL": "OLLAMA_DEFAULT_MODEL",
+    "EMPROPS_DEBUG_LOGGING": "EMPROPS_DEBUG_LOGGING",
+    "STATIC_MODELS": "STATIC_MODELS",
+
+    // TODO: ADD TO COMPONENTS - Additional Azure storage for simulation
+    "CLOUD_STORAGE_TEST_CONTAINER": "CLOUD_STORAGE_TEST_CONTAINER", // VERIFIED: Used in simulation-server.js:43
+    "STORAGE_TEST_MODE": "STORAGE_TEST_MODE", // VERIFIED: Used in simulation-server.js:41
+
+    // TODO: ADD TO COMPONENTS - Additional legacy variables still in use
+    "NUM_GPUS": "GPU-MACHINE_NUM_GPUS", // VERIFIED: Used in standalone-wrapper.js:73 as fallback
+    "GPU_MEMORY_GB": "GPU-MACHINE_GPU_MEMORY_GB", // VERIFIED: Used in standalone-wrapper.js:74 as fallback
+    "GPU_MODEL": "GPU-MACHINE_GPU_MODEL", // VERIFIED: Used in standalone-wrapper.js:75 as fallback
+  },
+  
+  defaults: {
+    "WORKER_CONNECTORS": "simulation, comfyui",
+    "MACHINE_TYPE": "gpu"
+  }
+};

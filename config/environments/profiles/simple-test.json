@@ -1,0 +1,16 @@
+{
+  "name": "Simple Test",
+  "description": "Minimal test profile for file_name feature",
+  "components": {
+    "redis": "default",
+    "machine": "default",
+    "worker": "default",
+    "api-tokens": "default",
+    "storage-provider": "default",
+    "redis-api": "default",
+    "monitor": "default",
+    "comfyui": "default",
+    "ollama": "default"
+  },
+  "services": {}
+}

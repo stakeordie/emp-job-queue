@@ -1,0 +1,10 @@
+{
+  "name": "Test file_name feature",
+  "description": "Minimal profile to test machine-specific .env file generation",
+  "components": {
+    "redis": "default",
+    "redis-api": "default",
+    "monitor": "default"
+  },
+  "services": {}
+}
