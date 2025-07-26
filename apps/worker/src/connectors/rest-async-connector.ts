@@ -10,6 +10,9 @@ import {
   RestConnectorConfig,
   ServiceInfo,
   logger,
+  HealthCheckCapabilities,
+  ServiceJobStatus,
+  ServiceSupportValidation,
 } from '@emp/core';
 
 export class RestAsyncConnector implements ConnectorInterface {
@@ -377,5 +380,53 @@ export class RestAsyncConnector implements ConnectorInterface {
     // REST async connector doesn't use Redis for status reporting
     // This is a no-op implementation to satisfy the interface
     logger.debug(`REST Async connector ${this.connector_id} received Redis connection (not used)`);
+  }
+
+  // Failure recovery methods - minimal implementation
+  getHealthCheckCapabilities(): HealthCheckCapabilities {
+    return {
+      supportsBasicHealthCheck: true,
+      basicHealthCheckEndpoint: '/health',
+      supportsJobStatusQuery: true,
+      jobStatusQueryEndpoint: this.config.settings?.completion_endpoint,
+      supportsJobCancellation: false,
+      supportsServiceRestart: false,
+      supportsQueueIntrospection: false,
+    };
+  }
+
+  async queryJobStatus(serviceJobId: string): Promise<ServiceJobStatus> {
+    try {
+      const endpoint = this.config.settings?.completion_endpoint || `/status/${serviceJobId}`;
+      const response = await this.httpClient.get(endpoint);
+      const statusField = this.config.settings?.status_field || 'status';
+      const status = response.data[statusField];
+      
+      return {
+        serviceJobId,
+        status: status === 'completed' ? 'completed' : status === 'failed' ? 'failed' : 'running',
+        canReconnect: true,
+        canCancel: false,
+      };
+    } catch (error) {
+      return {
+        serviceJobId,
+        status: 'unknown',
+        canReconnect: false,
+        canCancel: false,
+        errorMessage: `Failed to query job status: ${error}`,
+      };
+    }
+  }
+
+  async validateServiceSupport(): Promise<ServiceSupportValidation> {
+    return {
+      isSupported: true,
+      supportLevel: 'partial',
+      missingCapabilities: ['jobCancellation', 'serviceRestart'],
+      warnings: [],
+      errors: [],
+      recommendedAction: 'proceed',
+    };
   }
 }

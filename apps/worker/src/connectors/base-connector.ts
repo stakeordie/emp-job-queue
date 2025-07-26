@@ -445,9 +445,28 @@ export abstract class BaseConnector implements ConnectorInterface {
   abstract updateConfiguration(config: ConnectorConfig): Promise<void>;
   abstract getConfiguration(): ConnectorConfig;
   
-  // New failure recovery methods - subclasses must implement
-  abstract getHealthCheckCapabilities(): HealthCheckCapabilities;
-  abstract queryJobStatus(serviceJobId: string): Promise<ServiceJobStatus>;
+  // New failure recovery methods - subclasses should implement, but have defaults
+  getHealthCheckCapabilities(): HealthCheckCapabilities {
+    // Default minimal implementation for backwards compatibility
+    return {
+      supportsBasicHealthCheck: true,
+      supportsJobStatusQuery: false,
+      supportsJobCancellation: false,
+      supportsServiceRestart: false,
+      supportsQueueIntrospection: false,
+    };
+  }
+  
+  async queryJobStatus(serviceJobId: string): Promise<ServiceJobStatus> {
+    // Default implementation for connectors that don't support job status query
+    return {
+      serviceJobId,
+      status: 'unknown',
+      canReconnect: false,
+      canCancel: false,
+      errorMessage: 'This connector does not support job status queries',
+    };
+  }
   
   // Service support validation - implemented in base class with subclass override capability
   async validateServiceSupport(): Promise<ServiceSupportValidation> {

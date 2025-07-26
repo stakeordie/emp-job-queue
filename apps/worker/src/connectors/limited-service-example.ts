@@ -95,10 +95,15 @@ export class LimitedServiceConnector extends BaseConnector {
 
   async checkHealth(): Promise<boolean> {
     try {
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), this.config.timeout_seconds * 1000);
+      
       const response = await fetch(`${this.config.base_url}/health`, {
         method: 'GET',
-        timeout: this.config.timeout_seconds * 1000
+        signal: controller.signal
       });
+      
+      clearTimeout(timeoutId);
       return response.ok;
     } catch (error) {
       logger.debug(`${this.service_type} health check failed:`, error);
@@ -106,7 +111,7 @@ export class LimitedServiceConnector extends BaseConnector {
     }
   }
 
-  async getServiceInfo(): ServiceInfo {
+  async getServiceInfo(): Promise<ServiceInfo> {
     return {
       service_name: 'Limited Service',
       service_version: '1.0.0',

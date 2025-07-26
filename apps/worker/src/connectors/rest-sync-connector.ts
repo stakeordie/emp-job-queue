@@ -10,6 +10,9 @@ import {
   RestConnectorConfig,
   ServiceInfo,
   logger,
+  HealthCheckCapabilities,
+  ServiceJobStatus,
+  ServiceSupportValidation,
 } from '@emp/core';
 
 export class RestSyncConnector implements ConnectorInterface {
@@ -275,5 +278,39 @@ export class RestSyncConnector implements ConnectorInterface {
     // REST sync connector doesn't use Redis for status reporting
     // This is a no-op implementation to satisfy the interface
     logger.debug(`REST Sync connector ${this.connector_id} received Redis connection (not used)`);
+  }
+
+  // Failure recovery methods - minimal implementation for sync connector
+  getHealthCheckCapabilities(): HealthCheckCapabilities {
+    return {
+      supportsBasicHealthCheck: true,
+      basicHealthCheckEndpoint: '/health',
+      supportsJobStatusQuery: false, // Sync connectors complete immediately
+      supportsJobCancellation: false,
+      supportsServiceRestart: false,
+      supportsQueueIntrospection: false,
+    };
+  }
+
+  async queryJobStatus(serviceJobId: string): Promise<ServiceJobStatus> {
+    // Sync connectors complete immediately, so job status is always completed or failed
+    return {
+      serviceJobId,
+      status: 'completed',
+      canReconnect: false,
+      canCancel: false,
+      errorMessage: 'Synchronous connectors do not support job status queries',
+    };
+  }
+
+  async validateServiceSupport(): Promise<ServiceSupportValidation> {
+    return {
+      isSupported: true,
+      supportLevel: 'minimal',
+      missingCapabilities: ['jobStatusQuery', 'jobCancellation', 'serviceRestart'],
+      warnings: ['Synchronous connector - no job tracking capabilities'],
+      errors: [],
+      recommendedAction: 'proceed',
+    };
   }
 }
