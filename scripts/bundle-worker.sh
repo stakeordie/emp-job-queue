@@ -16,10 +16,12 @@ echo -e "${YELLOW}Building @emp/core and worker...${NC}"
 pnpm --filter @emp/core build
 pnpm --filter worker build
 
-# Create bundled worker directory
-BUNDLE_DIR="apps/worker/bundled"
-rm -rf $BUNDLE_DIR
-mkdir -p $BUNDLE_DIR
+# Create bundled worker directories
+WORKER_BUNDLE_DIR="apps/worker/bundled"
+MACHINE_BUNDLE_DIR="apps/machine/worker-bundled"
+
+rm -rf $WORKER_BUNDLE_DIR $MACHINE_BUNDLE_DIR
+mkdir -p $WORKER_BUNDLE_DIR $MACHINE_BUNDLE_DIR
 
 # Bundle worker into a single file using esbuild
 echo -e "${YELLOW}Bundling with esbuild...${NC}"
@@ -32,10 +34,10 @@ npx esbuild apps/worker/src/redis-direct-worker.ts \
   --external:canvas \
   --external:@tensorflow/tfjs-node \
   --external:sqlite3 \
-  --outfile=$BUNDLE_DIR/redis-direct-worker.cjs
+  --outfile=$WORKER_BUNDLE_DIR/redis-direct-worker.cjs
 
 # Rename .cjs to .js (no shebang needed since we call with 'node')
-mv $BUNDLE_DIR/redis-direct-worker.cjs $BUNDLE_DIR/redis-direct-worker.js
+mv $WORKER_BUNDLE_DIR/redis-direct-worker.cjs $WORKER_BUNDLE_DIR/redis-direct-worker.js
 
 # Get version info - use timestamp for local dev, git tags for releases
 BUILD_DATE=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
@@ -49,7 +51,7 @@ else
 fi
 
 # Create package.json with appropriate version
-cat > $BUNDLE_DIR/package.json << EOF
+cat > $WORKER_BUNDLE_DIR/package.json << EOF
 {
   "name": "emp-worker-bundled",
   "version": "${WORKER_VERSION}",
@@ -58,5 +60,14 @@ cat > $BUNDLE_DIR/package.json << EOF
 }
 EOF
 
-echo -e "${GREEN}✓ Worker bundled successfully at: $BUNDLE_DIR${NC}"
-echo -e "${GREEN}  Use WORKER_LOCAL_PATH=/workspace/worker-bundled in docker-compose.dev.yml${NC}"
+# Copy to machine directory for Docker build
+cp $WORKER_BUNDLE_DIR/* $MACHINE_BUNDLE_DIR/
+
+# Copy service mapping for bundled worker
+echo -e "${YELLOW}Copying service mapping for bundled worker...${NC}"
+mkdir -p $MACHINE_BUNDLE_DIR/src/config/
+cp apps/machine/src/config/service-mapping.json $MACHINE_BUNDLE_DIR/src/config/
+
+echo -e "${GREEN}✓ Worker bundled successfully at: $WORKER_BUNDLE_DIR${NC}"
+echo -e "${GREEN}✓ Worker copied to machine directory: $MACHINE_BUNDLE_DIR${NC}"
+echo -e "${GREEN}  Ready for Docker build with WORKER_BUNDLE_MODE=local${NC}"

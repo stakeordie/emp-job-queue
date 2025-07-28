@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 
 import { EnvironmentBuilder } from '../../packages/env-management/dist/src/index.js';
+import { DockerComposeManager } from './docker-compose-manager.js';
 import chalk from 'chalk';
 
 const args = process.argv.slice(2);
@@ -61,6 +62,22 @@ async function buildEnvironment() {
 
     if (result.success) {
       console.log(chalk.green(`✅ Environment built successfully: ${result.envPath}`));
+      
+      // Update Docker Compose base machine service if machine interface changed
+      try {
+        const composeManager = new DockerComposeManager();
+        const interfaceChanged = await composeManager.hasInterfaceChanged();
+        
+        if (interfaceChanged) {
+          console.log(chalk.blue('🐳 Updating docker-compose.yml base machine service...'));
+          const composeResult = await composeManager.updateBaseMachineService(profile);
+          console.log(chalk.green('✅ Docker Compose base machine service updated'));
+        } else {
+          console.log(chalk.gray('ℹ️  Docker Compose base machine service up to date'));
+        }
+      } catch (composeError) {
+        console.log(chalk.yellow(`⚠️  Could not update docker-compose.yml: ${composeError.message}`));
+      }
       
       if (result.warnings) {
         result.warnings.forEach(warning => {
