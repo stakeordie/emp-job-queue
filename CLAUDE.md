@@ -242,6 +242,32 @@ When instructed "you are a QA agent", Claude Code will operate with the followin
 - **Visual Feedback**: Use `pnpm test:ui` for excellent visual testing experience
 - **Existing Tests**: Redis integration tests in `packages/core/src/redis-functions/__tests__/`
 
+## Documentation Guidelines
+
+### FullscreenDiagram Component Syntax
+When using `<FullscreenDiagram>` tags in VitePress docs, follow these strict rules to avoid Vue parser errors:
+
+1. **Empty line after opening tag**:
+   ```markdown
+   <FullscreenDiagram>
+   
+   ```mermaid
+   ```
+
+2. **Empty line before closing tag**:
+   ```markdown
+   ```
+   
+   </FullscreenDiagram>
+   ```
+
+3. **Quote special characters**: Text containing `[]`, `()`, `/`, or other HTML-like characters must be quoted:
+   ```mermaid
+   NODE["Text with [brackets] and (parentheses)"]
+   ```
+
+**Failure to follow these rules will cause VitePress build failures with Vue template parsing errors.**
+
 **Testing Commands**:
 ```bash
 # Run all tests across monorepo
