@@ -1,187 +1,255 @@
 # Multi-stage build for optimized image size
-# Stage 1: Node.js dependencies
-FROM node:18-slim AS node-deps
-WORKDIR /app
-RUN npm install -g pnpm
-
-# Stage 2: AI services base (using existing PyTorch image)
+# Stage 1: AI services base (using existing PyTorch image)
 FROM pytorch/pytorch:2.7.0-cuda12.8-cudnn9-devel AS ai-base
 
-# Layer cache bust (separate from version to preserve custom nodes cache)
-ARG CACHE_BUST=2
-RUN echo "Cache bust: ${CACHE_BUST}"
+    # Layer cache bust (separate from version to preserve custom nodes cache)
+    ARG CACHE_BUST=2
+    RUN echo "Cache bust: ${CACHE_BUST}"
 
-# Install Node.js 18 and PM2
-RUN apt-get update && \
-    apt-get install -y curl && \
-    curl -fsSL https://deb.nodesource.com/setup_18.x | bash - && \
-    apt-get install -y nodejs && \
-    npm install -g pnpm pm2 && \
-    pm2 install pm2-logrotate && \
-    pm2 set pm2-logrotate:max_size 10M && \
-    pm2 set pm2-logrotate:retain 7 && \
-    pm2 set pm2-logrotate:compress true && \
-    apt-get clean && \
-    rm -rf /var/lib/apt/lists/*
+    # Install Node.js 18 and PM2
+    RUN apt-get update && \
+        apt-get install -y curl && \
+        curl -fsSL https://deb.nodesource.com/setup_18.x | bash - && \
+        apt-get install -y nodejs && \
+        npm install -g pnpm pm2 && \
+        pm2 install pm2-logrotate && \
+        pm2 set pm2-logrotate:max_size 10M && \
+        pm2 set pm2-logrotate:retain 7 && \
+        pm2 set pm2-logrotate:compress true && \
+        apt-get clean && \
+        rm -rf /var/lib/apt/lists/*
 
-# Install system dependencies
-RUN apt-get update && \
-    DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
-    git git-lfs wget curl jq tar nano net-tools lsof \
-    nginx ffmpeg libsm6 libxext6 rsync \
-    build-essential libgoogle-perftools-dev cmake ninja-build \
-    openssh-client sudo cron zstd ca-certificates \
-    python3-pip python3-dev python3-venv && \
-    apt-get clean && \
-    rm -rf /var/lib/apt/lists/*
+    # Install system dependencies
+    RUN apt-get update && \
+        DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
+        git git-lfs wget curl jq tar nano net-tools lsof \
+        nginx ffmpeg libsm6 libxext6 rsync \
+        build-essential libgoogle-perftools-dev cmake ninja-build \
+        openssh-client sudo cron zstd ca-certificates \
+        python3-pip python3-dev python3-venv && \
+        apt-get clean && \
+        rm -rf /var/lib/apt/lists/*
 
-# Set up working directory
-WORKDIR /workspace
+    # Set up working directory
+    WORKDIR /workspace
 
-# Create necessary directories
-RUN mkdir -p \
-    /workspace/logs \
-    /workspace/models \
-    /workspace/ComfyUI \
-    /workspace/stable-diffusion-webui \
-    /workspace/configs \
-    /workspace/tmp \
-    /workspace/.pm2 \
-    /workspace/scripts
+    # Create necessary directories
+    RUN mkdir -p \
+        /workspace/logs \
+        /workspace/models \
+        /workspace/ComfyUI \
+        /workspace/stable-diffusion-webui \
+        /workspace/configs \
+        /workspace/tmp \
+        /workspace/.pm2 \
+        /workspace/scripts
 
-# Stage 3: Bundle standalone installer  
-FROM node:18-slim AS installer-builder
-WORKDIR /build
-COPY package.json pnpm-lock.yaml* ./
-COPY .workspace-packages/ ./.workspace-packages/
-RUN npm install -g pnpm && \
-    # Remove workspace references for standalone build
-    sed -i 's/"@emp\/service-config": "workspace:\*"/"@emp\/service-config": "file:.workspace-packages\/service-config"/' package.json && \
-    sed -i 's/"@emp\/custom-nodes": "workspace:\*"/"@emp\/custom-nodes": "file:.workspace-packages\/custom-nodes"/' package.json && \
-    pnpm install --prod --no-frozen-lockfile --ignore-workspace
-
-COPY src/services/comfyui-installer-standalone.js ./installer.js
-# Create package.json for ES module support
-RUN echo '{"type": "module"}' > installer-package.json
-# Create properly bundled executable file
-RUN cat installer.js | sed '1{/^#!/d;}' > installer-bundle.js && \
-    sed -i '1i#!/usr/bin/env node' installer-bundle.js && \
-    chmod +x installer-bundle.js
-
-# Stage 4: ComfyUI base (runs in parallel with installer build)
+# Stage 3: ComfyUI Base Installation (HEAVY BUT STABLE)
 FROM ai-base AS comfyui-base
-RUN echo "Installing ComfyUI base..." && \
-    git clone -b forward https://github.com/stakeordie/ComfyUI.git /workspace/ComfyUI && \
-    cd /workspace/ComfyUI && \
-    pip install -r requirements.txt && \
-    echo "ComfyUI base installation complete"
 
-# Stage 5: Custom nodes installation (combines previous stages)
-FROM comfyui-base AS with-custom-nodes
-# Copy bundled installer and dependencies from builder stage
-COPY --from=installer-builder /build/node_modules /installer/node_modules  
-COPY --from=installer-builder /build/installer-bundle.js /installer/
-COPY --from=installer-builder /build/installer-package.json /installer/package.json
-COPY --from=installer-builder /build/.workspace-packages /installer/.workspace-packages
+    # Install ComfyUI base - this layer caches until ComfyUI repo changes
+    RUN echo "Installing ComfyUI base..." && \
+        git clone -b forward https://github.com/stakeordie/ComfyUI.git /workspace/ComfyUI && \
+        cd /workspace/ComfyUI && \
+        pip install -r requirements.txt && \
+        echo "ComfyUI base installation complete"
 
-# Copy custom nodes config
-COPY config_nodes.json /workspace/config_nodes.json
+    # Stage 4: Bundle standalone installer
+    FROM node:18-slim AS installer-builder
+    WORKDIR /build
+    RUN npm install -g pnpm
 
-# Install custom nodes using bundled installer (cached until config changes)
-ARG CUSTOM_NODES_CACHE_BUST=default
-ENV CUSTOM_NODES_CACHE_BUST=${CUSTOM_NODES_CACHE_BUST}
-RUN echo "Installing custom nodes (cache bust: $CUSTOM_NODES_CACHE_BUST)" && \
-    cd /installer && \
-    NODE_PATH=/installer/node_modules node installer-bundle.js --build-time --custom-nodes-only
+    # Copy minimal files needed for installer
+    COPY package.json pnpm-lock.yaml* ./
+    COPY .workspace-packages/ ./.workspace-packages/
+    RUN sed -i 's/"@emp\/service-config": "workspace:\*"/"@emp\/service-config": "file:.workspace-packages\/service-config"/' package.json && \
+        sed -i 's/"@emp\/custom-nodes": "workspace:\*"/"@emp\/custom-nodes": "file:.workspace-packages\/custom-nodes"/' package.json && \
+        pnpm install --prod --no-frozen-lockfile --ignore-workspace
 
-# Stage 6: Final image with service source code
-FROM with-custom-nodes AS installed-comfy
+    COPY src/services/comfyui-installer-standalone.js ./installer.js
+    RUN echo '{"type": "module"}' > installer-package.json && \
+        cat installer.js | sed '1{/^#!/d;}' > installer-bundle.js && \
+        sed -i '1i#!/usr/bin/env node' installer-bundle.js && \
+        chmod +x installer-bundle.js
 
-# Copy service source code (changes frequently but doesn't affect custom nodes cache)
-COPY src/ /service-manager/src/
-COPY package.json pnpm-lock.yaml* /service-manager/
-COPY .workspace-packages/ /service-manager/.workspace-packages/
+# Stage 5: ComfyUI + Custom Nodes (HEAVY BUT STABLE UNTIL CONFIG CHANGES)
+FROM comfyui-base AS comfyui-with-nodes
 
-# Install service dependencies
-RUN cd /service-manager && \
-    sed -i 's/"@emp\/service-config": "workspace:\*"/"@emp\/service-config": "file:.workspace-packages\/service-config"/' package.json && \
-    sed -i 's/"@emp\/custom-nodes": "workspace:\*"/"@emp\/custom-nodes": "file:.workspace-packages\/custom-nodes"/' package.json && \
-    pnpm install --prod --no-frozen-lockfile --ignore-workspace
+    # Copy custom nodes config (cache busts only when this file changes)
+    COPY config_nodes.json /workspace/config_nodes.json
 
-FROM installed-comfy
+    # Copy bundled installer
+    COPY --from=installer-builder /build/node_modules /installer/node_modules  
+    COPY --from=installer-builder /build/installer-bundle.js /installer/
+    COPY --from=installer-builder /build/installer-package.json /installer/package.json
+    COPY --from=installer-builder /build/.workspace-packages /installer/.workspace-packages
 
-# Inject machine version and build info AFTER custom nodes (for better caching)
-ARG MACHINE_VERSION=latest
-ARG BUILD_DATE
-RUN cd /service-manager && \
-    sed -i "s/\"version\": \"[^\"]*\"/\"version\": \"${MACHINE_VERSION}\"/" package.json && \
-    echo "MACHINE_VERSION=${MACHINE_VERSION}" > .version && \
-    echo "BUILD_DATE=${BUILD_DATE}" >> .version
+    # Install custom nodes - this caches until config_nodes.json changes
+    ARG CUSTOM_NODES_CACHE_BUST=default
+    ENV CUSTOM_NODES_CACHE_BUST=${CUSTOM_NODES_CACHE_BUST}
+    RUN echo "Installing custom nodes (cache bust: $CUSTOM_NODES_CACHE_BUST)" && \
+        cd /installer && \
+        NODE_PATH=/installer/node_modules node installer-bundle.js --build-time --custom-nodes-only
 
-# Set environment variables for runtime
-ENV MACHINE_VERSION=${MACHINE_VERSION}
-ENV BUILD_DATE=${BUILD_DATE}
+# Stage 6: Base Machine - COMPLETE APPLICATION RUNTIME (BUILT AFTER COMFYUI CACHING)
+FROM ai-base AS base-machine
 
-# Cache layer 6: Copy remaining application files
-COPY scripts/ /service-manager/scripts/
-COPY generate-pm2-ecosystem.js /service-manager/generate-pm2-ecosystem.js
+    # Install dependencies first (better caching)
+    COPY package.json pnpm-lock.yaml* /service-manager/
+    COPY .workspace-packages/ /service-manager/.workspace-packages/
 
-# Set up environment
-ENV NODE_ENV=production \
-    LOG_LEVEL=info \
-    SERVICE_MANAGER_PATH=/service-manager \
-    WORKSPACE_PATH=/workspace \
-    PM2_HOME=/workspace/.pm2 \
-    PATH="/service-manager/node_modules/.bin:${PATH}"
+    # Install dependencies
+    WORKDIR /service-manager
+    RUN sed -i 's/"@emp\/service-config": "workspace:\*"/"@emp\/service-config": "file:.workspace-packages\/service-config"/' package.json && \
+        sed -i 's/"@emp\/custom-nodes": "workspace:\*"/"@emp\/custom-nodes": "file:.workspace-packages\/custom-nodes"/' package.json && \
+        pnpm install --prod --no-frozen-lockfile --ignore-workspace
 
-# Copy PM2 ecosystem config to workspace (needed by PM2)
-RUN cp /service-manager/scripts/pm2-ecosystem.config.cjs /workspace/pm2-ecosystem.config.cjs
+    # Inject machine version and build info
+    ARG MACHINE_VERSION=latest
+    ARG BUILD_DATE
+    RUN sed -i "s/\"version\": \"[^\"]*\"/\"version\": \"${MACHINE_VERSION}\"/" package.json && \
+        echo "MACHINE_VERSION=${MACHINE_VERSION}" > .version && \
+        echo "BUILD_DATE=${BUILD_DATE}" >> .version
 
-# Create env files script
-RUN echo 'import EnvCreator from "../src/services/comfyui-env-creator.js";\n\
-const creator = new EnvCreator({}, {});\n\
-await creator.onStart();\n\
-console.log("Environment files created successfully");' > /service-manager/scripts/create-env-files.mjs
+    # Set environment variables for runtime
+    ENV MACHINE_VERSION=${MACHINE_VERSION}
+    ENV BUILD_DATE=${BUILD_DATE}
 
-# Create startup script that runs our Node.js app as PID 1
-RUN echo '#!/bin/bash\n\
-set -e\n\
-echo "Starting Basic Machine with Node.js as PID 1..."\n\
-\n\
-# Set environment\n\
-export PM2_HOME=/workspace/.pm2\n\
-export SERVICE_MANAGER_PATH=/service-manager\n\
-export WORKSPACE_PATH=/workspace\n\
-\n\
-# Change to service manager directory\n\
-cd /service-manager\n\
-pnpm install\n\
-\n\
-# Create runtime .env files for custom nodes before starting services\n\
-echo "Creating runtime .env files for custom nodes..."\n\
-node /service-manager/scripts/create-env-files.mjs\n\
-\n\
-# Start the main application\n\
-exec node src/index-pm2.js' > /entrypoint.sh && \
-    chmod +x /entrypoint.sh
+    # Copy all application files
+    COPY .env /service-manager/.env
+    COPY src/ /service-manager/src/
+    COPY scripts/ /service-manager/scripts/
+    COPY generate-pm2-ecosystem-worker-driven.js /service-manager/generate-pm2-ecosystem-worker-driven.js
 
-# Expose common ports
-# SSH
-EXPOSE 22
-# NGINX (optional)
-EXPOSE 80 443
-# ComfyUI (8188-8195 for up to 8 GPUs)
-EXPOSE 8188-8195
-# Automatic1111 (3001-3008 for up to 8 GPUs)
-EXPOSE 3001-3008
-# Ollama
-EXPOSE 11434
-# Health monitoring
-EXPOSE 9090
+    # Set up environment
+    ENV NODE_ENV=production \
+        LOG_LEVEL=info \
+        SERVICE_MANAGER_PATH=/service-manager \
+        WORKSPACE_PATH=/workspace \
+        PM2_HOME=/workspace/.pm2 \
+        PATH="/service-manager/node_modules/.bin:${PATH}"
 
-# Health check (use health monitoring port instead of NGINX)
-HEALTHCHECK --interval=30s --timeout=10s --start-period=5m --retries=3 \
-    CMD curl -f http://localhost:9090/health || exit 1
+    # Worker bundle mode - build arg for build-time decisions, ENV for runtime
+    ENV WORKER_BUNDLE_MODE=${WORKER_BUNDLE_MODE}
 
-# Set entrypoint
-ENTRYPOINT ["/entrypoint.sh"]
+    # Create worker-bundled directory
+    RUN mkdir -p /workspace/worker-bundled
+
+    COPY worker-bundled/ /service-manager/worker-bundled/
+
+    # Copy PM2 ecosystem config to workspace (needed by PM2)
+    RUN cp /service-manager/scripts/pm2-ecosystem.config.cjs /workspace/pm2-ecosystem.config.cjs
+
+    # Create env files script
+    RUN echo 'import EnvCreator from "../src/services/comfyui-env-creator.js";\n\
+    const creator = new EnvCreator({}, {});\n\
+    await creator.onStart();\n\
+    console.log("Environment files created successfully");' > /service-manager/scripts/create-env-files.mjs
+
+    # Create base startup script for all profiles
+    RUN echo '#!/bin/bash\n\
+    set -e\n\
+    echo "Starting EMP Machine..."\n\
+    \n\
+    # Set environment\n\
+    export PM2_HOME=/workspace/.pm2\n\
+    export SERVICE_MANAGER_PATH=/service-manager\n\
+    export WORKSPACE_PATH=/workspace\n\
+    \n\
+    # Source the entire .env file\n\
+    if [ -f "/service-manager/.env" ]; then\n\
+        set -a\n\
+        . /service-manager/.env\n\
+        set +a\n\
+    fi\n\
+    \n\
+    # Handle worker bundle based on WORKER_BUNDLE_MODE\n\
+    echo "Worker bundle mode: $WORKER_BUNDLE_MODE"\n\
+    if [ "$WORKER_BUNDLE_MODE" = "local" ]; then\n\
+        echo "Local mode: Using bundled worker from build time"\n\
+        cp -r /service-manager/worker-bundled /workspace/\n\
+        ls /workspace/worker-bundled\n\
+    elif [ "$WORKER_BUNDLE_MODE" = "remote" ]; then\n\
+        echo "Remote mode: Downloading latest worker release to replace bundled version..."\n\
+        cd /tmp\n\
+        if wget -O emp-job-queue-worker.tar.gz "https://github.com/stakeordie/emp-job-queue/releases/latest/download/emp-job-queue-worker.tar.gz"; then\n\
+            echo "✓ Downloaded worker release"\n\
+            rm -rf /workspace/worker-bundled/*\n\
+            tar -xzf emp-job-queue-worker.tar.gz -C /workspace/worker-bundled/\n\
+            rm emp-job-queue-worker.tar.gz\n\
+            echo "✓ Extracted and replaced worker bundle"\n\
+        else\n\
+            echo "⚠️  Failed to download worker release - using bundled version"\n\
+        fi\n\
+    else\n\
+        echo "❌ Error: WORKER_BUNDLE_MODE must be either '\''local'\'' or '\''remote'\''. Got: $WORKER_BUNDLE_MODE"\n\
+        exit 1\n\
+    fi\n\
+    \n\
+    # Change to service manager directory\n\
+    cd /service-manager\n\
+    pnpm install\n\
+    \n\
+    # Create runtime .env files for custom nodes (if needed)\n\
+    if [ -f "/service-manager/scripts/create-env-files.mjs" ]; then\n\
+        echo "Creating runtime .env files for custom nodes..."\n\
+        node /service-manager/scripts/create-env-files.mjs || echo "No custom nodes env setup needed"\n\
+    fi\n\
+    \n\
+    # Start the main application\n\
+    exec node src/index-pm2.js' > /entrypoint.sh && \
+        chmod +x /entrypoint.sh
+
+    # Expose common ports
+    # SSH
+    EXPOSE 22
+    # NGINX (optional)
+    EXPOSE 80 443
+    # ComfyUI (8188-8195 for up to 8 GPUs)
+    EXPOSE 8188-8195
+    # Automatic1111 (3001-3008 for up to 8 GPUs)
+    EXPOSE 3001-3008
+    # Ollama
+    EXPOSE 11434
+    # Health monitoring
+    EXPOSE 9090
+
+    # Health check (use health monitoring port instead of NGINX)
+    HEALTHCHECK --interval=30s --timeout=10s --start-period=5m --retries=3 \
+        CMD curl -f http://localhost:9090/health || exit 1
+
+    # Base entrypoint - all profiles inherit this
+    ENTRYPOINT ["/entrypoint.sh"]
+
+    # PROFILE TARGETS - Each inherits from appropriate base
+
+# Profile: base - External API connectors (minimal setup)
+FROM base-machine AS base
+# Inherits: Complete application runtime including entrypoint, PM2, service manager
+# No additional installations - for external API connectors like comfyui-remote
+
+# Profile: comfyui - Internal ComfyUI connectors  
+FROM base-machine AS comfyui
+# Inherits: Complete application runtime including entrypoint, PM2, service manager
+# Add: ComfyUI installation and custom nodes
+
+# Copy ComfyUI installation from the ComfyUI pipeline
+COPY --from=comfyui-with-nodes /workspace/ComfyUI /workspace/ComfyUI
+COPY --from=comfyui-with-nodes /installer /installer
+COPY --from=comfyui-with-nodes /workspace/config_nodes.json /workspace/config_nodes.json
+
+# Profile: playwright - Browser automation
+FROM base-machine AS playwright
+# Inherits: Complete application runtime including entrypoint, PM2, service manager
+# Add: Playwright browsers
+
+RUN apt-get update && \
+    apt-get install -y wget && \
+    npx playwright install --with-deps chromium && \
+    apt-get clean && \
+    rm -rf /var/lib/apt/lists/*
+
+# Profile: simulation - Testing and simulation  
+FROM base-machine AS simulation
+# Inherits: Complete application runtime including entrypoint, PM2, service manager
+# Add: Any simulation-specific setup here if needed

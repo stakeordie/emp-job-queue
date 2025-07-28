@@ -23,6 +23,25 @@ export default class ComfyUIEnvCreatorService extends BaseService {
   }
 
   async onStart() {
+    // Check if ComfyUI is actually needed by checking WORKERS or WORKER_CONNECTORS
+    const workers = process.env.WORKERS || process.env.WORKER_CONNECTORS || '';
+    
+    // Check if this is a comfyui-remote or external API only setup
+    const isComfyUIRemote = workers.includes('comfyui-remote');
+    const isInternalComfyUI = workers.includes('comfyui:') && !workers.includes('comfyui-remote:');
+    
+    // Skip if no internal ComfyUI is needed
+    if (!isInternalComfyUI || isComfyUIRemote) {
+      this.logger.info(`ComfyUI env creator skipped - workers: ${workers}`);
+      return;
+    }
+    
+    // Also check if ComfyUI directory exists (base profile won't have it)
+    if (!await fs.pathExists(this.comfyDir)) {
+      this.logger.info('ComfyUI directory not found, skipping env creation (likely external/remote connector)');
+      return;
+    }
+    
     this.logger.info('Creating .env files for custom nodes...');
     
     try {
@@ -45,12 +64,28 @@ export default class ComfyUIEnvCreatorService extends BaseService {
   async createCustomNodeEnvFiles() {
     // Load configuration
     const config = await this.loadConfig();
+    if (!config) {
+      this.logger.warn('No configuration loaded, skipping env creation');
+      return;
+    }
+    
     const nodes = config.nodes || config.custom_nodes || [];
+    
+    // Ensure nodes is an array before filtering
+    if (!Array.isArray(nodes)) {
+      this.logger.error('Custom nodes configuration is not an array:', {
+        type: typeof nodes,
+        value: nodes,
+        config: config
+      });
+      return;
+    }
+    
     if (nodes.length === 0) {
       this.logger.warn('No custom nodes configuration found');
       return;
     }
-
+    
     const nodesWithEnv = nodes.filter(node => node.env);
     this.logger.info(`Creating .env files for ${nodesWithEnv.length} custom nodes`);
 
@@ -116,12 +151,17 @@ export default class ComfyUIEnvCreatorService extends BaseService {
     try {
       // Try to load from config_nodes.json first
       if (await fs.pathExists(this.configPath)) {
+        this.logger.debug(`Loading config from: ${this.configPath}`);
         const configData = await fs.readJson(this.configPath);
+        this.logger.debug('Loaded config:', { type: typeof configData, keys: Object.keys(configData || {}) });
         return configData;
       }
       
       // Fallback to workspace package config
-      return { custom_nodes: configNodes || [] };
+      this.logger.debug('Using fallback workspace package config');
+      const fallbackConfig = { custom_nodes: configNodes || [] };
+      this.logger.debug('Fallback config:', { type: typeof fallbackConfig, keys: Object.keys(fallbackConfig) });
+      return fallbackConfig;
     } catch (error) {
       this.logger.error('Failed to load configuration:', error);
       return { nodes: [] };
