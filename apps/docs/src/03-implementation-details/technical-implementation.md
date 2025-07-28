@@ -4,6 +4,8 @@ This guide provides detailed technical diagrams and implementation details for t
 
 ## Service Startup Sequence
 
+<FullscreenDiagram>
+
 ```mermaid
 sequenceDiagram
     participant Docker as Docker Container
@@ -53,14 +55,18 @@ sequenceDiagram
     Note over Docker,Health: Machine ready for jobs
 ```
 
+</FullscreenDiagram>
+
 ## Redis Job Matching Algorithm
+
+<FullscreenDiagram>
 
 ```mermaid
 flowchart TD
     START[Worker requests job] --> CHECK_QUEUE{Jobs in queue?}
     
     CHECK_QUEUE -->|No| WAIT[Wait and retry]
-    CHECK_QUEUE -->|Yes| GET_CAPS[Get worker capabilities\n• machine_type: gpu/api\n• connectors: [comfyui, openai...]\n• gpu_count, memory, etc.]
+    CHECK_QUEUE -->|Yes| GET_CAPS["Get worker capabilities\n• machine_type: gpu/api\n• connectors: [comfyui, openai...]\n• gpu_count, memory, etc."]
     
     GET_CAPS --> SCAN_JOBS[Scan job queue for matches]
     
@@ -90,7 +96,11 @@ flowchart TD
     style COMPLETE fill:#c8e6c9
 ```
 
+</FullscreenDiagram>
+
 ## Docker Layer Caching Strategy
+
+<FullscreenDiagram>
 
 ```mermaid
 graph TB
@@ -195,7 +205,11 @@ Runtime injection]
     style L5C fill:#f5f5f5
 ```
 
+</FullscreenDiagram>
+
 ## Service Communication Patterns
+
+<FullscreenDiagram>
 
 ```mermaid
 graph TB
@@ -250,7 +264,11 @@ WebSocket Client]
     style MONITOR_UI fill:#e8f5e8
 ```
 
+</FullscreenDiagram>
+
 ## Error Handling & Recovery
+
+<FullscreenDiagram>
 
 ```mermaid
 stateDiagram-v2
@@ -290,7 +308,11 @@ stateDiagram-v2
     end note
 ```
 
+</FullscreenDiagram>
+
 ## Performance Monitoring
+
+<FullscreenDiagram>
 
 ```mermaid
 graph TD
@@ -307,35 +329,35 @@ graph TD
 • Network traffic
 • Temperature]
         
-        APP_METRICS[Application Metrics
+        APP_METRICS["Application Metrics
 • Job completion time
 • Queue wait time
 • Error rates
-• Throughput]
+• Throughput"]
     end
     
     subgraph "Health Endpoints"
-        HEALTH_CHECK[/health
+        HEALTH_CHECK["/health
 Overall status
-Boolean healthy]
+Boolean healthy"]
         
-        STATUS_DETAIL[/status
+        STATUS_DETAIL["/status
 Detailed metrics
-JSON response]
+JSON response"]
         
-        METRICS_EXPORT[/metrics
+        METRICS_EXPORT["/metrics
 Prometheus format
-Time series data]
+Time series data"]
     end
     
     subgraph "Monitoring Integration"
-        REDIS_PUB[Redis Pub/Sub
+        REDIS_PUB["Redis Pub/Sub
 Real-time updates
-15-second intervals]
+15-second intervals"]
         
-        WEBSOCKET_UI[WebSocket Monitor
+        WEBSOCKET_UI["WebSocket Monitor
 Live dashboard
-Machine cards]
+Machine cards"]
         
         PROMETHEUS[Prometheus
 Metrics scraping
@@ -362,7 +384,11 @@ Alerting rules]
     style WEBSOCKET_UI fill:#f9fbe7
 ```
 
+</FullscreenDiagram>
+
 ## Configuration Management
+
+<FullscreenDiagram>
 
 ```mermaid
 flowchart LR
@@ -428,7 +454,11 @@ Timeout values]
     style PM2_GEN fill:#f9fbe7
 ```
 
+</FullscreenDiagram>
+
 ## Deployment Pipeline
+
+<FullscreenDiagram>
 
 ```mermaid
 graph TB
@@ -503,7 +533,11 @@ Alert validation]
     style MONITORING fill:#e0f2f1
 ```
 
+</FullscreenDiagram>
+
 ## Resource Allocation Strategy
+
+<FullscreenDiagram>
 
 ```mermaid
 graph TB
@@ -514,11 +548,11 @@ API Machines
 • No GPU required
 • High concurrency]
         
-        STANDARD_POOL[Standard Pool
+        STANDARD_POOL["Standard Pool
 GPU Machines
 • 8 CPU, 32GB RAM
-• RTX 4090 (24GB)
-• ComfyUI optimized]
+• RTX 4090 - (24GB)
+• ComfyUI optimized"]
         
         HEAVY_POOL[Heavy Pool
 High-End Machines
@@ -584,6 +618,8 @@ Route to appropriate pool]
     style CLASSIFY fill:#fff3e0
     style SCALER fill:#e8f5e8
 ```
+
+</FullscreenDiagram>
 
 ## Implementation Checklist
 
