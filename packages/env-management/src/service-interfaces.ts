@@ -6,6 +6,7 @@ export interface ServiceInterface {
   location?: string; // Where to place the .env file (e.g., "apps/api")
   required: Record<string, string>; // app_var: system_var mapping
   optional?: Record<string, string>;
+  secret?: Record<string, string>; // Sensitive variables for .env.secret
   defaults?: Record<string, string>;
 }
 
@@ -138,6 +139,16 @@ export class ServiceInterfaceManager {
           serviceVars[appVar] = value;
         } else if (serviceInterface.defaults?.[appVar]) {
           serviceVars[appVar] = serviceInterface.defaults[appVar];
+        }
+      }
+    }
+
+    // Map secret variables (handled separately for .env.secret)
+    if (serviceInterface.secret) {
+      for (const [appVar, systemVar] of Object.entries(serviceInterface.secret)) {
+        const value = systemVars[systemVar];
+        if (value !== undefined) {
+          serviceVars[appVar] = value;
         }
       }
     }

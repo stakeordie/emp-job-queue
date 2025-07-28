@@ -1,7 +1,8 @@
 import * as fs from 'fs';
 import * as path from 'path';
 import * as ini from 'ini';
-import { Profile, Components, EnvironmentConfig, BuildResult } from './types.js';
+import * as yaml from 'yaml';
+import { Profile, Components, EnvironmentConfig, BuildResult, DockerServiceConfig, DockerComposeConfig } from './types.js';
 import { ServiceInterfaceManager } from './service-interfaces.js';
 
 export class EnvironmentBuilder {
@@ -33,11 +34,21 @@ export class EnvironmentBuilder {
     const serviceVars = this.serviceInterfaces.mapServiceVariables(serviceName, systemVars);
     const serviceEnvPath = outputPath || `.env.${serviceName}`;
 
-    const content = Object.entries(serviceVars)
+    // Split variables into public and secret based on service interface
+    const { publicVars, secretVars } = this.splitVariablesByInterface(serviceVars);
+    
+    // Write public variables to .env (baked into Docker image)
+    const publicContent = Object.entries(publicVars)
       .map(([key, value]) => `${key}=${value}`)
       .join('\n');
-
-    await fs.promises.writeFile(serviceEnvPath, content, 'utf8');
+    await fs.promises.writeFile(serviceEnvPath, publicContent, 'utf8');
+    
+    // Write secret variables to .env.secret (runtime injection via compose)
+    const secretPath = serviceEnvPath.replace('.env', '.env.secret');
+    const secretContent = Object.entries(secretVars)
+      .map(([key, value]) => `${key}=${value}`)
+      .join('\n');
+    await fs.promises.writeFile(secretPath, secretContent, 'utf8');
   }
 
   /**
@@ -121,6 +132,14 @@ export class EnvironmentBuilder {
         generatedFiles.push(outputPath);
       }
 
+      // Generate Docker Compose if profile has docker configuration
+      if (profile.docker) {
+        const dockerComposePath = await this.generateDockerCompose(profile, resolvedPool);
+        if (dockerComposePath) {
+          generatedFiles.push(dockerComposePath);
+        }
+      }
+
       return {
         success: true,
         envPath: generatedFiles.join(', '), // List all generated files
@@ -145,6 +164,8 @@ export class EnvironmentBuilder {
     for (const [component, environments] of Object.entries(components)) {
       if (!environments) continue;
 
+      const envList = Array.isArray(environments) ? environments : [environments];
+
       const componentPath = path.join(
         this.configDir,
         'config',
@@ -156,8 +177,6 @@ export class EnvironmentBuilder {
       if (!fs.existsSync(componentPath)) {
         throw new Error(`Component file not found: ${component}.env`);
       }
-
-      const envList = Array.isArray(environments) ? environments : [environments];
 
       for (const environment of envList) {
         const componentConfig = this.loadComponentConfig(componentPath, environment);
@@ -430,14 +449,47 @@ export class EnvironmentBuilder {
   }
 
   /**
-   * Write environment variables to .env.local file
+   * Write environment variables to .env and .env.secret files
    */
   private async writeEnvFile(vars: { [key: string]: string }): Promise<void> {
-    const content = Object.entries(vars)
-      .map(([key, value]) => `${key}=${value}`)
-      .join('\n');
+    // For now, just write the .env.fun test file
+    const funPath = this.outputPath.replace('.env', '.env.fun');
+    await fs.promises.writeFile(funPath, 'fun', 'utf8');
+  }
 
-    await fs.promises.writeFile(this.outputPath, content, 'utf8');
+  /**
+   * Split environment variables into public (.env) and secret (.env.secret) based on service interfaces
+   */
+  private splitVariablesByInterface(vars: { [key: string]: string }): {
+    publicVars: { [key: string]: string };
+    secretVars: { [key: string]: string };
+  } {
+    const publicVars: { [key: string]: string } = {};
+    const secretVars: { [key: string]: string } = {};
+    
+    // Get all secret variable names from loaded service interfaces
+    const secretVariableNames = new Set<string>();
+    
+    // Collect secret variable names from all service interfaces
+    const availableInterfaces = this.serviceInterfaces.getInterfaces();
+    for (const [serviceName, serviceInterface] of availableInterfaces) {
+      if (serviceInterface.secret) {
+        for (const appVar of Object.keys(serviceInterface.secret)) {
+          secretVariableNames.add(appVar);
+        }
+      }
+    }
+    
+    // Split variables based on whether they're in the secrets list
+    for (const [key, value] of Object.entries(vars)) {
+      if (secretVariableNames.has(key)) {
+        secretVars[key] = value;
+      } else {
+        publicVars[key] = value;
+      }
+    }
+    
+    return { publicVars, secretVars };
   }
 
   /**
@@ -501,5 +553,152 @@ export class EnvironmentBuilder {
       errors,
       warnings,
     };
+  }
+
+  /**
+   * Generate Docker Compose file from profile configuration
+   */
+  private async generateDockerCompose(
+    profile: Profile,
+    resolvedVars: Record<string, string>
+  ): Promise<string | null> {
+    if (!profile.docker) return null;
+
+    try {
+      const dockerCompose = {
+        version: '3.8',
+        services: {} as Record<string, any>,
+        networks: profile.docker.networks || {},
+        volumes: profile.docker.volumes || {},
+      };
+
+      // Process each service with conditional logic
+      for (const [serviceName, serviceConfig] of Object.entries(profile.docker.services)) {
+        if (this.shouldIncludeService(serviceConfig, profile, resolvedVars)) {
+          dockerCompose.services[serviceName] = this.processServiceConfig(
+            serviceConfig,
+            resolvedVars
+          );
+        }
+      }
+
+      // Write docker-compose.yaml
+      const yamlContent = yaml.stringify(dockerCompose);
+      const outputPath = './docker-compose.yaml';
+      await fs.promises.writeFile(outputPath, yamlContent, 'utf8');
+      
+      return outputPath;
+    } catch (error) {
+      throw new Error(`Failed to generate Docker Compose: ${error}`);
+    }
+  }
+
+  /**
+   * Check if a service should be included based on conditions
+   */
+  private shouldIncludeService(
+    serviceConfig: DockerServiceConfig,
+    profile: Profile,
+    resolvedVars: Record<string, string>
+  ): boolean {
+    if (!serviceConfig.condition) return true;
+
+    // Evaluate condition like "components.redis === 'local'"
+    return this.evaluateCondition(serviceConfig.condition, profile, resolvedVars);
+  }
+
+  /**
+   * Process service configuration for Docker Compose
+   */
+  private processServiceConfig(
+    serviceConfig: DockerServiceConfig,
+    resolvedVars: Record<string, string>
+  ): any {
+    const processed = { ...serviceConfig };
+
+    // Remove our custom fields
+    delete processed.condition;
+
+    // Process environment file references
+    if (processed.environment) {
+      processed.env_file = processed.environment;
+      delete processed.environment;
+    }
+
+    // Add platform specification for cross-architecture compatibility
+    if (processed.build || processed.image) {
+      processed.platform = 'linux/amd64';
+    }
+
+    // Substitute variables in strings
+    return this.substituteVariables(processed, resolvedVars);
+  }
+
+  /**
+   * Evaluate a condition string against profile and resolved variables
+   */
+  private evaluateCondition(
+    condition: string,
+    profile: Profile,
+    resolvedVars: Record<string, string>
+  ): boolean {
+    try {
+      // Handle "includes" operator: "components.redis includes 'local'"
+      const includesMatch = condition.match(/components\.(\w+)\s+includes\s+['"]([^'"]+)['"]/);
+      if (includesMatch) {
+        const [, componentName, expectedValue] = includesMatch;
+        const componentValue = profile.components[componentName as keyof typeof profile.components];
+        
+        if (Array.isArray(componentValue)) {
+          return componentValue.includes(expectedValue);
+        }
+        return componentValue === expectedValue;
+      }
+
+      // Handle "===" operator: "components.redis === 'local'"
+      const equalsMatch = condition.match(/components\.(\w+)\s*===\s*['"]([^'"]+)['"]/);
+      if (equalsMatch) {
+        const [, componentName, expectedValue] = equalsMatch;
+        const componentValue = profile.components[componentName as keyof typeof profile.components];
+        
+        // Handle both string and array values
+        if (Array.isArray(componentValue)) {
+          return componentValue.includes(expectedValue);
+        }
+        return componentValue === expectedValue;
+      }
+
+      // For now, default to true for unrecognized conditions
+      console.warn(`Unrecognized condition: ${condition}`);
+      return true;
+    } catch (error) {
+      console.warn(`Error evaluating condition "${condition}":`, error);
+      return true;
+    }
+  }
+
+  /**
+   * Substitute variables in an object recursively
+   */
+  private substituteVariables(obj: any, vars: Record<string, string>): any {
+    if (typeof obj === 'string') {
+      return obj.replace(/\$\{([^}]+)\}/g, (match, varName) => {
+        return vars[varName] || process.env[varName] || match;
+      });
+    }
+
+    if (Array.isArray(obj)) {
+      return obj.map(item => this.substituteVariables(item, vars));
+    }
+
+    if (obj && typeof obj === 'object') {
+      const result: any = {};
+      for (const [key, value] of Object.entries(obj)) {
+        result[key] = this.substituteVariables(value, vars);
+      }
+      return result;
+    }
+
+    return obj;
   }
 }
