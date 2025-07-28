@@ -7,6 +7,17 @@ import { ConnectorManager } from './connector-manager.js';
 import { logger } from '@emp/core';
 import os from 'os';
 
+// Export all connector classes for dynamic loading in bundled environment
+export * from './connectors/a1111-connector.js';
+export * from './connectors/base-connector.js';
+export * from './connectors/comfyui-remote-connector.js';
+export * from './connectors/comfyui-websocket-connector.js';
+export * from './connectors/rest-async-connector.js';
+export * from './connectors/rest-connector.js';
+export * from './connectors/rest-sync-connector.js';
+export * from './connectors/simulation-connector.js';
+export * from './connectors/websocket-connector.js';
+
 // Worker configuration from environment
 const WORKER_ID_PREFIX = process.env.WORKER_ID || 'worker';
 const WORKER_ID = `${WORKER_ID_PREFIX}-${process.pid}`;

@@ -17,6 +17,9 @@ import {
 } from '@emp/core';
 import Redis from 'ioredis';
 
+// Re-export types for convenience
+export type { HealthCheckCapabilities, ServiceJobStatus } from '@emp/core';
+
 export type ConnectorStatus =
   | 'starting'
   | 'waiting_for_service'

@@ -142,8 +142,7 @@ export class RedisDirectBaseWorker {
         .map(spec => spec.split(':')[0]); // Extract type from "type:count"
 
       if (workerSpecs.length === 0) {
-        logger.warn('No WORKERS specified, using fallback capabilities');
-        return ['comfyui']; // Minimal fallback
+        throw new Error('SYSTEM IS FUCKED: No WORKERS environment variable specified. I cannot determine what services this worker should provide. Set WORKERS=worker-type:count environment variable.');
       }
 
       // Load service mapping
@@ -165,8 +164,7 @@ export class RedisDirectBaseWorker {
       }
       
       if (!serviceMappingPath) {
-        logger.warn('service-mapping.json not found, using fallback capabilities');
-        return ['comfyui']; // Minimal fallback
+        throw new Error(`SYSTEM IS FUCKED: service-mapping.json not found in any of these paths: ${possiblePaths.join(', ')}. I cannot determine what capabilities this worker should have. The worker bundle is broken.`);
       }
 
       const serviceMappingContent = fs.readFileSync(serviceMappingPath, 'utf8');
@@ -188,7 +186,7 @@ export class RedisDirectBaseWorker {
             }
           }
         } else {
-          logger.warn(`Worker type ${workerType} not found in service mapping`);
+          throw new Error(`SYSTEM IS FUCKED: Worker type '${workerType}' not found in service mapping. Available worker types: ${Object.keys(serviceMapping.workers || {}).join(', ')}. Check your WORKERS environment variable.`);
         }
       }
       
@@ -198,7 +196,7 @@ export class RedisDirectBaseWorker {
       
     } catch (error) {
       logger.error('Failed to load capabilities from service mapping:', error);
-      return ['comfyui']; // Minimal fallback
+      throw error; // Re-throw the error instead of using fallback
     }
   }
 

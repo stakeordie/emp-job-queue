@@ -2,7 +2,7 @@
 // Uses stakeordie/ComfyUI fork with native WebSocket job submission and progress
 
 import { JobData, JobResult, ProgressCallback, ServiceInfo, logger } from '@emp/core';
-import { BaseConnector } from './base-connector.js';
+import { BaseConnector, HealthCheckCapabilities, ServiceJobStatus } from './base-connector.js';
 import { WebSocket } from 'ws';
 
 interface AuthConfig {
@@ -23,6 +23,7 @@ export class ComfyUIWebSocketConnector extends BaseConnector {
 
   protected clientId: string | null = null;
   protected promptId: string | null = null;
+  protected lastProgress: number = 0;
 
   private activeJobs = new Map<
     string,
@@ -157,6 +158,67 @@ export class ComfyUIWebSocketConnector extends BaseConnector {
     // Check if job has ComfyUI workflow
     const workflow = jobData.payload?.workflow || jobData.payload;
     return !!(workflow && typeof workflow === 'object');
+  }
+
+  // ============================================================================
+  // Health Check and Job Status Query Support
+  // ============================================================================
+
+  getHealthCheckCapabilities(): HealthCheckCapabilities {
+    return {
+      supportsBasicHealthCheck: true,
+      supportsJobStatusQuery: true, // We support this via prompt ID tracking
+      supportsJobCancellation: true, // ComfyUI supports interrupting workflows
+      supportsServiceRestart: false, // Cannot restart remote ComfyUI instance
+      supportsQueueIntrospection: true, // ComfyUI provides queue status
+    };
+  }
+
+  async queryJobStatus(serviceJobId: string): Promise<ServiceJobStatus> {
+    try {
+      if (!this.isConnected) {
+        return {
+          serviceJobId,
+          status: 'unknown',
+          canReconnect: true,
+          canCancel: false,
+          errorMessage: 'WebSocket not connected',
+        };
+      }
+
+      // In ComfyUI, serviceJobId is the prompt_id
+      // We can query the queue status via WebSocket
+      // For now, check if it's the current prompt
+      if (serviceJobId === this.promptId) {
+        // This is the currently processing prompt
+        return {
+          serviceJobId,
+          status: 'running',
+          canReconnect: true,
+          canCancel: true,
+          progress: this.lastProgress,
+        };
+      }
+
+      // TODO: Implement queue query via WebSocket to check if prompt is still queued
+      // For now, assume if it's not the current prompt, it might be completed or unknown
+      return {
+        serviceJobId,
+        status: 'unknown',
+        canReconnect: true,
+        canCancel: false,
+        errorMessage: 'Prompt status query not fully implemented',
+      };
+    } catch (error) {
+      logger.error(`Failed to query job status for ${serviceJobId}:`, error);
+      return {
+        serviceJobId,
+        status: 'failed',
+        canReconnect: false,
+        canCancel: false,
+        errorMessage: error.message,
+      };
+    }
   }
 
   // ============================================================================
@@ -359,9 +421,12 @@ export class ComfyUIWebSocketConnector extends BaseConnector {
     // Find active jobs and update their progress
     for (const [jobId, job] of this.activeJobs) {
       try {
+        const progressValue = Math.min(90, 10 + progress * 80); // Map 0-1 to 10-90%
+        this.lastProgress = progressValue; // Track last progress for health checks
+        
         await job.progressCallback({
           job_id: jobId,
-          progress: Math.min(90, 10 + progress * 80), // Map 0-1 to 10-90%
+          progress: progressValue,
           message: `Processing node ${nodeId || 'unknown'}`,
           current_step: `node_${nodeId}`,
           total_steps: 0,
