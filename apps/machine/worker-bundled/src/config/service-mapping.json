@@ -1,0 +1,313 @@
+{
+  "connectors": {
+    "ComfyUIConnector": {
+      "path": "./redis-direct-worker.js",
+      "description": "Local ComfyUI WebSocket connector - uses internal ComfyUI installation"
+    },
+    "ComfyUIRemoteConnector": {
+      "path": "./redis-direct-worker.js", 
+      "description": "Remote ComfyUI WebSocket connector - connects to external ComfyUI instance"
+    },
+    "SimulationConnector": {
+      "path": "./redis-direct-worker.js",
+      "description": "Simulation processing connector for testing and development"
+    },
+    "A1111RemoteConnector": {
+      "path": "./redis-direct-worker.js",
+      "description": "Remote Automatic1111 connector - connects to external A1111 instance"
+    },
+    "PlaywrightConnector": {
+      "path": "./redis-direct-worker.js",
+      "description": "Playwright browser automation connector"
+    },
+    "OpenAIConnector": {
+      "path": "./redis-direct-worker.js",
+      "description": "OpenAI API connector"
+    },
+    "ReplicateConnector": {
+      "path": "./redis-direct-worker.js", 
+      "description": "Replicate API connector"
+    },
+    "AnthropicConnector": {
+      "path": "./redis-direct-worker.js",
+      "description": "Anthropic Claude API connector"
+    },
+    "HuggingFaceConnector": {
+      "path": "./redis-direct-worker.js",
+      "description": "Hugging Face API connector"
+    },
+    "StabilityConnector": {
+      "path": "./redis-direct-worker.js",
+      "description": "Stability AI API connector"
+    },
+    "ElevenLabsConnector": {
+      "path": "./redis-direct-worker.js",
+      "description": "ElevenLabs voice API connector"
+    }
+  },
+
+  "workers": {
+    "comfyui": {
+      "service": [
+        {
+          "capability": "comfyui",
+          "connector": "ComfyUIConnector",
+          "type": "internal"
+        }
+      ],
+      "installer": "installComfyUI",
+      "resource_binding": "${COMFYUI_RESOURCE_BINDING:-gpu}",
+      "build_stage": "comfyui",
+      "service_instances_per_gpu": "${COMFYUI_INSTANCES_PER_GPU:-1}",
+      "ports": ["${COMFYUI_BASE_PORT:-8188}"],
+      "port_increment": "${COMFYUI_PORT_INCREMENT:-1}",
+      "description": "ComfyUI image generation service with local installation",
+      "installer_config": {
+        "branch": "${COMFYUI_BRANCH:-main}",
+        "repo_url": "${COMFYUI_REPO_URL:-https://github.com/comfyanonymous/ComfyUI.git}",
+        "custom_nodes_enabled": "${COMFYUI_ENABLE_CUSTOM_NODES:-true}",
+        "models_path": "${COMFYUI_MODELS_PATH:-/workspace/ComfyUI/models}",
+        "install_timeout": "${COMFYUI_INSTALL_TIMEOUT:-300}"
+      }
+    },
+
+    "comfyui-remote": {
+      "service": [
+        {
+          "capability": ["comfyui", "comfyui-alt"],
+          "connector": "ComfyUIRemoteConnector",
+          "type": "external"
+        }
+      ],
+      "installer": null,
+      "resource_binding": "shared",
+      "build_stage": "base",
+      "description": "Remote ComfyUI WebSocket connector - connects to external ComfyUI instance"
+    },
+
+    "ai-remote": {
+      "service": [
+        {
+          "capability": "comfyui",
+          "connector": "ComfyUIRemoteConnector",
+          "type": "external"
+        },
+        {
+          "capability": ["a1111", "automatic"],
+          "connector": "A1111RemoteConnector",
+          "type": "external"
+        }
+      ],
+      "installer": null,
+      "resource_binding": "shared",
+      "build_stage": "base",
+      "description": "Multi-service remote connector - handles ComfyUI and Automatic1111 jobs"
+    },
+    
+    "playwright": {
+      "service": [
+        {
+          "capability": "playwright",
+          "connector": "PlaywrightConnector",
+          "type": "internal"
+        }
+      ],
+      "installer": "installPlaywright",
+      "resource_binding": "cpu",
+      "build_stage": "playwright",
+      "service_instances_per_machine": "${PLAYWRIGHT_INSTANCES_PER_MACHINE:-1}",
+      "ports": ["${PLAYWRIGHT_BASE_PORT:-9090}"],
+      "port_increment": "${PLAYWRIGHT_PORT_INCREMENT:-0}",
+      "description": "Playwright browser automation service",
+      "installer_config": {
+        "browsers": "${PLAYWRIGHT_BROWSERS:-chromium,firefox,webkit}",
+        "headless": "${PLAYWRIGHT_HEADLESS:-true}",
+        "install_timeout": "${PLAYWRIGHT_INSTALL_TIMEOUT:-120}"
+      }
+    },
+    
+    "simulation": {
+      "service": [
+        {
+          "capability": "simulation",
+          "connector": "SimulationConnector",
+          "type": "internal"
+        }
+      ],
+      "installer": "installSimulation",
+      "resource_binding": "cpu",
+      "build_stage": "simulation",
+      "service_instances_per_machine": "${SIMULATION_INSTANCES_PER_MACHINE:-1}",
+      "ports": ["${SIMULATION_BASE_PORT:-9091}"],
+      "port_increment": "${SIMULATION_PORT_INCREMENT:-0}",
+      "description": "Simulation service for testing and development",
+      "installer_config": {
+        "test_mode": "${SIMULATION_TEST_MODE:-true}",
+        "data_path": "${SIMULATION_DATA_PATH:-/workspace/simulation/data}",
+        "capabilities": "${SIMULATION_CAPABILITIES:-image_generation,text_processing}"
+      }
+    },
+    
+    "openai": {
+      "service": [
+        {
+          "capability": ["text_generation", "image_generation"],
+          "connector": "OpenAIConnector",
+          "type": "external"
+        }
+      ],
+      "installer": null,
+      "resource_binding": "shared",
+      "build_stage": "base",
+      "required_env": ["${OPENAI_API_KEY_VAR:-OPENAI_API_KEY}"],
+      "description": "OpenAI API connector (no installation required)",
+      "api_config": {
+        "base_url": "${OPENAI_BASE_URL:-https://api.openai.com/v1}",
+        "timeout": "${OPENAI_TIMEOUT:-30}",
+        "max_retries": "${OPENAI_MAX_RETRIES:-3}",
+        "models": "${OPENAI_MODELS:-gpt-4,gpt-3.5-turbo,dall-e-3}"
+      }
+    },
+    
+    "replicate": {
+      "service": [
+        {
+          "capability": ["image_generation", "model_inference"],
+          "connector": "ReplicateConnector",
+          "type": "external"
+        }
+      ],
+      "installer": null,
+      "resource_binding": "shared",
+      "build_stage": "base",
+      "required_env": ["${REPLICATE_API_TOKEN_VAR:-REPLICATE_API_TOKEN}"],
+      "description": "Replicate API connector (no installation required)",
+      "api_config": {
+        "base_url": "${REPLICATE_BASE_URL:-https://api.replicate.com/v1}",
+        "timeout": "${REPLICATE_TIMEOUT:-60}",
+        "max_retries": "${REPLICATE_MAX_RETRIES:-3}"
+      }
+    },
+    
+    "anthropic": {
+      "service": [
+        {
+          "capability": ["text_generation"],
+          "connector": "AnthropicConnector",
+          "type": "external"
+        }
+      ],
+      "installer": null,
+      "resource_binding": "shared",
+      "build_stage": "base",
+      "required_env": ["${ANTHROPIC_API_KEY_VAR:-ANTHROPIC_API_KEY}"],
+      "description": "Anthropic Claude API connector (no installation required)",
+      "api_config": {
+        "base_url": "${ANTHROPIC_BASE_URL:-https://api.anthropic.com}",
+        "timeout": "${ANTHROPIC_TIMEOUT:-30}",
+        "max_retries": "${ANTHROPIC_MAX_RETRIES:-3}",
+        "models": "${ANTHROPIC_MODELS:-claude-3-opus,claude-3-sonnet}"
+      }
+    },
+    
+    "huggingface": {
+      "service": [
+        {
+          "capability": ["text_generation", "image_generation", "model_inference"],
+          "connector": "HuggingFaceConnector",
+          "type": "external"
+        }
+      ],
+      "installer": null,
+      "resource_binding": "shared",
+      "build_stage": "base",
+      "required_env": ["${HF_TOKEN_VAR:-HF_TOKEN}"],
+      "description": "Hugging Face API connector (no installation required)",
+      "api_config": {
+        "base_url": "${HF_BASE_URL:-https://api-inference.huggingface.co}",
+        "timeout": "${HF_TIMEOUT:-30}",
+        "max_retries": "${HF_MAX_RETRIES:-3}"
+      }
+    },
+    
+    "stability": {
+      "service": [
+        {
+          "capability": ["image_generation"],
+          "connector": "StabilityConnector",
+          "type": "external"
+        }
+      ],
+      "installer": null,
+      "resource_binding": "shared",
+      "build_stage": "base",
+      "required_env": ["${STABILITY_API_KEY_VAR:-STABILITY_API_KEY}"],
+      "description": "Stability AI API connector for image generation",
+      "api_config": {
+        "base_url": "${STABILITY_BASE_URL:-https://api.stability.ai/v1}",
+        "timeout": "${STABILITY_TIMEOUT:-60}",
+        "max_retries": "${STABILITY_MAX_RETRIES:-3}",
+        "models": "${STABILITY_MODELS:-stable-diffusion-xl-1024-v1-0,stable-diffusion-v1-6}"
+      }
+    },
+    
+    "elevenlabs": {
+      "service": [
+        {
+          "capability": ["voice_synthesis", "audio_generation"],
+          "connector": "ElevenLabsConnector",
+          "type": "external"
+        }
+      ],
+      "installer": null,
+      "resource_binding": "shared",
+      "build_stage": "base",
+      "required_env": ["${ELEVENLABS_API_KEY_VAR:-ELEVENLABS_API_KEY}"],
+      "description": "ElevenLabs API connector for voice synthesis",
+      "api_config": {
+        "base_url": "${ELEVENLABS_BASE_URL:-https://api.elevenlabs.io/v1}",
+        "timeout": "${ELEVENLABS_TIMEOUT:-30}",
+        "max_retries": "${ELEVENLABS_MAX_RETRIES:-3}"
+      }
+    }
+  },
+  
+  "resource_bindings": {
+    "gpu": {
+      "description": "Bind to specific GPU device",
+      "scaling": "per_gpu",
+      "exclusive": true
+    },
+    "cpu": {
+      "description": "Bind to CPU cores",
+      "scaling": "per_machine", 
+      "exclusive": false
+    },
+    "shared": {
+      "description": "Shared resources for API-only services",
+      "scaling": "unlimited",
+      "exclusive": false
+    },
+    "mock_gpu": {
+      "description": "Mock GPU mode - simulates GPU scaling but uses CPU",
+      "scaling": "per_gpu",
+      "exclusive": true,
+      "force_cpu": true
+    }
+  },
+  
+  "service_types": {
+    "internal": {
+      "description": "Services that require installation and setup",
+      "requires_installer": true,
+      "has_ports": true,
+      "has_pm2_process": true
+    },
+    "external": {
+      "description": "External API services (no installation)",
+      "requires_installer": false,
+      "has_ports": false,
+      "has_pm2_process": false
+    }
+  }
+}

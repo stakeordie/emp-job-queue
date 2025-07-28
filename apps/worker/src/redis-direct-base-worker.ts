@@ -25,7 +25,6 @@ import {
   ConnectorStatus,
   logger,
 } from '@emp/core';
-import { WorkerDashboard } from './worker-dashboard.js';
 import { readFileSync } from 'fs';
 import os from 'os';
 
@@ -90,7 +89,6 @@ export class RedisDirectBaseWorker {
   private pollIntervalMs: number;
   private maxConcurrentJobs: number;
   private jobTimeoutMinutes: number;
-  private dashboard?: WorkerDashboard;
 
   constructor(
     workerId: string,
@@ -133,15 +131,80 @@ export class RedisDirectBaseWorker {
     );
   }
 
+  private getServicesFromMapping(): string[] {
+    try {
+      // Get worker types from WORKERS environment variable
+      const workersEnv = process.env.WORKERS || '';
+      const workerSpecs = workersEnv
+        .split(',')
+        .map(s => s.trim())
+        .filter(s => s)
+        .map(spec => spec.split(':')[0]); // Extract type from "type:count"
+
+      if (workerSpecs.length === 0) {
+        logger.warn('No WORKERS specified, using fallback capabilities');
+        return ['comfyui']; // Minimal fallback
+      }
+
+      // Load service mapping
+      const fs = require('fs');
+      const possiblePaths = [
+        '/workspace/worker-bundled/src/config/service-mapping.json',
+        '/service-manager/worker-bundled/src/config/service-mapping.json',
+        '/workspace/src/config/service-mapping.json',
+        '/service-manager/src/config/service-mapping.json',
+        './src/config/service-mapping.json'
+      ];
+      
+      let serviceMappingPath = null;
+      for (const p of possiblePaths) {
+        if (fs.existsSync(p)) {
+          serviceMappingPath = p;
+          break;
+        }
+      }
+      
+      if (!serviceMappingPath) {
+        logger.warn('service-mapping.json not found, using fallback capabilities');
+        return ['comfyui']; // Minimal fallback
+      }
+
+      const serviceMappingContent = fs.readFileSync(serviceMappingPath, 'utf8');
+      const serviceMapping = JSON.parse(serviceMappingContent);
+      
+      // Extract capabilities from all worker types
+      const allCapabilities = new Set<string>();
+      
+      for (const workerType of workerSpecs) {
+        const workerConfig = serviceMapping.workers?.[workerType];
+        if (workerConfig && workerConfig.service) {
+          for (const service of workerConfig.service) {
+            if (service.capability) {
+              if (Array.isArray(service.capability)) {
+                service.capability.forEach(cap => allCapabilities.add(cap));
+              } else {
+                allCapabilities.add(service.capability);
+              }
+            }
+          }
+        } else {
+          logger.warn(`Worker type ${workerType} not found in service mapping`);
+        }
+      }
+      
+      const capabilities = Array.from(allCapabilities);
+      logger.info(`Derived capabilities from service mapping: ${capabilities.join(', ')}`);
+      return capabilities;
+      
+    } catch (error) {
+      logger.error('Failed to load capabilities from service mapping:', error);
+      return ['comfyui']; // Minimal fallback
+    }
+  }
+
   private buildCapabilities(): WorkerCapabilities {
-    // Services this worker can handle
-    const services = (
-      process.env.CONNECTORS ||
-      process.env.SERVICES ||
-      'comfyui,a1111'
-    )
-      .split(',')
-      .map(s => s.trim());
+    // Services this worker can handle - derive from service mapping
+    const services = this.getServicesFromMapping();
 
     // Hardware specs - Each worker represents ONE GPU + supporting resources
     const hardware: HardwareSpecs = {
@@ -386,7 +449,6 @@ export class RedisDirectBaseWorker {
       // TODO: Start dashboard if enabled (requires interface compatibility)
       // if (process.env.WORKER_DASHBOARD_ENABLED === 'true') {
       //   const port = parseInt(process.env.WORKER_DASHBOARD_PORT || '3003');
-      //   this.dashboard = new WorkerDashboard(this, port);
       //   await this.dashboard.start();
       // }
 
@@ -441,10 +503,7 @@ export class RedisDirectBaseWorker {
     this.jobTimeouts.forEach(timeout => clearTimeout(timeout));
     this.jobTimeouts.clear();
 
-    // Stop dashboard
-    if (this.dashboard) {
-      await this.dashboard.stop();
-    }
+    // Dashboard removed - no longer used
 
     // Disconnect from Redis
     await this.redisClient.disconnect();
@@ -541,7 +600,7 @@ export class RedisDirectBaseWorker {
   }
 
   private async processJob(job: Job): Promise<void> {
-    const connector = this.connectorManager.getConnectorByServiceType(job.service_required);
+    const connector = await this.connectorManager.getConnectorByService(job.service_required);
     if (!connector) {
       throw new Error(`No connector available for service: ${job.service_required}`);
     }
