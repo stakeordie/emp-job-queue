@@ -24,3 +24,15 @@ coverage/
 .idea/
 *.tmp
 *.temp
+
+# Exclude large data directories from build context
+data/
+workspace/
+archive/
+tests/
+docs/
+*.backup
+
+# Exclude development files  
+test-*.js
+vitest.config.js

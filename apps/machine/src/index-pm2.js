@@ -83,13 +83,26 @@ async function startPM2Services() {
     await pm2Manager.pm2Exec('ping');
     logger.info('PM2 daemon started');
     
-    // Start services from ecosystem config in proper order: shared-setup -> comfyui-installer -> workers
-    // First start shared setup
-    await pm2Manager.pm2Exec('start /workspace/pm2-ecosystem.config.cjs --only shared-setup');
-    logger.info('Shared setup service started');
+    // Check if shared-setup exists in the ecosystem config (removed from enhanced generator)
+    const fs = await import('fs');
+    const configPath = '/workspace/pm2-ecosystem.config.cjs';
+    let hasSharedSetup = false;
     
-    // Wait for shared setup to complete
-    await new Promise(resolve => setTimeout(resolve, 3000));
+    if (fs.existsSync(configPath)) {
+      const configContent = fs.readFileSync(configPath, 'utf8');
+      hasSharedSetup = configContent.includes('"name": "shared-setup"');
+    }
+    
+    if (hasSharedSetup) {
+      logger.info('Starting shared-setup service...');
+      await pm2Manager.pm2Exec('start /workspace/pm2-ecosystem.config.cjs --only shared-setup');
+      logger.info('Shared setup service started');
+      
+      // Wait for shared setup to complete
+      await new Promise(resolve => setTimeout(resolve, 3000));
+    } else {
+      logger.info('No shared-setup service needed (enhanced generator)');
+    }
     
     // Clear any existing worker downloads to ensure fresh packages
     logger.info('Cleaning worker cache to prevent stale package downloads...');
@@ -140,15 +153,40 @@ async function startPM2Services() {
       await new Promise(resolve => setTimeout(resolve, 3000));
     }
     
-    // Start worker services LAST (after ComfyUI and simulation are ready)
-    const workerServices = [];
-    for (let gpu = 0; gpu < gpuCount; gpu++) {
-      workerServices.push(`redis-worker-gpu${gpu}`);
-    }
-    
-    if (workerServices.length > 0) {
-      await pm2Manager.pm2Exec(`start /workspace/pm2-ecosystem.config.cjs --only ${workerServices.join(',')}`);
-      logger.info(`Worker services started: ${workerServices.join(', ')}`);
+    // Worker-driven mode: Start all worker processes from the ecosystem config
+    logger.info('Starting worker processes from ecosystem config...');
+    try {
+      // Parse ecosystem config to find worker processes
+      if (fs.existsSync(configPath)) {
+        const configContent = fs.readFileSync(configPath, 'utf8');
+        const configMatch = configContent.match(/module\.exports\s*=\s*(\{[\s\S]*\})/);
+        
+        if (configMatch) {
+          const ecosystemConfig = eval(`(${configMatch[1]})`);
+          
+          // Find all worker processes (redis-worker-* pattern)
+          const workerProcesses = ecosystemConfig.apps
+            .filter(app => app.name.startsWith('redis-worker-'))
+            .map(app => app.name);
+          
+          if (workerProcesses.length > 0) {
+            logger.info(`Found ${workerProcesses.length} worker processes: ${workerProcesses.join(', ')}`);
+            
+            // Start all worker processes
+            await pm2Manager.pm2Exec(`start ${configPath} --only ${workerProcesses.join(',')}`);
+            logger.info(`✅ Started ${workerProcesses.length} worker processes`);
+          } else {
+            logger.warn('No worker processes found in ecosystem config');
+          }
+        } else {
+          logger.error('Could not parse ecosystem config format');
+        }
+      } else {
+        logger.error('Ecosystem config file not found');
+      }
+    } catch (error) {
+      logger.error('Failed to start worker processes:', error);
+      // Continue anyway - some deployments might not have workers
     }
     
     // Save process list
@@ -218,42 +256,34 @@ async function generatePM2EcosystemConfig() {
     // Diagnostic: Check working directory and file existence
     const fs = await import('fs');
     logger.info(`Current working directory: ${process.cwd()}`);
-    logger.info(`Checking for generate-pm2-ecosystem.js in /workspace...`);
     
-    try {
-      const workspaceFiles = fs.readdirSync('/workspace');
-      logger.info(`Files in /workspace: ${workspaceFiles.slice(0, 10).join(', ')}${workspaceFiles.length > 10 ? '...' : ''}`);
-    } catch (err) {
-      logger.error('Could not read /workspace directory:', err.message);
+    // Check that worker-driven generator exists
+    const workerDrivenExists = fs.existsSync('/service-manager/generate-pm2-ecosystem-worker-driven.js');
+    if (!workerDrivenExists) {
+      throw new Error('Worker-driven PM2 generator not found at /service-manager/generate-pm2-ecosystem-worker-driven.js');
     }
+    logger.info('✅ Worker-driven PM2 generator found');
     
-    const ecosystemExists = fs.existsSync('/workspace/generate-pm2-ecosystem.js');
-    logger.info(`generate-pm2-ecosystem.js exists in /workspace: ${ecosystemExists}`);
+    const { execa } = await import('execa');
     
-    // Also check service-manager directory
-    try {
-      const serviceFiles = fs.readdirSync('/service-manager');
-      logger.info(`Files in /service-manager: ${serviceFiles.slice(0, 10).join(', ')}${serviceFiles.length > 10 ? '...' : ''}`);
-      const ecosystemInService = fs.existsSync('/service-manager/generate-pm2-ecosystem.js');
-      logger.info(`generate-pm2-ecosystem.js exists in /service-manager: ${ecosystemInService}`);
-    } catch (err) {
-      logger.error('Could not read /service-manager directory:', err.message);
-    }
+    // Always use worker-driven PM2 ecosystem generator
+    const workerConnectors = process.env.WORKERS || process.env.WORKER_CONNECTORS || 'simulation:1'; // Default fallback
     
-    // Check service configuration from config object
-    const enableComfyUI = config.services?.comfyui?.enabled || false;
-    const enableSimulation = config.services?.simulation?.enabled || false;
-    const enableRedisWorker = config.services?.redisWorker?.enabled || false;
+    // Worker-driven mode: determine services from WORKERS
+    const enableComfyUI = workerConnectors.includes('comfyui:') && !workerConnectors.includes('comfyui-remote:');
+    const enableSimulation = workerConnectors.includes('simulation:');
+    const enableRedisWorker = false; // Redis workers are created by worker-driven generator
     
-    logger.info('Service flags:', {
+    logger.info('Worker-driven service detection:', {
+      workerConnectors,
       enableComfyUI,
       enableSimulation,
       enableRedisWorker
     });
     
-    const { execa } = await import('execa');
-    await execa('node', ['generate-pm2-ecosystem.js'], {
-      cwd: '/service-manager',
+    logger.info('🚀 Using worker-driven PM2 ecosystem generator (only system)');
+    await execa('node', ['/service-manager/generate-pm2-ecosystem-worker-driven.js'], {
+      cwd: '/workspace',
       env: {
         ...process.env,
         MACHINE_NUM_GPUS: config.machine.gpu.count.toString(),

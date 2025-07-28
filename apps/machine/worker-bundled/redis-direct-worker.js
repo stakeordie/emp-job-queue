@@ -49921,8 +49921,7 @@ var RedisDirectBaseWorker = class {
       const workersEnv = process.env.WORKERS || "";
       const workerSpecs = workersEnv.split(",").map((s2) => s2.trim()).filter((s2) => s2).map((spec) => spec.split(":")[0]);
       if (workerSpecs.length === 0) {
-        logger.warn("No WORKERS specified, using fallback capabilities");
-        return ["comfyui"];
+        throw new Error("SYSTEM IS FUCKED: No WORKERS environment variable specified. I cannot determine what services this worker should provide. Set WORKERS=worker-type:count environment variable.");
       }
       const fs2 = require("fs");
       const possiblePaths = [
@@ -49940,8 +49939,7 @@ var RedisDirectBaseWorker = class {
         }
       }
       if (!serviceMappingPath) {
-        logger.warn("service-mapping.json not found, using fallback capabilities");
-        return ["comfyui"];
+        throw new Error(`SYSTEM IS FUCKED: service-mapping.json not found in any of these paths: ${possiblePaths.join(", ")}. I cannot determine what capabilities this worker should have. The worker bundle is broken.`);
       }
       const serviceMappingContent = fs2.readFileSync(serviceMappingPath, "utf8");
       const serviceMapping = JSON.parse(serviceMappingContent);
@@ -49959,7 +49957,7 @@ var RedisDirectBaseWorker = class {
             }
           }
         } else {
-          logger.warn(`Worker type ${workerType} not found in service mapping`);
+          throw new Error(`SYSTEM IS FUCKED: Worker type '${workerType}' not found in service mapping. Available worker types: ${Object.keys(serviceMapping.workers || {}).join(", ")}. Check your WORKERS environment variable.`);
         }
       }
       const capabilities = Array.from(allCapabilities);
@@ -49967,7 +49965,7 @@ var RedisDirectBaseWorker = class {
       return capabilities;
     } catch (error) {
       logger.error("Failed to load capabilities from service mapping:", error);
-      return ["comfyui"];
+      throw error;
     }
   }
   buildCapabilities() {
@@ -50691,18 +50689,57 @@ var ConnectorManager = class {
     logger.debug("ConnectorManager received parent worker reference");
   }
   async loadConnectors() {
-    const connectorsEnv = process.env.WORKERS || process.env.WORKER_CONNECTORS || process.env.CONNECTORS || "";
-    const connectorIds = connectorsEnv.split(",").map((s2) => s2.trim()).filter((s2) => s2);
-    if (connectorIds.length === 0) {
+    const workersEnv = process.env.WORKERS || process.env.WORKER_CONNECTORS || process.env.CONNECTORS || "";
+    const workerSpecs = workersEnv.split(",").map((s2) => s2.trim()).filter((s2) => s2).map((spec) => spec.split(":")[0]);
+    if (workerSpecs.length === 0) {
       logger.warn("No workers specified in WORKERS environment variable");
       return;
     }
-    logger.info(`Loading connectors: ${connectorIds.join(", ")}`);
-    for (const connectorId of connectorIds) {
+    logger.info(`Loading connectors for worker types: ${workerSpecs.join(", ")}`);
+    const connectorsToLoad = /* @__PURE__ */ new Set();
+    try {
+      const fs2 = await import("fs");
+      const possiblePaths = [
+        "/workspace/worker-bundled/src/config/service-mapping.json",
+        "/service-manager/worker-bundled/src/config/service-mapping.json",
+        "/workspace/src/config/service-mapping.json",
+        "/service-manager/src/config/service-mapping.json",
+        "./src/config/service-mapping.json"
+      ];
+      let serviceMappingPath = null;
+      for (const p of possiblePaths) {
+        if (fs2.existsSync(p)) {
+          serviceMappingPath = p;
+          break;
+        }
+      }
+      if (!serviceMappingPath) {
+        throw new Error(`SYSTEM IS FUCKED: service-mapping.json not found in any of these paths: ${possiblePaths.join(", ")}. Cannot determine what connectors to load.`);
+      }
+      const serviceMappingContent = fs2.readFileSync(serviceMappingPath, "utf8");
+      const serviceMapping = JSON.parse(serviceMappingContent);
+      for (const workerType of workerSpecs) {
+        const workerConfig = serviceMapping.workers?.[workerType];
+        if (workerConfig && workerConfig.service) {
+          for (const service of workerConfig.service) {
+            if (service.connector) {
+              connectorsToLoad.add(service.connector);
+            }
+          }
+        } else {
+          throw new Error(`SYSTEM IS FUCKED: Worker type '${workerType}' not found in service mapping. Available worker types: ${Object.keys(serviceMapping.workers || {}).join(", ")}`);
+        }
+      }
+    } catch (error) {
+      logger.error("Failed to load service mapping, falling back to worker type names:", error);
+      workerSpecs.forEach((spec) => connectorsToLoad.add(spec));
+    }
+    logger.info(`Loading connectors: ${Array.from(connectorsToLoad).join(", ")}`);
+    for (const connectorName of connectorsToLoad) {
       try {
-        await this.loadConnector(connectorId);
+        await this.loadConnector(connectorName);
       } catch (error) {
-        logger.error(`Failed to load connector ${connectorId}:`, error);
+        logger.error(`Failed to load connector ${connectorName}:`, error);
       }
     }
     logger.info(`Successfully loaded ${this.connectors.size} connectors`);
@@ -50773,11 +50810,13 @@ var ConnectorManager = class {
     }
     return new OfflineStubConnector();
   }
-  async loadConnector(connectorId) {
+  async loadConnector(connectorName) {
     let ConnectorClass;
     try {
       const fs2 = await import("fs");
       const possiblePaths = [
+        "/workspace/worker-bundled/src/config/service-mapping.json",
+        "/service-manager/worker-bundled/src/config/service-mapping.json",
         "/workspace/src/config/service-mapping.json",
         "/service-manager/src/config/service-mapping.json",
         "./src/config/service-mapping.json"
@@ -50790,54 +50829,41 @@ var ConnectorManager = class {
         }
       }
       if (!serviceMappingPath) {
-        logger.warn(`service-mapping.json not found, using fallback for connector ${connectorId}`);
-        ConnectorClass = await this.loadConnectorFallback(connectorId);
+        logger.warn(`service-mapping.json not found, using fallback for connector ${connectorName}`);
+        ConnectorClass = await this.loadConnectorFallback(connectorName);
       } else {
         const serviceMappingContent = fs2.readFileSync(serviceMappingPath, "utf8");
         const serviceMapping = JSON.parse(serviceMappingContent);
-        const workerConfig = serviceMapping.workers[connectorId];
-        if (workerConfig && workerConfig.service && workerConfig.service.length > 0) {
-          const primaryService = workerConfig.service[0];
-          const connectorName = primaryService.connector;
-          if (connectorName && serviceMapping.connectors && serviceMapping.connectors[connectorName]) {
-            const connectorConfig = serviceMapping.connectors[connectorName];
-            const { path: modulePath } = connectorConfig;
-            ConnectorClass = await this.loadConnectorFromPath(modulePath, connectorName);
-          } else {
-            throw new Error(`No connector configuration found for ${connectorName} referenced by worker ${connectorId}`);
-          }
+        if (serviceMapping.connectors && serviceMapping.connectors[connectorName]) {
+          const connectorConfig = serviceMapping.connectors[connectorName];
+          const { path: modulePath } = connectorConfig;
+          ConnectorClass = await this.loadConnectorFromPath(modulePath, connectorName);
         } else {
-          const serviceConfig = serviceMapping.services?.[connectorId];
-          if (serviceConfig) {
-            const { name: className, path: modulePath } = serviceConfig;
-            ConnectorClass = await this.loadConnectorFromPath(modulePath, className);
-          } else {
-            throw new Error(`Connector ${connectorId} not found in service mapping`);
-          }
+          throw new Error(`Connector ${connectorName} not found in connectors section of service mapping`);
         }
       }
-      const connector = new ConnectorClass(connectorId);
+      const connector = new ConnectorClass(connectorName);
       if (this.redis && this.workerId) {
         connector.setRedisConnection(this.redis, this.workerId, this.machineId);
-        logger.info(`Injected Redis connection into connector ${connectorId}`);
+        logger.info(`Injected Redis connection into connector ${connectorName}`);
       } else {
         logger.warn(
-          `No Redis connection available for connector ${connectorId} - status reporting may be limited`
+          `No Redis connection available for connector ${connectorName} - status reporting may be limited`
         );
       }
       this.registerConnector(connector);
       await connector.initialize();
-      logger.info(`Loaded connector: ${connectorId} (${connector.service_type})`);
+      logger.info(`Loaded connector: ${connectorName} (${connector.service_type})`);
     } catch (error) {
-      logger.error(`Failed to load connector ${connectorId}:`, error);
+      logger.error(`Failed to load connector ${connectorName}:`, error);
       try {
-        const OfflineConnector = await this.createOfflineConnector(connectorId, error);
+        const OfflineConnector = await this.createOfflineConnector(connectorName, error);
         this.registerConnector(OfflineConnector);
         logger.warn(
-          `Registered offline stub connector for ${connectorId} due to initialization failure`
+          `Registered offline stub connector for ${connectorName} due to initialization failure`
         );
       } catch (stubError) {
-        logger.error(`Failed to create offline stub connector for ${connectorId}:`, stubError);
+        logger.error(`Failed to create offline stub connector for ${connectorName}:`, stubError);
       }
     }
   }
@@ -50983,12 +51009,17 @@ var ConnectorManager = class {
               canHandle = serviceCapability.capability === serviceRequired;
             }
             if (canHandle) {
-              const connector = this.getConnector(workerId);
-              if (connector) {
-                logger.info(`\u{1F517} Found connector ${workerId} for service ${serviceRequired} via service mapping`);
-                return connector;
+              const connectorName = serviceCapability.connector;
+              if (connectorName) {
+                const connector = this.getConnector(connectorName);
+                if (connector) {
+                  logger.info(`\u{1F517} Found connector ${connectorName} for service ${serviceRequired} via service mapping`);
+                  return connector;
+                } else {
+                  logger.warn(`Worker ${workerId} handles service ${serviceRequired} but connector ${connectorName} is not loaded`);
+                }
               } else {
-                logger.warn(`Worker ${workerId} handles service ${serviceRequired} but connector is not loaded`);
+                logger.warn(`Worker ${workerId} handles service ${serviceRequired} but no connector specified`);
               }
             }
           }

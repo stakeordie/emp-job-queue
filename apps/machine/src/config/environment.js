@@ -5,7 +5,9 @@ import { createLogger } from '../utils/logger.js';
 const logger = createLogger('config');
 
 // Load environment variables
-dotenv.config();
+// Note: .env.secret is loaded by Docker Compose via env_file and available in process.env
+// Load .env from service-manager directory (baked into image)
+dotenv.config({ path: '/service-manager/.env' }); // Load .env (public variables baked into image)
 
 // Define configuration schema
 const schema = Joi.object({

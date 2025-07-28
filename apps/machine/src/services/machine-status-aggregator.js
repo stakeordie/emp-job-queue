@@ -28,34 +28,146 @@ export class MachineStatusAggregator {
       process.env.MACHINE_STATUS_UPDATE_INTERVAL_SECONDS || '10'
     );
     
-    // Build static structure once from config
-    this.structure = this.buildMachineStructure();
-    
-    // Current status state (starts with all unknown)
-    this.currentStatus = this.buildInitialStatus();
+    // Structure will be built during connect()
+    this.structure = null;
+    this.currentStatus = null;
     
     logger.info(`Machine Status Aggregator initialized for ${this.machineId}`);
     logger.info(`Update interval: ${this.updateIntervalSeconds}s`);
-    logger.info(`Structure: ${this.structure.workers.length} workers, ${Object.keys(this.currentStatus.services).length} services`);
+  }
+
+  /**
+   * Get machine structure from service mapping instead of hardcoded config
+   */
+  async getStructureFromServiceMapping() {
+    try {
+      // Get worker types from WORKERS environment variable
+      const workersEnv = process.env.WORKERS || '';
+      const workerSpecs = workersEnv
+        .split(',')
+        .map(s => s.trim())
+        .filter(s => s)
+        .map(spec => {
+          const [type, count] = spec.split(':');
+          return { type, count: parseInt(count) || 1 };
+        });
+
+      if (workerSpecs.length === 0) {
+        throw new Error('[MachineStatusAggregator] SYSTEM IS FUCKED: No WORKERS environment variable specified. I cannot determine what services this machine should provide. Set WORKERS=worker-type:count environment variable.');
+      }
+
+      // Load service mapping
+      const fs = await import('fs');
+      const possiblePaths = [
+        '/workspace/worker-bundled/src/config/service-mapping.json',
+        '/service-manager/worker-bundled/src/config/service-mapping.json',
+        '/workspace/src/config/service-mapping.json',
+        '/service-manager/src/config/service-mapping.json',
+        './src/config/service-mapping.json'
+      ];
+      
+      let serviceMappingPath = null;
+      for (const p of possiblePaths) {
+        if (fs.existsSync(p)) {
+          serviceMappingPath = p;
+          break;
+        }
+      }
+      
+      if (!serviceMappingPath) {
+        throw new Error(`[MachineStatusAggregator] SYSTEM IS FUCKED: service-mapping.json not found in any of these paths: ${possiblePaths.join(', ')}. I cannot determine what connectors and capabilities this machine should have. The worker bundle is broken.`);
+      }
+
+      const serviceMappingContent = fs.readFileSync(serviceMappingPath, 'utf8');
+      const serviceMapping = JSON.parse(serviceMappingContent);
+      
+      // Extract capabilities and determine resource requirements
+      const allCapabilities = new Set();
+      const workers = [];
+      let maxGpuCount = 1;
+      
+      for (const spec of workerSpecs) {
+        const workerConfig = serviceMapping.workers?.[spec.type];
+        if (workerConfig && workerConfig.service) {
+          // Extract capabilities
+          for (const service of workerConfig.service) {
+            if (service.capability) {
+              if (Array.isArray(service.capability)) {
+                service.capability.forEach(cap => allCapabilities.add(cap));
+              } else {
+                allCapabilities.add(service.capability);
+              }
+            }
+          }
+          
+          // Determine resource binding
+          const resourceBinding = workerConfig.resource_binding || 'shared';
+          workers.push({
+            type: spec.type,
+            count: spec.count,
+            resourceBinding: resourceBinding
+          });
+          
+          // Calculate GPU requirements
+          if (resourceBinding === 'gpu' || resourceBinding === 'mock_gpu') {
+            maxGpuCount = Math.max(maxGpuCount, spec.count);
+          }
+        } else {
+          throw new Error(`[MachineStatusAggregator] SYSTEM IS FUCKED: Worker type '${spec.type}' not found in service mapping. Available worker types: ${Object.keys(serviceMapping.workers || {}).join(', ')}. Check your WORKERS environment variable.`);
+        }
+      }
+      
+      const capabilities = Array.from(allCapabilities);
+      console.info(`[MachineStatusAggregator] Derived structure from service mapping:`);
+      console.info(`  - Capabilities: ${capabilities.join(', ')}`);
+      console.info(`  - Workers: ${workers.map(w => `${w.type}:${w.count}(${w.resourceBinding})`).join(', ')}`);
+      console.info(`  - GPU Count: ${maxGpuCount}`);
+      
+      return { capabilities, workers, gpuCount: maxGpuCount };
+      
+    } catch (error) {
+      console.error('[MachineStatusAggregator] Failed to load structure from service mapping:', error);
+      throw error; // Re-throw the error instead of using fallback
+    }
   }
 
   /**
    * Build static machine structure from config (never changes)
    */
-  buildMachineStructure() {
-    const gpuCount = this.config.machine.gpu.count;
-    
-    // Use worker connectors as capabilities - this shows what jobs the worker can handle
-    const capabilities = this.config.worker.connectors || ['simulation'];
+  async buildMachineStructure() {
+    // Get capabilities and worker structure from service mapping
+    const { capabilities, workers: workerStructure, gpuCount } = await this.getStructureFromServiceMapping();
 
     const workers = {};
-    for (let gpu = 0; gpu < gpuCount; gpu++) {
-      const workerId = `${this.machineId}-worker-${gpu}`;
-      workers[workerId] = {
-        worker_id: workerId,
-        gpu_id: gpu,
-        services: [...capabilities] // Each worker has all capabilities
-      };
+    // Workers are created based on resource binding, workerIndex no longer needed
+
+    // Create workers based on their resource binding
+    for (const workerSpec of workerStructure) {
+      if (workerSpec.resourceBinding === 'gpu' || workerSpec.resourceBinding === 'mock_gpu') {
+        // GPU-bound workers: one worker per GPU up to the count specified
+        for (let gpu = 0; gpu < Math.min(workerSpec.count, gpuCount); gpu++) {
+          const workerId = `${this.machineId}-worker-${gpu}`;
+          workers[workerId] = {
+            worker_id: workerId,
+            gpu_id: gpu,
+            worker_type: workerSpec.type,
+            resource_binding: workerSpec.resourceBinding,
+            services: [...capabilities] // Each worker has all capabilities
+          };
+        }
+      } else if (workerSpec.resourceBinding === 'shared' || workerSpec.resourceBinding === 'cpu') {
+        // Shared/CPU workers: create specified count without GPU binding
+        for (let i = 0; i < workerSpec.count; i++) {
+          const workerId = `${this.machineId}-worker-${workerSpec.type}-${i}`;
+          workers[workerId] = {
+            worker_id: workerId,
+            gpu_id: null, // No GPU binding for shared workers
+            worker_type: workerSpec.type,
+            resource_binding: workerSpec.resourceBinding,
+            services: [...capabilities] // Each worker has all capabilities
+          };
+        }
+      }
     }
 
     return {
@@ -107,6 +219,12 @@ export class MachineStatusAggregator {
    */
   async connect() {
     try {
+      // Build machine structure from service mapping
+      this.structure = await this.buildMachineStructure();
+      this.currentStatus = this.buildInitialStatus();
+      
+      logger.info(`Structure: ${Object.keys(this.structure.workers).length} workers, ${Object.keys(this.currentStatus.services).length} services`);
+
       if (!this.config.redis.url) {
         logger.warn('Redis URL not configured, status reporting disabled');
         return;
@@ -281,11 +399,18 @@ export class MachineStatusAggregator {
       // Update service PM2 status
       for (const [serviceKey] of Object.entries(this.currentStatus.services)) {
         const [workerId, serviceName] = serviceKey.split('.');
-        const gpu = this.structure.workers[workerId]?.gpu_id;
+        const worker = this.structure.workers[workerId];
         
-        if (gpu !== undefined) {
-          // Find PM2 process (e.g., comfyui-gpu0, redis-worker-gpu0)
-          const processName = `${serviceName}-gpu${gpu}`;
+        if (worker) {
+          let processName;
+          if (worker.gpu_id !== null && worker.gpu_id !== undefined) {
+            // GPU-bound workers: serviceName-gpu{N}
+            processName = `${serviceName}-gpu${worker.gpu_id}`;
+          } else {
+            // Shared/CPU workers: use worker type for process name
+            processName = `${worker.worker_type}-worker`;
+          }
+          
           const process = processes.find(p => p.name === processName);
           
           if (process) {
@@ -305,21 +430,27 @@ export class MachineStatusAggregator {
    */
   async collectServiceHealth() {
     const healthChecks = {
-      comfyui: (gpu) => this.checkHTTP(`http://localhost:${8188 + gpu}`),
-      simulation: (gpu) => this.checkHTTP(`http://localhost:${8299 + gpu}`)
+      comfyui: (gpu) => this.checkHTTP(`http://localhost:${8188 + (gpu || 0)}`),
+      simulation: (gpu) => this.checkHTTP(`http://localhost:${8299 + (gpu || 0)}`)
     };
 
     for (const [serviceKey] of Object.entries(this.currentStatus.services)) {
       const [workerId, serviceName] = serviceKey.split('.');
-      const gpu = this.structure.workers[workerId]?.gpu_id;
+      const worker = this.structure.workers[workerId];
       
-      if (gpu !== undefined && healthChecks[serviceName]) {
+      if (worker && healthChecks[serviceName]) {
         try {
-          const isHealthy = await healthChecks[serviceName](gpu);
+          // For GPU-bound workers use GPU ID, for shared workers use 0
+          const portOffset = worker.gpu_id !== null ? worker.gpu_id : 0;
+          const isHealthy = await healthChecks[serviceName](portOffset);
           this.currentStatus.services[serviceKey].health = isHealthy ? 'healthy' : 'unhealthy';
         } catch (error) {
           this.currentStatus.services[serviceKey].health = 'unknown';
         }
+      } else if (worker && worker.resource_binding === 'shared') {
+        // For shared workers without health checks, mark as healthy if PM2 is online
+        const pm2Status = this.currentStatus.services[serviceKey]?.pm2_status;
+        this.currentStatus.services[serviceKey].health = pm2Status === 'online' ? 'healthy' : 'unknown';
       }
     }
   }

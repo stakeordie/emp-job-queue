@@ -116,7 +116,6 @@ FROM ai-base AS base-machine
     ENV BUILD_DATE=${BUILD_DATE}
 
     # Copy all application files
-    COPY .env /service-manager/.env
     COPY src/ /service-manager/src/
     COPY scripts/ /service-manager/scripts/
     COPY generate-pm2-ecosystem-worker-driven.js /service-manager/generate-pm2-ecosystem-worker-driven.js
@@ -169,21 +168,8 @@ FROM ai-base AS base-machine
         echo "Local mode: Using bundled worker from build time"\n\
         cp -r /service-manager/worker-bundled /workspace/\n\
         ls /workspace/worker-bundled\n\
-    elif [ "$WORKER_BUNDLE_MODE" = "remote" ]; then\n\
-        echo "Remote mode: Downloading latest worker release to replace bundled version..."\n\
-        cd /tmp\n\
-        if wget -O emp-job-queue-worker.tar.gz "https://github.com/stakeordie/emp-job-queue/releases/latest/download/emp-job-queue-worker.tar.gz"; then\n\
-            echo "✓ Downloaded worker release"\n\
-            rm -rf /workspace/worker-bundled/*\n\
-            tar -xzf emp-job-queue-worker.tar.gz -C /workspace/worker-bundled/\n\
-            rm emp-job-queue-worker.tar.gz\n\
-            echo "✓ Extracted and replaced worker bundle"\n\
-        else\n\
-            echo "⚠️  Failed to download worker release - using bundled version"\n\
-        fi\n\
     else\n\
-        echo "❌ Error: WORKER_BUNDLE_MODE must be either '\''local'\'' or '\''remote'\''. Got: $WORKER_BUNDLE_MODE"\n\
-        exit 1\n\
+      echo "Remote mode: Individual services will download workers as needed"\n\
     fi\n\
     \n\
     # Change to service manager directory\n\
@@ -227,16 +213,21 @@ FROM ai-base AS base-machine
 FROM base-machine AS base
 # Inherits: Complete application runtime including entrypoint, PM2, service manager
 # No additional installations - for external API connectors like comfyui-remote
+COPY --from=base-machine /service-manager/worker-bundled /service-manager/worker-bundled
+COPY .env /service-manager/.env
 
 # Profile: comfyui - Internal ComfyUI connectors  
 FROM base-machine AS comfyui
 # Inherits: Complete application runtime including entrypoint, PM2, service manager
 # Add: ComfyUI installation and custom nodes
+COPY .env /service-manager/.env
 
 # Copy ComfyUI installation from the ComfyUI pipeline
 COPY --from=comfyui-with-nodes /workspace/ComfyUI /workspace/ComfyUI
 COPY --from=comfyui-with-nodes /installer /installer
 COPY --from=comfyui-with-nodes /workspace/config_nodes.json /workspace/config_nodes.json
+COPY --from=base-machine /service-manager/worker-bundled /service-manager/worker-bundled
+COPY .env /service-manager/.env
 
 # Profile: playwright - Browser automation
 FROM base-machine AS playwright
@@ -249,7 +240,12 @@ RUN apt-get update && \
     apt-get clean && \
     rm -rf /var/lib/apt/lists/*
 
+    COPY --from=base-machine /service-manager/worker-bundled /service-manager/worker-bundled
+    COPY .env /service-manager/.env
+
 # Profile: simulation - Testing and simulation  
 FROM base-machine AS simulation
 # Inherits: Complete application runtime including entrypoint, PM2, service manager
 # Add: Any simulation-specific setup here if needed
+COPY --from=base-machine /service-manager/worker-bundled /service-manager/worker-bundled
+COPY .env /service-manager/.env

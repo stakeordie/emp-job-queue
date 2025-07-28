@@ -101,11 +101,24 @@ export default class RedisWorkerService extends BaseService {
   async ensureWorkerPackage() {
     const workerScript = path.join(this.workerDir, 'redis-direct-worker.js');
     
-    // Check if we should use a local worker path (development mode)
-    if (this.config.worker.useLocalPath) {
-      console.log("🎯 Using local worker!");
+    // Check WORKER_BUNDLE_MODE environment variable
+    const workerBundleMode = process.env.WORKER_BUNDLE_MODE;
+    
+    if (workerBundleMode === 'local') {
+      console.log("🎯 Using local worker bundle (WORKER_BUNDLE_MODE=local)!");
+      // Override config to use local worker bundle
+      this.config.worker.useLocalPath = '/workspace/worker-bundled';
       await this.useLocalWorker();
       return;
+    } else if (workerBundleMode === 'remote') {
+      console.log("📥 Using remote worker download (WORKER_BUNDLE_MODE=remote)");
+      // Continue with normal download logic
+    } else if (this.config.worker.useLocalPath) {
+      console.log("🎯 Using local worker (config override)!");
+      await this.useLocalWorker();
+      return;
+    } else {
+      console.log(`⚠️  WORKER_BUNDLE_MODE not set or invalid: '${workerBundleMode}', defaulting to download`);
     }
     
     if (await fs.pathExists(workerScript)) {
@@ -254,7 +267,7 @@ export default class RedisWorkerService extends BaseService {
       HUB_REDIS_URL: this.config.redis.url,
       WORKER_ID: this.workerId,
       MACHINE_ID: this.config.machine.id,
-      WORKER_CONNECTORS: this.config.worker.connectors.join(','),
+      WORKERS: process.env.WORKERS || 'comfyui-remote:1',
       WORKER_WEBSOCKET_AUTH_TOKEN: this.config.redis.authToken || 'default-token',
       GPU_MEMORY_GB: this.config.machine.gpu.memoryGB,
       GPU_MODEL: this.config.machine.gpu.model,
