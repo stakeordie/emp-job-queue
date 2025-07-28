@@ -190,7 +190,12 @@
       "Bash(vercel link:*)",
       "Bash(vercel:*)",
       "Bash(git checkout:*)",
-      "Bash(git remote add:*)"
+      "Bash(git remote add:*)",
+      "Bash(packages/env-management/dist/cli/index.js build full-local)",
+      "Bash(env)",
+      "Bash(WORKER_CONNECTORS=\"comfyui:1\" node src/config/enhanced-pm2-ecosystem-generator.js)",
+      "Bash(WORKER_CONNECTORS=\"simulation\" node src/config/enhanced-pm2-ecosystem-generator.js)",
+      "Bash(WORKER_CONNECTORS=\"comfyui:3\" COMFYUI_RESOURCE_BINDING=\"mock_gpu\" node src/config/enhanced-pm2-ecosystem-generator.js)"
     ],
     "deny": []
   }

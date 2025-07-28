@@ -1,0 +1,33 @@
+version: "3.8"
+services:
+  redis:
+    image: redis:7-alpine
+    ports:
+      - 6379:6379
+    volumes:
+      - redis_data:/data
+    platform: linux/amd64
+  machine:
+    build: ./apps/machine
+    volumes:
+      - ./apps/worker/bundled:/workspace/worker-bundled
+      - machine_workspace:/workspace
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              capabilities:
+                - gpu
+    ports:
+      - 8188:8188
+      - 8189:8189
+    depends_on:
+      - redis
+    env_file:
+      - .env
+    platform: linux/amd64
+networks: {}
+volumes:
+  redis_data: {}
+  machine_workspace: {}

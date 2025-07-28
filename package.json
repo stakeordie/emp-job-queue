@@ -13,6 +13,7 @@
     "clean": "turbo run clean && rm -rf node_modules",
     "install:clean": "rm -rf node_modules pnpm-lock.yaml && pnpm install",
     "env:build": "node scripts/env/build-env.js",
+    "env:build:worker-driven": "node scripts/env/build-worker-driven-env.js",
     "env:switch": "node scripts/env/switch-env.js",
     "env:validate": "node scripts/env/validate-env.js",
     "env:list": "node scripts/env/list-profiles.js",
@@ -33,14 +34,17 @@
     "logs": "node scripts/log-viewer.js",
     "logs:redis": "./scripts/redis-monitor-filtered.sh",
     "env:show": "node scripts/show-service-env.js",
-    "machine:up": "cd apps/machine && ./generate-docker-compose.sh && docker compose --env-file .env up",
-    "machine:up:build": "pnpm machine:down && ./scripts/bundle-worker.sh && cd apps/machine && pnpm build:workspace-packages && ./generate-docker-compose.sh && docker compose --env-file .env up --build",
-    "machine:up:build:fresh": "pnpm machine:down && ./scripts/bundle-worker.sh && cd apps/machine && pnpm build:workspace-packages && ./generate-docker-compose.sh && CACHE_BUST=$(date +%s) docker compose --env-file .env build --no-cache && docker compose --env-file .env up",
-    "machine:down": "cd apps/machine && docker compose --env-file .env down",
-    "machine:build": "cd apps/machine && pnpm docker:build:version",
-    "machine:logs": "cd apps/machine && docker compose --env-file .env logs -f",
+    "machine:up": "node scripts/env/machine-compose.js up",
+    "machine:up:build": "node scripts/env/machine-compose.js up --build",
+    "machine:down": "node scripts/env/machine-compose.js down",
+    "machine:build": "node scripts/env/machine-compose.js build",
+    "machine:build:local": "./scripts/env/machine-local-build.sh",
+    "machine:pull": "node scripts/env/machine-compose.js pull",
+    "machine:push": "node scripts/env/machine-compose.js push",
+    "machine:logs": "node scripts/env/machine-compose.js logs",
     "machine:status": "curl -s http://localhost:9092/health | jq || echo '❌ Health check failed'",
-    "machine:push": ""
+    "worker:bundle": "./scripts/bundle-worker.sh",
+    "compose:profile": "node scripts/env/compose-build.js"
   },
   "devDependencies": {
     "@typescript-eslint/eslint-plugin": "^6.21.0",
@@ -65,6 +69,7 @@
     "tools"
   ],
   "dependencies": {
-    "chalk": "^5.4.1"
+    "chalk": "^5.4.1",
+    "js-yaml": "^4.1.0"
   }
 }

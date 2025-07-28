@@ -16,6 +16,7 @@ bundled/
 .env.development.local
 .env.test.local
 .env.production.local
+.env.secret*
 
 # Keep example files and new environment system files
 !.env.example
