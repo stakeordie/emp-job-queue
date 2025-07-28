@@ -27,7 +27,7 @@
       "local"
     ],
     "simulation": [
-      "default",
+      "local",
       "big"
     ]
   },
@@ -89,5 +89,37 @@
       8188,
       9090
     ]
+  },
+  "docker": {
+    "services": {
+      "redis": {
+        "image": "redis:7-alpine",
+        "ports": ["6379:6379"],
+        "volumes": ["redis_data:/data"],
+        "condition": "components.redis includes 'local'"
+      },
+      "machine": {
+        "build": "./apps/machine",
+        "environment": [".env"],
+        "volumes": [
+          "./apps/worker/bundled:/workspace/worker-bundled",
+          "machine_workspace:/workspace"
+        ],
+        "deploy": {
+          "resources": {
+            "reservations": {
+              "devices": [{"driver": "nvidia", "capabilities": ["gpu"]}]
+            }
+          }
+        },
+        "ports": ["8188:8188", "8189:8189"],
+        "depends_on": ["redis"],
+        "condition": "components.machine includes 'local'"
+      }
+    },
+    "volumes": {
+      "redis_data": {},
+      "machine_workspace": {}
+    }
   }
 }

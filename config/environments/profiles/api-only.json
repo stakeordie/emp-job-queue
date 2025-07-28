@@ -1,0 +1,24 @@
+{
+  "name": "API Only Machine",
+  "description": "Machine configured for external API services only (OpenAI, Replicate, etc.)",
+  "components": {
+    "redis": "production",
+    "api": "local",
+    "machine": "api-only",
+    "worker": "api-only",
+    "monitor": "local",
+    "simulation": "local",
+    "comfyui": "disabled"
+  },
+  "docker": {
+    "services": {
+      "machine": {
+        "build": "./apps/machine",
+        "environment": [".env"],
+        "volumes": [
+          "./apps/worker/bundled:/workspace/worker-bundled"
+        ]
+      }
+    }
+  }
+}
