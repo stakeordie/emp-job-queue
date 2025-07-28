@@ -1,361 +1,600 @@
 # Worker-Driven Machine Implementation Plan
 
-This document outlines the complete plan to implement a unified worker-driven machine system, starting from the stable legacy foundation and incrementally adding capabilities.
+This document outlines the complete plan to implement a unified worker-driven machine system with full environment orchestration, starting from the stable legacy foundation and incrementally adding capabilities.
 
 ## Executive Summary
 
-**Goal**: Create a single unified machine architecture where workers drive service installation and configuration, eliminating the need for separate Docker setups while maintaining full compatibility with the existing Redis job broker system.
+**Goal**: Create a single unified machine architecture where worker specifications drive service installation, resource allocation, and Docker orchestration, eliminating the need for separate machine types while enabling precise control over worker counts and resource binding.
 
-**Strategy**: Start with stable legacy foundation → Cherry-pick valuable improvements → Incrementally implement worker-driven architecture → Achieve specialized machine pools.
+**Strategy**: Enhance existing environment builder → Implement worker-driven architecture → Add Docker Compose orchestration → Achieve complete environment automation.
 
-## Phase 1: Foundation Recovery (Cherry-Pick Phase)
+## Phase 1: Enhanced Environment Builder with Docker Compose (Weeks 1-2)
 
-### 1.1 Pre-Cherry-Pick Setup
+### 1.1 Extend Environment Builder Core
+
+**Location**: `packages/env-management/src/`
+
+**New Types**:
+```typescript
+// types.ts additions
+export interface DockerComposeConfig {
+  services: Record<string, DockerServiceConfig>;
+  networks?: Record<string, any>;
+  volumes?: Record<string, any>;
+  profiles?: string[];
+}
+
+export interface DockerServiceConfig {
+  image?: string;
+  build?: string | { context: string; dockerfile: string };
+  environment?: string[]; // References to .env files
+  ports?: string[];
+  volumes?: string[];
+  depends_on?: string[];
+  deploy?: { resources?: { reservations?: { devices?: any[] } } };
+  condition?: string; // For conditional inclusion
+}
+
+export interface Profile {
+  description: string;
+  components: Components;
+  services?: Record<string, ServiceConfig>;
+  docker?: DockerComposeConfig; // New!
+}
+```
+
+**Enhanced Builder**:
+```typescript
+// builder.ts enhancements
+export class EnvironmentBuilder {
+  async buildFromProfile(profileName: string): Promise<BuildResult> {
+    // 1. Generate .env files (existing)
+    // 2. Generate docker-compose.yaml (new)
+    // 3. Generate any additional orchestration files
+  }
+  
+  private async generateDockerCompose(profile: Profile, resolvedVars: Record<string, string>): Promise<void>
+  private shouldIncludeService(serviceConfig: DockerServiceConfig, profile: Profile): boolean
+  private processServiceConfig(serviceConfig: DockerServiceConfig, resolvedVars: Record<string, string>): any
+}
+```
+
+### 1.2 Profile Templates with Docker
+
+**full-local.json**:
+```json
+{
+  "description": "Complete local development with Docker orchestration",
+  "components": {
+    "api": "local",
+    "worker": "local", 
+    "monitor": "local",
+    "redis": "local"
+  },
+  "docker": {
+    "services": {
+      "redis": {
+        "image": "redis:7-alpine",
+        "ports": ["6379:6379"],
+        "volumes": ["redis_data:/data"],
+        "condition": "components.redis === 'local'"
+      },
+      "machine": {
+        "build": "./apps/machine",
+        "environment": [".env"],
+        "volumes": [
+          "./apps/worker/bundled:/workspace/worker-bundled",
+          "machine_workspace:/workspace"
+        ],
+        "deploy": {
+          "resources": {
+            "reservations": {
+              "devices": [{"driver": "nvidia", "capabilities": ["gpu"]}]
+            }
+          }
+        }
+      }
+    },
+    "volumes": {
+      "redis_data": {},
+      "machine_workspace": {}
+    }
+  }
+}
+```
+
+**api-only.json**:
+```json
+{
+  "description": "API-only machine for external services",
+  "components": {
+    "api": "local",
+    "worker": "api-only",
+    "redis": "remote"
+  },
+  "docker": {
+    "services": {
+      "machine": {
+        "build": "./apps/machine",
+        "environment": [".env"],
+        "volumes": ["./apps/worker/bundled:/workspace/worker-bundled"]
+      }
+    }
+  }
+}
+```
+
+### 1.3 Validation & Testing
+
 ```bash
-# Ensure we're on clean turborepo branch
-git checkout turborepo
-git status  # Confirm clean state
+# Test complete environment generation
+pnpm env:build --profile=full-local
+# → .env files generated
+# → docker-compose.yaml generated
+# → Ready to run: docker compose up
 
-# Add and commit the plan document
-git add plans/SELECTIVE_CHERRY_PICK_PLAN.md plans/WORKER_DRIVEN_MACHINE_IMPLEMENTATION.md
-git commit -m "docs: add implementation plans for worker-driven machine system"
+pnpm env:build --profile=api-only  
+# → Different .env configuration
+# → Different docker-compose.yaml (no GPU)
 ```
 
-### 1.2 Cherry-Pick Execution Order
+## Phase 2: Worker-Driven Architecture Foundation (Weeks 3-4)
 
-**Phase 1A: Core Infrastructure (Low Risk)**
+### 2.1 Worker Configuration Specification
+
+**Environment Variables**:
 ```bash
-# 1. Core package improvements
-git cherry-pick 9611dcd  # feat(core): cleanup and improve core package
+# Worker count and resource binding specification
+WORKER_CONNECTORS=comfyui:2:gpu,openai:4:shared,playwright:1:cpu
 
-# 2. General cleanup
-git cherry-pick 01c7ed6  # chore: cleanup legacy files and configurations
-git cherry-pick df4a176  # chore: ignore Docker build artifacts and archive files
-
-# Test after Phase 1A
-pnpm machine:local:up:build
-```
-
-**Phase 1B: Monitor Improvements (Low Risk)**
-```bash
-# 3-7. Monitor deployment fixes
-git cherry-pick 5705b27  # fix(monitor): configure Vercel deployment for pnpm monorepo
-git cherry-pick 507d0ae  # feat(monitor): enhance workflow priority display
-git cherry-pick 4e8ad9c  # fix(monitor): correct @emp/core import path for Vercel build
-git cherry-pick ecb8f39  # fix(monitor,core): resolve client-side build issues for Vercel deployment
-git cherry-pick 9703abc  # fix(monitor): correct turbo filter syntax in Vercel build command
-
-# Test after Phase 1B
-pnpm dev:monitor
-```
-
-**Phase 1C: Documentation (Low Risk)**
-```bash
-# 8. Documentation restructure
-git cherry-pick c716909  # docs: reorganize documentation with narrative structure
-
-# Test after Phase 1C
-pnpm dev:docs
-```
-
-**Phase 1D: Component Library & Final Docs (Low Risk)**
-```bash
-# 9-13. Component and docs fixes
-git cherry-pick 0fb8453  # feat: add kling text-to-video component and utilities
-git cherry-pick 7148f33  # fix(docs): replace <br/> tags with newlines and fix FullscreenDiagram tags
-git cherry-pick 0d78de3  # feat(docs,machine): fix VitePress build errors and complete unified machine architecture
-git cherry-pick f48d27f  # fix(deps): update pnpm lockfile for unified machine dependencies
-git cherry-pick 3cba1ad  # fix(docs): configure VitePress output directory for Vercel deployment
-git cherry-pick 8234f41  # fix(docs): configure correct output directory for Vercel deployment
-
-# Final test of all components
-pnpm dev:docs && pnpm dev:monitor && pnpm machine:local:up:build
-```
-
-### 1.3 Post-Cherry-Pick Validation
-```bash
-# Test legacy machine functionality
-pnpm machine:local:up:build
-curl -s http://localhost:9092/health | jq
-
-# Test all services
-pnpm dev:api &
-pnpm dev:monitor &
-pnpm dev:docs &
-
-# Verify no regressions
-pnpm lint && pnpm typecheck && pnpm build
-```
-
-## Phase 2: Worker-Driven Architecture Foundation (Weeks 1-2)
-
-### 2.1 Concept: Single Machine, Multiple Configurations
-
-**Core Principle**: One Docker setup with dynamic service installation based on `WORKER_CONNECTORS`
-
-```
-Legacy:                    Worker-Driven:
-├── apps/machines/         ├── apps/machine/           # Single unified machine
-│   ├── gpu_machine/       │   ├── src/
-│   ├── api_machine/       │   │   ├── services/
-│   └── hybrid_machine/    │   │   │   ├── comfyui-installer.js
-                           │   │   │   ├── playwright-installer.js
-                           │   │   │   ├── service-manager.js
-                           │   │   │   └── worker-driven-installer.js
-                           │   │   └── config/
-                           │   │       └── ecosystem-generator.js  # Enhanced
-                           │   └── Dockerfile                      # Single unified
-```
-
-### 2.2 Environment Variable Strategy
-
-**Worker-Driven Variables**:
-```bash
-# Core machine identity
-MACHINE_ID=machine-001
-MACHINE_TYPE=worker-driven  # New type
-
-# Worker connector configuration (drives service installation)
-WORKER_CONNECTORS=comfyui,openai,replicate,playwright
+# Format: connector:count:binding
+# - connector: service connector type
+# - count: number of worker processes
+# - binding: gpu, cpu, shared (resource allocation)
 
 # Hardware configuration
-MACHINE_HAS_GPU=true
 MACHINE_GPU_COUNT=2
 MACHINE_RAM_GB=32
-
-# Service management
-PM2_INSTANCES_PER_GPU=1
-SERVICE_INSTALL_TIMEOUT=300
-
-# Redis integration (unchanged)
-HUB_REDIS_URL=redis://localhost:6379
+MACHINE_HAS_GPU=true
 ```
 
-### 2.3 Implementation Tasks
+### 2.2 Service Mapping System
 
-**Task 2.1: Enhanced Service Installer Framework**
-- Location: `apps/machine/src/services/worker-driven-installer.js`
-- Parse `WORKER_CONNECTORS` to determine required services
-- Install services dynamically on container startup
-- Support both Internal (ComfyUI, Playwright) and External (OpenAI, Replicate) services
+**Location**: `apps/machine/src/config/service-mapping.js`
 
-**Task 2.2: Enhanced Ecosystem Generator**
-- Location: `apps/machine/src/config/ecosystem-generator.js`
-- Generate PM2 processes based on `WORKER_CONNECTORS`
-- Support GPU-specific instances (comfyui-gpu0, comfyui-gpu1)
-- Handle mixed internal/external service workers
+```javascript
+export const SERVICE_MAPPING = {
+  // Internal Services (require installation)
+  'comfyui': {
+    type: 'internal',
+    service: 'comfyui',
+    installer: 'installComfyUI',
+    resource_binding: 'gpu',
+    service_instances_per_gpu: 1,
+    ports: [8188], // Base port, +1 per GPU
+  },
+  
+  'comfyui-websocket': {
+    type: 'internal', 
+    service: 'comfyui', // Same service, different connector
+    installer: 'installComfyUI',
+    resource_binding: 'gpu',
+    service_instances_per_gpu: 1,
+    ports: [8188],
+  },
+  
+  'playwright': {
+    type: 'internal',
+    service: 'playwright',
+    installer: 'installPlaywright',
+    resource_binding: 'cpu',
+    service_instances_per_machine: 1,
+    ports: [9090],
+  },
+  
+  // External Services (API only)
+  'openai': {
+    type: 'external',
+    service: null,
+    installer: null,
+    resource_binding: 'shared',
+    required_env: ['OPENAI_API_KEY'],
+  },
+  
+  'replicate': {
+    type: 'external',
+    service: null,
+    installer: null,
+    resource_binding: 'shared', 
+    required_env: ['REPLICATE_API_TOKEN'],
+  },
+};
+```
 
-**Task 2.3: Service-Specific Installers**
-- `comfyui-installer.js` - Enhanced for multi-GPU support
-- `playwright-installer.js` - New installer for browser automation
-- `service-manager.js` - Unified service lifecycle management
+### 2.3 Worker Configuration Parser
 
-## Phase 3: Service Integration & Testing (Weeks 3-4)
+**Location**: `apps/machine/src/config/worker-config-parser.js`
 
-### 3.1 Service Integration Matrix
+```javascript
+export class WorkerConfigParser {
+  parseWorkerConnectors(connectorString) {
+    // Parse "comfyui:2:gpu,openai:4:shared" format
+    // Return worker specifications with counts and bindings
+  }
+  
+  generateWorkerAllocation(workerSpecs, machineConfig) {
+    // Allocate workers to GPUs/resources
+    // Validate hardware requirements
+    // Return allocation plan
+  }
+  
+  validateRequirements(workerSpecs, machineConfig) {
+    // Check GPU availability
+    // Validate API keys for external services
+    // Ensure resource constraints are met
+  }
+}
+```
 
-| Service | Type | Installation | Worker Integration |
-|---------|------|-------------|-------------------|
-| ComfyUI | Internal | Custom nodes + models | PM2 instance per GPU |
-| Playwright | Internal | Browser + dependencies | PM2 service manager |
-| OpenAI | External | API key only | Direct HTTP connector |
-| Replicate | External | API key only | Direct HTTP connector |
-| RunPod | External | API key only | Direct HTTP connector |
+### 2.4 Worker-Driven Service Installer
 
-### 3.2 Implementation Tasks
+**Location**: `apps/machine/src/services/worker-driven-installer.js`
 
-**Task 3.1: ComfyUI Integration**
-- Preserve existing custom nodes installation (64 nodes)
-- Support multi-GPU PM2 instances
-- Maintain model download capabilities
-- Ensure compatibility with existing workflows
+```javascript
+export class WorkerDrivenInstaller {
+  async installFromWorkerConnectors(connectorList, machineConfig) {
+    const workerSpecs = this.parseWorkerConnectors(connectorList);
+    const allocation = this.generateWorkerAllocation(workerSpecs, machineConfig);
+    
+    // Install unique services only once
+    const servicesToInstall = new Set();
+    for (const spec of workerSpecs) {
+      if (spec.mapping.type === 'internal') {
+        servicesToInstall.add(spec.mapping.service);
+      }
+    }
+    
+    // Install each service
+    for (const service of servicesToInstall) {
+      await this.installService(service);
+    }
+    
+    return allocation;
+  }
+  
+  async installService(serviceName) {
+    switch(serviceName) {
+      case 'comfyui':
+        await this.installComfyUI();
+        break;
+      case 'playwright':
+        await this.installPlaywright();
+        break;
+      default:
+        throw new Error(`Unknown service: ${serviceName}`);
+    }
+  }
+}
+```
 
-**Task 3.2: Playwright Integration**
-- Create Playwright service installer
-- Browser instance management
-- Screenshot and automation capabilities
-- Integration with worker connector framework
+## Phase 3: Dynamic PM2 Ecosystem Generation (Weeks 5-6)
 
-**Task 3.3: External Service Configuration**
-- Unified API key management
-- Service endpoint configuration
-- Rate limiting and retry logic
-- Error handling and fallback strategies
+### 3.1 Enhanced Ecosystem Generator
 
-### 3.3 Testing Strategy
+**Location**: `apps/machine/src/config/ecosystem-generator.js` (enhanced)
 
-**Test 3.1: Individual Service Testing**
+```javascript
+export class EcosystemGenerator {
+  generateEcosystem(workerAllocation, machineConfig) {
+    const apps = [];
+    
+    // 1. Generate service processes (ComfyUI per GPU, Playwright service, etc.)
+    for (const serviceName of workerAllocation.services) {
+      const serviceApps = this.generateServiceApps(serviceName, workerAllocation, machineConfig);
+      apps.push(...serviceApps);
+    }
+    
+    // 2. Generate worker processes with proper resource binding
+    for (const worker of workerAllocation.workers) {
+      const workerApp = this.generateWorkerApp(worker);
+      apps.push(workerApp);
+    }
+    
+    return { apps };
+  }
+  
+  generateServiceApps(serviceName, allocation, machineConfig) {
+    switch (serviceName) {
+      case 'comfyui':
+        // One ComfyUI instance per GPU with workers
+        return this.generateComfyUIApps(allocation, machineConfig);
+      case 'playwright':
+        // Single Playwright service
+        return this.generatePlaywrightApps();
+      default:
+        return [];
+    }
+  }
+  
+  generateWorkerApp(worker) {
+    const app = {
+      name: worker.id,
+      script: '/workspace/worker-bundled/redis-direct-worker.cjs',
+      env: {
+        WORKER_ID: worker.id,
+        WORKER_CONNECTORS: worker.connector,
+        WORKER_TYPE: worker.connector,
+      },
+    };
+    
+    // Add GPU-specific configuration
+    if (worker.gpu_id !== undefined) {
+      app.env.CUDA_VISIBLE_DEVICES = worker.gpu_id.toString();
+      app.env.WORKER_GPU_ID = worker.gpu_id.toString();
+      app.env.COMFYUI_BASE_URL = `http://localhost:${8188 + worker.gpu_id}`;
+    }
+    
+    return app;
+  }
+}
+```
+
+### 3.2 Resource Allocation Examples
+
+**Dual-GPU ComfyUI Machine**:
 ```bash
-# Test GPU-only configuration
-WORKER_CONNECTORS=comfyui pnpm machine:local:up:build
+WORKER_CONNECTORS=comfyui:4:gpu
+MACHINE_GPU_COUNT=2
 
-# Test API-only configuration  
-WORKER_CONNECTORS=openai,replicate pnpm machine:local:up:build
-
-# Test mixed configuration
-WORKER_CONNECTORS=comfyui,openai,playwright pnpm machine:local:up:build
+# Generated PM2 Processes:
+# Services: comfyui-gpu0, comfyui-gpu1
+# Workers:  comfyui-worker-0 (gpu:0), comfyui-worker-1 (gpu:1), 
+#           comfyui-worker-2 (gpu:0), comfyui-worker-3 (gpu:1)
 ```
 
-**Test 3.2: Service Installation Validation**
-- Verify correct PM2 processes started
-- Confirm service health endpoints
-- Test worker connector functionality
-- Validate Redis job processing
+**Mixed Workload Machine**:
+```bash
+WORKER_CONNECTORS=comfyui:2:gpu,openai:6:shared,playwright:1:cpu
+MACHINE_GPU_COUNT=2
 
-## Phase 4: Advanced Features & Optimization (Weeks 5-6)
-
-### 4.1 Predictive Service Management
-
-**Concept**: Predict which services will be needed based on job queue patterns
-
-**Implementation**:
-- `service-predictor.js` - Analyze job patterns
-- `preload-manager.js` - Pre-install likely needed services
-- `cache-optimizer.js` - Optimize model and dependency caching
-
-### 4.2 Dynamic Service Scaling
-
-**Concept**: Add/remove services based on demand without container restart
-
-**Implementation**:
-- `hot-service-manager.js` - Runtime service addition/removal
-- `resource-monitor.js` - Track service resource usage
-- `scaling-controller.js` - Automatic service scaling decisions
-
-### 4.3 Pool Specialization Foundation
-
-**Concept**: Lay groundwork for specialized machine pools
-
-**Implementation**:
-- Pool-aware job routing in Redis functions
-- Service affinity preferences
-- Performance characteristic tracking
-- Machine capability advertisement
-
-## Phase 5: Production Deployment & Validation (Weeks 7-8)
-
-### 5.1 Container Optimization
-
-**Task 5.1: Multi-Stage Docker Build**
-```dockerfile
-# Base layer - common dependencies
-FROM nvidia/cuda:12.1-devel-ubuntu22.04 AS base
-# ... common setup
-
-# Service-specific layers
-FROM base AS comfyui-layer
-# ... ComfyUI dependencies
-
-FROM base AS playwright-layer  
-# ... Playwright dependencies
-
-# Final unified layer
-FROM base AS unified
-COPY --from=comfyui-layer /workspace/ComfyUI /opt/services/comfyui
-COPY --from=playwright-layer /opt/playwright /opt/services/playwright
+# Generated PM2 Processes:
+# Services: comfyui-gpu0, comfyui-gpu1, playwright-service
+# Workers:  comfyui-worker-0 (gpu:0), comfyui-worker-1 (gpu:1),
+#           openai-worker-0..5 (shared), playwright-worker-0 (cpu)
 ```
 
-**Task 5.2: Configuration Templates**
-- Machine configuration templates for common setups
-- Environment variable validation
-- Service compatibility checking
-- Resource requirement calculation
+## Phase 4: Docker Compose Integration (Weeks 7-8)
 
-### 5.2 Production Validation
+### 4.1 Worker-Driven Docker Generation
 
-**Validation 5.1: Performance Testing**
-- Service startup time benchmarks
-- Resource utilization under load
-- Job processing throughput comparison
-- Memory and storage efficiency
+**Location**: `packages/env-management/src/docker-compose-generator.js`
 
-**Validation 5.2: Reliability Testing**
-- Service failure recovery
-- Container restart resilience
-- Redis connection handling
-- Error propagation and logging
+```javascript
+export class DockerComposeGenerator {
+  generateForWorkerConfig(workerConnectors, machineConfig, resolvedVars) {
+    const workerSpecs = this.parseWorkerConnectors(workerConnectors);
+    const allocation = this.generateWorkerAllocation(workerSpecs, machineConfig);
+    
+    return {
+      version: '3.8',
+      services: {
+        machine: {
+          build: './apps/machine',
+          env_file: ['.env'],
+          volumes: [
+            './apps/worker/bundled:/workspace/worker-bundled',
+            'machine_workspace:/workspace'
+          ],
+          deploy: allocation.requiresGpu ? {
+            resources: {
+              reservations: {
+                devices: [{ driver: 'nvidia', capabilities: ['gpu'] }]
+              }
+            }
+          } : undefined,
+          ports: this.generatePorts(allocation),
+        },
+        ...this.generateAdditionalServices(allocation, resolvedVars)
+      },
+      volumes: {
+        machine_workspace: {}
+      }
+    };
+  }
+  
+  generatePorts(allocation) {
+    const ports = [];
+    
+    // ComfyUI ports (8188 + gpu_id)
+    if (allocation.services.has('comfyui')) {
+      for (let gpu = 0; gpu < allocation.gpuCount; gpu++) {
+        ports.push(`${8188 + gpu}:${8188 + gpu}`);
+      }
+    }
+    
+    // Playwright port
+    if (allocation.services.has('playwright')) {
+      ports.push('9090:9090');
+    }
+    
+    return ports;
+  }
+  
+  generateAdditionalServices(allocation, resolvedVars) {
+    const services = {};
+    
+    // Add Redis if configured as local
+    if (resolvedVars.REDIS_HOST === 'localhost') {
+      services.redis = {
+        image: 'redis:7-alpine',
+        ports: ['6379:6379'],
+        volumes: ['redis_data:/data']
+      };
+    }
+    
+    return services;
+  }
+}
+```
 
-## Phase 6: Documentation & Knowledge Transfer (Week 9)
+### 4.2 Profile Integration
 
-### 6.1 Documentation Updates
+**Enhanced Profiles with Worker Configuration**:
 
-**Doc 6.1: Machine Architecture Guide**
-- Worker-driven machine concept explanation
-- Service installation and configuration
-- Troubleshooting common issues
-- Performance tuning guidelines
+```json
+{
+  "description": "GPU machine with mixed workload",
+  "components": {
+    "api": "local",
+    "worker": "gpu-mixed",
+    "redis": "local"
+  },
+  "worker_config": {
+    "connectors": "comfyui:2:gpu,openai:4:shared",
+    "gpu_count": 2,
+    "ram_gb": 32
+  },
+  "docker": {
+    "auto_generate": true,
+    "additional_services": {
+      "redis": {
+        "image": "redis:7-alpine",
+        "condition": "components.redis === 'local'"
+      }
+    }
+  }
+}
+```
 
-**Doc 6.2: Operational Procedures**
-- Machine deployment procedures
-- Service management commands
-- Monitoring and alerting setup
-- Scaling and optimization strategies
+## Phase 5: Complete Integration & Testing (Weeks 9-10)
 
-### 6.2 Migration Guide
+### 5.1 End-to-End Workflow
 
-**Guide 6.1: Legacy to Worker-Driven**
-- Step-by-step migration process
-- Configuration mapping
-- Validation procedures
-- Rollback strategies
+```bash
+# Complete environment setup in one command
+pnpm env:build --profile=gpu-mixed
 
-## Success Metrics & Validation
+# Generated files:
+# → .env (all environment variables)
+# → docker-compose.yaml (complete orchestration)
+# → Machine configured for: 2 ComfyUI + 4 OpenAI workers
+
+# Start everything
+docker compose up --build
+
+# PM2 processes automatically created:
+# → comfyui-gpu0, comfyui-gpu1 (services)
+# → comfyui-worker-0, comfyui-worker-1 (GPU workers)
+# → openai-worker-0, openai-worker-1, openai-worker-2, openai-worker-3 (API workers)
+```
+
+### 5.2 Profile Examples
+
+**Development Profile**:
+```bash
+pnpm env:build --profile=dev-full
+# → Local Redis, single GPU, mixed workers
+# → Ports exposed for debugging
+# → Development-friendly configuration
+```
+
+**Production GPU Profile**:
+```bash
+pnpm env:build --profile=prod-gpu
+# → Remote Redis, multiple GPUs, optimized workers
+# → No port exposure, production hardening
+# → Resource limits and monitoring
+```
+
+**API Gateway Profile**:
+```bash
+pnpm env:build --profile=api-gateway
+# → Multiple API service workers
+# → No GPU allocation, CPU optimized
+# → High concurrency configuration
+```
+
+### 5.3 Validation & Testing Framework
+
+```bash
+# Test worker allocation
+pnpm test:worker-allocation
+
+# Test service installation
+pnpm test:service-install
+
+# Test Docker generation
+pnpm test:docker-compose
+
+# Test complete profile builds
+pnpm test:profiles
+
+# Integration test with actual containers
+pnpm test:integration
+```
+
+## Implementation Timeline
+
+| Phase | Duration | Key Deliverables |
+|-------|----------|------------------|
+| 1 | 2 weeks | Enhanced environment builder with Docker Compose generation |
+| 2 | 2 weeks | Worker-driven architecture with service mapping |
+| 3 | 2 weeks | Dynamic PM2 ecosystem generation |
+| 4 | 2 weeks | Complete Docker Compose integration |
+| 5 | 2 weeks | Testing, validation, and production readiness |
+
+**Total Duration**: 10 weeks to full production deployment
+
+## Success Metrics
 
 ### Technical Metrics
-- ✅ Single Docker setup supports all service combinations
-- ✅ Service installation time < 5 minutes for full stack
-- ✅ Zero downtime service addition/removal
+- ✅ Single command environment setup (`pnpm env:build --profile=X`)
+- ✅ Automatic Docker orchestration generation
+- ✅ Precise worker count and resource allocation
+- ✅ Dynamic service installation based on worker needs
+- ✅ GPU allocation and port management
 - ✅ 100% compatibility with existing Redis job broker
-- ✅ Resource utilization improvement > 20%
 
 ### Operational Metrics
-- ✅ Simplified deployment (1 Docker setup vs 3)
-- ✅ Reduced configuration complexity
-- ✅ Improved debugging and monitoring
-- ✅ Faster development iteration cycles
+- ✅ Simplified deployment (1 profile → complete environment)
+- ✅ Flexible worker scaling (change numbers, redeploy)
+- ✅ Resource optimization (only install needed services)
+- ✅ Environment consistency across dev/staging/production
 
 ### User Experience Metrics
-- ✅ No change to existing job submission API
-- ✅ No change to monitoring interface
-- ✅ Improved machine capability visibility
-- ✅ Faster job processing through better resource utilization
+- ✅ No manual Docker configuration needed
+- ✅ Clear worker count and resource specification
+- ✅ Rapid environment switching between profiles
+- ✅ Comprehensive validation and error messages
 
 ## Risk Mitigation
 
 ### High-Risk Areas
-1. **Service Interference**: Multiple services competing for resources
-   - **Mitigation**: Resource allocation controls, isolated service environments
-   
-2. **Installation Complexity**: Complex service dependency management
-   - **Mitigation**: Incremental rollout, comprehensive testing, rollback procedures
+1. **Complex Resource Allocation**: Worker-to-GPU mapping complexity
+   - **Mitigation**: Extensive validation, clear error messages, comprehensive testing
 
-3. **Performance Regression**: Unified machine performing worse than specialized
-   - **Mitigation**: Extensive benchmarking, A/B testing, performance monitoring
+2. **Docker Generation Complexity**: Many conditional scenarios
+   - **Mitigation**: Template-based generation, profile validation, incremental testing
+
+3. **Performance Regression**: Additional abstraction layers
+   - **Mitigation**: Performance benchmarking, A/B testing, optimization
 
 ### Rollback Strategy
 - Maintain legacy machine setup during transition
 - Feature flags for worker-driven vs legacy mode
-- Automated performance comparison and alerting
-- Quick rollback procedures documented and tested
+- Profile-based rollback capabilities
+- Automated testing and validation
 
-## Timeline Summary
+## Benefits Summary
 
-| Phase | Duration | Key Deliverables |
-|-------|----------|------------------|
-| 1 | 1 week | Cherry-picked improvements, stable foundation |
-| 2 | 2 weeks | Worker-driven architecture foundation |
-| 3 | 2 weeks | Service integration and testing |
-| 4 | 2 weeks | Advanced features and optimization |
-| 5 | 2 weeks | Production deployment and validation |
-| 6 | 1 week | Documentation and knowledge transfer |
+This implementation provides:
 
-**Total Duration**: 10 weeks to full production deployment
+1. **Complete Environment Automation**: Single command creates everything needed
+2. **Precise Resource Control**: Exact worker counts and GPU allocation
+3. **Service Optimization**: Only install and run what's needed
+4. **Flexible Scaling**: Change worker counts without rebuilding
+5. **Consistent Orchestration**: Docker Compose generation matches worker needs
+6. **Profile-Based Environments**: Complete environment templates
+7. **Production Ready**: Full validation, testing, and deployment automation
 
-## Next Steps
-
-1. **Execute Phase 1**: Begin cherry-pick process following the established plan
-2. **Validate Foundation**: Ensure legacy machine functionality is preserved
-3. **Plan Phase 2**: Detailed technical design for worker-driven architecture
-4. **Team Alignment**: Review plan with stakeholders and adjust timeline as needed
-
-This plan provides a structured path from our current stable state to a unified, worker-driven machine architecture that maintains all existing functionality while enabling future specialized machine pools and predictive model management.
+The result is a truly worker-driven system where specifying worker requirements automatically configures the entire machine, services, and orchestration - advancing directly toward the North Star architecture of specialized machine pools with intelligent resource management.

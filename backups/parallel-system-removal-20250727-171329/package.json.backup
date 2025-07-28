@@ -1,0 +1,73 @@
+{
+  "name": "emp-ai-backend",
+  "version": "1.0.0",
+  "description": "EmProps AI Backend - Distributed AI workload orchestration with specialized machine pools",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "turbo run build",
+    "dev": "pnpm env:build --profile=full-local && turbo run dev",
+    "lint": "turbo run lint",
+    "typecheck": "turbo run typecheck",
+    "test": "turbo run test",
+    "clean": "turbo run clean && rm -rf node_modules",
+    "install:clean": "rm -rf node_modules pnpm-lock.yaml && pnpm install",
+    "env:build": "node scripts/env/build-env.js",
+    "env:build:worker-driven": "node scripts/env/build-worker-driven-env.js",
+    "env:switch": "node scripts/env/switch-env.js",
+    "env:validate": "node scripts/env/validate-env.js",
+    "env:list": "node scripts/env/list-profiles.js",
+    "run-profile": "node scripts/env/profile-runner.js",
+    "run-profile:debug": "DEBUG_MODE=true node scripts/env/profile-runner.js",
+    "run-service": "node scripts/env/service-runner.js",
+    "profiles": "node scripts/env/list-profiles.js",
+    "dev:api": "turbo run dev --filter=api",
+    "dev:worker": "turbo run dev --filter=worker",
+    "dev:worker:local": "./scripts/dev-worker-local.sh",
+    "dev:monitor": "turbo run dev --filter=monitor",
+    "dev:docs": "turbo run dev --filter=docs",
+    "dev:local-redis": "./scripts/dev-local-redis.sh",
+    "dev:local-redis:stop": "brew services stop redis",
+    "shutdown": "./scripts/shutdown-all.sh",
+    "setup:developer": "pnpm install && pnpm dev:local-redis",
+    "dev:all": "pnpm dev",
+    "logs": "node scripts/log-viewer.js",
+    "logs:redis": "./scripts/redis-monitor-filtered.sh",
+    "env:show": "node scripts/show-service-env.js",
+    "machine:up": "node scripts/env/machine-compose.js up",
+    "machine:up:build": "node scripts/env/machine-compose.js up --build",
+    "machine:down": "node scripts/env/machine-compose.js down",
+    "machine:build": "node scripts/env/machine-compose.js build",
+    "machine:pull": "node scripts/env/machine-compose.js pull",
+    "machine:push": "node scripts/env/machine-compose.js push",
+    "machine:logs": "node scripts/env/machine-compose.js logs",
+    "machine:status": "curl -s http://localhost:9092/health | jq || echo '❌ Health check failed'",
+    "compose:profile": "node scripts/env/compose-build.js"
+  },
+  "devDependencies": {
+    "@typescript-eslint/eslint-plugin": "^6.21.0",
+    "@typescript-eslint/parser": "^6.21.0",
+    "esbuild": "^0.25.6",
+    "eslint": "^8.57.1",
+    "eslint-config-prettier": "^9.1.0",
+    "eslint-plugin-prettier": "^5.5.1",
+    "playwright": "^1.53.2",
+    "prettier": "^3.6.2",
+    "turbo": "^2.0.0",
+    "typescript": "^5.0.0"
+  },
+  "engines": {
+    "node": ">=18.0.0",
+    "pnpm": ">=10.0.0"
+  },
+  "packageManager": "pnpm@10.12.4",
+  "workspaces": [
+    "apps/*",
+    "packages/*",
+    "tools"
+  ],
+  "dependencies": {
+    "chalk": "^5.4.1",
+    "js-yaml": "^4.1.0"
+  }
+}
