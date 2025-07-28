@@ -4,7 +4,6 @@ This guide provides detailed technical diagrams and implementation details for t
 
 ## Service Startup Sequence
 
-<FullscreenDiagram>
 ```mermaid
 sequenceDiagram
     participant Docker as Docker Container
@@ -53,11 +52,9 @@ sequenceDiagram
     
     Note over Docker,Health: Machine ready for jobs
 ```
-</FullscreenDiagram>
 
 ## Redis Job Matching Algorithm
 
-<FullscreenDiagram>
 ```mermaid
 flowchart TD
     START[Worker requests job] --> CHECK_QUEUE{Jobs in queue?}
@@ -92,11 +89,9 @@ flowchart TD
     style CLAIMED fill:#f3e5f5
     style COMPLETE fill:#c8e6c9
 ```
-</FullscreenDiagram>
 
 ## Docker Layer Caching Strategy
 
-<FullscreenDiagram>
 ```mermaid
 graph TB
     subgraph "Cache Optimization Flow"
@@ -199,11 +194,9 @@ Runtime injection]
     style L5B fill:#f5f5f5
     style L5C fill:#f5f5f5
 ```
-</FullscreenDiagram>
 
 ## Service Communication Patterns
 
-<FullscreenDiagram>
 ```mermaid
 graph TB
     subgraph "GPU Machine Communication"
@@ -256,11 +249,9 @@ WebSocket Client]
     style OPENAI_API fill:#ffebee
     style MONITOR_UI fill:#e8f5e8
 ```
-</FullscreenDiagram>
 
 ## Error Handling & Recovery
 
-<FullscreenDiagram>
 ```mermaid
 stateDiagram-v2
     [*] --> Healthy: Service starts
@@ -298,11 +289,9 @@ stateDiagram-v2
         • Container exit
     end note
 ```
-</FullscreenDiagram>
 
 ## Performance Monitoring
 
-<FullscreenDiagram>
 ```mermaid
 graph TD
     subgraph "Metrics Collection"
@@ -372,11 +361,9 @@ Alerting rules]
     style REDIS_PUB fill:#ffebee
     style WEBSOCKET_UI fill:#f9fbe7
 ```
-</FullscreenDiagram>
 
 ## Configuration Management
 
-<FullscreenDiagram>
 ```mermaid
 flowchart LR
     subgraph "Configuration Sources (Priority Order)"
@@ -440,11 +427,9 @@ Timeout values]
     style COMPUTED fill:#c8e6c9
     style PM2_GEN fill:#f9fbe7
 ```
-</FullscreenDiagram>
 
 ## Deployment Pipeline
 
-<FullscreenDiagram>
 ```mermaid
 graph TB
     subgraph "Development Phase"
@@ -517,11 +502,9 @@ Alert validation]
     style DEPLOY_PROD fill:#c8e6c9
     style MONITORING fill:#e0f2f1
 ```
-</FullscreenDiagram>
 
 ## Resource Allocation Strategy
 
-<FullscreenDiagram>
 ```mermaid
 graph TB
     subgraph "Resource Pools"
@@ -601,7 +584,6 @@ Route to appropriate pool]
     style CLASSIFY fill:#fff3e0
     style SCALER fill:#e8f5e8
 ```
-</FullscreenDiagram>
 
 ## Implementation Checklist
 
