@@ -7,7 +7,6 @@
  */
 
 import fs from 'fs';
-import path from 'path';
 import { HardwareDetector } from './hardware-detector.js';
 
 export class EnhancedPM2EcosystemGenerator {
@@ -81,7 +80,7 @@ export class EnhancedPM2EcosystemGenerator {
    * Example: "comfyui:2,simulation:1,comfyui-remote:1"
    */
   parseWorkerSpecs() {
-    const workersEnv = process.env.WORKERS || process.env.WORKER_CONNECTORS || '';
+    const workersEnv = process.env.WORKERS || '';
     const workerSpecs = [];
     
     if (!workersEnv) {
