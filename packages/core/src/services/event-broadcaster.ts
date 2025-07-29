@@ -362,7 +362,7 @@ export class EventBroadcaster {
     switch (event.type) {
       case 'job_submitted':
         // Pass through job_submitted as-is (no translation to job_accepted)
-        return event as EmPropsMessage;
+        return event as unknown as EmPropsMessage;
 
       case 'update_job_progress':
         return {
