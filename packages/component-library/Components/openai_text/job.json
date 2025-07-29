@@ -1,0 +1,14 @@
+{
+  "service_required": "openai_text",
+  "priority": 5,
+  "payload": {
+    "job_type": "openai_text",
+    "prompt": "",
+    "max_tokens": 200,
+    "temperature": 0.7,
+    "model": "gpt-4o-mini",
+    "api_key": ""
+  },
+  "output_field": "data.data.text",
+  "requirements": {}
+}

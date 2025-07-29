@@ -1,0 +1,348 @@
+{
+  "info": {
+    "name": "EMP Job Queue API",
+    "description": "Distributed AI workload broker API endpoints for elastic machine orchestration",
+    "version": "1.0.0",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    {
+      "key": "baseUrl",
+      "value": "http://localhost:9092",
+      "type": "string",
+      "description": "API base URL for local development"
+    },
+    {
+      "key": "jobId",
+      "value": "",
+      "type": "string",
+      "description": "Job ID for job-specific requests"
+    },
+    {
+      "key": "machineId",
+      "value": "",
+      "type": "string",
+      "description": "Machine ID for machine-specific requests"
+    }
+  ],
+  "item": [
+    {
+      "name": "Health & Status",
+      "item": [
+        {
+          "name": "Health Check",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/health",
+              "host": ["{{baseUrl}}"],
+              "path": ["health"]
+            },
+            "description": "Check API server health and Redis connectivity"
+          },
+          "response": []
+        },
+        {
+          "name": "Version Info",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/version",
+              "host": ["{{baseUrl}}"],
+              "path": ["version"]
+            },
+            "description": "Get API server version information"
+          },
+          "response": []
+        },
+        {
+          "name": "Test Broadcast",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/test-broadcast",
+              "host": ["{{baseUrl}}"],
+              "path": ["test-broadcast"]
+            },
+            "description": "Test WebSocket broadcast functionality"
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Connection Management",
+      "item": [
+        {
+          "name": "Get Connections",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/connections",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "connections"]
+            },
+            "description": "Get all active connections (machines, workers, services)"
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Job Management",
+      "item": [
+        {
+          "name": "Submit Job",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"service_required\": \"text_generation\",\n  \"job_type\": \"openai_text\",\n  \"priority\": 5,\n  \"payload\": {\n    \"prompt\": \"Explain the concept of distributed computing in simple terms.\",\n    \"max_tokens\": 200,\n    \"temperature\": 0.7\n  },\n  \"requirements\": {\n    \"memory_mb\": 1024,\n    \"timeout_seconds\": 60\n  },\n  \"customer_id\": \"test-customer\",\n  \"workflow_id\": \"test-workflow-001\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/jobs",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "jobs"]
+            },
+            "description": "Submit a new job to the queue"
+          },
+          "response": []
+        },
+        {
+          "name": "Submit Image Generation Job",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"service_required\": \"image_generation\",\n  \"job_type\": \"openai_image\",\n  \"priority\": 5,\n  \"payload\": {\n    \"prompt\": \"A futuristic cityscape with flying cars and neon lights\",\n    \"size\": \"1024x1024\",\n    \"quality\": \"standard\",\n    \"n\": 1\n  },\n  \"requirements\": {\n    \"memory_mb\": 2048,\n    \"timeout_seconds\": 120\n  },\n  \"customer_id\": \"test-customer\",\n  \"workflow_id\": \"test-workflow-002\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/jobs",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "jobs"]
+            },
+            "description": "Submit an image generation job using OpenAI DALL-E"
+          },
+          "response": []
+        },
+        {
+          "name": "Submit ComfyUI Job",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"service_required\": \"image_generation\",\n  \"job_type\": \"comfyui_workflow\",\n  \"priority\": 3,\n  \"payload\": {\n    \"workflow\": {\n      \"3\": {\n        \"inputs\": {\n          \"seed\": 42,\n          \"steps\": 20,\n          \"cfg\": 8,\n          \"sampler_name\": \"euler\",\n          \"scheduler\": \"normal\",\n          \"denoise\": 1,\n          \"model\": [\"4\", 0],\n          \"positive\": [\"6\", 0],\n          \"negative\": [\"7\", 0],\n          \"latent_image\": [\"5\", 0]\n        },\n        \"class_type\": \"KSampler\",\n        \"_meta\": { \"title\": \"KSampler\" }\n      }\n    },\n    \"prompt\": \"A beautiful landscape with mountains\"\n  },\n  \"requirements\": {\n    \"memory_mb\": 4096,\n    \"gpu_memory_mb\": 8192,\n    \"timeout_seconds\": 300\n  },\n  \"customer_id\": \"test-customer\",\n  \"workflow_id\": \"test-workflow-003\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/jobs",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "jobs"]
+            },
+            "description": "Submit a ComfyUI workflow job for image generation"
+          },
+          "response": []
+        },
+        {
+          "name": "Get Job by ID",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/jobs/{{jobId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "jobs", "{{jobId}}"]
+            },
+            "description": "Get specific job details by job ID"
+          },
+          "response": []
+        },
+        {
+          "name": "List Jobs",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/jobs?status=pending&limit=10&offset=0",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "jobs"],
+              "query": [
+                {
+                  "key": "status",
+                  "value": "pending",
+                  "description": "Filter by job status (pending, assigned, processing, completed, failed)"
+                },
+                {
+                  "key": "limit",
+                  "value": "10",
+                  "description": "Number of jobs to return"
+                },
+                {
+                  "key": "offset",
+                  "value": "0",
+                  "description": "Offset for pagination"
+                },
+                {
+                  "key": "service_required",
+                  "value": "text_generation",
+                  "description": "Filter by service type",
+                  "disabled": true
+                },
+                {
+                  "key": "customer_id",
+                  "value": "test-customer",
+                  "description": "Filter by customer ID",
+                  "disabled": true
+                }
+              ]
+            },
+            "description": "List jobs with optional filtering and pagination"
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Machine Management",
+      "item": [
+        {
+          "name": "Delete Machine",
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/machines/{{machineId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "machines", "{{machineId}}"]
+            },
+            "description": "Remove a machine from the system"
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "System Maintenance",
+      "item": [
+        {
+          "name": "Cleanup System",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"cleanupType\": \"all\",\n  \"olderThan\": 3600,\n  \"includeCompleted\": true,\n  \"includeFailed\": true\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/cleanup",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "cleanup"]
+            },
+            "description": "Clean up old jobs and system data"
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Worker Capabilities Examples",
+      "description": "Example job payloads for different worker types and capabilities",
+      "item": [
+        {
+          "name": "Submit Simulation Job",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"service_required\": \"simulation\",\n  \"job_type\": \"load_test\",\n  \"priority\": 1,\n  \"payload\": {\n    \"duration_ms\": 5000,\n    \"cpu_intensive\": false,\n    \"memory_usage_mb\": 100,\n    \"success_rate\": 0.95\n  },\n  \"requirements\": {\n    \"memory_mb\": 512,\n    \"timeout_seconds\": 30\n  },\n  \"customer_id\": \"test-customer\",\n  \"workflow_id\": \"simulation-test-001\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/jobs",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "jobs"]
+            },
+            "description": "Submit a simulation job for testing worker behavior"
+          },
+          "response": []
+        },
+        {
+          "name": "Submit Browser Automation Job",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"service_required\": \"browser_automation\",\n  \"job_type\": \"playwright_screenshot\",\n  \"priority\": 4,\n  \"payload\": {\n    \"url\": \"https://example.com\",\n    \"viewport\": {\n      \"width\": 1920,\n      \"height\": 1080\n    },\n    \"wait_for\": \"networkidle\",\n    \"full_page\": true\n  },\n  \"requirements\": {\n    \"memory_mb\": 2048,\n    \"timeout_seconds\": 60\n  },\n  \"customer_id\": \"test-customer\",\n  \"workflow_id\": \"browser-test-001\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/jobs",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "jobs"]
+            },
+            "description": "Submit a browser automation job using Playwright"
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Development & Testing",
+      "description": "Endpoints for development, testing, and debugging",
+      "item": [
+        {
+          "name": "WebSocket Connection Test",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "ws://localhost:9092/ws",
+              "protocol": "ws",
+              "host": ["localhost"],
+              "port": "9092",
+              "path": ["ws"]
+            },
+            "description": "WebSocket endpoint for real-time job and machine status updates. Use a WebSocket client to connect."
+          },
+          "response": []
+        }
+      ]
+    }
+  ]
+}

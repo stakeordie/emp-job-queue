@@ -483,8 +483,8 @@ export const useMonitorStore = create<MonitorStore>()(
         console.log('[Store] Processing machine event:', event.type, event);
       }
       
-      // Only log important events, skip progress spam
-      if (event.type !== 'update_job_progress' && event.type !== 'heartbeat_ack' && event.type !== 'heartbeat') {
+      // Only log important events, skip progress spam  
+      if (event.type !== 'update_job_progress') {
         addLog({
           level: 'debug',
           category: 'event',

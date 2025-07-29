@@ -133,7 +133,8 @@ class ComposeBuilder {
   async generateEnvironmentForWorkerSpec(workerSpec) {
     const serviceMapping = await this.loadServiceMapping();
     const environment = {
-      'WORKERS': workerSpec.raw
+      'WORKERS': workerSpec.raw,
+      'MACHINE_ID': `${workerSpec.profileName}-\${ENV:-local}`
     };
 
     // Collect all required and optional environment variables for all workers

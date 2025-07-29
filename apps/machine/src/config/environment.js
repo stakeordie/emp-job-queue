@@ -1,5 +1,6 @@
 import Joi from 'joi';
 import dotenv from 'dotenv';
+import crypto from 'crypto';
 import { createLogger } from '../utils/logger.js';
 
 const logger = createLogger('config');
@@ -97,12 +98,21 @@ const schema = Joi.object({
   })
 });
 
+// Generate a short UUID for machine uniqueness
+function generateShortUUID() {
+  return crypto.randomBytes(4).toString('hex');
+}
+
 // Build configuration from environment variables
 // GPU configuration will be auto-detected at runtime
 function buildConfig() {
+  // Generate unique machine ID with short UUID suffix
+  const baseId = process.env.MACHINE_ID || process.env.CONTAINER_NAME || 'basic-machine';
+  const machineId = baseId.includes('-') ? `${baseId}-${generateShortUUID()}` : `${baseId}-${generateShortUUID()}`;
+  
   const config = {
     machine: {
-      id: process.env.MACHINE_ID || process.env.CONTAINER_NAME,
+      id: machineId,
       testMode: process.env.TEST_MODE === 'true',
       gpu: {
         count: parseInt(process.env.MACHINE_NUM_GPUS || '2'),

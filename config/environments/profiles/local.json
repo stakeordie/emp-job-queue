@@ -42,6 +42,10 @@
     "simulation": [
       "local",
       "big"
+    ],
+    "openai": [
+      "default",
+      "local"
     ]
   },
   "services": {}

@@ -14,6 +14,84 @@ import { Checkbox } from '@/components/ui/checkbox';
 import { useMonitorStore } from '@/store';
 import { Plus, X } from 'lucide-react';
 
+// Random sentence generators for batch testing
+const SUBJECTS = ['A curious robot', 'An ancient wizard', 'A space explorer', 'A brave knight', 'A clever scientist', 'A magical cat', 'A friendly dragon', 'A time traveler', 'A wise owl', 'A young artist'];
+const ACTIONS = ['discovers', 'creates', 'explores', 'builds', 'paints', 'writes', 'composes', 'designs', 'invents', 'learns'];
+const OBJECTS = ['a hidden treasure', 'a beautiful melody', 'a mysterious portal', 'an incredible machine', 'a stunning landscape', 'a fascinating story', 'a perfect recipe', 'a brilliant solution', 'a magical spell', 'a wonderful garden'];
+const SETTINGS = ['in a enchanted forest', 'on a distant planet', 'in a bustling city', 'beneath the ocean', 'atop a mountain', 'in a cozy library', 'within a crystal cave', 'beside a flowing river', 'in a floating castle', 'under the starry sky'];
+
+const IMAGE_SUBJECTS = ['A majestic', 'A serene', 'A vibrant', 'A mystical', 'A peaceful', 'A dramatic', 'A ethereal', 'A golden', 'A misty', 'A colorful'];
+const IMAGE_OBJECTS = ['sunset over mountains', 'forest with ancient trees', 'lake reflecting clouds', 'city skyline at night', 'field of wildflowers', 'waterfall in a canyon', 'desert with sand dunes', 'beach with crashing waves', 'garden with butterflies', 'valley filled with mist'];
+const IMAGE_STYLES = ['in impressionist style', 'with soft watercolors', 'in photorealistic detail', 'with dreamy lighting', 'in vintage tones', 'with rainbow colors', 'in minimalist design', 'with dramatic shadows', 'in pastel hues', 'with golden hour lighting'];
+
+function generateRandomTextPrompt(): string {
+  const subject = SUBJECTS[Math.floor(Math.random() * SUBJECTS.length)];
+  const action = ACTIONS[Math.floor(Math.random() * ACTIONS.length)];
+  const object = OBJECTS[Math.floor(Math.random() * OBJECTS.length)];
+  const setting = SETTINGS[Math.floor(Math.random() * SETTINGS.length)];
+  return `Write a creative story about how ${subject.toLowerCase()} ${action} ${object} ${setting}.`;
+}
+
+function generateRandomImagePrompt(): string {
+  const subject = IMAGE_SUBJECTS[Math.floor(Math.random() * IMAGE_SUBJECTS.length)];
+  const object = IMAGE_OBJECTS[Math.floor(Math.random() * IMAGE_OBJECTS.length)];
+  const style = IMAGE_STYLES[Math.floor(Math.random() * IMAGE_STYLES.length)];
+  return `${subject} ${object} ${style}`;
+}
+
+// Generate fresh random payload for batch jobs
+function generateFreshPayload(jobType: string, useCpuMode: boolean = false): Record<string, unknown> {
+  let payloadKey = jobType;
+  
+  // Use CPU-specific payload for ComfyUI when CPU mode is enabled
+  if (jobType === 'comfyui' && useCpuMode) {
+    payloadKey = 'comfyui-cpu';
+  }
+  
+  // Generate fresh random content for OpenAI services
+  if (jobType === 'openai_text') {
+    return {
+      prompt: generateRandomTextPrompt(),
+      temperature: 0.7,
+      max_tokens: 500
+    };
+  }
+  
+  if (jobType === 'openai_image') {
+    return {
+      prompt: generateRandomImagePrompt(),
+      size: "1024x1024",
+      quality: "standard",
+      n: 1
+    };
+  }
+  
+  // For simulation, generate new random seed
+  if (jobType === 'simulation') {
+    return {
+      steps: 20,
+      seed: Math.floor(Math.random() * 1000000000),
+      simulation_time: 5
+    };
+  }
+  
+  // For ComfyUI, update the seed to prevent caching
+  if (jobType === 'comfyui' || payloadKey === 'comfyui-cpu') {
+    const basePayload = DEFAULT_PAYLOADS[payloadKey as keyof typeof DEFAULT_PAYLOADS];
+    if (payloadKey === 'comfyui' && basePayload && typeof basePayload === 'object' && 'workflow' in basePayload) {
+      const freshPayload = JSON.parse(JSON.stringify(basePayload));
+      if (freshPayload.workflow && freshPayload.workflow["85"] && freshPayload.workflow["85"].inputs) {
+        freshPayload.workflow["85"].inputs.seed = Date.now() + Math.floor(Math.random() * 1000);
+      }
+      return freshPayload;
+    }
+    return basePayload;
+  }
+  
+  // Return default payload for other job types
+  return DEFAULT_PAYLOADS[payloadKey as keyof typeof DEFAULT_PAYLOADS];
+}
+
 // Default payloads for different job types from original monitor
 const DEFAULT_PAYLOADS = {
   simulation: {
@@ -214,6 +292,17 @@ const DEFAULT_PAYLOADS = {
         temperature: 0.7
       }
     }
+  },
+  openai_text: {
+    prompt: generateRandomTextPrompt(),
+    temperature: 0.7,
+    max_tokens: 500
+  },
+  openai_image: {
+    prompt: generateRandomImagePrompt(),
+    size: "1024x1024",
+    quality: "standard",
+    n: 1
   }
 };
 
@@ -221,6 +310,8 @@ const SERVICE_TYPES = [
   { value: 'simulation', label: 'Simulation' },
   { value: 'comfyui', label: 'ComfyUI' },
   { value: 'a1111', label: 'Automatic1111' },
+  { value: 'openai_text', label: 'OpenAI Text' },
+  { value: 'openai_image', label: 'OpenAI Image' },
   { value: 'comfyui-sim', label: 'ComfyUI (Simulated)' },
   { value: 'a1111-sim', label: 'A1111 (Simulated)' },
   { value: 'rest', label: 'REST API' }
@@ -421,7 +512,15 @@ export function JobSubmissionForm() {
       };
 
       for(let v = 1; v <= job_number; v++){
-        submitJob(jobData);
+        // Generate fresh random payload for each job in the batch
+        const freshPayload = generateFreshPayload(serviceType, useCpuMode);
+        
+        const jobWithFreshPayload = {
+          ...jobData,
+          payload: freshPayload
+        };
+        
+        submitJob(jobWithFreshPayload);
         setLastSubmission(new Date().toLocaleTimeString());
       }
       

@@ -1,0 +1,12 @@
+{
+  "service_type": "openai_image",
+  "payload": {
+    "prompt": "{{prompt}}",
+    "model": "gpt-image-1",
+    "size": "{{size}}",
+    "quality": "{{quality}}",
+    "n": 1
+  },
+  "response_type": "file",
+  "output_field": "result.data.image_url"
+}

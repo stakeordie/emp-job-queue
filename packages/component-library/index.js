@@ -20,6 +20,7 @@ const getComponentPaths = (componentName) => ({
   credits: path.join(componentsDir, componentName, "credits.js"),
   api: path.join(componentsDir, componentName, "api.json"),
   body: path.join(componentsDir, componentName, "body.json"),
+  job: path.join(componentsDir, componentName, "job.json"),
 });
 
 async function fetchGetComponent(config, name) {
@@ -427,12 +428,15 @@ async function detectComponentType(componentPath) {
   const hasApi = await fs.pathExists(paths.api);
   const hasForm = await fs.pathExists(paths.form);
   const hasCredits = await fs.pathExists(paths.credits);
+  const hasJob = await fs.pathExists(paths.job);
   
-  if (hasWorkflow && hasForm) {
+  if (hasJob && hasForm) {
+    return "direct_job";
+  } else if (hasWorkflow && hasForm) {
     return "comfy_workflow";
   } else if (hasApi && hasForm) {
     return "fetch_api";
-  } else if (hasCredits && !hasForm && !hasWorkflow && !hasApi) {
+  } else if (hasCredits && !hasForm && !hasWorkflow && !hasApi && !hasJob) {
     return "basic";
   }
   
@@ -500,7 +504,7 @@ async function addComponent(componentName) {
         }),
         output_mime_type: await input({
           message: "Enter the output mime type",
-          default: detectedType === "fetch_api" ? "application/json" : "image/png",
+          default: detectedType === "fetch_api" || detectedType === "direct_job" ? "application/json" : "image/png",
         }),
         type: detectedType,
         order: await number({
@@ -596,6 +600,7 @@ async function newComponent() {
             { title: "Basic", value: "basic" },
             { title: "Comfy Workflow", value: "comfy_workflow" },
             { title: "Fetch API", value: "fetch_api" },
+            { title: "Direct Job", value: "direct_job" },
           ],
         }),
         order: await number({
@@ -664,6 +669,35 @@ async function newComponent() {
           await fs.writeJson(paths.api, {}, { spaces: 2 });
           await fs.writeJson(paths.inputs, {}, { spaces: 2 });
           await fs.writeJson(paths.body, {}, { spaces: 2 });
+          await fs.writeFile(
+            paths.credits,
+            `function computeCost(context) {\n  return { cost: 1 };\n}`,
+          );
+        } else if (componentData.type === "direct_job") {
+          // For direct_job, create credits.js, form.json, inputs.json, job.json
+          await fs.writeJson(
+            paths.form,
+            { 
+              config: {
+                groupOrder: ["main", "advanced"],
+                componentGroup: "text"
+              },
+              fields: []
+            },
+            { spaces: 2 },
+          );
+          await fs.writeJson(paths.job, {
+            service_required: "text_generation",
+            priority: 5,
+            payload: {
+              job_type: "openai_text"
+            },
+            requirements: {
+              service_type: "text_generation",
+              timeout_minutes: 1
+            }
+          }, { spaces: 2 });
+          await fs.writeJson(paths.inputs, [], { spaces: 2 });
           await fs.writeFile(
             paths.credits,
             `function computeCost(context) {\n  return { cost: 1 };\n}`,
@@ -754,6 +788,13 @@ async function applyComponents(componentName, options = { verbose: false }) {
         { path: paths.api, name: "API" },
         { path: paths.credits, name: "Credits" },
       ];
+    } else if (component.type === "direct_job") {
+      requiredFiles = [
+        { path: paths.form, name: "Form" },
+        { path: paths.job, name: "Job" },
+        { path: paths.inputs, name: "Inputs" },
+        { path: paths.credits, name: "Credits" },
+      ];
     } else if (component.type === "basic") {
       requiredFiles = [{ path: paths.credits, name: "Credits" }];
     } else if (component.type === "comfy_workflow") {
@@ -784,6 +825,8 @@ async function applyComponents(componentName, options = { verbose: false }) {
     let test = undefined;
     let api = undefined;
     let body = undefined;
+    let job = undefined;
+    let payload = undefined;
     let credits = undefined;
 
     if (component.type === "comfy_workflow") {
@@ -804,6 +847,11 @@ async function applyComponents(componentName, options = { verbose: false }) {
         body = await fs.readJson(paths.body);
       }
       credits = await fs.readFile(paths.credits, "utf8");
+    } else if (component.type === "direct_job") {
+      form = await fs.readJson(paths.form);
+      job = await fs.readJson(paths.job);
+      inputs = await fs.readJson(paths.inputs);
+      credits = await fs.readFile(paths.credits, "utf8");
     } else if (component.type === "basic") {
       credits = await fs.readFile(paths.credits, "utf8");
     }
@@ -820,6 +868,8 @@ async function applyComponents(componentName, options = { verbose: false }) {
       test,
       api,
       body,
+      job,
+      payload,
       credits_script: credits,
       output_node_id: workflow?.output_node_id || null,
       models, // Add models array for API
@@ -993,6 +1043,10 @@ async function getComponentHash(componentName) {
   } else if (component.type === "fetch_api") {
     hashes.form = await calculateFileHash(paths.form);
     hashes.api = await calculateFileHash(paths.api);
+  } else if (component.type === "direct_job") {
+    hashes.form = await calculateFileHash(paths.form);
+    hashes.job = await calculateFileHash(paths.job);
+    hashes.inputs = await calculateFileHash(paths.inputs);
   }
 
   return hashes;
@@ -1203,6 +1257,7 @@ async function updateComponent(componentName) {
             { title: "Basic", value: "basic" },
             { title: "Comfy Workflow", value: "comfy_workflow" },
             { title: "Fetch API", value: "fetch_api" },
+            { title: "Direct Job", value: "direct_job" },
           ],
           default: component.type,
         }),

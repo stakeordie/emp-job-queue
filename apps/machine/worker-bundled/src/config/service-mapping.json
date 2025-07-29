@@ -12,37 +12,13 @@
       "path": "./redis-direct-worker.js",
       "description": "Simulation processing connector for testing and development"
     },
-    "A1111RemoteConnector": {
+    "OpenAITextConnector": {
       "path": "./redis-direct-worker.js",
-      "description": "Remote Automatic1111 connector - connects to external A1111 instance"
+      "description": "OpenAI text generation API connector"
     },
-    "PlaywrightConnector": {
+    "OpenAIImageConnector": {
       "path": "./redis-direct-worker.js",
-      "description": "Playwright browser automation connector"
-    },
-    "OpenAIConnector": {
-      "path": "./redis-direct-worker.js",
-      "description": "OpenAI API connector"
-    },
-    "ReplicateConnector": {
-      "path": "./redis-direct-worker.js", 
-      "description": "Replicate API connector"
-    },
-    "AnthropicConnector": {
-      "path": "./redis-direct-worker.js",
-      "description": "Anthropic Claude API connector"
-    },
-    "HuggingFaceConnector": {
-      "path": "./redis-direct-worker.js",
-      "description": "Hugging Face API connector"
-    },
-    "StabilityConnector": {
-      "path": "./redis-direct-worker.js",
-      "description": "Stability AI API connector"
-    },
-    "ElevenLabsConnector": {
-      "path": "./redis-direct-worker.js",
-      "description": "ElevenLabs voice API connector"
+      "description": "OpenAI image generation API connector"
     }
   },
 
@@ -64,7 +40,7 @@
       "description": "ComfyUI image generation service with local installation",
       "installer_config": {
         "branch": "${COMFYUI_BRANCH:-main}",
-        "repo_url": "${COMFYUI_REPO_URL:-https://github.com/comfyanonymous/ComfyUI.git}",
+        "repo_url": "${COMFYUI_REPO_URL:-https://github.com/stakeordie/ComfyUI.git}",
         "custom_nodes_enabled": "${COMFYUI_ENABLE_CUSTOM_NODES:-true}",
         "models_path": "${COMFYUI_MODELS_PATH:-/workspace/ComfyUI/models}",
         "install_timeout": "${COMFYUI_INSTALL_TIMEOUT:-300}"
@@ -88,25 +64,6 @@
       "resource_binding": "shared",
       "build_stage": "base",
       "description": "Remote ComfyUI WebSocket connector - connects to external ComfyUI instance"
-    },
-
-    "ai-remote": {
-      "service": [
-        {
-          "capability": "comfyui",
-          "connector": "ComfyUIRemoteConnector",
-          "type": "external"
-        },
-        {
-          "capability": ["a1111", "automatic"],
-          "connector": "A1111RemoteConnector",
-          "type": "external"
-        }
-      ],
-      "installer": null,
-      "resource_binding": "shared",
-      "build_stage": "base",
-      "description": "Multi-service remote connector - handles ComfyUI and Automatic1111 jobs"
     },
     
     "playwright": {
@@ -156,123 +113,47 @@
     "openai": {
       "service": [
         {
-          "capability": ["text_generation", "image_generation"],
-          "connector": "OpenAIConnector",
+          "capability": "openai_text",
+          "connector": "OpenAITextConnector",
+          "type": "external"
+        },
+        {
+          "capability": "openai_image",
+          "connector": "OpenAIImageConnector",
           "type": "external"
         }
       ],
       "installer": null,
       "resource_binding": "shared",
       "build_stage": "base",
-      "required_env": ["${OPENAI_API_KEY_VAR:-OPENAI_API_KEY}"],
-      "description": "OpenAI API connector (no installation required)",
+      "required_env": ["OPENAI_API_KEY"],
+      "description": "OpenAI API connectors (no installation required)",
       "api_config": {
         "base_url": "${OPENAI_BASE_URL:-https://api.openai.com/v1}",
-        "timeout": "${OPENAI_TIMEOUT:-30}",
+        "timeout": "${OPENAI_TIMEOUT:-60}",
         "max_retries": "${OPENAI_MAX_RETRIES:-3}",
-        "models": "${OPENAI_MODELS:-gpt-4,gpt-3.5-turbo,dall-e-3}"
+        "text_models": "${OPENAI_TEXT_MODELS:-gpt-4,gpt-3.5-turbo}",
+        "image_models": "${OPENAI_IMAGE_MODELS:-dall-e-3,dall-e-2}"
       }
     },
-    
-    "replicate": {
+    "openai-text": {
       "service": [
         {
-          "capability": ["image_generation", "model_inference"],
-          "connector": "ReplicateConnector",
+          "capability": "text_generation",
+          "connector": "OpenAITextConnector",
           "type": "external"
         }
       ],
       "installer": null,
       "resource_binding": "shared",
       "build_stage": "base",
-      "required_env": ["${REPLICATE_API_TOKEN_VAR:-REPLICATE_API_TOKEN}"],
-      "description": "Replicate API connector (no installation required)",
+      "required_env": ["OPENAI_API_KEY"],
+      "description": "OpenAI API connectors (no installation required)",
       "api_config": {
-        "base_url": "${REPLICATE_BASE_URL:-https://api.replicate.com/v1}",
-        "timeout": "${REPLICATE_TIMEOUT:-60}",
-        "max_retries": "${REPLICATE_MAX_RETRIES:-3}"
-      }
-    },
-    
-    "anthropic": {
-      "service": [
-        {
-          "capability": ["text_generation"],
-          "connector": "AnthropicConnector",
-          "type": "external"
-        }
-      ],
-      "installer": null,
-      "resource_binding": "shared",
-      "build_stage": "base",
-      "required_env": ["${ANTHROPIC_API_KEY_VAR:-ANTHROPIC_API_KEY}"],
-      "description": "Anthropic Claude API connector (no installation required)",
-      "api_config": {
-        "base_url": "${ANTHROPIC_BASE_URL:-https://api.anthropic.com}",
-        "timeout": "${ANTHROPIC_TIMEOUT:-30}",
-        "max_retries": "${ANTHROPIC_MAX_RETRIES:-3}",
-        "models": "${ANTHROPIC_MODELS:-claude-3-opus,claude-3-sonnet}"
-      }
-    },
-    
-    "huggingface": {
-      "service": [
-        {
-          "capability": ["text_generation", "image_generation", "model_inference"],
-          "connector": "HuggingFaceConnector",
-          "type": "external"
-        }
-      ],
-      "installer": null,
-      "resource_binding": "shared",
-      "build_stage": "base",
-      "required_env": ["${HF_TOKEN_VAR:-HF_TOKEN}"],
-      "description": "Hugging Face API connector (no installation required)",
-      "api_config": {
-        "base_url": "${HF_BASE_URL:-https://api-inference.huggingface.co}",
-        "timeout": "${HF_TIMEOUT:-30}",
-        "max_retries": "${HF_MAX_RETRIES:-3}"
-      }
-    },
-    
-    "stability": {
-      "service": [
-        {
-          "capability": ["image_generation"],
-          "connector": "StabilityConnector",
-          "type": "external"
-        }
-      ],
-      "installer": null,
-      "resource_binding": "shared",
-      "build_stage": "base",
-      "required_env": ["${STABILITY_API_KEY_VAR:-STABILITY_API_KEY}"],
-      "description": "Stability AI API connector for image generation",
-      "api_config": {
-        "base_url": "${STABILITY_BASE_URL:-https://api.stability.ai/v1}",
-        "timeout": "${STABILITY_TIMEOUT:-60}",
-        "max_retries": "${STABILITY_MAX_RETRIES:-3}",
-        "models": "${STABILITY_MODELS:-stable-diffusion-xl-1024-v1-0,stable-diffusion-v1-6}"
-      }
-    },
-    
-    "elevenlabs": {
-      "service": [
-        {
-          "capability": ["voice_synthesis", "audio_generation"],
-          "connector": "ElevenLabsConnector",
-          "type": "external"
-        }
-      ],
-      "installer": null,
-      "resource_binding": "shared",
-      "build_stage": "base",
-      "required_env": ["${ELEVENLABS_API_KEY_VAR:-ELEVENLABS_API_KEY}"],
-      "description": "ElevenLabs API connector for voice synthesis",
-      "api_config": {
-        "base_url": "${ELEVENLABS_BASE_URL:-https://api.elevenlabs.io/v1}",
-        "timeout": "${ELEVENLABS_TIMEOUT:-30}",
-        "max_retries": "${ELEVENLABS_MAX_RETRIES:-3}"
+        "base_url": "${OPENAI_BASE_URL:-https://api.openai.com/v1}",
+        "timeout": "${OPENAI_TIMEOUT:-60}",
+        "max_retries": "${OPENAI_MAX_RETRIES:-3}",
+        "text_models": "${OPENAI_TEXT_MODELS:-gpt-4,gpt-3.5-turbo}"
       }
     }
   },

@@ -16,6 +16,7 @@ graph TD
 
 ## In This Section
 
+- [Planned Features & Todo Items](./planned-features.md) - **Current implementation plans and todo list**
 - [North Star Architecture](./north-star-architecture.md) - Strategic technical vision *(from plans)*
 - [Predictive Model Management](./predictive-model-management.md) - Smart model placement *(from plans)*
 - [Pool-Based Routing](./pool-based-routing.md) - Intelligent job routing *(to be written)*

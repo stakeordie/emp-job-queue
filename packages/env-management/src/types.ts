@@ -23,27 +23,42 @@ export const ServiceSchema = z.object({
 // Docker Compose configuration schemas
 export const DockerServiceSchema = z.object({
   image: z.string().optional(),
-  build: z.union([z.string(), z.object({
-    context: z.string(),
-    dockerfile: z.string().optional(),
-    args: z.record(z.string()).optional(),
-  })]).optional(),
+  build: z
+    .union([
+      z.string(),
+      z.object({
+        context: z.string(),
+        dockerfile: z.string().optional(),
+        args: z.record(z.string()).optional(),
+      }),
+    ])
+    .optional(),
   environment: z.array(z.string()).optional(), // References to .env files
   env_file: z.array(z.string()).optional(), // Generated from environment references
   ports: z.array(z.string()).optional(),
   volumes: z.array(z.string()).optional(),
   depends_on: z.array(z.string()).optional(),
   platform: z.string().optional(), // For cross-architecture compatibility
-  deploy: z.object({
-    resources: z.object({
-      reservations: z.object({
-        devices: z.array(z.object({
-          driver: z.string(),
-          capabilities: z.array(z.string()),
-        })).optional(),
-      }).optional(),
-    }).optional(),
-  }).optional(),
+  deploy: z
+    .object({
+      resources: z
+        .object({
+          reservations: z
+            .object({
+              devices: z
+                .array(
+                  z.object({
+                    driver: z.string(),
+                    capabilities: z.array(z.string()),
+                  })
+                )
+                .optional(),
+            })
+            .optional(),
+        })
+        .optional(),
+    })
+    .optional(),
   profiles: z.array(z.string()).optional(),
   condition: z.string().optional(), // For conditional inclusion
 });

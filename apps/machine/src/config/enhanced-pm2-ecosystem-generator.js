@@ -7,7 +7,12 @@
  */
 
 import fs from 'fs';
+import path from 'path';
+import { fileURLToPath } from 'url';
 import { HardwareDetector } from './hardware-detector.js';
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 
 export class EnhancedPM2EcosystemGenerator {
   constructor() {
@@ -19,6 +24,7 @@ export class EnhancedPM2EcosystemGenerator {
     
     this.hardwareDetector = new HardwareDetector();
     this.serviceMapping = null;
+    this.serviceEnvMapping = null;
     this.hardwareResources = null;
   }
 
@@ -57,6 +63,7 @@ export class EnhancedPM2EcosystemGenerator {
    */
   async loadServiceMapping() {
     try {
+      // Load service mapping
       const serviceMappingPath = '/workspace/worker-bundled/src/config/service-mapping.json';
       
       if (!fs.existsSync(serviceMappingPath)) {
@@ -67,6 +74,18 @@ export class EnhancedPM2EcosystemGenerator {
       this.serviceMapping = JSON.parse(serviceMappingContent);
       
       this.logger.log(`✅ Loaded service mapping with ${Object.keys(this.serviceMapping.workers).length} worker types`);
+      
+      // Load service environment mapping
+      const serviceEnvMappingPath = path.join(__dirname, 'service-env-mapping.json');
+      
+      if (fs.existsSync(serviceEnvMappingPath)) {
+        const serviceEnvMappingContent = fs.readFileSync(serviceEnvMappingPath, 'utf8');
+        this.serviceEnvMapping = JSON.parse(serviceEnvMappingContent);
+        this.logger.log(`✅ Loaded service environment mapping with ${Object.keys(this.serviceEnvMapping).length} service types`);
+      } else {
+        this.logger.warn(`Service environment mapping not found at: ${serviceEnvMappingPath}`);
+        this.serviceEnvMapping = {};
+      }
       
     } catch (error) {
       this.logger.error(`Failed to load service mapping: ${error.message}`);
@@ -351,29 +370,70 @@ export class EnhancedPM2EcosystemGenerator {
     if (workerConfig.service) {
       for (const service of workerConfig.service) {
         const capability = Array.isArray(service.capability) ? service.capability[0] : service.capability;
+        const connectorName = service.connector;
         
-        switch (capability) {
-          case 'comfyui':
-            Object.assign(env, {
-              COMFYUI_HOST: process.env.WORKER_COMFYUI_HOST || 'localhost',
-              COMFYUI_PORT: process.env.WORKER_COMFYUI_PORT || (8188 + index).toString(),
-              COMFYUI_TIMEOUT_SECONDS: process.env.WORKER_COMFYUI_TIMEOUT_SECONDS || '300',
-              COMFYUI_MAX_CONCURRENT_JOBS: process.env.WORKER_COMFYUI_MAX_CONCURRENT_JOBS || '1',
-              COMFYUI_USERNAME: process.env.WORKER_COMFYUI_USERNAME || '',
-              COMFYUI_PASSWORD: process.env.WORKER_COMFYUI_PASSWORD || ''
-            });
-            break;
+        this.logger.log(`🔍 Getting list of env vars for connector: ${connectorName} (capability: ${capability})`);
+        
+        // Try to get env vars from the connector class itself
+        try {
+          // Attempt to load the connector class to get its required env vars
+          const ConnectorClass = this.getConnectorClass(connectorName);
+          if (ConnectorClass && typeof ConnectorClass.getRequiredEnvVars === 'function') {
+            const envMapping = ConnectorClass.getRequiredEnvVars();
             
-          case 'simulation':
-            Object.assign(env, {
-              SIMULATION_MAX_CONCURRENT_JOBS: process.env.WORKER_SIMULATION_MAX_CONCURRENT_JOBS || '1'
-            });
-            break;
+            // Process each environment variable from the connector
+            for (const [envKey, envValue] of Object.entries(envMapping)) {
+              const processedValue = this.processEnvValue(envValue, index);
+              env[envKey] = processedValue;
+            }
+            this.logger.log(`📦 Loading ${Object.keys(envMapping).length} env vars into worker from connector ${connectorName}`);
+            continue;
+          }
+        } catch (error) {
+          // Fall back to config file if connector loading fails
+          this.logger.warn(`Could not load connector ${connectorName}: ${error.message}`);
+        }
+        
+        // Fallback: Use the service env mapping configuration file
+        if (this.serviceEnvMapping && this.serviceEnvMapping[capability]) {
+          const envMapping = this.serviceEnvMapping[capability];
+          
+          // Process each environment variable from the mapping
+          for (const [envKey, envValue] of Object.entries(envMapping)) {
+            const processedValue = this.processEnvValue(envValue, index);
+            env[envKey] = processedValue;
+          }
+          this.logger.log(`📦 Loading ${Object.keys(envMapping).length} env vars into worker from config for capability ${capability}`);
+        } else {
+          // No mapping found
+          this.logger.warn(`No environment mapping found for capability: ${capability}`);
         }
       }
     }
     
     return env;
+  }
+  
+  getConnectorClass(connectorName) {
+    // This would need to be implemented to dynamically load connector classes
+    // For now, return null to use the fallback config file approach
+    return null;
+  }
+  
+  processEnvValue(envValue, index) {
+    // Handle ${VAR:-default} pattern
+    const pattern = /\$\{([^:}]+)(?::-([^}]*))?\}/g;
+    
+    return envValue.replace(pattern, (match, varName, defaultValue) => {
+      // Special handling for port variables that need index
+      if (varName.includes('PORT') && varName.includes('COMFYUI')) {
+        const basePort = parseInt(process.env[varName] || defaultValue || '8188');
+        return (basePort + index).toString();
+      }
+      
+      // Regular environment variable replacement
+      return process.env[varName] || defaultValue || '';
+    });
   }
 
   /**

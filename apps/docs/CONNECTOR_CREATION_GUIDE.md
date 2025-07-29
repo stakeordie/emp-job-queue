@@ -75,6 +75,20 @@ export class MyServiceConnector extends BaseConnector {
   service_type = 'my-service' as const;
   version = '1.0.0';
 
+  /**
+   * REQUIRED: Define environment variables needed by this connector
+   * The PM2 ecosystem generator will use this to provide environment variables to workers
+   */
+  static getRequiredEnvVars(): Record<string, string> {
+    return {
+      MY_SERVICE_API_KEY: '${MY_SERVICE_API_KEY:-}',
+      MY_SERVICE_BASE_URL: '${MY_SERVICE_BASE_URL:-https://api.myservice.com}',
+      MY_SERVICE_MAX_CONCURRENT: '${MY_SERVICE_MAX_CONCURRENT:-3}',
+      MY_SERVICE_TIMEOUT: '${MY_SERVICE_TIMEOUT:-30000}',
+      MY_SERVICE_RETRY_ATTEMPTS: '${MY_SERVICE_RETRY_ATTEMPTS:-3}'
+    };
+  }
+
   constructor(connectorId: string = 'my-service-api') {
     // Initialize with configuration
     const config = {
@@ -631,6 +645,31 @@ For services with unique protocols, extend BaseConnector and implement custom co
 - Provide sensible defaults
 - Validate configuration during initialization
 - Support development vs production configurations
+
+### Environment Variables Declaration (REQUIRED)
+
+**Every connector MUST implement the `getRequiredEnvVars()` static method** to declare what environment variables it needs:
+
+```typescript
+static getRequiredEnvVars(): Record<string, string> {
+  return {
+    // Format: "ENV_VAR_NAME": "${ENV_VAR_NAME:-default_value}"
+    MY_SERVICE_API_KEY: '${MY_SERVICE_API_KEY:-}',  // Required (no default)
+    MY_SERVICE_BASE_URL: '${MY_SERVICE_BASE_URL:-https://api.example.com}',  // Optional with default
+    MY_SERVICE_TIMEOUT: '${MY_SERVICE_TIMEOUT:-30000}',
+  };
+}
+```
+
+**Why this is required:**
+- The PM2 ecosystem generator uses this to automatically pass environment variables to worker processes
+- Makes connectors self-documenting about their requirements
+- Eliminates the need to maintain separate configuration files
+- Ensures environment variables are available when connectors initialize
+
+**Format explanation:**
+- `${VAR_NAME:-default}` - Use VAR_NAME from environment, fall back to default
+- `${VAR_NAME:-}` - Use VAR_NAME from environment, fall back to empty string (for required vars)
 
 ### Error Handling
 - Catch and wrap all errors with context

@@ -23,6 +23,8 @@ import { spawn } from 'child_process';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import chalk from 'chalk';
+import fs from 'fs';
+import dotenv from 'dotenv';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -31,6 +33,25 @@ const MACHINE_DIR = path.join(PROJECT_ROOT, 'apps/machine');
 
 class MachineCompose {
   constructor() {}
+
+  /**
+   * Load environment variables from .env.secret
+   */
+  loadEnvSecret() {
+    const envPath = path.join(MACHINE_DIR, '.env.secret');
+    if (!fs.existsSync(envPath)) {
+      console.warn(chalk.yellow(`⚠️ .env.secret not found at ${envPath}`));
+      return {};
+    }
+
+    const result = dotenv.config({ path: envPath });
+    if (result.error) {
+      console.error(chalk.red(`❌ Failed to parse .env.secret:`), result.error);
+      return {};
+    }
+
+    return result.parsed || {};
+  }
 
   /**
    * Parse command line arguments
@@ -107,6 +128,15 @@ class MachineCompose {
         break;
       case 'build':
         cmd.push('build');
+        
+        // Load env vars and add as build args
+        const envVars = this.loadEnvSecret();
+        if (Object.keys(envVars).length > 0) {
+          for (const [key, value] of Object.entries(envVars)) {
+            cmd.push('--build-arg', `${key}=${value}`);
+          }
+          console.log(chalk.dim(`  Loaded ${Object.keys(envVars).length} environment variables from .env.secret`));
+        }
         break;
       case 'pull':
         cmd.push('pull');
@@ -134,14 +164,25 @@ class MachineCompose {
   /**
    * Execute Docker Compose command
    */
-  async executeCommand(cmd) {
+  async executeCommand(cmd, includeEnvVars = false) {
     console.log(chalk.blue(`🐳 Running: ${cmd.join(' ')}`));
     console.log(chalk.gray(`📁 Working directory: ${MACHINE_DIR}\n`));
+
+    // Load env vars if needed
+    let env = process.env;
+    if (includeEnvVars) {
+      const envVars = this.loadEnvSecret();
+      if (Object.keys(envVars).length > 0) {
+        env = { ...process.env, ...envVars };
+        console.log(chalk.dim(`  Loaded ${Object.keys(envVars).length} environment variables from .env.secret`));
+      }
+    }
 
     return new Promise((resolve, reject) => {
       const process = spawn(cmd[0], cmd.slice(1), {
         stdio: 'inherit',
-        cwd: MACHINE_DIR
+        cwd: MACHINE_DIR,
+        env: env
       });
 
       process.on('close', (code) => {
@@ -199,7 +240,9 @@ class MachineCompose {
       this.displayInfo(command, profile, flags);
       
       const cmd = this.buildDockerComposeCommand(command, profile, flags);
-      await this.executeCommand(cmd);
+      // Include env vars for 'up' command so containers get the secrets
+      const includeEnvVars = command === 'up';
+      await this.executeCommand(cmd, includeEnvVars);
       
     } catch (error) {
       console.error(chalk.red('❌ Error:'), error.message);

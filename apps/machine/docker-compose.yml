@@ -35,9 +35,6 @@ services:
         reservations:
           memory: ${MEMORY_RESERVATION:-2G}
   comfyui-remote:
-    <<: *base-machine
-    profiles:
-      - comfyui-remote
     build:
       context: .
       dockerfile: Dockerfile
@@ -45,11 +42,192 @@ services:
       args:
         WORKER_SPEC: comfyui-remote:1
         CACHE_BUST: ${CACHE_BUST:-1}
-    environment:
-      WORKERS: comfyui-remote:1
+    image: emprops/machine:comfyui-remote
+    platform: linux/amd64
     container_name: comfyui-remote-${ENV:-local}
     hostname: comfyui-remote-${ENV:-local}
-    image: emprops/machine:comfyui-remote
+    profiles:
+      - comfyui-remote
+    restart: 'no'
+    stop_grace_period: 2s
+    stop_signal: SIGTERM
+    env_file:
+      - .env.secret
+    environment:
+      WORKERS: comfyui-remote:1
+    working_dir: /workspace
+    deploy:
+      resources:
+        limits:
+          memory: ${MEMORY_LIMIT:-8G}
+        reservations:
+          memory: ${MEMORY_RESERVATION:-2G}
+  comfyui:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: comfyui
+      args:
+        WORKER_SPEC: comfyui:1
+        CACHE_BUST: ${CACHE_BUST:-1}
+    image: emprops/machine:comfyui
+    platform: linux/amd64
+    container_name: comfyui-${ENV:-local}
+    hostname: comfyui-${ENV:-local}
+    profiles:
+      - comfyui
+    restart: 'no'
+    stop_grace_period: 2s
+    stop_signal: SIGTERM
+    env_file:
+      - .env.secret
+    environment:
+      WORKERS: comfyui:1
+      MACHINE_ID: comfyui-${ENV:-local}
+    working_dir: /workspace
+    deploy:
+      resources:
+        limits:
+          memory: ${MEMORY_LIMIT:-8G}
+        reservations:
+          memory: ${MEMORY_RESERVATION:-2G}
+  openai:
+    <<: *base-machine
+    profiles:
+      - openai
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: base
+      args:
+        WORKER_SPEC: openai:5
+        CACHE_BUST: ${CACHE_BUST:-1}
+    environment:
+      WORKERS: openai:5
+      MACHINE_ID: openai-${ENV:-local}
+      OPENAI_API_KEY: ${OPENAI_API_KEY}
+    container_name: openai-${ENV:-local}
+    hostname: openai-${ENV:-local}
+    image: emprops/machine:openai
+  simulation:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: simulation
+      args:
+        WORKER_SPEC: simulation:5
+        CACHE_BUST: ${CACHE_BUST:-1}
+    image: emprops/machine:simulation
+    platform: linux/amd64
+    container_name: simulation-${ENV:-local}
+    hostname: simulation-${ENV:-local}
+    profiles:
+      - simulation
+    restart: 'no'
+    stop_grace_period: 2s
+    stop_signal: SIGTERM
+    env_file:
+      - .env.secret
+    environment:
+      WORKERS: simulation:5
+      MACHINE_ID: simulation-${ENV:-local}
+    working_dir: /workspace
+    deploy:
+      resources:
+        limits:
+          memory: ${MEMORY_LIMIT:-8G}
+        reservations:
+          memory: ${MEMORY_RESERVATION:-2G}
+  openai-5:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: base
+      args:
+        WORKER_SPEC: openai:5
+        CACHE_BUST: ${CACHE_BUST:-1}
+    image: ${MACHINE_IMAGE:-base-machine:latest}
+    platform: linux/amd64
+    container_name: openai-5-${ENV:-local}
+    hostname: openai-5-${ENV:-local}
+    profiles:
+      - openai-5
+    restart: 'no'
+    stop_grace_period: 2s
+    stop_signal: SIGTERM
+    env_file:
+      - .env.secret
+    environment:
+      WORKERS: openai:5
+      MACHINE_ID: openai-5-${ENV:-local}
+      OPENAI_API_KEY: ${OPENAI_API_KEY}
+    working_dir: /workspace
+    deploy:
+      resources:
+        limits:
+          memory: ${MEMORY_LIMIT:-8G}
+        reservations:
+          memory: ${MEMORY_RESERVATION:-2G}
+  openai-10:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: base
+      args:
+        WORKER_SPEC: openai:10
+        CACHE_BUST: ${CACHE_BUST:-1}
+    image: ${MACHINE_IMAGE:-base-machine:latest}
+    platform: linux/amd64
+    container_name: openai-10-${ENV:-local}
+    hostname: openai-10-${ENV:-local}
+    profiles:
+      - openai-10
+    restart: 'no'
+    stop_grace_period: 2s
+    stop_signal: SIGTERM
+    env_file:
+      - .env.secret
+    environment:
+      WORKERS: openai:10
+      MACHINE_ID: openai-10-${ENV:-local}
+      OPENAI_API_KEY: ${OPENAI_API_KEY}
+    working_dir: /workspace
+    deploy:
+      resources:
+        limits:
+          memory: ${MEMORY_LIMIT:-8G}
+        reservations:
+          memory: ${MEMORY_RESERVATION:-2G}
+  openai-text:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: base
+      args:
+        WORKER_SPEC: openai-text:5
+        CACHE_BUST: ${CACHE_BUST:-1}
+    image: emprops/machine:openai-text
+    platform: linux/amd64
+    container_name: openai-text-${ENV:-local}
+    hostname: openai-text-${ENV:-local}
+    profiles:
+      - openai-text
+    restart: 'no'
+    stop_grace_period: 2s
+    stop_signal: SIGTERM
+    env_file:
+      - .env.secret
+    environment:
+      WORKERS: openai-text:5
+      MACHINE_ID: openai-text-${ENV:-local}
+      OPENAI_API_KEY: ${OPENAI_API_KEY}
+    working_dir: /workspace
+    deploy:
+      resources:
+        limits:
+          memory: ${MEMORY_LIMIT:-8G}
+        reservations:
+          memory: ${MEMORY_RESERVATION:-2G}
 networks:
   default:
     name: emp-job-queue

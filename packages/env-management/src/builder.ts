@@ -2,7 +2,14 @@ import * as fs from 'fs';
 import * as path from 'path';
 import * as ini from 'ini';
 import * as yaml from 'yaml';
-import { Profile, Components, EnvironmentConfig, BuildResult, DockerServiceConfig, DockerComposeConfig } from './types.js';
+import {
+  Profile,
+  Components,
+  EnvironmentConfig,
+  BuildResult,
+  DockerServiceConfig,
+  DockerComposeConfig,
+} from './types.js';
 import { ServiceInterfaceManager } from './service-interfaces.js';
 
 export class EnvironmentBuilder {
@@ -36,13 +43,13 @@ export class EnvironmentBuilder {
 
     // Split variables into public and secret based on service interface
     const { publicVars, secretVars } = this.splitVariablesByInterface(serviceVars);
-    
+
     // Write public variables to .env (baked into Docker image)
     const publicContent = Object.entries(publicVars)
       .map(([key, value]) => `${key}=${value}`)
       .join('\n');
     await fs.promises.writeFile(serviceEnvPath, publicContent, 'utf8');
-    
+
     // Write secret variables to .env.secret (runtime injection via compose)
     const secretPath = serviceEnvPath.replace('.env', '.env.secret');
     const secretContent = Object.entries(secretVars)
@@ -466,10 +473,10 @@ export class EnvironmentBuilder {
   } {
     const publicVars: { [key: string]: string } = {};
     const secretVars: { [key: string]: string } = {};
-    
+
     // Get all secret variable names from loaded service interfaces
     const secretVariableNames = new Set<string>();
-    
+
     // Collect secret variable names from all service interfaces
     const availableInterfaces = this.serviceInterfaces.getInterfaces();
     for (const [serviceName, serviceInterface] of availableInterfaces) {
@@ -479,7 +486,7 @@ export class EnvironmentBuilder {
         }
       }
     }
-    
+
     // Split variables based on whether they're in the secrets list
     for (const [key, value] of Object.entries(vars)) {
       if (secretVariableNames.has(key)) {
@@ -488,7 +495,7 @@ export class EnvironmentBuilder {
         publicVars[key] = value;
       }
     }
-    
+
     return { publicVars, secretVars };
   }
 
@@ -586,7 +593,7 @@ export class EnvironmentBuilder {
       const yamlContent = yaml.stringify(dockerCompose);
       const outputPath = './docker-compose.yaml';
       await fs.promises.writeFile(outputPath, yamlContent, 'utf8');
-      
+
       return outputPath;
     } catch (error) {
       throw new Error(`Failed to generate Docker Compose: ${error}`);
@@ -648,7 +655,7 @@ export class EnvironmentBuilder {
       if (includesMatch) {
         const [, componentName, expectedValue] = includesMatch;
         const componentValue = profile.components[componentName as keyof typeof profile.components];
-        
+
         if (Array.isArray(componentValue)) {
           return componentValue.includes(expectedValue);
         }
@@ -660,7 +667,7 @@ export class EnvironmentBuilder {
       if (equalsMatch) {
         const [, componentName, expectedValue] = equalsMatch;
         const componentValue = profile.components[componentName as keyof typeof profile.components];
-        
+
         // Handle both string and array values
         if (Array.isArray(componentValue)) {
           return componentValue.includes(expectedValue);

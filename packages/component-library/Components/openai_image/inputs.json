@@ -1,0 +1,14 @@
+[
+  {
+    "id": "prompt",
+    "pathJq": ".payload.prompt"
+  },
+  {
+    "id": "max_tokens",
+    "pathJq": ".payload.max_tokens"
+  },
+  {
+    "id": "temperature",
+    "pathJq": ".payload.temperature"
+  }
+]

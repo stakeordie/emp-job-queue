@@ -1,0 +1,75 @@
+{
+  "config": {
+    "groupOrder": [
+      "main",
+      "advanced"
+    ],
+    "componentGroup": "image"
+  },
+  "fields": [
+    {
+      "id": "prompt",
+      "name": "Prompt",
+      "type": "prompt_editor",
+      "placeholder": "Describe the image you want to generate...",
+      "default": "",
+      "display": true,
+      "group": "main",
+      "required": true
+    },
+    {
+      "id": "model",
+      "name": "Model",
+      "type": "select",
+      "default": "gpt-4.1",
+      "options": [
+        {
+          "value": "gpt-4.1",
+          "label": "GPT-4.1"
+        }
+      ],
+      "display": false,
+      "group": "advanced"
+    },
+    {
+      "id": "size",
+      "name": "Image Size",
+      "type": "select",
+      "default": "1024x1024",
+      "options": [
+        {
+          "value": "1024x1024",
+          "label": "1024x1024 (Square)"
+        },
+        {
+          "value": "1792x1024",
+          "label": "1792x1024 (Landscape)"
+        },
+        {
+          "value": "1024x1792",
+          "label": "1024x1792 (Portrait)"
+        }
+      ],
+      "display": true,
+      "group": "advanced"
+    },
+    {
+      "id": "quality",
+      "name": "Quality",
+      "type": "select",
+      "default": "standard",
+      "options": [
+        {
+          "value": "standard",
+          "label": "Standard"
+        },
+        {
+          "value": "hd",
+          "label": "HD"
+        }
+      ],
+      "display": true,
+      "group": "advanced"
+    }
+  ]
+}

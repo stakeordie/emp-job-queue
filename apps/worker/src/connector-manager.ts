@@ -271,27 +271,22 @@ export class ConnectorManager implements ConnectorRegistry, ConnectorFactory {
         );
       }
 
-      // Always register the connector first (graceful failure handling)
-      this.registerConnector(connector);
-
-      // Initialize the connector (may fail, but connector is already registered)
+      // Initialize the connector first - fail fast if it doesn't work
       await connector.initialize();
 
-      logger.info(`Loaded connector: ${connectorName} (${connector.service_type})`);
-    } catch (error) {
-      logger.error(`Failed to load connector ${connectorName}:`, error);
+      // Only register the connector after successful initialization
+      this.registerConnector(connector);
 
-      // Graceful failure handling: Create offline stub connector
-      try {
-        const OfflineConnector = await this.createOfflineConnector(connectorName, error);
-        this.registerConnector(OfflineConnector);
-        logger.warn(
-          `Registered offline stub connector for ${connectorName} due to initialization failure`
-        );
-      } catch (stubError) {
-        logger.error(`Failed to create offline stub connector for ${connectorName}:`, stubError);
-        // Even stub creation failed - still don't throw, just log
-      }
+      logger.info(`✅ Successfully loaded connector: ${connectorName} (${connector.service_type})`);
+    } catch (error) {
+      logger.error(`❌ Failed to load connector ${connectorName}:`, error);
+      
+      // Fail fast with clear error message - don't register broken connectors
+      throw new Error(
+        `Connector ${connectorName} failed to initialize and cannot be used. ` +
+        `Root cause: ${error.message}. ` +
+        `This worker cannot start without a working ${connectorName} connector.`
+      );
     }
   }
 
@@ -305,7 +300,35 @@ export class ConnectorManager implements ConnectorRegistry, ConnectorFactory {
         throw new Error(`Class ${className} not found in ${modulePath}`);
       }
       
-      logger.info(`✅ Successfully loaded connector ${className} from ${modulePath}`);
+      // Validation: Test instantiation and basic methods
+      logger.info(`🔍 Validating connector ${className}...`);
+      try {
+        // Test constructor
+        const testInstance = new ConnectorClass(`test-${className.toLowerCase()}`);
+        
+        // Verify required properties exist
+        if (typeof testInstance.service_type !== 'string') {
+          throw new Error(`service_type property missing or invalid`);
+        }
+        if (typeof testInstance.connector_id !== 'string') {
+          throw new Error(`connector_id property missing or invalid`);
+        }
+        
+        // Verify required methods exist
+        const requiredMethods = ['initializeService', 'checkHealth', 'processJobImpl', 'cleanupService'];
+        for (const method of requiredMethods) {
+          if (typeof testInstance[method] !== 'function') {
+            throw new Error(`Required method ${method} missing or not a function`);
+          }
+        }
+        
+        logger.info(`✅ Connector ${className} validation passed`);
+      } catch (validationError) {
+        logger.error(`❌ Connector ${className} validation failed: ${validationError.message}`);
+        throw new Error(`Connector validation failed: ${validationError.message}`);
+      }
+      
+      logger.info(`✅ Successfully loaded and validated connector ${className} from ${modulePath}`);
       return ConnectorClass;
     } catch (error) {
       logger.error(`Failed to load connector from ${modulePath}:`, error);

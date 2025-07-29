@@ -568,7 +568,20 @@ export class LightweightAPIServer {
       }
     }, 1000);
 
-    // Set up ping/pong for connection health with visible JSON messages
+    // Handle WebSocket pong responses for monitor connections
+    ws.on('pong', () => {
+      const data = this.monitorData.get(monitorId);
+      if (data) {
+        data.isAlive = true;
+        data.missedPongs = 0;
+        this.monitorData.set(monitorId, data);
+        logger.debug(`[PING-PONG] Monitor ${monitorId} pong received 🏓`);
+      }
+      // Update EventBroadcaster heartbeat to prevent timeout removal
+      this.eventBroadcaster.updateHeartbeat(monitorId);
+    });
+
+    // Set up ping/pong for connection health using WebSocket frames
     interface MonitorData {
       isAlive: boolean;
       missedPongs: number;
@@ -608,15 +621,10 @@ export class LightweightAPIServer {
       if (ws.readyState === WebSocket.OPEN) {
         data.isAlive = false;
 
-        // Send visible ping message instead of protocol ping
-        const pingMessage = {
-          type: 'ping',
-          monitor_id: monitorId,
-          timestamp: Date.now(),
-        };
-        ws.send(JSON.stringify(pingMessage));
+        // Send WebSocket ping frame
+        ws.ping();
 
-        logger.info(`[PING-PONG] Monitor ${monitorId} visible ping sent 🏓`);
+        logger.debug(`[PING-PONG] Monitor ${monitorId} WebSocket ping sent 🏓`);
       } else {
         clearInterval(pingInterval);
         this.monitorData.delete(monitorId);
@@ -776,7 +784,18 @@ export class LightweightAPIServer {
       }
     }, 1000);
 
-    // Set up ping/pong for client connection health with visible JSON messages
+    // Handle WebSocket pong responses for client connections
+    ws.on('pong', () => {
+      const data = this.clientData.get(clientId);
+      if (data) {
+        data.isAlive = true;
+        data.missedPongs = 0;
+        this.clientData.set(clientId, data);
+        logger.debug(`[PING-PONG] Client ${clientId} pong received 🏓`);
+      }
+    });
+
+    // Set up ping/pong for client connection health using WebSocket frames
     const clientPingInterval = setInterval(() => {
       const data = this.clientData.get(clientId);
       if (!data) return;
@@ -801,15 +820,10 @@ export class LightweightAPIServer {
       if (ws.readyState === WebSocket.OPEN) {
         data.isAlive = false;
 
-        // Send visible ping message instead of protocol ping
-        const pingMessage = {
-          type: 'ping',
-          client_id: clientId,
-          timestamp: Date.now(),
-        };
-        ws.send(JSON.stringify(pingMessage));
+        // Send WebSocket ping frame
+        ws.ping();
 
-        logger.info(`[PING-PONG] Client ${clientId} visible ping sent 🏓`);
+        logger.debug(`[PING-PONG] Client ${clientId} WebSocket ping sent 🏓`);
       } else {
         clearInterval(clientPingInterval);
         this.clientData.delete(clientId);
@@ -1025,17 +1039,7 @@ export class LightweightAPIServer {
         }
         break;
 
-      case 'pong':
-        // Handle pong response from client
-        logger.info(`[PING-PONG] Received pong from client ${clientId}:`, message);
-        // Reset missed pongs counter for this client
-        if (this.clientData.has(clientId)) {
-          const data = this.clientData.get(clientId)!;
-          data.missedPongs = 0;
-          data.isAlive = true;
-          this.clientData.set(clientId, data);
-        }
-        break;
+      // 'pong' case removed - now handled by WebSocket pong event
 
       default:
         ws.send(
@@ -1122,28 +1126,9 @@ export class LightweightAPIServer {
         });
         break;
 
-      case 'heartbeat':
-        ws.send(
-          JSON.stringify({
-            type: 'heartbeat_ack',
-            monitor_id: monitorId,
-            timestamp: new Date().toISOString(),
-          })
-        );
-        break;
+      // 'heartbeat' case removed - now using WebSocket ping/pong frames
 
-      case 'pong':
-        // Handle pong response from monitor
-        // Reset missed pongs counter for this monitor
-        if (this.monitorData.has(monitorId)) {
-          const data = this.monitorData.get(monitorId)!;
-          data.missedPongs = 0;
-          data.isAlive = true;
-          this.monitorData.set(monitorId, data);
-        }
-        // Update EventBroadcaster heartbeat to prevent timeout removal
-        this.eventBroadcaster.updateHeartbeat(monitorId);
-        break;
+      // 'pong' case removed - now handled by WebSocket pong event
 
       default:
         ws.send(
@@ -1240,17 +1225,7 @@ export class LightweightAPIServer {
         }
         break;
 
-      case 'pong':
-        // Handle pong response from client
-        logger.info(`[PING-PONG] Received pong from client ${clientId}:`, message);
-        // Reset missed pongs counter for this client
-        if (this.clientData.has(clientId)) {
-          const data = this.clientData.get(clientId)!;
-          data.missedPongs = 0;
-          data.isAlive = true;
-          this.clientData.set(clientId, data);
-        }
-        break;
+      // 'pong' case removed - now handled by WebSocket pong event
 
       default:
         ws.send(

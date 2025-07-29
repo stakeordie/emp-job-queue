@@ -45,6 +45,13 @@ export interface StatusReport {
 }
 
 export abstract class BaseConnector implements ConnectorInterface {
+  /**
+   * Get required environment variables for this connector
+   * Override in subclasses to specify connector-specific env vars
+   */
+  static getRequiredEnvVars(): Record<string, string> {
+    return {};
+  }
   // Required interface properties
   public connector_id: string = '';
   public service_type: string = '';

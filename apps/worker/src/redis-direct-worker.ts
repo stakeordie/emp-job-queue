@@ -8,15 +8,7 @@ import { logger } from '@emp/core';
 import os from 'os';
 
 // Export all connector classes for dynamic loading in bundled environment
-export * from './connectors/a1111-connector.js';
-export * from './connectors/base-connector.js';
-export * from './connectors/comfyui-remote-connector.js';
-export * from './connectors/comfyui-websocket-connector.js';
-export * from './connectors/rest-async-connector.js';
-export * from './connectors/rest-connector.js';
-export * from './connectors/rest-sync-connector.js';
-export * from './connectors/simulation-connector.js';
-export * from './connectors/websocket-connector.js';
+export * from './connectors/index.js';
 
 // Worker configuration from environment
 const WORKER_ID_PREFIX = process.env.WORKER_ID || 'worker';
@@ -26,6 +18,21 @@ const MACHINE_ID = process.env.MACHINE_ID || os.hostname();
 
 async function main() {
   logger.info(`Starting Redis-direct worker ${WORKER_ID} on machine ${MACHINE_ID}  ^^^^^^`);
+
+  // Log received environment variables
+  const envVars = Object.keys(process.env).filter(key => 
+    key.startsWith('OPENAI_') || 
+    key.startsWith('COMFYUI_') ||
+    key.startsWith('SIMULATION_') ||
+    key.startsWith('A1111_') ||
+    key.startsWith('REPLICATE_') ||
+    key.startsWith('OLLAMA_')
+  );
+  if (envVars.length > 0) {
+    logger.info(`✅ Received ${envVars.length} ENV vars: ${envVars.join(', ')}`);
+  } else {
+    logger.warn(`⚠️ No service-specific ENV vars received`);
+  }
 
   logger.info(`Connecting to Redis at: ${HUB_REDIS_URL}`);
 

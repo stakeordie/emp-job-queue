@@ -118,20 +118,7 @@ export class EventStreamService {
       try {
         const data = JSON.parse(event.data);
         
-        // Handle ping/pong messages
-        if (data.type === 'ping') {
-          console.log('[PING-PONG] Received ping from server:', data);
-          // Respond with pong
-          const pongMessage = {
-            type: 'pong',
-            monitor_id: data.monitor_id,
-            timestamp: Date.now(),
-            ping_timestamp: data.timestamp
-          };
-          ws.send(JSON.stringify(pongMessage));
-          console.log('[PING-PONG] Sent pong response:', pongMessage);
-          return;
-        }
+        // Ping/pong now handled by WebSocket frames, not JSON messages
         
         // Debug logging for machine events
         if (data.type && data.type.startsWith('machine_')) {
@@ -185,20 +172,7 @@ export class EventStreamService {
       try {
         const data = JSON.parse(event.data);
         
-        // Handle ping/pong messages for client connection
-        if (data.type === 'ping') {
-          console.log('[PING-PONG] Received ping from server (client):', data);
-          // Respond with pong
-          const pongMessage = {
-            type: 'pong',
-            client_id: data.client_id,
-            timestamp: Date.now(),
-            ping_timestamp: data.timestamp
-          };
-          ws.send(JSON.stringify(pongMessage));
-          console.log('[PING-PONG] Sent pong response (client):', pongMessage);
-          return;
-        }
+        // Ping/pong now handled by WebSocket frames, not JSON messages
         
         console.log('[WebSocket] Client message received:', data.type);
         
@@ -462,7 +436,7 @@ export class EventStreamService {
       'worker_connected', 'worker_disconnected', 'worker_status_changed',
       'connector_status_changed',
       'job_submitted', 'job_assigned', 'job_status_changed', 'update_job_progress',
-      'complete_job', 'job_failed', 'full_state_snapshot', 'heartbeat_ack',
+      'complete_job', 'job_failed', 'full_state_snapshot',
       'resync_response', 'system_stats',
       'machine_startup', 'machine_startup_step', 'machine_startup_complete', 'machine_shutdown',
       'machine_update', 'machine_status_change', 'machine_disconnected'
@@ -495,8 +469,7 @@ export class EventStreamService {
         oldest_available_timestamp: number;
         timestamp: number;
       });
-    } else if (event.type === 'heartbeat_ack') {
-      // Update connection health, no action needed
+    // heartbeat_ack removed - now using WebSocket ping/pong frames
     } else {
       // Broadcast to all event listeners
       this.onEventCallbacks.forEach(callback => callback(event));
