@@ -2158,8 +2158,6 @@ export class LightweightAPIServer {
 
       // Broadcast to both monitors and clients via EventBroadcaster
       this.eventBroadcaster.broadcast(jobProgressEvent);
-
-
     }
 
     // Check if this is a status change (assigned/processing/completed/failed)
@@ -2228,7 +2226,7 @@ export class LightweightAPIServer {
     jobId: string,
     completionData: Record<string, unknown>
   ): Promise<void> {
-    const completionMessage = {
+    const _completionMessage = {
       type: 'complete_job',
       job_id: jobId,
       worker_id: completionData.worker_id,
@@ -2250,10 +2248,9 @@ export class LightweightAPIServer {
     // Broadcast to both monitors and clients via EventBroadcaster
     // EventBroadcaster will automatically format for each connection type
     this.eventBroadcaster.broadcast(jobCompletedEvent);
-    
+
     // Use new function to broadcast to the specific client that submitted this job
     this.broadcastJobEventToClient(jobId, jobCompletedEvent);
-
 
     // Also broadcast to the client that submitted this job
     const submittingClientId = this.jobToClientMap.get(jobId);
@@ -2946,8 +2943,12 @@ export class LightweightAPIServer {
             max_retries: parseInt(jobData.max_retries || '3'),
             worker_id: jobData.worker_id || '',
             priority: parseInt(jobData.priority || '50'),
-            workflow_priority: jobData.workflow_priority ? parseInt(jobData.workflow_priority) : undefined,
-            workflow_datetime: jobData.workflow_datetime ? parseInt(jobData.workflow_datetime) : undefined,
+            workflow_priority: jobData.workflow_priority
+              ? parseInt(jobData.workflow_priority)
+              : undefined,
+            workflow_datetime: jobData.workflow_datetime
+              ? parseInt(jobData.workflow_datetime)
+              : undefined,
             created_at: jobData.created_at,
           };
 
@@ -3008,7 +3009,8 @@ export class LightweightAPIServer {
             // Re-add to pending queue with workflow-aware scoring (same logic as redis-service.ts)
             const effectivePriority = job.workflow_priority || job.priority;
             const effectiveDateTime = job.workflow_datetime || Date.parse(job.created_at);
-            const score = effectivePriority * 1000000 + (Number.MAX_SAFE_INTEGER - effectiveDateTime);
+            const score =
+              effectivePriority * 1000000 + (Number.MAX_SAFE_INTEGER - effectiveDateTime);
             await this.redis.zadd('jobs:pending', score, jobId);
 
             // Remove from worker's active jobs

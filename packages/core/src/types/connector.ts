@@ -18,7 +18,7 @@ export interface ConnectorInterface {
   checkHealth(): Promise<boolean>;
   getAvailableModels(): Promise<string[]>;
   getServiceInfo(): Promise<ServiceInfo>;
-  
+
   // Failure recovery capabilities (required for robust job management)
   getHealthCheckCapabilities(): HealthCheckCapabilities;
   queryJobStatus(serviceJobId: string): Promise<ServiceJobStatus>;
@@ -191,25 +191,25 @@ export interface HealthCheckCapabilities {
   // Basic health checking
   supportsBasicHealthCheck: boolean;
   basicHealthCheckEndpoint?: string;
-  
+
   // Job status querying (critical for failure recovery)
   supportsJobStatusQuery: boolean;
   jobStatusQueryEndpoint?: string;
   jobStatusQueryMethod?: 'GET' | 'POST';
-  
+
   // Job cancellation (required for timeout handling)
   supportsJobCancellation: boolean;
   jobCancellationEndpoint?: string;
   jobCancellationMethod?: 'POST' | 'DELETE';
-  
+
   // Service restart/recovery
   supportsServiceRestart: boolean;
   serviceRestartEndpoint?: string;
-  
+
   // Queue introspection (helpful for load balancing)
   supportsQueueIntrospection: boolean;
   queueIntrospectionEndpoint?: string;
-  
+
   // Custom health check requirements
   customHealthCheckRequirements?: string[];
   minimumApiVersion?: string;
@@ -223,7 +223,7 @@ export interface ServiceJobStatus {
   completedAt?: string;
   errorMessage?: string;
   canReconnect: boolean; // Can we reconnect to this job?
-  canCancel: boolean;    // Can we cancel this job?
+  canCancel: boolean; // Can we cancel this job?
   metadata?: Record<string, unknown>;
 }
 
@@ -240,15 +240,15 @@ export interface ServiceSupportValidation {
 export enum HealthCheckClass {
   // Minimal - Can only check if service is alive (basic deployment)
   MINIMAL = 'minimal',
-  
+
   // Standard - Can check health + query job status (production ready)
-  STANDARD = 'standard', 
-  
+  STANDARD = 'standard',
+
   // Advanced - Full failure recovery support (enterprise ready)
   ADVANCED = 'advanced',
-  
+
   // Custom - Service has unique requirements
-  CUSTOM = 'custom'
+  CUSTOM = 'custom',
 }
 
 export interface HealthCheckRequirements {

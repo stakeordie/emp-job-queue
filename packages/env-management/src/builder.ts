@@ -8,7 +8,6 @@ import {
   EnvironmentConfig,
   BuildResult,
   DockerServiceConfig,
-  DockerComposeConfig,
 } from './types.js';
 import { ServiceInterfaceManager } from './service-interfaces.js';
 
@@ -458,7 +457,7 @@ export class EnvironmentBuilder {
   /**
    * Write environment variables to .env and .env.secret files
    */
-  private async writeEnvFile(vars: { [key: string]: string }): Promise<void> {
+  private async writeEnvFile(_vars: { [key: string]: string }): Promise<void> {
     // For now, just write the .env.fun test file
     const funPath = this.outputPath.replace('.env', '.env.fun');
     await fs.promises.writeFile(funPath, 'fun', 'utf8');
@@ -479,7 +478,7 @@ export class EnvironmentBuilder {
 
     // Collect secret variable names from all service interfaces
     const availableInterfaces = this.serviceInterfaces.getInterfaces();
-    for (const [serviceName, serviceInterface] of availableInterfaces) {
+    for (const [_serviceName, serviceInterface] of availableInterfaces) {
       if (serviceInterface.secret) {
         for (const appVar of Object.keys(serviceInterface.secret)) {
           secretVariableNames.add(appVar);
@@ -574,7 +573,7 @@ export class EnvironmentBuilder {
     try {
       const dockerCompose = {
         version: '3.8',
-        services: {} as Record<string, any>,
+        services: {} as Record<string, DockerServiceConfig>,
         networks: profile.docker.networks || {},
         volumes: profile.docker.volumes || {},
       };
@@ -620,7 +619,7 @@ export class EnvironmentBuilder {
   private processServiceConfig(
     serviceConfig: DockerServiceConfig,
     resolvedVars: Record<string, string>
-  ): any {
+  ): DockerServiceConfig {
     const processed = { ...serviceConfig };
 
     // Remove our custom fields
@@ -647,7 +646,7 @@ export class EnvironmentBuilder {
   private evaluateCondition(
     condition: string,
     profile: Profile,
-    resolvedVars: Record<string, string>
+    _resolvedVars: Record<string, string>
   ): boolean {
     try {
       // Handle "includes" operator: "components.redis includes 'local'"
@@ -687,7 +686,7 @@ export class EnvironmentBuilder {
   /**
    * Substitute variables in an object recursively
    */
-  private substituteVariables(obj: any, vars: Record<string, string>): any {
+  private substituteVariables(obj: unknown, vars: Record<string, string>): unknown {
     if (typeof obj === 'string') {
       return obj.replace(/\$\{([^}]+)\}/g, (match, varName) => {
         return vars[varName] || process.env[varName] || match;
@@ -699,7 +698,7 @@ export class EnvironmentBuilder {
     }
 
     if (obj && typeof obj === 'object') {
-      const result: any = {};
+      const result: Record<string, unknown> = {};
       for (const [key, value] of Object.entries(obj)) {
         result[key] = this.substituteVariables(value, vars);
       }

@@ -32,7 +32,7 @@ interface EmPropsMessage {
   type: string;
   job_id?: string;
   timestamp: number;
-  [key: string]: any;
+  [key: string]: unknown;
 }
 
 // Union type for monitor connections
