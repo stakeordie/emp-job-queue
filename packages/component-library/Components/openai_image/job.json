@@ -1,8 +1,8 @@
 {
-  "service_type": "openai_image",
+  "service_required": "openai_image",
   "payload": {
     "prompt": "{{prompt}}",
-    "model": "gpt-image-1",
+    "model": "gpt-4.1",
     "size": "{{size}}",
     "quality": "{{quality}}",
     "n": 1

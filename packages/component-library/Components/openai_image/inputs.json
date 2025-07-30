@@ -10,5 +10,13 @@
   {
     "id": "temperature",
     "pathJq": ".payload.temperature"
+  },
+  {
+    "id": "size",
+    "pathJq": ".payload.size"
+  },
+  {
+    "id": "quality",
+    "pathJq": ".payload.quality"
   }
 ]
