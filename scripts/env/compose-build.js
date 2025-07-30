@@ -259,10 +259,13 @@ class ComposeBuilder {
         target: workerSpec.dockerTarget,
         args: {
           WORKER_SPEC: workerSpec.raw,
-          CACHE_BUST: '${CACHE_BUST:-1}'
+          WORKERS: workerSpec.raw,
+          MACHINE_ID: `${workerSpec.profileName}-\${ENV:-local}`,
+          CACHE_BUST: '${CACHE_BUST:-1}',
+          // Add all environment variables as build args
+          ...(await this.generateEnvironmentForWorkerSpec(workerSpec))
         }
       },
-      environment: await this.generateEnvironmentForWorkerSpec(workerSpec),
       container_name: `${workerSpec.profileName}-\${ENV:-local}`,
       hostname: `${workerSpec.profileName}-\${ENV:-local}`
     };

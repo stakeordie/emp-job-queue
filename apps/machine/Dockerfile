@@ -211,6 +211,16 @@ FROM ai-base AS base-machine
 
 # Profile: base - External API connectors (minimal setup)
 FROM base-machine AS base
+
+# Accept build args from compose generator
+ARG WORKER_SPEC
+ARG WORKERS
+ARG MACHINE_ID
+
+# Convert build args to environment variables so they're baked into the container
+ENV WORKERS=${WORKERS}
+ENV MACHINE_ID=${MACHINE_ID}
+
 # Inherits: Complete application runtime including entrypoint, PM2, service manager
 # No additional installations - for external API connectors like comfyui-remote
 COPY --from=base-machine /service-manager/worker-bundled /service-manager/worker-bundled
@@ -218,6 +228,16 @@ COPY .env /service-manager/.env
 
 # Profile: comfyui - Internal ComfyUI connectors  
 FROM base-machine AS comfyui
+
+# Accept build args from compose generator
+ARG WORKER_SPEC
+ARG WORKERS
+ARG MACHINE_ID
+
+# Convert build args to environment variables so they're baked into the container
+ENV WORKERS=${WORKERS}
+ENV MACHINE_ID=${MACHINE_ID}
+
 # Inherits: Complete application runtime including entrypoint, PM2, service manager
 # Add: ComfyUI installation and custom nodes
 COPY .env /service-manager/.env
@@ -245,6 +265,16 @@ RUN apt-get update && \
 
 # Profile: simulation - Testing and simulation  
 FROM base-machine AS simulation
+
+# Accept build args from compose generator
+ARG WORKER_SPEC
+ARG WORKERS
+ARG MACHINE_ID
+
+# Convert build args to environment variables so they're baked into the container
+ENV WORKERS=${WORKERS}
+ENV MACHINE_ID=${MACHINE_ID}
+
 # Inherits: Complete application runtime including entrypoint, PM2, service manager
 # Add: Any simulation-specific setup here if needed
 COPY --from=base-machine /service-manager/worker-bundled /service-manager/worker-bundled

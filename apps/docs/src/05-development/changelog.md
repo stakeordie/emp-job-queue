@@ -2,6 +2,20 @@
 
 ## [Unreleased] - Current Session
 
+### 🔧 **Container Environment Variable Baking**
+
+#### **Environment Variables Built Into Container Images**
+- **Problem**: Container images required runtime environment variables (like WORKERS, MACHINE_ID) to function, breaking standalone deployment
+- **Root Cause**: Environment variables only set in docker-compose runtime, not baked into images
+- **Solution**:
+  - ✅ Updated compose-build.js to pass all environment variables as build args
+  - ✅ Modified Dockerfile profiles (base, comfyui, simulation) to convert build args to ENV
+  - ✅ Removed runtime environment section to ensure local/production parity
+- **Impact**: Container images are now self-contained and work identically in local and production environments
+- **Files**: `scripts/env/compose-build.js`, `apps/machine/Dockerfile`
+
+**Environment Parity**: Local development now gets the exact same environment as production deployments, eliminating false positives and ensuring true consistency.
+
 ### 🔧 **Remote Worker Mode Fixes**
 
 #### **Service Mapping Resolution for Remote Downloads**

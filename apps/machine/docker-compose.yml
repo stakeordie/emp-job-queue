@@ -44,10 +44,9 @@ services:
       target: base
       args:
         WORKER_SPEC: comfyui-remote:1
+        WORKERS: comfyui-remote:1
+        MACHINE_ID: comfyui-remote-${ENV:-local}
         CACHE_BUST: ${CACHE_BUST:-1}
-    environment:
-      WORKERS: comfyui-remote:1
-      MACHINE_ID: comfyui-remote-${ENV:-local}
     container_name: comfyui-remote-${ENV:-local}
     hostname: comfyui-remote-${ENV:-local}
     image: emprops/machine:comfyui-remote
