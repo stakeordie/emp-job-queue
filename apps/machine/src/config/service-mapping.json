@@ -126,7 +126,7 @@
       "installer": null,
       "resource_binding": "shared",
       "build_stage": "base",
-      "required_env": ["OPENAI_API_KEY"],
+      "required_env": ["OPENAI_API_KEY","OPENAI_IMAGE_MODEL","CLOUD_STORAGE_PROVIDER"],
       "description": "OpenAI API connectors (no installation required)",
       "api_config": {
         "base_url": "${OPENAI_BASE_URL:-https://api.openai.com/v1}",
