@@ -2,6 +2,18 @@
 
 ## [Unreleased] - Current Session
 
+### 🔧 **Remote Worker Mode Fixes**
+
+#### **Service Mapping Resolution for Remote Downloads**
+- **Problem**: PM2 ecosystem generator failed when using remote worker downloads (WORKER_BUNDLE_MODE=remote)
+- **Root Cause**: service-mapping.json only looked in `/workspace/worker-bundled/` which doesn't exist in remote mode
+- **Solution**:
+  - ✅ Enhanced PM2 ecosystem generator to check multiple paths for service-mapping.json
+  - ✅ Added fallback to copy service-mapping.json from service-manager if not in downloaded bundle
+  - ✅ Updated Redis worker service to ensure service-mapping.json is available after extraction
+- **Impact**: Remote worker mode now works correctly, allowing production deployments to download workers from GitHub releases
+- **Files**: `apps/machine/src/config/enhanced-pm2-ecosystem-generator.js`, `apps/machine/src/services/redis-worker-service.js`
+
 ### 🔧 **Production Environment Configuration Updates**
 
 #### **API & Redis Migration to Production Infrastructure**

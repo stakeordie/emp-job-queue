@@ -242,6 +242,21 @@ export default class RedisWorkerService extends BaseService {
         throw new Error('Worker script not found after extraction');
       }
       
+      // Verify service-mapping.json was extracted
+      const serviceMappingPath = path.join(this.workerDir, 'src', 'config', 'service-mapping.json');
+      if (!await fs.pathExists(serviceMappingPath)) {
+        this.logger.warn('service-mapping.json not found in extracted package, copying from service-manager');
+        // Copy from service-manager as fallback
+        const sourcePath = path.join('/service-manager/src/config/service-mapping.json');
+        if (await fs.pathExists(sourcePath)) {
+          await fs.ensureDir(path.dirname(serviceMappingPath));
+          await fs.copy(sourcePath, serviceMappingPath);
+          this.logger.info('Copied service-mapping.json from service-manager');
+        } else {
+          throw new Error('service-mapping.json not found in package or service-manager');
+        }
+      }
+      
       this.logger.info('Worker package downloaded and extracted successfully');
     } catch (error) {
       // Clean up on error

@@ -63,11 +63,25 @@ export class EnhancedPM2EcosystemGenerator {
    */
   async loadServiceMapping() {
     try {
-      // Load service mapping
-      const serviceMappingPath = '/workspace/worker-bundled/src/config/service-mapping.json';
+      // Check multiple paths for service mapping - supports both bundled and non-bundled modes
+      const possiblePaths = [
+        '/workspace/worker-bundled/src/config/service-mapping.json',  // Bundled mode
+        '/service-manager/src/config/service-mapping.json',           // Direct from service-manager
+        path.join(__dirname, 'service-mapping.json'),                 // Same directory
+        './src/config/service-mapping.json'                           // Relative path
+      ];
       
-      if (!fs.existsSync(serviceMappingPath)) {
-        throw new Error(`Service mapping not found at: ${serviceMappingPath}`);
+      let serviceMappingPath = null;
+      for (const testPath of possiblePaths) {
+        if (fs.existsSync(testPath)) {
+          serviceMappingPath = testPath;
+          this.logger.log(`Found service mapping at: ${serviceMappingPath}`);
+          break;
+        }
+      }
+      
+      if (!serviceMappingPath) {
+        throw new Error(`Service mapping not found in any of these paths: ${possiblePaths.join(', ')}`);
       }
       
       const serviceMappingContent = fs.readFileSync(serviceMappingPath, 'utf8');
