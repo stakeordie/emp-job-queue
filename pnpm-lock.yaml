@@ -376,6 +376,9 @@ importers:
 
   apps/worker:
     dependencies:
+      '@azure/storage-blob':
+        specifier: ^12.27.0
+        version: 12.27.0
       '@emp/core':
         specifier: workspace:*
         version: link:../../packages/core
