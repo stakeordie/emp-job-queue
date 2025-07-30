@@ -3,7 +3,7 @@
 
 import OpenAI from 'openai';
 import { BaseConnector } from './base-connector.js';
-import { JobData, JobResult, ServiceInfo, HealthCheckClass, logger } from '@emp/core';
+import { JobData, JobResult, ServiceInfo, HealthCheckClass, logger, ProgressCallback } from '@emp/core';
 
 export class OpenAITextConnector extends BaseConnector {
   service_type = 'text_generation' as const;
@@ -23,7 +23,7 @@ export class OpenAITextConnector extends BaseConnector {
     return {
       OPENAI_API_KEY: '${OPENAI_API_KEY:-}',
       OPENAI_BASE_URL: '${OPENAI_BASE_URL:-https://api.openai.com/v1}',
-      OPENAI_TEXT_MODEL: '${OPENAI_TEXT_MODEL:-gpt-4}',
+      OPENAI_TEXT_MODEL: '${OPENAI_TEXT_MODEL:-gpt-4o-mini}',
       OPENAI_MAX_TOKENS: '${OPENAI_MAX_TOKENS:-4000}',
       OPENAI_TEMPERATURE: '${OPENAI_TEMPERATURE:-0.7}',
       OPENAI_TIMEOUT_SECONDS: '${OPENAI_TIMEOUT_SECONDS:-60}',
@@ -51,7 +51,7 @@ export class OpenAITextConnector extends BaseConnector {
     // OpenAI-specific configuration
     this.apiKey = process.env.OPENAI_API_KEY || '';
     this.baseURL = config.base_url;
-    this.defaultModel = process.env.OPENAI_TEXT_MODEL || 'gpt-4';
+    this.defaultModel = process.env.OPENAI_TEXT_MODEL || 'gpt-4o-mini';
     this.maxTokens = parseInt(process.env.OPENAI_MAX_TOKENS || '4000');
     this.temperature = parseFloat(process.env.OPENAI_TEMPERATURE || '0.7');
 
@@ -161,7 +161,7 @@ export class OpenAITextConnector extends BaseConnector {
     return true;
   }
 
-  async processJobImpl(jobData: JobData): Promise<JobResult> {
+  async processJobImpl(jobData: JobData, progressCallback?: ProgressCallback): Promise<JobResult> {
     try {
       const payload = jobData.payload as any;
       const model = payload.model || this.defaultModel;
@@ -201,17 +201,79 @@ export class OpenAITextConnector extends BaseConnector {
 
       logger.info(`Processing text generation job with model ${model}`);
 
-      const completion = await client.chat.completions.create({
+      // Report initial progress
+      if (progressCallback) {
+        await progressCallback({
+          job_id: jobData.id,
+          progress: 10,
+          message: `Starting text generation with ${model}...`,
+          current_step: 'initializing'
+        });
+      }
+
+      const stream = await client.chat.completions.create({
         model,
         messages,
         max_tokens: maxTokens,
         temperature,
-        stream: false, // For now, disable streaming
+        stream: true,
       });
 
-      const response = completion.choices[0]?.message?.content;
-      if (!response) {
+      let response = '';
+      let tokensGenerated = 0;
+      let totalTokens = 0;
+      let promptTokens = 0;
+
+      if (progressCallback) {
+        await progressCallback({
+          job_id: jobData.id,
+          progress: 20,
+          message: 'Generating text response...',
+          current_step: 'generating'
+        });
+      }
+
+      for await (const chunk of stream) {
+        const delta = chunk.choices[0]?.delta?.content;
+        if (delta) {
+          response += delta;
+          tokensGenerated++;
+          
+          // Report progress every 10 tokens or so
+          if (tokensGenerated % 10 === 0 && progressCallback) {
+            const progress = Math.min(90, 20 + (tokensGenerated * 0.7)); // Scale from 20% to 90%
+            await progressCallback({
+              job_id: jobData.id,
+              progress,
+              message: `Generated ${tokensGenerated} tokens...`,
+              current_step: 'generating',
+              metadata: { tokens_generated: tokensGenerated }
+            });
+          }
+        }
+
+        // Get usage info if available
+        if (chunk.usage) {
+          totalTokens = chunk.usage.total_tokens;
+          promptTokens = chunk.usage.prompt_tokens;
+        }
+      }
+
+      if (!response.trim()) {
         throw new Error('No response generated from OpenAI');
+      }
+
+      if (progressCallback) {
+        await progressCallback({
+          job_id: jobData.id,
+          progress: 100,
+          message: 'Text generation completed',
+          current_step: 'completed',
+          metadata: { 
+            total_tokens: totalTokens || tokensGenerated,
+            response_length: response.length 
+          }
+        });
       }
 
       return {
@@ -219,17 +281,17 @@ export class OpenAITextConnector extends BaseConnector {
         data: {
           text: response,
           model_used: model,
-          tokens_used: completion.usage?.total_tokens || 0,
-          finish_reason: completion.choices[0]?.finish_reason,
+          tokens_used: totalTokens || tokensGenerated,
+          finish_reason: 'stop', // Streaming doesn't provide finish_reason in chunks
         },
         processing_time_ms: 0, // Will be calculated by base class
         metadata: {
           model: model,
           service: 'openai_text',
           tokens: {
-            prompt: completion.usage?.prompt_tokens || 0,
-            completion: completion.usage?.completion_tokens || 0,
-            total: completion.usage?.total_tokens || 0,
+            prompt: promptTokens || 0,
+            completion: (totalTokens || tokensGenerated) - (promptTokens || 0),
+            total: totalTokens || tokensGenerated,
           }
         },
         service_metadata: {
