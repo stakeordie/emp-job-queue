@@ -48,6 +48,8 @@ worker_gpu*/
 
 # Docker build artifacts
 .workspace-packages/
+worker-bundled/
+worker-bundled/*
 
 # Archive files
 archive/
