@@ -27,7 +27,7 @@ export class ConnectorManager implements ConnectorRegistry, ConnectorFactory {
     this.redis = redis;
     this.workerId = workerId;
     this.machineId = machineId;
-    logger.info(`ConnectorManager received Redis connection for worker ${workerId}`);
+    logger.debug(`ConnectorManager received Redis connection for worker ${workerId}`);
   }
 
   /**
@@ -60,7 +60,7 @@ export class ConnectorManager implements ConnectorRegistry, ConnectorFactory {
       return;
     }
 
-    logger.info(`Loading connectors for worker types: ${workerSpecs.join(', ')}`);
+    logger.debug(`Loading connectors for worker types: ${workerSpecs.join(', ')}`);
 
     // Load service mapping to get the actual connectors to load
     const connectorsToLoad = new Set<string>();
@@ -110,7 +110,7 @@ export class ConnectorManager implements ConnectorRegistry, ConnectorFactory {
       workerSpecs.forEach(spec => connectorsToLoad.add(spec));
     }
 
-    logger.info(`Loading connectors: ${Array.from(connectorsToLoad).join(', ')}`);
+    logger.debug(`Loading connectors: ${Array.from(connectorsToLoad).join(', ')}`);
 
     for (const connectorName of connectorsToLoad) {
       try {
@@ -121,7 +121,7 @@ export class ConnectorManager implements ConnectorRegistry, ConnectorFactory {
       }
     }
 
-    logger.info(`Successfully loaded ${this.connectors.size} connectors`);
+    logger.info(`✅ Loaded ${this.connectors.size} connectors successfully`);
   }
 
   /**
@@ -264,9 +264,9 @@ export class ConnectorManager implements ConnectorRegistry, ConnectorFactory {
       // Inject Redis connection if available
       if (this.redis && this.workerId) {
         connector.setRedisConnection(this.redis, this.workerId, this.machineId);
-        logger.info(`Injected Redis connection into connector ${connectorName}`);
+        logger.debug(`Injected Redis connection into connector ${connectorName}`);
       } else {
-        logger.warn(
+        logger.debug(
           `No Redis connection available for connector ${connectorName} - status reporting may be limited`
         );
       }
@@ -277,7 +277,7 @@ export class ConnectorManager implements ConnectorRegistry, ConnectorFactory {
       // Only register the connector after successful initialization
       this.registerConnector(connector);
 
-      logger.info(`✅ Successfully loaded connector: ${connectorName} (${connector.service_type})`);
+      logger.info(`✅ ${connectorName} (${connector.service_type})`);
     } catch (error) {
       logger.error(`❌ Failed to load connector ${connectorName}:`, error);
       
@@ -292,7 +292,7 @@ export class ConnectorManager implements ConnectorRegistry, ConnectorFactory {
 
   private async loadConnectorFromPath(modulePath: string, className: string): Promise<any> {
     try {
-      logger.info(`Loading connector ${className} from ${modulePath}`);
+      logger.debug(`Loading connector ${className} from ${modulePath}`);
       const module = await import(modulePath);
       const ConnectorClass = module[className];
       
@@ -301,7 +301,7 @@ export class ConnectorManager implements ConnectorRegistry, ConnectorFactory {
       }
       
       // Validation: Test instantiation and basic methods
-      logger.info(`🔍 Validating connector ${className}...`);
+      logger.debug(`Validating connector ${className}...`);
       try {
         // Test constructor
         const testInstance = new ConnectorClass(`test-${className.toLowerCase()}`);
@@ -322,13 +322,18 @@ export class ConnectorManager implements ConnectorRegistry, ConnectorFactory {
           }
         }
         
-        logger.info(`✅ Connector ${className} validation passed`);
+        logger.debug(`Connector ${className} validation passed`);
       } catch (validationError) {
         logger.error(`❌ Connector ${className} validation failed: ${validationError.message}`);
         throw new Error(`Connector validation failed: ${validationError.message}`);
       }
+
+      // Validate environment variables for this connector
+      if (typeof ConnectorClass.getRequiredEnvVars === 'function') {
+        this.validateConnectorEnvironment(className, ConnectorClass);
+      }
       
-      logger.info(`✅ Successfully loaded and validated connector ${className} from ${modulePath}`);
+      logger.debug(`Successfully loaded and validated connector ${className} from ${modulePath}`);
       return ConnectorClass;
     } catch (error) {
       logger.error(`Failed to load connector from ${modulePath}:`, error);
@@ -603,6 +608,74 @@ export class ConnectorManager implements ConnectorRegistry, ConnectorFactory {
   async validateConfig(config): Promise<boolean> {
     // Basic validation - could be enhanced
     return !!(config && config.connector_id && config.service_type);
+  }
+
+  /**
+   * Validate environment variables for a specific connector
+   */
+  private validateConnectorEnvironment(connectorName: string, ConnectorClass: any): void {
+    logger.debug(`Validating environment variables for ${connectorName}...`);
+    
+    try {
+      const requiredEnvVars = ConnectorClass.getRequiredEnvVars();
+      const envVarNames = Object.keys(requiredEnvVars);
+      
+      if (envVarNames.length === 0) {
+        logger.debug(`${connectorName}: No specific environment variables required`);
+        return;
+      }
+
+      const present: string[] = [];
+      const missing: string[] = [];
+      const usingDefaults: string[] = [];
+
+      for (const [key, template] of Object.entries(requiredEnvVars)) {
+        // Ensure template is a string
+        const templateStr = typeof template === 'string' ? template : String(template);
+        
+        // Extract the actual environment variable name from template: '${CLOUD_STORAGE_PROVIDER:-}' → 'CLOUD_STORAGE_PROVIDER'
+        const envVarMatch = templateStr.match(/\$\{([^:}]+)/);
+        const actualEnvVar = envVarMatch ? envVarMatch[1] : key;
+
+        if (process.env[actualEnvVar] !== undefined && process.env[actualEnvVar] !== '') {
+          present.push(actualEnvVar);
+        } else {
+          // Check if there's a default value in the template
+          if (templateStr && templateStr.includes(':-')) {
+            // Extract default value from ${VAR:-default} format
+            const defaultMatch = templateStr.match(/\$\{[^:]*:-([^}]*)\}/);
+            if (defaultMatch && defaultMatch[1]) {
+              usingDefaults.push(`${actualEnvVar}=${defaultMatch[1]}`);
+            } else {
+              missing.push(actualEnvVar);
+            }
+          } else {
+            missing.push(actualEnvVar);
+          }
+        }
+      }
+
+      // Log results
+      const totalConfigured = present.length + usingDefaults.length;
+      const totalRequired = Object.keys(requiredEnvVars).length;
+
+      if (missing.length === 0) {
+        logger.info(`  ✅ ${connectorName}: All ${totalRequired} env vars configured`);
+      } else {
+        logger.warn(`  ⚠️ ${connectorName}: Missing ${missing.length}/${totalRequired} env vars: ${missing.join(', ')}`);
+      }
+
+      if (present.length > 0) {
+        logger.debug(`  Present: ${present.join(', ')}`);
+      }
+      
+      if (usingDefaults.length > 0) {
+        logger.debug(`  Using defaults: ${usingDefaults.join(', ')}`);
+      }
+
+    } catch (error) {
+      logger.error(`❌ Failed to validate environment for ${connectorName}:`, error);
+    }
   }
 
   // Connector lifecycle management

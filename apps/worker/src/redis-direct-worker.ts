@@ -29,9 +29,9 @@ async function main() {
     key.startsWith('OLLAMA_')
   );
   if (envVars.length > 0) {
-    logger.info(`✅ Received ${envVars.length} ENV vars: ${envVars.join(', ')}`);
+    logger.debug(`Received ${envVars.length} ENV vars: ${envVars.join(', ')}`);
   } else {
-    logger.warn(`⚠️ No service-specific ENV vars received`);
+    logger.debug(`No service-specific ENV vars received`);
   }
 
   logger.info(`Connecting to Redis at: ${HUB_REDIS_URL}`);
@@ -77,14 +77,10 @@ async function main() {
     // Start the worker
     await worker.start();
 
-    logger.info(`🚀 Redis-direct worker ${WORKER_ID} is running`);
-    logger.info('Worker capabilities:');
+    logger.info(`🚀 Worker ${WORKER_ID} ready`);
     const capabilities = worker.getCapabilities();
-    logger.info(`  - Services: ${capabilities.services.join(', ')}`);
-    logger.info(`  - GPU Memory: ${capabilities.hardware.gpu_memory_gb}GB`);
-    logger.info(`  - Machine ID: ${capabilities.machine_id || 'unknown'}`);
-    logger.info(`  - RAM: ${capabilities.hardware.ram_gb}GB`);
-    logger.info('Polling Redis for jobs...');
+    logger.info(`📋 Services: ${capabilities.services.join(', ')} | GPU: ${capabilities.hardware.gpu_memory_gb}GB | RAM: ${capabilities.hardware.ram_gb}GB`);
+    logger.info('🔄 Polling Redis for jobs...');
 
     // Keep the process alive
     process.stdin.resume();

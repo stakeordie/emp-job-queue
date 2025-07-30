@@ -588,6 +588,9 @@ export class RedisDirectBaseWorker {
     this.jobTimeouts.set(job.id, timeout);
 
     logger.info(`Worker ${this.workerId} starting job ${job.id} (${job.service_required})`);
+    
+    // Log the complete job structure for debugging - shows everything the worker has access to
+    logger.info(`📋 Complete Job Structure:`, job);
 
     try {
       await this.processJob(job);
