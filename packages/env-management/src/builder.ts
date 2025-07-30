@@ -35,13 +35,19 @@ export class EnvironmentBuilder {
   async generateServiceEnvFile(
     serviceName: string,
     systemVars: Record<string, string>,
-    outputPath?: string
+    outputPath?: string,
+    currentEnv?: string
   ): Promise<void> {
     const serviceVars = this.serviceInterfaces.mapServiceVariables(serviceName, systemVars);
     const serviceEnvPath = outputPath || `.env.${serviceName}`;
 
     // Split variables into public and secret based on service interface
     const { publicVars, secretVars } = this.splitVariablesByInterface(serviceVars);
+
+    // Add CURRENT_ENV to public vars if provided
+    if (currentEnv) {
+      publicVars['CURRENT_ENV'] = currentEnv;
+    }
 
     // Write public variables to .env (baked into Docker image)
     const publicContent = Object.entries(publicVars)
@@ -60,7 +66,7 @@ export class EnvironmentBuilder {
   /**
    * Build service-first environments
    */
-  private async buildServiceEnvironments(profile: Profile): Promise<BuildResult> {
+  private async buildServiceEnvironments(profile: Profile, profileName?: string): Promise<BuildResult> {
     const errors: string[] = [];
     const warnings: string[] = [];
     const generatedFiles: string[] = [];
@@ -134,7 +140,7 @@ export class EnvironmentBuilder {
           await fs.promises.mkdir(outputDir, { recursive: true });
         }
 
-        await this.generateServiceEnvFile(serviceName, resolvedPool, outputPath);
+        await this.generateServiceEnvFile(serviceName, resolvedPool, outputPath, profileName);
         generatedFiles.push(outputPath);
       }
 
@@ -223,7 +229,7 @@ export class EnvironmentBuilder {
       const profileData = JSON.parse(fs.readFileSync(profilePath, 'utf8')) as Profile;
 
       // Always use service-first approach to generate .env files for available service interfaces
-      return this.buildServiceEnvironments(profileData);
+      return this.buildServiceEnvironments(profileData, profileName);
     } catch (error) {
       return {
         success: false,
@@ -637,7 +643,7 @@ export class EnvironmentBuilder {
     }
 
     // Substitute variables in strings
-    return this.substituteVariables(processed, resolvedVars);
+    return this.substituteVariables(processed, resolvedVars) as DockerServiceConfig;
   }
 
   /**

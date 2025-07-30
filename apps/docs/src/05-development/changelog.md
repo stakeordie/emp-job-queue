@@ -16,6 +16,18 @@
 
 **Environment Parity**: Local development now gets the exact same environment as production deployments, eliminating false positives and ensuring true consistency.
 
+#### **CURRENT_ENV Variable for Proper MACHINE_ID Generation**
+- **Problem**: MACHINE_ID always showed as "local" because ENV variable wasn't available during container build/runtime
+- **Root Cause**: Environment build script didn't include profile name in generated .env files
+- **Solution**:
+  - ✅ Updated EnvironmentBuilder to add CURRENT_ENV to all generated .env files
+  - ✅ Modified generateServiceEnvFile to accept currentEnv parameter
+  - ✅ Profile name now propagates to all service .env files as CURRENT_ENV
+- **Impact**: MACHINE_ID now correctly reflects environment (e.g., `comfyui-remote-prod-test` instead of `comfyui-remote-local`)
+- **Files**: `packages/env-management/src/builder.ts`
+
+**Environment Consistency**: MACHINE_ID now accurately identifies the deployment environment, enabling proper machine tracking across environments.
+
 ### 🔧 **Remote Worker Mode Fixes**
 
 #### **Service Mapping Resolution for Remote Downloads**
