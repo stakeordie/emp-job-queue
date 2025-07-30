@@ -6,6 +6,9 @@
       "default",
       "local"
     ],
+    "api-tokens": [
+      "default"
+    ],
     "machine": [
       "default",
       "local"
@@ -22,15 +25,9 @@
       "default",
       "local"
     ],
-    "remote-connectors": [
-      "local"
-    ],
     "storage-provider": [
       "default",
       "dev"
-    ],
-    "api-tokens": [
-      "default"
     ],
     "comfyui": [
       "default",

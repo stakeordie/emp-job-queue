@@ -112,7 +112,7 @@ export class DockerComposeManager {
         environment: {
           // Docker/GPU runtime
           'NODE_ENV': 'production',
-          'ENV': environment,
+          'ENV': '${CURRENT_ENV}',
           'NVIDIA_VISIBLE_DEVICES': 'all',
           'NVIDIA_DRIVER_CAPABILITIES': 'compute,utility'
         },

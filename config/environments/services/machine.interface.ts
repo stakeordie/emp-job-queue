@@ -11,9 +11,7 @@ export const MachineEnvInterface = {
     // Redis connection (used by both machine and workers)
     "HUB_REDIS_URL": "REDIS_URL",
     
-    // Remote ComfyUI
-    "WORKER_COMFYUI_REMOTE_TIMEOUT_SECONDS":"COMFYUI_REMOTE_TIMEOUT_SECONDS",
-    "WORKER_COMFYUI_REMOTE_MAX_CONCURRENT_JOBS":"COMFYUI_RETRY_DELAY_SECONDS",
+
 
     "WORKER_BUNDLE_MODE": "WORKER_BUNDLE_MODE",
 
@@ -28,6 +26,10 @@ export const MachineEnvInterface = {
 
     // Worker authentication and security
     "WORKER_WEBSOCKET_AUTH_TOKEN": "REDIS_PASSWORD",
+
+    // Remote ComfyUI
+    "WORKER_COMFYUI_REMOTE_TIMEOUT_SECONDS":"COMFYUI_REMOTE_TIMEOUT_SECONDS",
+    "WORKER_COMFYUI_REMOTE_MAX_CONCURRENT_JOBS":"COMFYUI_RETRY_DELAY_SECONDS",
 
     // Custom ComfyUI Nodes Environment Variables (unprefixed - what the nodes expect)
 

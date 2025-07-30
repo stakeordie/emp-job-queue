@@ -28,6 +28,23 @@
 
 **Environment Consistency**: MACHINE_ID now accurately identifies the deployment environment, enabling proper machine tracking across environments.
 
+#### **Missing ComfyUIConnector Implementation**
+- **Problem**: ComfyUI worker failing with "Class ComfyUIConnector not found" error
+- **Root Cause**: Missing proper ComfyUIConnector class - only health check example existed
+- **Analysis**: 
+  - ComfyUIWebSocketConnector (base class) ✅ Working
+  - ComfyUIRemoteConnector (remote instances) ✅ Working  
+  - ComfyUIConnector (local instances) ❌ Missing proper implementation
+- **Solution**:
+  - ✅ Created proper ComfyUIConnector extending ComfyUIWebSocketConnector
+  - ✅ Added local-specific configuration with sensible defaults
+  - ✅ Updated connector exports in index.ts
+  - ✅ Rebuilt worker bundle with new connector
+- **Impact**: ComfyUI workers can now properly load local ComfyUI instances
+- **Files**: `apps/worker/src/connectors/comfyui-connector.ts`, `apps/worker/src/connectors/index.ts`
+
+**Connector Architecture**: Proper separation between local (ComfyUIConnector) and remote (ComfyUIRemoteConnector) implementations, both extending the proven WebSocket base class.
+
 ### 🔧 **Remote Worker Mode Fixes**
 
 #### **Service Mapping Resolution for Remote Downloads**

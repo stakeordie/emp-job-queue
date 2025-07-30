@@ -260,6 +260,15 @@ RUN apt-get update && \
     apt-get clean && \
     rm -rf /var/lib/apt/lists/*
 
+    # Accept build args from compose generator
+    ARG WORKER_SPEC
+    ARG WORKERS
+    ARG MACHINE_ID
+
+    # Convert build args to environment variables so they're baked into the container
+    ENV WORKERS=${WORKERS}
+    ENV MACHINE_ID=${MACHINE_ID}
+
     COPY --from=base-machine /service-manager/worker-bundled /service-manager/worker-bundled
     COPY .env /service-manager/.env
 

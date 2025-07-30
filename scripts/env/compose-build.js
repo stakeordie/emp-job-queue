@@ -134,7 +134,7 @@ class ComposeBuilder {
     const serviceMapping = await this.loadServiceMapping();
     const environment = {
       'WORKERS': workerSpec.raw,
-      'MACHINE_ID': `${workerSpec.profileName}-\${ENV:-local}`
+      'MACHINE_ID': `${workerSpec.profileName}-\${CURRENT_ENV}`
     };
 
     // Collect all required and optional environment variables for all workers
@@ -260,14 +260,14 @@ class ComposeBuilder {
         args: {
           WORKER_SPEC: workerSpec.raw,
           WORKERS: workerSpec.raw,
-          MACHINE_ID: `${workerSpec.profileName}-\${ENV:-local}`,
+          MACHINE_ID: `${workerSpec.profileName}-\${CURRENT_ENV}`,
           CACHE_BUST: '${CACHE_BUST:-1}',
           // Add all environment variables as build args
           ...(await this.generateEnvironmentForWorkerSpec(workerSpec))
         }
       },
-      container_name: `${workerSpec.profileName}-\${ENV:-local}`,
-      hostname: `${workerSpec.profileName}-\${ENV:-local}`
+      container_name: `${workerSpec.profileName}-\${CURRENT_ENV}`,
+      hostname: `${workerSpec.profileName}-\${CURRENT_ENV}`
     };
 
     // Add image tag if specified

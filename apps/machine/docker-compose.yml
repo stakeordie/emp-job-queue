@@ -24,7 +24,7 @@ services:
       - .env.secret
     environment:
       NODE_ENV: production
-      ENV: production
+      ENV: ${CURRENT_ENV}
       NVIDIA_VISIBLE_DEVICES: all
       NVIDIA_DRIVER_CAPABILITIES: compute,utility
     working_dir: /workspace
@@ -35,9 +35,6 @@ services:
         reservations:
           memory: ${MEMORY_RESERVATION:-2G}
   comfyui-remote:
-    <<: *base-machine
-    profiles:
-      - comfyui-remote
     build:
       context: .
       dockerfile: Dockerfile
@@ -45,11 +42,31 @@ services:
       args:
         WORKER_SPEC: comfyui-remote:1
         WORKERS: comfyui-remote:1
-        MACHINE_ID: comfyui-remote-${ENV:-local}
+        MACHINE_ID: comfyui-remote-${CURRENT_ENV}
         CACHE_BUST: ${CACHE_BUST:-1}
-    container_name: comfyui-remote-${ENV:-local}
-    hostname: comfyui-remote-${ENV:-local}
     image: emprops/machine:comfyui-remote
+    platform: linux/amd64
+    container_name: comfyui-remote-${CURRENT_ENV}
+    hostname: comfyui-remote-${CURRENT_ENV}
+    profiles:
+      - comfyui-remote
+    restart: 'no'
+    stop_grace_period: 2s
+    stop_signal: SIGTERM
+    env_file:
+      - .env.secret
+    environment:
+      NODE_ENV: production
+      ENV: ${CURRENT_ENV:-local}
+      NVIDIA_VISIBLE_DEVICES: all
+      NVIDIA_DRIVER_CAPABILITIES: compute,utility
+    working_dir: /workspace
+    deploy:
+      resources:
+        limits:
+          memory: ${MEMORY_LIMIT:-8G}
+        reservations:
+          memory: ${MEMORY_RESERVATION:-2G}
   comfyui:
     build:
       context: .
@@ -57,11 +74,13 @@ services:
       target: comfyui
       args:
         WORKER_SPEC: comfyui:1
+        WORKERS: comfyui:1
+        MACHINE_ID: comfyui-${CURRENT_ENV}
         CACHE_BUST: ${CACHE_BUST:-1}
     image: emprops/machine:comfyui
     platform: linux/amd64
-    container_name: comfyui-${ENV:-local}
-    hostname: comfyui-${ENV:-local}
+    container_name: comfyui-${CURRENT_ENV}
+    hostname: comfyui-${CURRENT_ENV}
     profiles:
       - comfyui
     restart: 'no'
@@ -70,8 +89,10 @@ services:
     env_file:
       - .env.secret
     environment:
-      WORKERS: comfyui:1
-      MACHINE_ID: comfyui-${ENV:-local}
+      NODE_ENV: production
+      ENV: ${CURRENT_ENV}
+      NVIDIA_VISIBLE_DEVICES: all
+      NVIDIA_DRIVER_CAPABILITIES: compute,utility
     working_dir: /workspace
     deploy:
       resources:
@@ -80,37 +101,24 @@ services:
         reservations:
           memory: ${MEMORY_RESERVATION:-2G}
   openai:
+    <<: *base-machine
+    profiles:
+      - openai
     build:
       context: .
       dockerfile: Dockerfile
       target: base
       args:
         WORKER_SPEC: openai:5
+        WORKERS: openai:5
+        MACHINE_ID: openai-${CURRENT_ENV}
         CACHE_BUST: ${CACHE_BUST:-1}
+        OPENAI_API_KEY: ${OPENAI_API_KEY}
+        OPENAI_IMAGE_MODEL: ${OPENAI_IMAGE_MODEL}
+        CLOUD_STORAGE_PROVIDER: ${CLOUD_STORAGE_PROVIDER}
+    container_name: openai-${CURRENT_ENV}
+    hostname: openai-${CURRENT_ENV}
     image: emprops/machine:openai
-    platform: linux/amd64
-    container_name: openai-${ENV:-local}
-    hostname: openai-${ENV:-local}
-    profiles:
-      - openai
-    restart: 'no'
-    stop_grace_period: 2s
-    stop_signal: SIGTERM
-    env_file:
-      - .env.secret
-    environment:
-      WORKERS: openai:5
-      MACHINE_ID: openai-${ENV:-local}
-      OPENAI_API_KEY: ${OPENAI_API_KEY}
-      OPENAI_IMAGE_MODEL: ${OPENAI_IMAGE_MODEL}
-      CLOUD_STORAGE_PROVIDER: ${CLOUD_STORAGE_PROVIDER}
-    working_dir: /workspace
-    deploy:
-      resources:
-        limits:
-          memory: ${MEMORY_LIMIT:-8G}
-        reservations:
-          memory: ${MEMORY_RESERVATION:-2G}
   simulation:
     build:
       context: .
@@ -192,6 +200,138 @@ services:
     environment:
       WORKERS: simulation:10
       MACHINE_ID: sim-${ENV:-local}
+    working_dir: /workspace
+    deploy:
+      resources:
+        limits:
+          memory: ${MEMORY_LIMIT:-8G}
+        reservations:
+          memory: ${MEMORY_RESERVATION:-2G}
+  comfyui-remote-test:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: base
+      args:
+        WORKER_SPEC: comfyui-remote:1
+        WORKERS: comfyui-remote:1
+        MACHINE_ID: comfyui-remote-test-${ENV:-local}
+        CACHE_BUST: ${CACHE_BUST:-1}
+    image: emprops/machine:comfyui-remote-test
+    platform: linux/amd64
+    container_name: comfyui-remote-test-${ENV:-local}
+    hostname: comfyui-remote-test-${ENV:-local}
+    profiles:
+      - comfyui-remote-test
+    restart: 'no'
+    stop_grace_period: 2s
+    stop_signal: SIGTERM
+    env_file:
+      - .env.secret
+    environment:
+      NODE_ENV: production
+      ENV: production
+      NVIDIA_VISIBLE_DEVICES: all
+      NVIDIA_DRIVER_CAPABILITIES: compute,utility
+    working_dir: /workspace
+    deploy:
+      resources:
+        limits:
+          memory: ${MEMORY_LIMIT:-8G}
+        reservations:
+          memory: ${MEMORY_RESERVATION:-2G}
+  test-current-env:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: base
+      args:
+        WORKER_SPEC: comfyui-remote:1
+        WORKERS: comfyui-remote:1
+        MACHINE_ID: test-current-env-${ENV:-local}
+        CACHE_BUST: ${CACHE_BUST:-1}
+    image: emprops/machine:test-current-env
+    platform: linux/amd64
+    container_name: test-current-env-${ENV:-local}
+    hostname: test-current-env-${ENV:-local}
+    profiles:
+      - test-current-env
+    restart: 'no'
+    stop_grace_period: 2s
+    stop_signal: SIGTERM
+    env_file:
+      - .env.secret
+    environment:
+      NODE_ENV: production
+      ENV: production
+      NVIDIA_VISIBLE_DEVICES: all
+      NVIDIA_DRIVER_CAPABILITIES: compute,utility
+    working_dir: /workspace
+    deploy:
+      resources:
+        limits:
+          memory: ${MEMORY_LIMIT:-8G}
+        reservations:
+          memory: ${MEMORY_RESERVATION:-2G}
+  test-env-fix:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: base
+      args:
+        WORKER_SPEC: comfyui-remote:1
+        WORKERS: comfyui-remote:1
+        MACHINE_ID: test-env-fix-${ENV:-local}
+        CACHE_BUST: ${CACHE_BUST:-1}
+    image: emprops/machine:test-env-fix
+    platform: linux/amd64
+    container_name: test-env-fix-${ENV:-local}
+    hostname: test-env-fix-${ENV:-local}
+    profiles:
+      - test-env-fix
+    restart: 'no'
+    stop_grace_period: 2s
+    stop_signal: SIGTERM
+    env_file:
+      - .env.secret
+    environment:
+      NODE_ENV: production
+      ENV: production
+      NVIDIA_VISIBLE_DEVICES: all
+      NVIDIA_DRIVER_CAPABILITIES: compute,utility
+    working_dir: /workspace
+    deploy:
+      resources:
+        limits:
+          memory: ${MEMORY_LIMIT:-8G}
+        reservations:
+          memory: ${MEMORY_RESERVATION:-2G}
+  final-test:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: base
+      args:
+        WORKER_SPEC: comfyui-remote:1
+        WORKERS: comfyui-remote:1
+        MACHINE_ID: final-test-${ENV:-local}
+        CACHE_BUST: ${CACHE_BUST:-1}
+    image: emprops/machine:final-test
+    platform: linux/amd64
+    container_name: final-test-${ENV:-local}
+    hostname: final-test-${ENV:-local}
+    profiles:
+      - final-test
+    restart: 'no'
+    stop_grace_period: 2s
+    stop_signal: SIGTERM
+    env_file:
+      - .env.secret
+    environment:
+      NODE_ENV: production
+      ENV: ${CURRENT_ENV:-local}
+      NVIDIA_VISIBLE_DEVICES: all
+      NVIDIA_DRIVER_CAPABILITIES: compute,utility
     working_dir: /workspace
     deploy:
       resources:

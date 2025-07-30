@@ -4,6 +4,7 @@
 
 export * from './a1111-connector.js';
 export * from './base-connector.js';
+export * from './comfyui-connector.js';
 export * from './comfyui-remote-connector.js';
 export * from './comfyui-websocket-connector.js';
 export * from './openai-image-connector.js';
