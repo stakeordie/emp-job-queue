@@ -12,7 +12,8 @@ The system is built on several key technical decisions:
 
 ## In This Section
 
-- [Unified Machine Architecture](./unified-machine-architecture.md) - Docker layering and machine types
+- [Machine Bootstrap & Lifecycle](./machine-bootstrap-lifecycle.md) - **Complete machine initialization pipeline**
+- [Docker Build Architecture](./docker-build-architecture.md) - Docker layer strategy and build optimization  
 - [Technical Implementation](./technical-implementation.md) - Deep dive into system internals
 - [WebSocket API](./websocket-api.md) - Real-time communication protocol
 - [Redis Data Structures](./redis-data-structures.md) - How data is organized in Redis *(to be written)*
