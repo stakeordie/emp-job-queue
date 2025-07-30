@@ -66,7 +66,10 @@ export class EnvironmentBuilder {
   /**
    * Build service-first environments
    */
-  private async buildServiceEnvironments(profile: Profile, profileName?: string): Promise<BuildResult> {
+  private async buildServiceEnvironments(
+    profile: Profile,
+    profileName?: string
+  ): Promise<BuildResult> {
     const errors: string[] = [];
     const warnings: string[] = [];
     const generatedFiles: string[] = [];
