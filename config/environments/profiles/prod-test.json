@@ -1,29 +1,25 @@
 {
-  "name": "Development Mixed",
+  "name": "Production Testing",
   "description": "Local development with production API and development Redis",
   "components": {
     "api": [
       "default",
-      "local"
+      "production"
     ],
     "machine": [
-      "default",
-      "local"
+      "default"
     ],
     "worker": [
       "default",
-      "local"
+      "production"
     ],
     "monitor": [
       "default",
-      "local"
+      "production"
     ],
     "redis": [
       "default",
-      "local"
-    ],
-    "remote-connectors": [
-      "local"
+      "production"
     ],
     "storage-provider": [
       "default",
@@ -34,7 +30,7 @@
     ],
     "comfyui": [
       "default",
-      "local"
+      "remote"
     ],
     "ollama": [
       "default"

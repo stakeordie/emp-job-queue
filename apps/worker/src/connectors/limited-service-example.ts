@@ -32,26 +32,26 @@ export class LimitedServiceConnector extends BaseConnector {
       // This service only has basic health checking
       supportsBasicHealthCheck: true,
       basicHealthCheckEndpoint: '/health',
-      
+
       // ❌ CRITICAL MISSING: Cannot query job status
       supportsJobStatusQuery: false,
       // No jobStatusQueryEndpoint available
-      
+
       // ❌ Cannot cancel jobs
       supportsJobCancellation: false,
-      
+
       // ❌ Cannot restart service
       supportsServiceRestart: false,
-      
+
       // ❌ Cannot introspect queue
       supportsQueueIntrospection: false,
-      
+
       // This service has minimal API capabilities
       customHealthCheckRequirements: [
         'Service only supports fire-and-forget job submission',
-        'No job tracking or status querying available'
+        'No job tracking or status querying available',
       ],
-      minimumApiVersion: '0.1.0'
+      minimumApiVersion: '0.1.0',
     };
   }
 
@@ -59,8 +59,8 @@ export class LimitedServiceConnector extends BaseConnector {
     // This service doesn't support job status querying
     throw new Error(
       `${this.service_type} does not support job status querying. ` +
-      `Service lacks the required API endpoints for failure recovery. ` +
-      `This connector cannot be used in production without job status querying capabilities.`
+        `Service lacks the required API endpoints for failure recovery. ` +
+        `This connector cannot be used in production without job status querying capabilities.`
     );
   }
 
@@ -80,9 +80,9 @@ export class LimitedServiceConnector extends BaseConnector {
   protected async initializeService(): Promise<void> {
     logger.warn(
       `Initializing ${this.service_type} connector with LIMITED capabilities. ` +
-      `This connector cannot provide failure recovery and should only be used for development/testing.`
+        `This connector cannot provide failure recovery and should only be used for development/testing.`
     );
-    
+
     const isHealthy = await this.checkHealth();
     if (!isHealthy) {
       throw new Error(`${this.service_type} service is not responding to health checks`);
@@ -97,12 +97,12 @@ export class LimitedServiceConnector extends BaseConnector {
     try {
       const controller = new AbortController();
       const timeoutId = setTimeout(() => controller.abort(), this.config.timeout_seconds * 1000);
-      
+
       const response = await fetch(`${this.config.base_url}/health`, {
         method: 'GET',
-        signal: controller.signal
+        signal: controller.signal,
       });
-      
+
       clearTimeout(timeoutId);
       return response.ok;
     } catch (error) {
@@ -120,20 +120,26 @@ export class LimitedServiceConnector extends BaseConnector {
       capabilities: {
         supported_formats: ['json'],
         supported_models: ['basic'],
-        features: ['fire_and_forget_processing']
-      }
+        features: ['fire_and_forget_processing'],
+      },
     };
   }
 
   // Placeholder implementations
-  async getAvailableModels(): Promise<string[]> { return ['basic']; }
-  async canProcessJob(jobData: JobData): Promise<boolean> { return true; }
-  async cancelJob(jobId: string): Promise<void> { 
+  async getAvailableModels(): Promise<string[]> {
+    return ['basic'];
+  }
+  async canProcessJob(jobData: JobData): Promise<boolean> {
+    return true;
+  }
+  async cancelJob(jobId: string): Promise<void> {
     throw new Error(`${this.service_type} does not support job cancellation`);
   }
-  async updateConfiguration(config: ConnectorConfig): Promise<void> { }
-  getConfiguration(): ConnectorConfig { return this.config; }
-  
+  async updateConfiguration(config: ConnectorConfig): Promise<void> {}
+  getConfiguration(): ConnectorConfig {
+    return this.config;
+  }
+
   protected async processJobImpl(
     jobData: JobData,
     progressCallback: ProgressCallback
@@ -141,16 +147,16 @@ export class LimitedServiceConnector extends BaseConnector {
     // Fire-and-forget processing
     logger.warn(
       `Processing job ${jobData.id} with ${this.service_type} - ` +
-      `NO FAILURE RECOVERY POSSIBLE due to service limitations`
+        `NO FAILURE RECOVERY POSSIBLE due to service limitations`
     );
-    
+
     return {
       success: true,
       processing_time_ms: 500,
       service_metadata: {
         service_version: this.version,
         // ❌ No service_job_id because service doesn't provide job tracking
-      }
+      },
     };
   }
 }

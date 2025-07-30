@@ -103,9 +103,7 @@ export class RedisDirectBaseWorker {
 
     // Initialize job health monitor
     const healthCheckIntervalMs = parseInt(process.env.HEALTH_CHECK_INTERVAL_MS || '30000');
-    const inactivityTimeoutMs = parseInt(
-      process.env.WEBSOCKET_INACTIVITY_TIMEOUT_MS || '30000'
-    );
+    const inactivityTimeoutMs = parseInt(process.env.WEBSOCKET_INACTIVITY_TIMEOUT_MS || '30000');
     this.jobHealthMonitor = new JobHealthMonitor(
       connectorManager,
       healthCheckIntervalMs,
@@ -142,7 +140,9 @@ export class RedisDirectBaseWorker {
         .map(spec => spec.split(':')[0]); // Extract type from "type:count"
 
       if (workerSpecs.length === 0) {
-        throw new Error('SYSTEM IS FUCKED: No WORKERS environment variable specified. I cannot determine what services this worker should provide. Set WORKERS=worker-type:count environment variable.');
+        throw new Error(
+          'SYSTEM IS FUCKED: No WORKERS environment variable specified. I cannot determine what services this worker should provide. Set WORKERS=worker-type:count environment variable.'
+        );
       }
 
       // Load service mapping
@@ -152,9 +152,9 @@ export class RedisDirectBaseWorker {
         '/service-manager/worker-bundled/src/config/service-mapping.json',
         '/workspace/src/config/service-mapping.json',
         '/service-manager/src/config/service-mapping.json',
-        './src/config/service-mapping.json'
+        './src/config/service-mapping.json',
       ];
-      
+
       let serviceMappingPath = null;
       for (const p of possiblePaths) {
         if (fs.existsSync(p)) {
@@ -162,17 +162,19 @@ export class RedisDirectBaseWorker {
           break;
         }
       }
-      
+
       if (!serviceMappingPath) {
-        throw new Error(`SYSTEM IS FUCKED: service-mapping.json not found in any of these paths: ${possiblePaths.join(', ')}. I cannot determine what capabilities this worker should have. The worker bundle is broken.`);
+        throw new Error(
+          `SYSTEM IS FUCKED: service-mapping.json not found in any of these paths: ${possiblePaths.join(', ')}. I cannot determine what capabilities this worker should have. The worker bundle is broken.`
+        );
       }
 
       const serviceMappingContent = fs.readFileSync(serviceMappingPath, 'utf8');
       const serviceMapping = JSON.parse(serviceMappingContent);
-      
+
       // Extract capabilities from all worker types
       const allCapabilities = new Set<string>();
-      
+
       for (const workerType of workerSpecs) {
         const workerConfig = serviceMapping.workers?.[workerType];
         if (workerConfig && workerConfig.service) {
@@ -186,14 +188,15 @@ export class RedisDirectBaseWorker {
             }
           }
         } else {
-          throw new Error(`SYSTEM IS FUCKED: Worker type '${workerType}' not found in service mapping. Available worker types: ${Object.keys(serviceMapping.workers || {}).join(', ')}. Check your WORKERS environment variable.`);
+          throw new Error(
+            `SYSTEM IS FUCKED: Worker type '${workerType}' not found in service mapping. Available worker types: ${Object.keys(serviceMapping.workers || {}).join(', ')}. Check your WORKERS environment variable.`
+          );
         }
       }
-      
+
       const capabilities = Array.from(allCapabilities);
       logger.info(`Derived capabilities from service mapping: ${capabilities.join(', ')}`);
       return capabilities;
-      
     } catch (error) {
       logger.error('Failed to load capabilities from service mapping:', error);
       throw error; // Re-throw the error instead of using fallback
@@ -588,7 +591,7 @@ export class RedisDirectBaseWorker {
     this.jobTimeouts.set(job.id, timeout);
 
     logger.info(`Worker ${this.workerId} starting job ${job.id} (${job.service_required})`);
-    
+
     // Log the complete job structure for debugging - shows everything the worker has access to
     logger.info(`📋 Complete Job Structure:`, job);
 

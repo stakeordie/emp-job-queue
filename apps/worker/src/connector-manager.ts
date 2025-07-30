@@ -48,7 +48,8 @@ export class ConnectorManager implements ConnectorRegistry, ConnectorFactory {
 
   async loadConnectors(): Promise<void> {
     // Get worker types from environment variable
-    const workersEnv = process.env.WORKERS || process.env.WORKER_CONNECTORS || process.env.CONNECTORS || '';
+    const workersEnv =
+      process.env.WORKERS || process.env.WORKER_CONNECTORS || process.env.CONNECTORS || '';
     const workerSpecs = workersEnv
       .split(',')
       .map(s => s.trim())
@@ -64,7 +65,7 @@ export class ConnectorManager implements ConnectorRegistry, ConnectorFactory {
 
     // Load service mapping to get the actual connectors to load
     const connectorsToLoad = new Set<string>();
-    
+
     try {
       const fs = await import('fs');
       const possiblePaths = [
@@ -72,9 +73,9 @@ export class ConnectorManager implements ConnectorRegistry, ConnectorFactory {
         '/service-manager/worker-bundled/src/config/service-mapping.json',
         '/workspace/src/config/service-mapping.json',
         '/service-manager/src/config/service-mapping.json',
-        './src/config/service-mapping.json'
+        './src/config/service-mapping.json',
       ];
-      
+
       let serviceMappingPath = null;
       for (const p of possiblePaths) {
         if (fs.existsSync(p)) {
@@ -82,14 +83,16 @@ export class ConnectorManager implements ConnectorRegistry, ConnectorFactory {
           break;
         }
       }
-      
+
       if (!serviceMappingPath) {
-        throw new Error(`SYSTEM IS FUCKED: service-mapping.json not found in any of these paths: ${possiblePaths.join(', ')}. Cannot determine what connectors to load.`);
+        throw new Error(
+          `SYSTEM IS FUCKED: service-mapping.json not found in any of these paths: ${possiblePaths.join(', ')}. Cannot determine what connectors to load.`
+        );
       }
 
       const serviceMappingContent = fs.readFileSync(serviceMappingPath, 'utf8');
       const serviceMapping = JSON.parse(serviceMappingContent);
-      
+
       // Extract connectors from worker specifications
       for (const workerType of workerSpecs) {
         const workerConfig = serviceMapping.workers?.[workerType];
@@ -100,10 +103,11 @@ export class ConnectorManager implements ConnectorRegistry, ConnectorFactory {
             }
           }
         } else {
-          throw new Error(`SYSTEM IS FUCKED: Worker type '${workerType}' not found in service mapping. Available worker types: ${Object.keys(serviceMapping.workers || {}).join(', ')}`);
+          throw new Error(
+            `SYSTEM IS FUCKED: Worker type '${workerType}' not found in service mapping. Available worker types: ${Object.keys(serviceMapping.workers || {}).join(', ')}`
+          );
         }
       }
-      
     } catch (error) {
       logger.error('Failed to load service mapping, falling back to worker type names:', error);
       // Fallback to using worker type names as connector names
@@ -229,9 +233,9 @@ export class ConnectorManager implements ConnectorRegistry, ConnectorFactory {
         '/service-manager/worker-bundled/src/config/service-mapping.json',
         '/workspace/src/config/service-mapping.json',
         '/service-manager/src/config/service-mapping.json',
-        './src/config/service-mapping.json'
+        './src/config/service-mapping.json',
       ];
-      
+
       let serviceMappingPath = null;
       for (const p of possiblePaths) {
         if (fs.existsSync(p)) {
@@ -239,22 +243,26 @@ export class ConnectorManager implements ConnectorRegistry, ConnectorFactory {
           break;
         }
       }
-      
+
       if (!serviceMappingPath) {
         // Fallback to hardcoded mapping for basic connectors
-        logger.warn(`service-mapping.json not found, using fallback for connector ${connectorName}`);
+        logger.warn(
+          `service-mapping.json not found, using fallback for connector ${connectorName}`
+        );
         ConnectorClass = await this.loadConnectorFallback(connectorName);
       } else {
         const serviceMappingContent = fs.readFileSync(serviceMappingPath, 'utf8');
         const serviceMapping = JSON.parse(serviceMappingContent);
-        
+
         // Look for this connector name in the connectors section
         if (serviceMapping.connectors && serviceMapping.connectors[connectorName]) {
           const connectorConfig = serviceMapping.connectors[connectorName];
           const { path: modulePath } = connectorConfig;
           ConnectorClass = await this.loadConnectorFromPath(modulePath, connectorName);
         } else {
-          throw new Error(`Connector ${connectorName} not found in connectors section of service mapping`);
+          throw new Error(
+            `Connector ${connectorName} not found in connectors section of service mapping`
+          );
         }
       }
 
@@ -280,12 +288,12 @@ export class ConnectorManager implements ConnectorRegistry, ConnectorFactory {
       logger.info(`✅ ${connectorName} (${connector.service_type})`);
     } catch (error) {
       logger.error(`❌ Failed to load connector ${connectorName}:`, error);
-      
+
       // Fail fast with clear error message - don't register broken connectors
       throw new Error(
         `Connector ${connectorName} failed to initialize and cannot be used. ` +
-        `Root cause: ${error.message}. ` +
-        `This worker cannot start without a working ${connectorName} connector.`
+          `Root cause: ${error.message}. ` +
+          `This worker cannot start without a working ${connectorName} connector.`
       );
     }
   }
@@ -295,17 +303,17 @@ export class ConnectorManager implements ConnectorRegistry, ConnectorFactory {
       logger.debug(`Loading connector ${className} from ${modulePath}`);
       const module = await import(modulePath);
       const ConnectorClass = module[className];
-      
+
       if (!ConnectorClass) {
         throw new Error(`Class ${className} not found in ${modulePath}`);
       }
-      
+
       // Validation: Test instantiation and basic methods
       logger.debug(`Validating connector ${className}...`);
       try {
         // Test constructor
         const testInstance = new ConnectorClass(`test-${className.toLowerCase()}`);
-        
+
         // Verify required properties exist
         if (typeof testInstance.service_type !== 'string') {
           throw new Error(`service_type property missing or invalid`);
@@ -313,15 +321,20 @@ export class ConnectorManager implements ConnectorRegistry, ConnectorFactory {
         if (typeof testInstance.connector_id !== 'string') {
           throw new Error(`connector_id property missing or invalid`);
         }
-        
+
         // Verify required methods exist
-        const requiredMethods = ['initializeService', 'checkHealth', 'processJobImpl', 'cleanupService'];
+        const requiredMethods = [
+          'initializeService',
+          'checkHealth',
+          'processJobImpl',
+          'cleanupService',
+        ];
         for (const method of requiredMethods) {
           if (typeof testInstance[method] !== 'function') {
             throw new Error(`Required method ${method} missing or not a function`);
           }
         }
-        
+
         logger.debug(`Connector ${className} validation passed`);
       } catch (validationError) {
         logger.error(`❌ Connector ${className} validation failed: ${validationError.message}`);
@@ -332,7 +345,7 @@ export class ConnectorManager implements ConnectorRegistry, ConnectorFactory {
       if (typeof ConnectorClass.getRequiredEnvVars === 'function') {
         this.validateConnectorEnvironment(className, ConnectorClass);
       }
-      
+
       logger.debug(`Successfully loaded and validated connector ${className} from ${modulePath}`);
       return ConnectorClass;
     } catch (error) {
@@ -343,21 +356,21 @@ export class ConnectorManager implements ConnectorRegistry, ConnectorFactory {
 
   private async loadConnectorByNamingConvention(connectorId: string): Promise<any> {
     // Convert connector ID to class name and file name using naming convention
-    // Examples: 
+    // Examples:
     // - "comfyui-remote" -> "ComfyUIRemoteConnector" in "./connectors/comfyui-remote-connector.js"
     // - "simulation" -> "SimulationConnector" in "./connectors/simulation-connector.js"
-    
+
     const fileName = `${connectorId}-connector.js`;
     const className = this.connectorIdToClassName(connectorId);
-    
+
     try {
       const module = await import(`./connectors/${fileName}`);
       const ConnectorClass = module[className];
-      
+
       if (!ConnectorClass) {
         throw new Error(`Class ${className} not found in ./connectors/${fileName}`);
       }
-      
+
       logger.info(`Dynamically loaded connector ${className} from ${fileName}`);
       return ConnectorClass;
     } catch (error) {
@@ -369,34 +382,38 @@ export class ConnectorManager implements ConnectorRegistry, ConnectorFactory {
   private connectorIdToClassName(connectorId: string): string {
     // Convert kebab-case connector ID to PascalCase class name
     // Examples:
-    // - "comfyui-remote" -> "ComfyUIRemoteConnector" 
+    // - "comfyui-remote" -> "ComfyUIRemoteConnector"
     // - "simulation" -> "SimulationConnector"
     // - "a1111" -> "A1111Connector"
-    
+
     const parts = connectorId.split('-');
-    const pascalCased = parts.map(part => {
-      // Handle special cases
-      if (part.toLowerCase() === 'comfyui') return 'ComfyUI';
-      if (part.toLowerCase() === 'a1111') return 'A1111';
-      if (part.toLowerCase() === 'websocket') return 'WebSocket';
-      
-      // Standard PascalCase conversion
-      return part.charAt(0).toUpperCase() + part.slice(1).toLowerCase();
-    }).join('');
-    
+    const pascalCased = parts
+      .map(part => {
+        // Handle special cases
+        if (part.toLowerCase() === 'comfyui') return 'ComfyUI';
+        if (part.toLowerCase() === 'a1111') return 'A1111';
+        if (part.toLowerCase() === 'websocket') return 'WebSocket';
+
+        // Standard PascalCase conversion
+        return part.charAt(0).toUpperCase() + part.slice(1).toLowerCase();
+      })
+      .join('');
+
     return `${pascalCased}Connector`;
   }
 
   private async loadConnectorFallback(connectorId: string): Promise<any> {
     // Fallback for when service-mapping.json is not available
     const id = connectorId.toLowerCase();
-    
+
     switch (id) {
       case 'simulation':
         const { SimulationConnector } = await import('./connectors/simulation-connector.js');
         return SimulationConnector;
       case 'comfyui':
-        const { ComfyUIWebSocketConnector } = await import('./connectors/comfyui-websocket-connector.js');
+        const { ComfyUIWebSocketConnector } = await import(
+          './connectors/comfyui-websocket-connector.js'
+        );
         return ComfyUIWebSocketConnector;
       case 'comfyui-remote':
         const { ComfyUIRemoteConnector } = await import('./connectors/comfyui-remote-connector.js');
@@ -488,9 +505,9 @@ export class ConnectorManager implements ConnectorRegistry, ConnectorFactory {
       const possiblePaths = [
         '/workspace/src/config/service-mapping.json',
         '/service-manager/src/config/service-mapping.json',
-        './src/config/service-mapping.json'
+        './src/config/service-mapping.json',
       ];
-      
+
       let serviceMappingPath = null;
       for (const p of possiblePaths) {
         if (fs.existsSync(p)) {
@@ -498,52 +515,57 @@ export class ConnectorManager implements ConnectorRegistry, ConnectorFactory {
           break;
         }
       }
-      
+
       if (!serviceMappingPath) {
         logger.warn('service-mapping.json not found, falling back to getConnectorByServiceType');
         return this.getConnectorByServiceType(serviceRequired);
       }
-      
+
       const serviceMappingContent = fs.readFileSync(serviceMappingPath, 'utf8');
       const serviceMapping = JSON.parse(serviceMappingContent);
-      
+
       // Search through workers to find one that can handle the required service
       for (const [workerId, workerConfig] of Object.entries(serviceMapping.workers)) {
         const config = workerConfig as any;
-        
+
         if (config.service && Array.isArray(config.service)) {
           // Check if any of this worker's service capabilities match the required service
           for (const serviceCapability of config.service) {
             let canHandle = false;
-            
+
             if (Array.isArray(serviceCapability.capability)) {
               canHandle = serviceCapability.capability.includes(serviceRequired);
             } else {
               canHandle = serviceCapability.capability === serviceRequired;
             }
-            
+
             if (canHandle) {
               // Found a worker that can handle this service - get the connector name
               const connectorName = serviceCapability.connector;
               if (connectorName) {
                 const connector = this.getConnector(connectorName);
                 if (connector) {
-                  logger.info(`🔗 Found connector ${connectorName} for service ${serviceRequired} via service mapping`);
+                  logger.info(
+                    `🔗 Found connector ${connectorName} for service ${serviceRequired} via service mapping`
+                  );
                   return connector;
                 } else {
-                  logger.warn(`Worker ${workerId} handles service ${serviceRequired} but connector ${connectorName} is not loaded`);
+                  logger.warn(
+                    `Worker ${workerId} handles service ${serviceRequired} but connector ${connectorName} is not loaded`
+                  );
                 }
               } else {
-                logger.warn(`Worker ${workerId} handles service ${serviceRequired} but no connector specified`);
+                logger.warn(
+                  `Worker ${workerId} handles service ${serviceRequired} but no connector specified`
+                );
               }
             }
           }
         }
       }
-      
+
       logger.warn(`No connector found for service ${serviceRequired} in service mapping`);
       return undefined;
-      
     } catch (error) {
       logger.error('Failed to read service mapping for connector lookup:', error);
       return this.getConnectorByServiceType(serviceRequired);
@@ -602,7 +624,16 @@ export class ConnectorManager implements ConnectorRegistry, ConnectorFactory {
   }
 
   getSupportedServiceTypes(): string[] {
-    return ['simulation', 'comfyui', 'a1111', 'rest_sync', 'rest_async', 'websocket', 'stability', 'elevenlabs'];
+    return [
+      'simulation',
+      'comfyui',
+      'a1111',
+      'rest_sync',
+      'rest_async',
+      'websocket',
+      'stability',
+      'elevenlabs',
+    ];
   }
 
   async validateConfig(config): Promise<boolean> {
@@ -615,11 +646,11 @@ export class ConnectorManager implements ConnectorRegistry, ConnectorFactory {
    */
   private validateConnectorEnvironment(connectorName: string, ConnectorClass: any): void {
     logger.debug(`Validating environment variables for ${connectorName}...`);
-    
+
     try {
       const requiredEnvVars = ConnectorClass.getRequiredEnvVars();
       const envVarNames = Object.keys(requiredEnvVars);
-      
+
       if (envVarNames.length === 0) {
         logger.debug(`${connectorName}: No specific environment variables required`);
         return;
@@ -632,7 +663,7 @@ export class ConnectorManager implements ConnectorRegistry, ConnectorFactory {
       for (const [key, template] of Object.entries(requiredEnvVars)) {
         // Ensure template is a string
         const templateStr = typeof template === 'string' ? template : String(template);
-        
+
         // Extract the actual environment variable name from template: '${CLOUD_STORAGE_PROVIDER:-}' → 'CLOUD_STORAGE_PROVIDER'
         const envVarMatch = templateStr.match(/\$\{([^:}]+)/);
         const actualEnvVar = envVarMatch ? envVarMatch[1] : key;
@@ -662,17 +693,18 @@ export class ConnectorManager implements ConnectorRegistry, ConnectorFactory {
       if (missing.length === 0) {
         logger.info(`  ✅ ${connectorName}: All ${totalRequired} env vars configured`);
       } else {
-        logger.warn(`  ⚠️ ${connectorName}: Missing ${missing.length}/${totalRequired} env vars: ${missing.join(', ')}`);
+        logger.warn(
+          `  ⚠️ ${connectorName}: Missing ${missing.length}/${totalRequired} env vars: ${missing.join(', ')}`
+        );
       }
 
       if (present.length > 0) {
         logger.debug(`  Present: ${present.join(', ')}`);
       }
-      
+
       if (usingDefaults.length > 0) {
         logger.debug(`  Using defaults: ${usingDefaults.join(', ')}`);
       }
-
     } catch (error) {
       logger.error(`❌ Failed to validate environment for ${connectorName}:`, error);
     }

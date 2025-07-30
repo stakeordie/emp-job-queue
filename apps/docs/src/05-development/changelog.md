@@ -2,6 +2,50 @@
 
 ## [Unreleased] - Current Session
 
+### 🔧 **Production Environment Configuration Updates**
+
+#### **API & Redis Migration to Production Infrastructure**
+- **Problem**: Development configurations pointing to local/test environments
+- **Solution**: 
+  - ✅ Updated API endpoint to `qredapi.emerge.pizza` for production deployment
+  - ✅ Migrated Redis URL to production instance at `pqred.emerge.pizza`
+  - ✅ Updated monitor WebSocket connection to use production API endpoint
+  - ✅ Aligned CORS settings with production domains
+- **Impact**: System ready for production deployment with proper infrastructure endpoints
+- **Files**: `apps/api/.env`, `config/environments/components/api.env`, `config/environments/components/redis.env`
+
+#### **Enhanced Simulation Service Configuration**
+- **Problem**: Simulation service limited to single instance, not utilizing mock GPU scaling
+- **Solution**:
+  - ✅ Changed resource binding from `cpu` to `mock_gpu` for proper scaling
+  - ✅ Increased instances per machine from 1 to 10 for simulation service
+  - ✅ Added `MOCK_GPU_NUM` environment variable support in PM2 ecosystem generator
+  - ✅ Created new `sim` service profile in docker-compose for simplified deployment
+- **Impact**: Simulation service can now properly scale to test multi-GPU scenarios
+- **Files**: `apps/machine/src/config/service-mapping.json`, `apps/machine/src/config/enhanced-pm2-ecosystem-generator.js`
+
+#### **Worker Environment Variable Improvements**
+- **Problem**: Workers missing common environment variables needed for unified machine status
+- **Solution**:
+  - ✅ Added base environment variables to all connector types via `BaseConnector.getRequiredEnvVars()`
+  - ✅ Included `UNIFIED_MACHINE_STATUS`, `HUB_REDIS_URL`, `MACHINE_ID`, `WORKER_ID` in base
+  - ✅ OpenAI connectors now properly inherit base environment variables
+  - ✅ Fixed worker ID handling to use PM2-provided unique IDs directly
+- **Impact**: All workers now have consistent environment configuration for proper status reporting
+- **Files**: `apps/worker/src/connectors/base-connector.ts`, `apps/worker/src/connectors/openai-*.ts`, `apps/worker/src/redis-direct-worker.ts`
+
+#### **Docker Compose Service Restructuring**
+- **Problem**: Inconsistent service definitions and environment configurations
+- **Solution**:
+  - ✅ Standardized service definitions across all profiles
+  - ✅ Fixed `comfyui-remote` and `openai` service configurations
+  - ✅ Changed default environment from `local` to `production`
+  - ✅ Added proper MACHINE_ID environment variables to all services
+- **Impact**: Consistent and reliable service deployment across all machine types
+- **Files**: `apps/machine/docker-compose.yml`
+
+**Advances North Star**: These configuration updates prepare the system for production deployment and enable proper testing of specialized machine pools through enhanced simulation capabilities.
+
 ### 🔧 **CRITICAL RELIABILITY FIXES**
 
 #### **PHANTOM MACHINE ELIMINATION - Monitor Trust Restored**

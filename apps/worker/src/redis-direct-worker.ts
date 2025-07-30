@@ -11,8 +11,14 @@ import os from 'os';
 export * from './connectors/index.js';
 
 // Worker configuration from environment
-const WORKER_ID_PREFIX = process.env.WORKER_ID || 'worker';
-const WORKER_ID = `${WORKER_ID_PREFIX}-${process.pid}`;
+// Use provided WORKER_ID directly (set by PM2 ecosystem generator)
+// PM2 creates unique IDs like: simulation-0, simulation-1, comfyui-gpu0, comfyui-gpu1
+const WORKER_ID = process.env.WORKER_ID;
+
+if (!WORKER_ID) {
+  logger.error('WORKER_ID environment variable is required');
+  process.exit(1);
+}
 const HUB_REDIS_URL = process.env.HUB_REDIS_URL || 'redis://localhost:6379';
 const MACHINE_ID = process.env.MACHINE_ID || os.hostname();
 
@@ -20,13 +26,14 @@ async function main() {
   logger.info(`Starting Redis-direct worker ${WORKER_ID} on machine ${MACHINE_ID}  ^^^^^^`);
 
   // Log received environment variables
-  const envVars = Object.keys(process.env).filter(key => 
-    key.startsWith('OPENAI_') || 
-    key.startsWith('COMFYUI_') ||
-    key.startsWith('SIMULATION_') ||
-    key.startsWith('A1111_') ||
-    key.startsWith('REPLICATE_') ||
-    key.startsWith('OLLAMA_')
+  const envVars = Object.keys(process.env).filter(
+    key =>
+      key.startsWith('OPENAI_') ||
+      key.startsWith('COMFYUI_') ||
+      key.startsWith('SIMULATION_') ||
+      key.startsWith('A1111_') ||
+      key.startsWith('REPLICATE_') ||
+      key.startsWith('OLLAMA_')
   );
   if (envVars.length > 0) {
     logger.debug(`Received ${envVars.length} ENV vars: ${envVars.join(', ')}`);
@@ -79,7 +86,9 @@ async function main() {
 
     logger.info(`🚀 Worker ${WORKER_ID} ready`);
     const capabilities = worker.getCapabilities();
-    logger.info(`📋 Services: ${capabilities.services.join(', ')} | GPU: ${capabilities.hardware.gpu_memory_gb}GB | RAM: ${capabilities.hardware.ram_gb}GB`);
+    logger.info(
+      `📋 Services: ${capabilities.services.join(', ')} | GPU: ${capabilities.hardware.gpu_memory_gb}GB | RAM: ${capabilities.hardware.ram_gb}GB`
+    );
     logger.info('🔄 Polling Redis for jobs...');
 
     // Keep the process alive

@@ -401,7 +401,7 @@ export class RestAsyncConnector implements ConnectorInterface {
       const response = await this.httpClient.get(endpoint);
       const statusField = this.config.settings?.status_field || 'status';
       const status = response.data[statusField];
-      
+
       return {
         serviceJobId,
         status: status === 'completed' ? 'completed' : status === 'failed' ? 'failed' : 'running',

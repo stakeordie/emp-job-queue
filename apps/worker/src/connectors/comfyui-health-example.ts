@@ -32,37 +32,37 @@ export class ComfyUIConnector extends BaseConnector {
       // ComfyUI has excellent API support
       supportsBasicHealthCheck: true,
       basicHealthCheckEndpoint: '/system_stats',
-      
+
       // Can query job status via prompt history
       supportsJobStatusQuery: true,
       jobStatusQueryEndpoint: '/history/{prompt_id}',
       jobStatusQueryMethod: 'GET',
-      
+
       // Can cancel jobs via interrupt
       supportsJobCancellation: true,
       jobCancellationEndpoint: '/interrupt',
       jobCancellationMethod: 'POST',
-      
+
       // Cannot restart ComfyUI service itself
       supportsServiceRestart: false,
-      
+
       // Can introspect queue status
       supportsQueueIntrospection: true,
       queueIntrospectionEndpoint: '/queue',
-      
+
       // ComfyUI specific requirements
       customHealthCheckRequirements: [
         'WebSocket connection for real-time updates',
-        'Model directory access for model verification'
+        'Model directory access for model verification',
       ],
-      minimumApiVersion: '1.0.0'
+      minimumApiVersion: '1.0.0',
     };
   }
 
   async queryJobStatus(serviceJobId: string): Promise<ServiceJobStatus> {
     try {
       const response = await fetch(`${this.config.base_url}/history/${serviceJobId}`);
-      
+
       if (!response.ok) {
         if (response.status === 404) {
           return {
@@ -70,13 +70,13 @@ export class ComfyUIConnector extends BaseConnector {
             status: 'unknown',
             canReconnect: false,
             canCancel: false,
-            errorMessage: 'Job not found in ComfyUI history'
+            errorMessage: 'Job not found in ComfyUI history',
           };
         }
         throw new Error(`HTTP ${response.status}: ${response.statusText}`);
       }
 
-      const history = await response.json() as any;
+      const history = (await response.json()) as any;
       const jobData = history[serviceJobId];
 
       if (!jobData) {
@@ -85,7 +85,7 @@ export class ComfyUIConnector extends BaseConnector {
           status: 'unknown',
           canReconnect: false,
           canCancel: false,
-          errorMessage: 'Job ID not found in history response'
+          errorMessage: 'Job ID not found in history response',
         };
       }
 
@@ -124,10 +124,9 @@ export class ComfyUIConnector extends BaseConnector {
           outputs: outputs ? Object.keys(outputs) : [],
           queue_position: status_info?.queue_position,
           execution_time: status_info?.execution_time,
-          will_requeue: !isCompleted // Clear indication of what happens next
-        }
+          will_requeue: !isCompleted, // Clear indication of what happens next
+        },
       };
-
     } catch (error) {
       logger.error(`Failed to query ComfyUI job status for ${serviceJobId}:`, error);
       return {
@@ -135,7 +134,7 @@ export class ComfyUIConnector extends BaseConnector {
         status: 'unknown',
         canReconnect: false,
         canCancel: false,
-        errorMessage: error instanceof Error ? error.message : 'Unknown error querying job status'
+        errorMessage: error instanceof Error ? error.message : 'Unknown error querying job status',
       };
     }
   }
@@ -147,7 +146,7 @@ export class ComfyUIConnector extends BaseConnector {
   protected async initializeService(): Promise<void> {
     // ComfyUI-specific initialization
     logger.info(`Initializing ComfyUI connector to ${this.config.base_url}`);
-    
+
     // Test basic connectivity
     const isHealthy = await this.checkHealth();
     if (!isHealthy) {
@@ -164,12 +163,12 @@ export class ComfyUIConnector extends BaseConnector {
     try {
       const controller = new AbortController();
       const timeoutId = setTimeout(() => controller.abort(), this.config.timeout_seconds * 1000);
-      
+
       const response = await fetch(`${this.config.base_url}/system_stats`, {
         method: 'GET',
-        signal: controller.signal
+        signal: controller.signal,
       });
-      
+
       clearTimeout(timeoutId);
       return response.ok;
     } catch (error) {
@@ -181,7 +180,7 @@ export class ComfyUIConnector extends BaseConnector {
   async getServiceInfo(): Promise<ServiceInfo> {
     try {
       const response = await fetch(`${this.config.base_url}/system_stats`);
-      const stats = await response.json() as any;
+      const stats = (await response.json()) as any;
 
       return {
         service_name: 'ComfyUI',
@@ -194,15 +193,15 @@ export class ComfyUIConnector extends BaseConnector {
           supported_models: [], // Would query /object_info for models
           features: ['text2img', 'img2img', 'controlnet', 'workflows'],
           hardware_acceleration: stats.devices || [],
-          concurrent_jobs: 1 // ComfyUI typically processes one job at a time
+          concurrent_jobs: 1, // ComfyUI typically processes one job at a time
         },
         resource_usage: {
           cpu_usage: stats.system?.cpu_usage || 0,
           memory_usage_mb: stats.system?.ram_used || 0,
           gpu_usage: stats.devices?.[0]?.vram_used_percent || 0,
           vram_total_mb: stats.devices?.[0]?.vram_total || 0,
-          vram_used_mb: stats.devices?.[0]?.vram_used || 0
-        }
+          vram_used_mb: stats.devices?.[0]?.vram_used || 0,
+        },
       };
     } catch (error) {
       return {
@@ -213,19 +212,25 @@ export class ComfyUIConnector extends BaseConnector {
         capabilities: {
           supported_formats: [],
           supported_models: [],
-          features: []
-        }
+          features: [],
+        },
       };
     }
   }
 
   // Placeholder implementations for required methods
-  async getAvailableModels(): Promise<string[]> { return []; }
-  async canProcessJob(jobData: JobData): Promise<boolean> { return true; }
-  async cancelJob(jobId: string): Promise<void> { }
-  async updateConfiguration(config: ConnectorConfig): Promise<void> { }
-  getConfiguration(): ConnectorConfig { return this.config; }
-  
+  async getAvailableModels(): Promise<string[]> {
+    return [];
+  }
+  async canProcessJob(jobData: JobData): Promise<boolean> {
+    return true;
+  }
+  async cancelJob(jobId: string): Promise<void> {}
+  async updateConfiguration(config: ConnectorConfig): Promise<void> {}
+  getConfiguration(): ConnectorConfig {
+    return this.config;
+  }
+
   protected async processJobImpl(
     jobData: JobData,
     progressCallback: ProgressCallback
@@ -236,8 +241,8 @@ export class ComfyUIConnector extends BaseConnector {
       processing_time_ms: 1000,
       service_metadata: {
         service_version: this.version,
-        service_job_id: 'example-prompt-id'
-      }
+        service_job_id: 'example-prompt-id',
+      },
     };
   }
 }

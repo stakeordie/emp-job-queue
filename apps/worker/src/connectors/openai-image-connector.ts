@@ -32,6 +32,7 @@ export class OpenAIImageConnector extends BaseConnector {
    */
   static getRequiredEnvVars(): Record<string, string> {
     return {
+      ...super.getRequiredEnvVars(), // Include base connector env vars
       OPENAI_API_KEY: '${OPENAI_API_KEY:-}',
       OPENAI_BASE_URL: '${OPENAI_BASE_URL:-https://api.openai.com/v1}',
       OPENAI_IMAGE_MODEL: '${OPENAI_IMAGE_MODEL:-gpt-4.1}',
@@ -120,7 +121,7 @@ export class OpenAIImageConnector extends BaseConnector {
         // Use provided filename, but ensure extension matches actual format
         const providedName = jobData.payload.ctx.filename;
         const hasExtension = providedName.includes('.');
-        
+
         if (hasExtension) {
           // Replace extension with actual format
           const nameWithoutExt = providedName.substring(0, providedName.lastIndexOf('.'));
@@ -203,13 +204,13 @@ export class OpenAIImageConnector extends BaseConnector {
       if (provider === 'azure' && process.env.CLOUD_CDN_URL) {
         const cdnUrl = `${process.env.CLOUD_CDN_URL}/${storageKey}`;
         logger.info(`🌐 Waiting for CDN availability: ${cdnUrl}`);
-        
+
         // Poll CDN until it's available (required before job completion)
         const cdnAvailable = await this.waitForCDNAvailability(cdnUrl);
         if (!cdnAvailable) {
           throw new Error(`CDN failed to propagate after maximum attempts`);
         }
-        
+
         fileUrl = cdnUrl;
         logger.info(`✅ CDN URL confirmed available: ${cdnUrl}`);
       } else {
@@ -246,7 +247,9 @@ export class OpenAIImageConnector extends BaseConnector {
       } else if (provider === 'aws') {
         throw new Error('AWS S3 upload not implemented yet - install @aws-sdk/client-s3');
       } else if (provider === 'google') {
-        throw new Error('Google Cloud Storage upload not implemented yet - install @google-cloud/storage');
+        throw new Error(
+          'Google Cloud Storage upload not implemented yet - install @google-cloud/storage'
+        );
       } else {
         throw new Error(`Unsupported provider: ${provider}`);
       }
@@ -267,12 +270,14 @@ export class OpenAIImageConnector extends BaseConnector {
   ): Promise<boolean> {
     try {
       const { BlobServiceClient, StorageSharedKeyCredential } = await import('@azure/storage-blob');
-      
+
       const accountName = process.env.AZURE_STORAGE_ACCOUNT;
       const accountKey = process.env.AZURE_STORAGE_KEY;
 
       if (!accountName || !accountKey) {
-        throw new Error('AZURE_STORAGE_ACCOUNT and AZURE_STORAGE_KEY environment variables are required');
+        throw new Error(
+          'AZURE_STORAGE_ACCOUNT and AZURE_STORAGE_KEY environment variables are required'
+        );
       }
 
       // Create credential and BlobServiceClient
@@ -284,7 +289,7 @@ export class OpenAIImageConnector extends BaseConnector {
 
       // Get container client
       const containerClient = blobServiceClient.getContainerClient(containerName);
-      
+
       // Get blob client
       const blockBlobClient = containerClient.getBlockBlobClient(blobName);
 
@@ -297,7 +302,6 @@ export class OpenAIImageConnector extends BaseConnector {
 
       logger.info(`Successfully uploaded to Azure: ${blobName} (${buffer.length} bytes)`);
       return true;
-
     } catch (error) {
       logger.error(`Azure upload failed: ${error.message}`);
       return false;
@@ -314,7 +318,7 @@ export class OpenAIImageConnector extends BaseConnector {
   ): Promise<boolean> {
     try {
       const { BlobServiceClient, StorageSharedKeyCredential } = await import('@azure/storage-blob');
-      
+
       const accountName = process.env.AZURE_STORAGE_ACCOUNT;
       const accountKey = process.env.AZURE_STORAGE_KEY;
 
@@ -348,7 +352,9 @@ export class OpenAIImageConnector extends BaseConnector {
             logger.warn(`Azure verification attempt ${attempt}/${maxAttempts} failed, retrying...`);
             await new Promise(resolve => setTimeout(resolve, 1000));
           } else {
-            logger.error(`Azure verification failed after ${maxAttempts} attempts: ${error.message}`);
+            logger.error(
+              `Azure verification failed after ${maxAttempts} attempts: ${error.message}`
+            );
             return false;
           }
         }
@@ -372,32 +378,40 @@ export class OpenAIImageConnector extends BaseConnector {
       try {
         const controller = new AbortController();
         const timeoutId = setTimeout(() => controller.abort(), 5000); // 5 second timeout per request
-        
-        const response = await fetch(cdnUrl, { 
+
+        const response = await fetch(cdnUrl, {
           method: 'HEAD',
-          signal: controller.signal
+          signal: controller.signal,
         });
-        
+
         clearTimeout(timeoutId);
-        
+
         if (response.status === 200) {
-          logger.info(`✅ CDN available after ${attempt} attempts (${(attempt - 1) * intervalMs / 1000}s)`);
+          logger.info(
+            `✅ CDN available after ${attempt} attempts (${((attempt - 1) * intervalMs) / 1000}s)`
+          );
           return true;
         }
-        
-        logger.info(`⏳ CDN attempt ${attempt}/${maxAttempts} - Status: ${response.status}, waiting ${intervalMs}ms...`);
+
+        logger.info(
+          `⏳ CDN attempt ${attempt}/${maxAttempts} - Status: ${response.status}, waiting ${intervalMs}ms...`
+        );
       } catch (error) {
         const errorMsg = error instanceof Error ? error.message : 'Unknown error';
-        logger.info(`⏳ CDN attempt ${attempt}/${maxAttempts} - Error: ${errorMsg}, waiting ${intervalMs}ms...`);
+        logger.info(
+          `⏳ CDN attempt ${attempt}/${maxAttempts} - Error: ${errorMsg}, waiting ${intervalMs}ms...`
+        );
       }
-      
+
       // Wait before next attempt (except on last attempt)
       if (attempt < maxAttempts) {
         await new Promise(resolve => setTimeout(resolve, intervalMs));
       }
     }
-    
-    logger.error(`❌ CDN failed to become available after ${maxAttempts} attempts (${maxAttempts * intervalMs / 1000}s)`);
+
+    logger.error(
+      `❌ CDN failed to become available after ${maxAttempts} attempts (${(maxAttempts * intervalMs) / 1000}s)`
+    );
     return false;
   }
 
@@ -421,14 +435,14 @@ export class OpenAIImageConnector extends BaseConnector {
           // Use AbortController for timeout since native fetch doesn't support timeout option
           const controller = new AbortController();
           const timeoutId = setTimeout(() => controller.abort(), 10000);
-          
-          const response = await fetch(cdnUrl, { 
+
+          const response = await fetch(cdnUrl, {
             method: 'HEAD',
-            signal: controller.signal
+            signal: controller.signal,
           });
-          
+
           clearTimeout(timeoutId);
-          
+
           if (response.status === 200) {
             logger.info(`CDN verified: ${cdnUrl}`);
             return cdnUrl;

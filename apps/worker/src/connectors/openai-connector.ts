@@ -45,11 +45,26 @@ export abstract class OpenAIConnector extends BaseConnector {
     const baseConfig = {
       connector_id: connectorId,
       service_type: serviceType,
-      base_url: process.env[`${envPrefix}_BASE_URL`] || process.env.OPENAI_BASE_URL || 'https://api.openai.com/v1',
-      timeout_seconds: parseInt(process.env[`${envPrefix}_TIMEOUT_SECONDS`] || process.env.OPENAI_TIMEOUT_SECONDS || '120'),
-      retry_attempts: parseInt(process.env[`${envPrefix}_RETRY_ATTEMPTS`] || process.env.OPENAI_RETRY_ATTEMPTS || '3'),
-      retry_delay_seconds: parseInt(process.env[`${envPrefix}_RETRY_DELAY_SECONDS`] || process.env.OPENAI_RETRY_DELAY_SECONDS || '5'),
-      health_check_interval_seconds: parseInt(process.env[`${envPrefix}_HEALTH_CHECK_INTERVAL`] || process.env.OPENAI_HEALTH_CHECK_INTERVAL || '120'),
+      base_url:
+        process.env[`${envPrefix}_BASE_URL`] ||
+        process.env.OPENAI_BASE_URL ||
+        'https://api.openai.com/v1',
+      timeout_seconds: parseInt(
+        process.env[`${envPrefix}_TIMEOUT_SECONDS`] || process.env.OPENAI_TIMEOUT_SECONDS || '120'
+      ),
+      retry_attempts: parseInt(
+        process.env[`${envPrefix}_RETRY_ATTEMPTS`] || process.env.OPENAI_RETRY_ATTEMPTS || '3'
+      ),
+      retry_delay_seconds: parseInt(
+        process.env[`${envPrefix}_RETRY_DELAY_SECONDS`] ||
+          process.env.OPENAI_RETRY_DELAY_SECONDS ||
+          '5'
+      ),
+      health_check_interval_seconds: parseInt(
+        process.env[`${envPrefix}_HEALTH_CHECK_INTERVAL`] ||
+          process.env.OPENAI_HEALTH_CHECK_INTERVAL ||
+          '120'
+      ),
       max_concurrent_jobs: parseInt(process.env[`${envPrefix}_MAX_CONCURRENT_JOBS`] || '3'),
       ...additionalConfig,
     };
@@ -59,10 +74,17 @@ export abstract class OpenAIConnector extends BaseConnector {
       ...baseConfig,
       openai_settings: {
         api_key: process.env[`${envPrefix}_API_KEY`] || process.env.OPENAI_API_KEY || '',
-        base_url: process.env[`${envPrefix}_BASE_URL`] || process.env.OPENAI_BASE_URL || 'https://api.openai.com/v1',
+        base_url:
+          process.env[`${envPrefix}_BASE_URL`] ||
+          process.env.OPENAI_BASE_URL ||
+          'https://api.openai.com/v1',
         default_model: process.env[`${envPrefix}_MODEL`] || defaultModel,
-        timeout_seconds: parseInt(process.env[`${envPrefix}_TIMEOUT_SECONDS`] || process.env.OPENAI_TIMEOUT_SECONDS || '120'),
-        retry_attempts: parseInt(process.env[`${envPrefix}_RETRY_ATTEMPTS`] || process.env.OPENAI_RETRY_ATTEMPTS || '3'),
+        timeout_seconds: parseInt(
+          process.env[`${envPrefix}_TIMEOUT_SECONDS`] || process.env.OPENAI_TIMEOUT_SECONDS || '120'
+        ),
+        retry_attempts: parseInt(
+          process.env[`${envPrefix}_RETRY_ATTEMPTS`] || process.env.OPENAI_RETRY_ATTEMPTS || '3'
+        ),
         ...((additionalConfig as any).openai_settings || {}),
       },
     };
@@ -71,7 +93,9 @@ export abstract class OpenAIConnector extends BaseConnector {
     this.openaiConfig = config;
 
     if (!this.openaiConfig.openai_settings.api_key) {
-      throw new Error(`${connectorId} requires ${envPrefix}_API_KEY or OPENAI_API_KEY environment variable`);
+      throw new Error(
+        `${connectorId} requires ${envPrefix}_API_KEY or OPENAI_API_KEY environment variable`
+      );
     }
 
     logger.info(
@@ -199,7 +223,7 @@ export abstract class OpenAIConnector extends BaseConnector {
    */
   protected getClientForJob(jobData: JobData): OpenAI {
     const payload = jobData.payload as any;
-    
+
     // Use custom API key if provided, otherwise use default client
     if (payload.api_key && payload.api_key.trim()) {
       // Create a temporary client with the custom API key

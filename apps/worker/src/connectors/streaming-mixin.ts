@@ -24,7 +24,6 @@ export interface StreamingProgress {
  * Handles progress reporting, timeouts, and response accumulation
  */
 export class StreamingMixin {
-  
   /**
    * Process a streaming response with progress tracking
    */
@@ -43,12 +42,7 @@ export class StreamingMixin {
     responseSize: number;
     error?: string;
   }> {
-    const {
-      jobId,
-      progressCallback,
-      streamingConfig = {},
-      initialStep = 'streaming'
-    } = config;
+    const { jobId, progressCallback, streamingConfig = {}, initialStep = 'streaming' } = config;
 
     const {
       progress_interval = 10,
@@ -75,7 +69,7 @@ export class StreamingMixin {
 
       for await (const chunk of stream) {
         const chunkTime = Date.now();
-        
+
         // Check for chunk timeout
         if (chunkTime - lastChunkTime > chunk_timeout_ms) {
           throw new Error(`Stream timeout: no data received for ${chunk_timeout_ms}ms`);
@@ -85,7 +79,7 @@ export class StreamingMixin {
         // Update state
         itemsProcessed++;
         state.itemsProcessed = itemsProcessed;
-        
+
         // Estimate chunk size (rough approximation)
         const chunkSize = JSON.stringify(chunk).length;
         responseSize += chunkSize;
@@ -105,7 +99,7 @@ export class StreamingMixin {
 
         // Report progress periodically
         if (itemsProcessed - lastProgressReport >= progress_interval) {
-          const progress = Math.min(95, 5 + (itemsProcessed * 0.9)); // 5% to 95%
+          const progress = Math.min(95, 5 + itemsProcessed * 0.9); // 5% to 95%
           await this.reportStreamingProgress(
             state,
             progress,
@@ -124,10 +118,9 @@ export class StreamingMixin {
         itemsProcessed,
         responseSize,
       };
-
     } catch (error) {
       logger.error(`Stream processing failed for job ${jobId}:`, error);
-      
+
       // Report error
       if (progressCallback) {
         await progressCallback({
@@ -135,10 +128,10 @@ export class StreamingMixin {
           progress: 0,
           message: `Stream error: ${error.message}`,
           current_step: 'error',
-          metadata: { 
+          metadata: {
             items_processed: itemsProcessed,
             response_size: responseSize,
-            error: error.message 
+            error: error.message,
           },
         });
       }
@@ -179,7 +172,7 @@ export class StreamingMixin {
         if (delta) {
           fullText += delta;
           tokensGenerated++;
-          
+
           // Call token callback if provided
           if (config.onToken) {
             config.onToken(delta, tokensGenerated);
@@ -205,7 +198,11 @@ export class StreamingMixin {
    * Process image streaming with base64 data
    */
   static async processImageStream(
-    stream: AsyncIterable<{ type: string; partial_image_b64?: string; partial_image_index?: number }>,
+    stream: AsyncIterable<{
+      type: string;
+      partial_image_b64?: string;
+      partial_image_index?: number;
+    }>,
     config: {
       jobId: string;
       progressCallback?: ProgressCallback;
@@ -224,7 +221,10 @@ export class StreamingMixin {
     const result = await this.processStream(
       stream,
       async (event, state) => {
-        if (event.type === 'response.image_generation_call.partial_image' && event.partial_image_b64) {
+        if (
+          event.type === 'response.image_generation_call.partial_image' &&
+          event.partial_image_b64
+        ) {
           partialCount++;
           const imageDataUrl = `data:image/png;base64,${event.partial_image_b64}`;
           partialImages.push(imageDataUrl);

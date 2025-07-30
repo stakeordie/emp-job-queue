@@ -189,7 +189,13 @@ export class EnhancedPM2EcosystemGenerator {
     
     switch (binding.scaling) {
       case 'per_gpu':
-        const gpuCount = this.hardwareResources?.gpuCount || parseInt(process.env.MACHINE_NUM_GPUS || '1');
+        // For mock_gpu binding, use MOCK_GPU_NUM; otherwise use actual GPU count
+        let gpuCount;
+        if (resourceBinding === 'mock_gpu') {
+          gpuCount = parseInt(process.env.MOCK_GPU_NUM || process.env.MACHINE_NUM_GPUS || '10');
+        } else {
+          gpuCount = this.hardwareResources?.gpuCount || parseInt(process.env.MACHINE_NUM_GPUS || '1');
+        }
         return Math.min(requestedCount, gpuCount);
         
       case 'per_machine':

@@ -25,7 +25,7 @@ export class OpenAITextSimpleConnector extends OpenAIConnector {
         type: 'number' as const,
         default: 4000,
         validator: (val: number) => val > 0 && val <= 32000,
-        description: 'Maximum tokens to generate'
+        description: 'Maximum tokens to generate',
       },
       {
         key: 'OPENAI_TEXT_TEMPERATURE',
@@ -33,26 +33,23 @@ export class OpenAITextSimpleConnector extends OpenAIConnector {
         type: 'number' as const,
         default: 0.7,
         validator: (val: number) => val >= 0 && val <= 2,
-        description: 'Temperature for generation'
+        description: 'Temperature for generation',
       },
       // Include streaming config
-      ...Object.entries(StreamingMixin.getStreamingEnvVars('OPENAI_TEXT')).map(([key, template]) => ({
-        key,
-        template,
-        type: 'string' as const,
-        description: 'Streaming configuration'
-      }))
+      ...Object.entries(StreamingMixin.getStreamingEnvVars('OPENAI_TEXT')).map(
+        ([key, template]) => ({
+          key,
+          template,
+          type: 'string' as const,
+          description: 'Streaming configuration',
+        })
+      ),
     ];
 
     const parsedConfig = ConfigManager.parseConfig(configDefs);
 
-    // Initialize with parsed configuration  
-    super(
-      connectorId,
-      'text_generation',
-      'OPENAI_TEXT',
-      'gpt-4o-mini'
-    );
+    // Initialize with parsed configuration
+    super(connectorId, 'text_generation', 'OPENAI_TEXT', 'gpt-4o-mini');
 
     // Set service-specific capabilities after initialization
     if (this.openaiConfig.openai_settings) {
@@ -63,9 +60,9 @@ export class OpenAITextSimpleConnector extends OpenAIConnector {
         'conversation',
         'system_prompts',
         'streaming_support',
-        'custom_api_keys'
+        'custom_api_keys',
       ];
-      this.openaiConfig.openai_settings.model_filter = (model: OpenAI.Model) => 
+      this.openaiConfig.openai_settings.model_filter = (model: OpenAI.Model) =>
         model.id.includes('gpt') || model.id.includes('text');
     }
 
@@ -85,27 +82,27 @@ export class OpenAITextSimpleConnector extends OpenAIConnector {
         key: 'OPENAI_TEXT_MAX_TOKENS',
         template: '${OPENAI_TEXT_MAX_TOKENS:-4000}',
         type: 'number' as const,
-        default: 4000
+        default: 4000,
       },
       {
-        key: 'OPENAI_TEXT_TEMPERATURE', 
+        key: 'OPENAI_TEXT_TEMPERATURE',
         template: '${OPENAI_TEXT_TEMPERATURE:-0.7}',
         type: 'number' as const,
-        default: 0.7
-      }
+        default: 0.7,
+      },
     ];
 
     return {
       ...ConfigManager.generateEnvVarTemplates(configDefs),
       ...StreamingMixin.getStreamingEnvVars('OPENAI_TEXT'),
       // Add asset saving requirements if needed
-      ...AssetSaver.getBaseRequiredEnvVars()
+      ...AssetSaver.getBaseRequiredEnvVars(),
     };
   }
 
   async canProcessJobImpl(jobData: JobData): Promise<boolean> {
     const payload = jobData.payload as any;
-    
+
     // Check if job has required fields for text generation
     return !!(payload.prompt || payload.messages);
   }
@@ -114,22 +111,23 @@ export class OpenAITextSimpleConnector extends OpenAIConnector {
     try {
       const payload = jobData.payload as any;
       const client = this.getClientForJob(jobData);
-      
+
       // Extract parameters with defaults
       const model = payload.model || this.openaiConfig.openai_settings.default_model;
       const maxTokens = payload.max_tokens || this.maxTokens;
-      const temperature = payload.temperature !== undefined ? payload.temperature : this.temperature;
+      const temperature =
+        payload.temperature !== undefined ? payload.temperature : this.temperature;
 
       // Support both direct prompt and chat messages format
       let messages: OpenAI.ChatCompletionMessageParam[];
-      
+
       if (payload.messages) {
         messages = payload.messages;
       } else if (payload.prompt) {
         const systemPrompt = payload.system_prompt || 'You are a helpful assistant.';
         messages = [
           { role: 'system', content: systemPrompt },
-          { role: 'user', content: payload.prompt }
+          { role: 'user', content: payload.prompt },
         ];
       } else {
         throw new Error('Job must contain either "prompt" or "messages" field');
@@ -138,7 +136,13 @@ export class OpenAITextSimpleConnector extends OpenAIConnector {
       logger.info(`Processing text generation job with model ${model}`);
 
       // Report initial progress
-      await this.reportProgress(jobData.id, 10, `Starting text generation with ${model}...`, 'initializing', progressCallback);
+      await this.reportProgress(
+        jobData.id,
+        10,
+        `Starting text generation with ${model}...`,
+        'initializing',
+        progressCallback
+      );
 
       // Create streaming request
       const stream = await client.chat.completions.create({
@@ -160,7 +164,7 @@ export class OpenAITextSimpleConnector extends OpenAIConnector {
           if (totalTokens % 50 === 0) {
             logger.debug(`Generated ${totalTokens} tokens for job ${jobData.id}`);
           }
-        }
+        },
       });
 
       if (!streamResult.success) {
@@ -175,12 +179,7 @@ export class OpenAITextSimpleConnector extends OpenAIConnector {
       let savedAsset = null;
       if (payload.save_output) {
         const textB64 = Buffer.from(streamResult.text).toString('base64');
-        savedAsset = await AssetSaver.saveAssetToCloud(
-          textB64, 
-          jobData.id, 
-          jobData, 
-          'text/plain'
-        );
+        savedAsset = await AssetSaver.saveAssetToCloud(textB64, jobData.id, jobData, 'text/plain');
         logger.info(`Text output saved to cloud storage: ${savedAsset.fileName}`);
       }
 
@@ -205,9 +204,8 @@ export class OpenAITextSimpleConnector extends OpenAIConnector {
           service_version: this.version,
           service_type: this.service_type,
           model_used: model,
-        }
+        },
       };
-
     } catch (error) {
       logger.error(`OpenAI Text Simple processing failed: ${error.message}`);
       throw error;

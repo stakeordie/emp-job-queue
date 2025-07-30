@@ -97,9 +97,9 @@
         }
       ],
       "installer": "installSimulation",
-      "resource_binding": "cpu",
+      "resource_binding": "mock_gpu",
       "build_stage": "simulation",
-      "service_instances_per_machine": "${SIMULATION_INSTANCES_PER_MACHINE:-1}",
+      "service_instances_per_machine": "${SIMULATION_INSTANCES_PER_MACHINE:-10}",
       "ports": ["${SIMULATION_BASE_PORT:-9091}"],
       "port_increment": "${SIMULATION_PORT_INCREMENT:-0}",
       "description": "Simulation service for testing and development",

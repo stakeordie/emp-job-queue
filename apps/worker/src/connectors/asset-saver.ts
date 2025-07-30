@@ -9,7 +9,6 @@ import { logger } from '@emp/core';
  * Can be used by any connector that needs to save generated content
  */
 export class AssetSaver {
-
   /**
    * Save base64 asset to cloud storage
    * @param mimeType - MIME type from client (e.g., 'image/png', 'video/mp4')
@@ -24,7 +23,7 @@ export class AssetSaver {
     try {
       // Validate and normalize MIME type first
       const { contentType, fileExtension, assetCategory } = AssetSaver.validateMimeType(mimeType);
-      
+
       // Use provided format or derive from MIME type
       const actualFormat = format || fileExtension;
 
@@ -56,7 +55,7 @@ export class AssetSaver {
         // Use provided filename, but ensure extension matches actual format
         const providedName = jobData.payload.ctx.filename;
         const hasExtension = providedName.includes('.');
-        
+
         if (hasExtension) {
           // Replace extension with actual format
           const nameWithoutExt = providedName.substring(0, providedName.lastIndexOf('.'));
@@ -109,13 +108,13 @@ export class AssetSaver {
       if (provider === 'azure' && process.env.CLOUD_CDN_URL) {
         const cdnUrl = `${process.env.CLOUD_CDN_URL}/${storageKey}`;
         logger.info(`🌐 Waiting for CDN availability: ${cdnUrl}`);
-        
+
         // Poll CDN until it's available (required before job completion)
         const cdnAvailable = await AssetSaver.waitForCDNAvailability(cdnUrl);
         if (!cdnAvailable) {
           throw new Error(`CDN failed to propagate after maximum attempts`);
         }
-        
+
         fileUrl = cdnUrl;
         logger.info(`✅ CDN URL confirmed available: ${cdnUrl}`);
       } else {
@@ -147,7 +146,7 @@ export class AssetSaver {
   } {
     // Normalize MIME type
     const normalizedMimeType = mimeType.toLowerCase().trim();
-    
+
     // Valid MIME type patterns
     const validMimeTypes: Record<string, { extension: string; category: string }> = {
       'image/png': { extension: 'png', category: 'image' },
@@ -164,7 +163,7 @@ export class AssetSaver {
       'text/plain': { extension: 'txt', category: 'text' },
       'application/json': { extension: 'json', category: 'text' },
     };
-    
+
     const mimeInfo = validMimeTypes[normalizedMimeType];
     if (!mimeInfo) {
       logger.warn(`Unknown MIME type: ${mimeType}, defaulting to application/octet-stream`);
@@ -174,25 +173,25 @@ export class AssetSaver {
         assetCategory: 'file',
       };
     }
-    
+
     return {
       contentType: normalizedMimeType,
       fileExtension: mimeInfo.extension,
       assetCategory: mimeInfo.category,
     };
   }
-  
+
   /**
    * Get asset category from MIME type for error reporting
    */
   private static getMimeTypeCategory(mimeType: string): string {
     const normalizedMimeType = mimeType.toLowerCase().trim();
-    
+
     if (normalizedMimeType.startsWith('image/')) return 'image';
     if (normalizedMimeType.startsWith('video/')) return 'video';
     if (normalizedMimeType.startsWith('audio/')) return 'audio';
     if (normalizedMimeType.startsWith('text/')) return 'text';
-    
+
     return 'file';
   }
 
@@ -210,9 +209,7 @@ export class AssetSaver {
       if (provider === 'azure') {
         return await AssetSaver.uploadToAzure(buffer, bucket, storageKey, contentType);
       } else if (provider === 'aws') {
-        throw new Error(
-          'AWS S3 upload not implemented yet - install @aws-sdk/client-s3'
-        );
+        throw new Error('AWS S3 upload not implemented yet - install @aws-sdk/client-s3');
       } else if (provider === 'google') {
         throw new Error(
           'Google Cloud Storage upload not implemented yet - install @google-cloud/storage'
@@ -237,7 +234,7 @@ export class AssetSaver {
   ): Promise<boolean> {
     try {
       const { BlobServiceClient, StorageSharedKeyCredential } = await import('@azure/storage-blob');
-      
+
       const accountName = process.env.AZURE_STORAGE_ACCOUNT;
       const accountKey = process.env.AZURE_STORAGE_KEY;
 
@@ -256,7 +253,7 @@ export class AssetSaver {
 
       // Get container client
       const containerClient = blobServiceClient.getContainerClient(containerName);
-      
+
       // Get blob client
       const blockBlobClient = containerClient.getBlockBlobClient(blobName);
 
@@ -269,7 +266,6 @@ export class AssetSaver {
 
       logger.info(`Successfully uploaded to Azure: ${blobName} (${buffer.length} bytes)`);
       return true;
-
     } catch (error) {
       logger.error(`Azure upload failed: ${error.message}`);
       return false;
@@ -286,7 +282,7 @@ export class AssetSaver {
   ): Promise<boolean> {
     try {
       const { BlobServiceClient, StorageSharedKeyCredential } = await import('@azure/storage-blob');
-      
+
       const accountName = process.env.AZURE_STORAGE_ACCOUNT;
       const accountKey = process.env.AZURE_STORAGE_KEY;
 
@@ -346,21 +342,21 @@ export class AssetSaver {
       try {
         const controller = new AbortController();
         const timeoutId = setTimeout(() => controller.abort(), 5000); // 5 second timeout per request
-        
-        const response = await fetch(cdnUrl, { 
+
+        const response = await fetch(cdnUrl, {
           method: 'HEAD',
           signal: controller.signal,
         });
-        
+
         clearTimeout(timeoutId);
-        
+
         if (response.status === 200) {
           logger.info(
             `✅ CDN available after ${attempt} attempts (${((attempt - 1) * intervalMs) / 1000}s)`
           );
           return true;
         }
-        
+
         logger.info(
           `⏳ CDN attempt ${attempt}/${maxAttempts} - Status: ${response.status}, waiting ${intervalMs}ms...`
         );
@@ -370,13 +366,13 @@ export class AssetSaver {
           `⏳ CDN attempt ${attempt}/${maxAttempts} - Error: ${errorMsg}, waiting ${intervalMs}ms...`
         );
       }
-      
+
       // Wait before next attempt (except on last attempt)
       if (attempt < maxAttempts) {
         await new Promise(resolve => setTimeout(resolve, intervalMs));
       }
     }
-    
+
     logger.error(
       `❌ CDN failed to become available after ${maxAttempts} attempts (${(maxAttempts * intervalMs) / 1000}s)`
     );

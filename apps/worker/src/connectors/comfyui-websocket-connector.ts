@@ -423,7 +423,7 @@ export class ComfyUIWebSocketConnector extends BaseConnector {
       try {
         const progressValue = Math.min(90, 10 + progress * 80); // Map 0-1 to 10-90%
         this.lastProgress = progressValue; // Track last progress for health checks
-        
+
         await job.progressCallback({
           job_id: jobId,
           progress: progressValue,
