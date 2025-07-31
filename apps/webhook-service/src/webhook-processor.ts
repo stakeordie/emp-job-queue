@@ -1,21 +1,20 @@
 /**
  * Webhook Processor
- * 
+ *
  * Core webhook processing logic that:
  * 1. Listens to Redis events from the job broker
- * 2. Matches events to registered webhooks  
+ * 2. Matches events to registered webhooks
  * 3. Delivers HTTP notifications with retry logic
  * 4. Manages webhook registration and storage via Redis
  */
 
 import { EventEmitter } from 'events';
 import Redis from 'ioredis';
-import { logger } from '@emp/core';
-import { 
+import {
+  logger,
   WebhookNotificationService,
   WebhookRedisStorage,
   WebhookEndpoint,
-  WebhookEventType 
 } from '@emp/core';
 
 interface RedisJobEvent {
@@ -24,8 +23,8 @@ interface RedisJobEvent {
   worker_id?: string;
   machine_id?: string;
   timestamp: number;
-  data?: any;
-  [key: string]: any;
+  data?: unknown;
+  [key: string]: unknown;
 }
 
 export class WebhookProcessor extends EventEmitter {
@@ -43,9 +42,9 @@ export class WebhookProcessor extends EventEmitter {
 
   // Redis channels to subscribe to
   private readonly EVENT_CHANNELS = [
-    'job.events',        // Job lifecycle events
-    'worker.events',     // Worker status events  
-    'machine.events',    // Machine status events
+    'job.events', // Job lifecycle events
+    'worker.events', // Worker status events
+    'machine.events', // Machine status events
   ];
 
   constructor(redis: Redis) {
@@ -54,7 +53,7 @@ export class WebhookProcessor extends EventEmitter {
     this.subscriber = new Redis(redis.options);
     this.webhookStorage = new WebhookRedisStorage(redis);
     this.webhookService = new WebhookNotificationService(redis);
-    
+
     this.setupEventHandlers();
   }
 
@@ -64,21 +63,21 @@ export class WebhookProcessor extends EventEmitter {
       logger.info('✅ Webhook processor connected to Redis');
     });
 
-    this.subscriber.on('error', (error) => {
+    this.subscriber.on('error', error => {
       logger.error('❌ Webhook processor Redis error:', error);
       this.emit('error', error);
     });
 
     // Handle Redis messages
     this.subscriber.on('message', (channel: string, message: string) => {
-      this.handleRedisEvent(channel, message).catch((error) => {
+      this.handleRedisEvent(channel, message).catch(error => {
         logger.error('Error handling Redis event:', { channel, error });
         this.eventStats.failedEvents++;
       });
     });
 
     // Handle webhook service events
-    this.webhookService.on('webhook.delivered', (data) => {
+    this.webhookService.on('webhook.delivered', data => {
       logger.debug('Webhook delivered successfully', {
         webhook_id: data.webhook.id,
         event_id: data.payload.event_id,
@@ -86,7 +85,7 @@ export class WebhookProcessor extends EventEmitter {
       this.emit('webhook.delivered', data);
     });
 
-    this.webhookService.on('webhook.failed', (data) => {
+    this.webhookService.on('webhook.failed', data => {
       logger.warn('Webhook delivery failed permanently', {
         webhook_id: data.webhook.id,
         event_id: data.payload.event_id,
@@ -105,7 +104,7 @@ export class WebhookProcessor extends EventEmitter {
     try {
       // Subscribe to Redis event channels
       await this.subscriber.subscribe(...this.EVENT_CHANNELS);
-      
+
       this.isProcessing = true;
       logger.info('🎯 Webhook processor started', {
         channels: this.EVENT_CHANNELS,
@@ -125,10 +124,10 @@ export class WebhookProcessor extends EventEmitter {
     try {
       // Unsubscribe from Redis channels
       await this.subscriber.unsubscribe(...this.EVENT_CHANNELS);
-      
-      // Stop webhook service  
+
+      // Stop webhook service
       this.webhookService.destroy();
-      
+
       this.isProcessing = false;
       logger.info('✅ Webhook processor stopped', {
         stats: this.eventStats,
@@ -144,7 +143,7 @@ export class WebhookProcessor extends EventEmitter {
 
     try {
       const event: RedisJobEvent = JSON.parse(message);
-      
+
       logger.debug('Processing Redis event', {
         channel,
         eventType: event.type,
@@ -154,10 +153,10 @@ export class WebhookProcessor extends EventEmitter {
 
       // Convert Redis event to monitor event format
       const monitorEvent = this.convertRedisEventToMonitorEvent(event);
-      
+
       if (monitorEvent) {
         // Process through webhook service
-        await this.webhookService.processEvent(monitorEvent);
+        await this.webhookService.processEvent(monitorEvent as any);
         this.eventStats.processedEvents++;
       } else {
         logger.debug('Event not applicable for webhooks', { eventType: event.type });
@@ -169,7 +168,7 @@ export class WebhookProcessor extends EventEmitter {
     }
   }
 
-  private convertRedisEventToMonitorEvent(redisEvent: RedisJobEvent): any | null {
+  private convertRedisEventToMonitorEvent(redisEvent: RedisJobEvent): unknown | null {
     // Convert Redis event format to the MonitorEvent format expected by webhook service
     const baseEvent = {
       timestamp: redisEvent.timestamp || Date.now(),
@@ -200,8 +199,8 @@ export class WebhookProcessor extends EventEmitter {
         return {
           type: 'update_job_progress',
           ...baseEvent,
-          progress: redisEvent.data?.progress || 0,
-          progress_message: redisEvent.data?.message,
+          progress: (redisEvent.data as any)?.progress || 0,
+          progress_message: (redisEvent.data as any)?.message,
         };
 
       case 'job_completed':
@@ -209,7 +208,7 @@ export class WebhookProcessor extends EventEmitter {
         return {
           type: 'complete_job',
           ...baseEvent,
-          result: redisEvent.data?.result,
+          result: (redisEvent.data as any)?.result,
           completed_at: redisEvent.timestamp,
         };
 
@@ -217,7 +216,7 @@ export class WebhookProcessor extends EventEmitter {
         return {
           type: 'job_failed',
           ...baseEvent,
-          error: redisEvent.data?.error || 'Unknown error',
+          error: (redisEvent.data as any)?.error || 'Unknown error',
           failed_at: redisEvent.timestamp,
         };
 
@@ -225,8 +224,8 @@ export class WebhookProcessor extends EventEmitter {
         return {
           type: 'job_status_changed',
           ...baseEvent,
-          old_status: redisEvent.data?.old_status,
-          new_status: redisEvent.data?.new_status,
+          old_status: (redisEvent.data as any)?.old_status,
+          new_status: (redisEvent.data as any)?.new_status,
         };
 
       case 'worker_connected':
@@ -246,16 +245,16 @@ export class WebhookProcessor extends EventEmitter {
         return {
           type: 'machine_startup_complete',
           ...baseEvent,
-          total_startup_time_ms: redisEvent.data?.startup_time,
-          worker_count: redisEvent.data?.worker_count,
-          services_started: redisEvent.data?.services || [],
+          total_startup_time_ms: (redisEvent.data as any)?.startup_time,
+          worker_count: (redisEvent.data as any)?.worker_count,
+          services_started: (redisEvent.data as any)?.services || [],
         };
 
       case 'machine_shutdown':
         return {
           type: 'machine_shutdown',
           ...baseEvent,
-          reason: redisEvent.data?.reason,
+          reason: (redisEvent.data as any)?.reason,
         };
 
       default:
@@ -266,11 +265,16 @@ export class WebhookProcessor extends EventEmitter {
 
   // Webhook management methods (delegated to storage and service)
 
-  async registerWebhook(config: Omit<WebhookEndpoint, 'id' | 'created_at' | 'updated_at'>): Promise<WebhookEndpoint> {
+  async registerWebhook(
+    config: Omit<WebhookEndpoint, 'id' | 'created_at' | 'updated_at'>
+  ): Promise<WebhookEndpoint> {
     return await this.webhookService.registerWebhook(config);
   }
 
-  async updateWebhook(id: string, updates: Partial<WebhookEndpoint>): Promise<WebhookEndpoint | null> {
+  async updateWebhook(
+    id: string,
+    updates: Partial<WebhookEndpoint>
+  ): Promise<WebhookEndpoint | null> {
     return await this.webhookService.updateWebhook(id, updates);
   }
 

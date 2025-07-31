@@ -1,6 +1,6 @@
 /**
  * Webhook Service Entry Point
- * 
+ *
  * Microservice for handling webhook notifications in the EMP Job Queue system.
  * Listens to Redis events and delivers HTTP webhooks to registered endpoints.
  */
@@ -12,11 +12,15 @@ import { logger } from '@emp/core';
 const config = {
   port: parseInt(process.env.WEBHOOK_SERVICE_PORT || '3332'),
   redisUrl: process.env.REDIS_URL || 'redis://localhost:6379',
-  corsOrigins: process.env.CORS_ORIGINS?.split(',') || ['http://localhost:3333', 'http://localhost:3331', '*'],
+  corsOrigins: process.env.CORS_ORIGINS?.split(',') || [
+    'http://localhost:3333',
+    'http://localhost:3331',
+    '*',
+  ],
 };
 
 // Global error handlers
-process.on('uncaughtException', (error) => {
+process.on('uncaughtException', error => {
   logger.error('Uncaught Exception:', error);
   process.exit(1);
 });
@@ -29,7 +33,7 @@ process.on('unhandledRejection', (reason, promise) => {
 // Graceful shutdown handler
 async function gracefulShutdown(server: WebhookServer): Promise<void> {
   logger.info('Received shutdown signal, shutting down gracefully...');
-  
+
   try {
     await server.stop();
     logger.info('✅ Webhook service shutdown complete');
@@ -55,19 +59,18 @@ async function main(): Promise<void> {
 
     // Create and start webhook server
     const server = new WebhookServer(config);
-    
+
     // Setup graceful shutdown
     process.on('SIGTERM', () => gracefulShutdown(server));
     process.on('SIGINT', () => gracefulShutdown(server));
-    
+
     // Start the server
     await server.start();
-    
+
     logger.info('✅ Webhook Service ready', {
       port: config.port,
       healthCheck: `http://localhost:${config.port}/health`,
     });
-
   } catch (error) {
     logger.error('Failed to start webhook service:', error);
     process.exit(1);
@@ -75,7 +78,7 @@ async function main(): Promise<void> {
 }
 
 // Start the service
-main().catch((error) => {
+main().catch(error => {
   logger.error('Fatal error during startup:', error);
   process.exit(1);
 });

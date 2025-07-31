@@ -1,11 +1,11 @@
 /**
  * Webhook Routes
- * 
+ *
  * Express routes for webhook management API endpoints.
  * Handles CRUD operations for webhook configurations and delivery monitoring.
  */
 
-import { Router, Request, Response } from 'express';
+import { Router, Request, Response, Express } from 'express';
 import { WebhookProcessor } from '../webhook-processor.js';
 import { logger, WebhookEventType, WebhookRetryConfig } from '@emp/core';
 
@@ -23,7 +23,7 @@ interface WebhookRequestBody {
   retry_config?: WebhookRetryConfig;
 }
 
-export function setupWebhookRoutes(app: any, webhookProcessor: WebhookProcessor): void {
+export function setupWebhookRoutes(app: Express, webhookProcessor: WebhookProcessor): void {
   const router = Router();
 
   // POST /webhooks - Register a new webhook
@@ -265,7 +265,7 @@ export function setupWebhookRoutes(app: any, webhookProcessor: WebhookProcessor)
     try {
       const { id } = req.params;
       const limit = parseInt(req.query.limit as string) || 50;
-      
+
       const deliveries = await webhookProcessor.getWebhookDeliveryHistory(id, limit);
 
       res.json({
@@ -283,8 +283,11 @@ export function setupWebhookRoutes(app: any, webhookProcessor: WebhookProcessor)
     }
   });
 
-  // GET /stats - Get overall webhook statistics
-  router.get('/stats/summary', async (req: Request, res: Response) => {
+  // Mount the webhook routes under /webhooks
+  app.use('/webhooks', router);
+
+  // Mount stats and deliveries routes directly on app (not through router)
+  app.get('/stats/summary', async (req: Request, res: Response) => {
     try {
       const stats = await webhookProcessor.getWebhookStats();
       const summary = await webhookProcessor.getWebhookSummary();
@@ -308,8 +311,7 @@ export function setupWebhookRoutes(app: any, webhookProcessor: WebhookProcessor)
     }
   });
 
-  // GET /deliveries/recent - Get recent deliveries across all webhooks
-  router.get('/deliveries/recent', async (req: Request, res: Response) => {
+  app.get('/deliveries/recent', async (req: Request, res: Response) => {
     try {
       const limit = parseInt(req.query.limit as string) || 100;
       const deliveries = await webhookProcessor.getRecentDeliveries(limit);
@@ -328,13 +330,6 @@ export function setupWebhookRoutes(app: any, webhookProcessor: WebhookProcessor)
       });
     }
   });
-
-  // Mount the webhook routes under /webhooks
-  app.use('/webhooks', router);
-
-  // Additional stats routes mounted directly
-  app.use('/stats', router);
-  app.use('/deliveries', router);
 
   logger.info('✅ Webhook routes configured', {
     endpoints: [
