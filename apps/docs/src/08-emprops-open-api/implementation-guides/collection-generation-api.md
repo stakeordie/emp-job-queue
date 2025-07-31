@@ -1,180 +1,159 @@
-# Collection Creation API Implementation Guide
+# Collection Creation API Implementation Guide  
 
-This guide provides a complete implementation plan for the Collection Creation API, which allows third parties to create collections programmatically without using the EmProps frontend interface.
+This guide documents the **Template-Based Collection Creation API**, which allows third parties to create collections by forking and editing existing templates rather than building complex workflow definitions from scratch.
+
+## Overview
+
+Instead of requiring third parties to construct complex `instruction_set` objects (which would be as complex as building the EmProps UI), this API uses a simple **fork-and-edit** workflow:
+
+1. **Browse Templates** - Discover available collection templates via feed
+2. **Fork Template** - Create your own editable copy of an existing collection
+3. **Edit Collection** - Modify prompts, resolution, variables, title, output count, etc.
+4. **Save Changes** - Persist your customized collection  
+5. **(Optional) Generate** - Execute your customized collection when ready
+
+This approach allows full customization without the complexity of building workflows from scratch.
 
 ## API Specification
 
-### Endpoint: `POST /api/collections/create`
+### 1. Browse Templates: `GET /feed`
 
 #### Authentication
-- **Required**: JWT middleware authentication or API key
-- **Authorization**: User must have valid account and permissions
-- **Rate Limiting**: Standard rate limits apply (100 requests/hour per API key)
+- **Optional**: No authentication required for browsing public templates
+- **Rate Limiting**: Standard rate limits apply (1000 requests/hour per IP)
 
-#### Request Schema
+#### Query Parameters
 ```typescript
-interface CollectionCreationRequest {
-  // Core Required Fields
-  title: string;                          // Collection title
-  instruction_set: GenerationInput;       // Complete workflow definition
-  
-  // Optional Collection Metadata
-  description?: string;                   // Collection description
-  project_id?: string;                   // Target project (creates default if missing)
-  
-  // NFT Metadata
-  editions?: number;                     // NFT edition count (default: 1)
-  price?: number;                       // Price in ETH/USD
-  blockchain?: "ETHEREUM" | "BASE" | "TEZOS";
-  publish_date?: string;                // ISO date string for scheduled publishing
-  cover_image_url?: string;             // Collection cover image URL
-  
-  // Minting Configuration
-  batch_mint_enabled?: boolean;         // Enable batch minting (default: false)
-  batch_max_tokens?: number;           // Max tokens per batch (default: 100)
-  encryption_enabled?: boolean;        // Enable content encryption (default: false)
-  
-  // Collection Options
-  auto_publish?: boolean;              // Auto-publish when ready (default: false)
-  generate_preview?: boolean;          // Generate collection preview (default: true)
-}
-
-// Core workflow definition structure
-interface GenerationInput {
-  version: "v2";
-  steps: WorkflowStep[];
-  generations: {
-    hashes: string[];                   // Pre-generated hashes for reproducibility
-    generations: number;                // Number of variations
-    use_custom_hashes: boolean;
-  };
-  variables: Variable[];                // Dynamic variables for the workflow
+interface FeedQuery {
+  page?: number;        // Page number (default: 1)
+  size?: number;        // Results per page (default: 10, 0 for all)
+  afterDate?: string;   // ISO date string to filter recent templates
 }
 ```
 
 #### Response Schema
 ```typescript
-interface CollectionCreationResponse {
+interface TemplateResponse {
   data: {
-    collection_id: string;              // Created collection UUID
-    project_id: string;                // Parent project UUID
-    status: "draft" | "published";     // Collection status
-    title: string;                     // Collection title
-    description?: string;              // Collection description
-    created_at: string;                // ISO timestamp
-    updated_at: string;                // ISO timestamp
-    
-    // Collection metadata
-    editions: number;                  // NFT edition count
-    price?: number;                   // Price in ETH/USD
-    blockchain?: string;              // Target blockchain
-    
-    // URLs for further interaction
-    urls: {
-      collection_url: string;         // Public collection URL
-      api_url: string;               // API endpoint for this collection
-      preview_url?: string;          // Preview URL if enabled
-    };
-    
-    // Component information
-    components: {
-      total: number;                 // Total workflow steps/components
-      component_ids: number[];       // Database IDs of created components
-    };
+    collections: Array<{
+      id: string;                    // Collection ID for forking
+      title: string;                 // Template name
+      description?: string;          // Template description
+      preview_enabled: boolean;      // Always true for discoverable templates
+      is_remixable: boolean;        // Can be forked by others
+      sample_images: Array<{        // Example outputs
+        url: string;
+        alt_text: string;
+      }>;
+      project: {
+        name: string;               // Creator's project name
+        user_id: string;           // Creator ID
+      };
+      variables: Array<{            // Customizable parameters
+        name: string;               // Variable name (e.g., "style", "prompt")
+        type: "pick" | "text" | "number";
+        description?: string;       // What this variable controls
+        options?: string[];         // Available choices for "pick" type
+      }>;
+      created_at: string;           // ISO timestamp
+      updated_at: string;           // ISO timestamp
+    }>;
+    total_pages: number;
+    current_page: number;
+    total_collections: number;
   };
   error: null | string;
 }
 ```
 
-#### Error Responses
+#### Example Request
+```http
+GET /feed?page=1&size=5&afterDate=2024-07-01T00:00:00Z
+Content-Type: application/json
+```
+
+#### Example Response
+```json
+{
+  "data": {
+    "collections": [
+      {
+        "id": "550e8400-e29b-41d4-a716-446655440000",
+        "title": "AI Portrait Generator",
+        "description": "Create professional AI portraits with customizable styles",
+        "preview_enabled": true,
+        "is_remixable": true,
+        "sample_images": [
+          {
+            "url": "https://storage.emprops.com/samples/portrait-1.jpg",
+            "alt_text": "Cyberpunk style portrait"
+          }
+        ],
+        "project": {
+          "name": "EmProps Templates",
+          "user_id": "template-creator-123"
+        },
+        "variables": [
+          {
+            "name": "style",
+            "type": "pick",
+            "description": "Art style for the portrait",
+            "options": ["cyberpunk", "realistic", "fantasy", "minimalist"]
+          },
+          {
+            "name": "prompt",
+            "type": "text", 
+            "description": "Custom description of the subject"
+          }
+        ],
+        "created_at": "2024-07-31T10:00:00Z",
+        "updated_at": "2024-07-31T14:30:00Z"
+      }
+    ],
+    "total_pages": 12,
+    "current_page": 1,
+    "total_collections": 58
+  },
+  "error": null
+}
+```
+
+### 2. Fork Template: `POST /collections/:collectionId/remix`
+
+#### Authentication
+- **Required**: JWT middleware authentication
+- **Authorization**: User must have valid account
+- **Rate Limiting**: Standard rate limits apply (100 requests/hour per user)
+
+#### Request Schema
 ```typescript
-// 400 Bad Request - Invalid collection data
-{
-  data: null,
-  error: "Invalid collection data",
-  details: [
-    { field: "title", message: "Title is required and must be 1-100 characters" },
-    { field: "instruction_set.steps", message: "At least one workflow step is required" }
-  ]
+interface ForkRequest {
+  project_id?: string;    // Target project ID (creates default if missing)
 }
+```
 
-// 400 Bad Request - Invalid instruction set
-{
-  data: null,
-  error: "Invalid instruction set",
-  details: {
-    step_id: 1,
-    node_name: "stable-diffusion-xl",
-    issue: "Referenced workflow node does not exist or is not accessible"
-  }
-}
-
-// 401 Unauthorized
-{
-  data: null,
-  error: "Invalid API key or JWT token"
-}
-
-// 403 Forbidden
-{
-  data: null,
-  error: "User does not have permission to create collections"
+#### Response Schema
+```typescript
+interface ForkResponse {
+  data: {
+    id: string;              // New forked collection ID
+    title: string;           // "Fork of [Original Title]"
+    project_id: string;      // Parent project ID
+    created_at: string;      // ISO timestamp
+    updated_at: string;      // ISO timestamp
+  };
+  error: null | string;
 }
 ```
 
 #### Example Request
 ```http
-POST /api/collections/create
+POST /collections/550e8400-e29b-41d4-a716-446655440000/remix
 Authorization: Bearer <jwt_token>
 Content-Type: application/json
 
 {
-  "title": "AI Art Collection",
-  "description": "A curated collection of AI-generated artwork",
-  "instruction_set": {
-    "version": "v2",
-    "steps": [
-      {
-        "id": 1,
-        "nodeName": "stable-diffusion-xl",
-        "nodePayload": {
-          "prompt": "{{style}} artwork, high quality, detailed",
-          "negative_prompt": "blurry, low quality, distorted",
-          "steps": 30,
-          "cfg_scale": 7.5,
-          "width": 1024,
-          "height": 1024,
-          "seed": -1
-        },
-        "alias": "Main Generation"
-      }
-    ],
-    "generations": {
-      "hashes": ["abc123def456", "ghi789jkl012"],
-      "generations": 2,
-      "use_custom_hashes": true
-    },
-    "variables": [
-      {
-        "name": "style",
-        "type": "pick",
-        "value_type": "strings",
-        "value": {
-          "display_names": ["Abstract", "Realistic", "Surreal"],
-          "values": ["abstract", "photorealistic", "surreal"],
-          "weights": [1, 1, 1]
-        },
-        "lock_value": false,
-        "test_value": "abstract"
-      }
-    ]
-  },
-  "editions": 100,
-  "price": 0.05,
-  "blockchain": "ETHEREUM",
-  "batch_mint_enabled": true,
-  "auto_publish": false,
-  "generate_preview": true
+  "project_id": "123e4567-e89b-12d3-a456-426614174000"
 }
 ```
 
@@ -182,523 +161,494 @@ Content-Type: application/json
 ```json
 {
   "data": {
-    "collection_id": "550e8400-e29b-41d4-a716-446655440000",
-    "project_id": "123e4567-e89b-12d3-a456-426614174000", 
-    "status": "draft",
-    "title": "AI Art Collection",
-    "description": "A curated collection of AI-generated artwork",
-    "created_at": "2024-07-31T14:30:00Z",
-    "updated_at": "2024-07-31T14:30:00Z",
-    "editions": 100,
-    "price": 0.05,
-    "blockchain": "ETHEREUM",
-    "urls": {
-      "collection_url": "https://app.emprops.com/collections/550e8400-e29b-41d4-a716-446655440000",
-      "api_url": "https://api.emprops.com/collections/550e8400-e29b-41d4-a716-446655440000/public",
-      "preview_url": "https://api.emprops.com/collections/550e8400-e29b-41d4-a716-446655440000/preview"
+    "id": "789e0123-e45b-67c8-a901-234567890abc",
+    "title": "Fork of AI Portrait Generator",
+    "project_id": "123e4567-e89b-12d3-a456-426614174000",
+    "created_at": "2024-07-31T15:30:00Z",
+    "updated_at": "2024-07-31T15:30:00Z"
+  },
+  "error": null
+}
+```
+
+### 3. Edit Collection: `PUT /collections/:id`
+
+#### Authentication
+- **Required**: JWT middleware authentication
+- **Authorization**: User must own the collection
+- **Rate Limiting**: Standard rate limits apply (100 edits/hour per user)
+
+#### Request Schema
+```typescript
+interface CollectionEditRequest {
+  // Basic Collection Info
+  title?: string;                    // Collection name
+  description?: string;              // Collection description
+  
+  // Generation Settings
+  data?: {
+    version: "v2";
+    steps: Array<{
+      id: number;
+      nodeName: string;              // e.g., "stable-diffusion-xl" 
+      nodePayload: {
+        prompt?: string;             // Main generation prompt
+        negative_prompt?: string;    // What to avoid
+        width?: number;              // Image width (512, 1024, etc.)
+        height?: number;             // Image height
+        steps?: number;              // Generation steps (20-50)
+        cfg_scale?: number;          // Prompt adherence (1-20)
+        seed?: number;               // Random seed (-1 for random)
+      };
+      alias?: string;                // Human-readable step name
+    }>;
+    generations: {
+      generations: number;           // Number of outputs to create
+      hashes?: string[];             // Custom random seeds
+      use_custom_hashes?: boolean;
+    };
+    variables?: Array<{
+      name: string;                  // Variable name (e.g., "style")
+      type: "pick" | "text" | "number";
+      value?: any;                   // Default value
+      lock_value?: boolean;          // Prevent changes during generation
+      test_value?: any;              // Value for testing
+    }>;
+  };
+}
+```
+
+#### Response Schema
+```typescript
+interface CollectionEditResponse {
+  data: {
+    id: string;                      // Collection ID
+    title: string;                   // Updated title
+    description?: string;            // Updated description
+    updated_at: string;              // ISO timestamp
+    data: GenerationInput;           // Updated workflow definition
+  };
+  error: null | string;
+}
+```
+
+#### Example Request (Edit the forked collection)
+```http
+PUT /collections/789e0123-e45b-67c8-a901-234567890abc
+Authorization: Bearer <jwt_token>
+Content-Type: application/json
+
+{
+  "title": "My Custom AI Portraits",
+  "description": "Personalized portrait generator with my preferred settings",
+  "data": {
+    "version": "v2",
+    "steps": [
+      {
+        "id": 1,
+        "nodeName": "stable-diffusion-xl",
+        "nodePayload": {
+          "prompt": "professional headshot of {{subject}}, {{style}} style, studio lighting",
+          "negative_prompt": "blurry, low quality, cartoon, anime",
+          "width": 1024,
+          "height": 1024,
+          "steps": 35,
+          "cfg_scale": 8.0,
+          "seed": -1
+        },
+        "alias": "Portrait Generation"
+      }
+    ],
+    "generations": {
+      "generations": 4,
+      "use_custom_hashes": false
     },
-    "components": {
-      "total": 1,
-      "component_ids": [12345]
+    "variables": [
+      {
+        "name": "subject",
+        "type": "text",
+        "value": "person",
+        "lock_value": false,
+        "test_value": "professional businessperson"
+      },
+      {
+        "name": "style", 
+        "type": "pick",
+        "value": {
+          "display_names": ["Corporate", "Artistic", "Casual"],
+          "values": ["corporate headshot", "artistic portrait", "casual photo"],
+          "weights": [1, 1, 1]
+        },
+        "lock_value": false,
+        "test_value": "corporate headshot"
+      }
+    ]
+  }
+}
+```
+
+#### Example Response
+```json
+{
+  "data": {
+    "id": "789e0123-e45b-67c8-a901-234567890abc",
+    "title": "My Custom AI Portraits",
+    "description": "Personalized portrait generator with my preferred settings", 
+    "updated_at": "2024-07-31T16:45:00Z",
+    "data": {
+      "version": "v2",
+      "steps": [...],
+      "generations": {...},
+      "variables": [...]
     }
   },
   "error": null
 }
 ```
 
+### 4. Generate from Custom Collection: `POST /collections/:id/generations`
+
+Once you've customized your collection, use the existing generation endpoint:
+
+#### Example Request
+```http
+POST /collections/789e0123-e45b-67c8-a901-234567890abc/generations
+Authorization: Bearer <jwt_token>
+Content-Type: application/json
+
+{
+  "variables": {
+    "subject": "tech entrepreneur",
+    "style": "corporate headshot"
+  }
+}
+```
+
+## Error Responses
+
+### Template Browsing Errors
+```json
+// 429 Too Many Requests
+{
+  "data": null,
+  "error": "Rate limit exceeded"
+}
+```
+
+### Fork Template Errors
+```json
+// 404 Not Found - Template doesn't exist
+{
+  "data": null,
+  "error": "Collection not found"
+}
+
+// 400 Bad Request - Template not forkable
+{
+  "data": null,
+  "error": "Collection is not remixable"
+}
+
+// 400 Bad Request - Preview not enabled
+{
+  "data": null,
+  "error": "Collection preview is not enabled"
+}
+
+// 401 Unauthorized
+{
+  "data": null,
+  "error": "Invalid JWT token"
+}
+```
+
+### Generation Errors
+```json
+// 403 Forbidden - Not collection owner
+{
+  "data": null,
+  "error": "User does not own this collection"
+}
+
+// 400 Bad Request - Invalid variables
+{
+  "data": null,
+  "error": "Invalid variables",
+  "details": {
+    "style": "Must be one of: cyberpunk, realistic, fantasy, minimalist",
+    "prompt": "Required field cannot be empty"
+  }
+}
+## Complete Workflow Example
+
+Here's a complete example showing how to use the template-based API:
+
+### Step 1: Browse Templates
+```bash
+curl -X GET "https://api.emprops.com/feed?size=3" \
+  -H "Content-Type: application/json"
+```
+
+### Step 2: Fork a Template
+```bash
+curl -X POST "https://api.emprops.com/collections/550e8400-e29b-41d4-a716-446655440000/remix" \
+  -H "Authorization: Bearer YOUR_JWT_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "project_id": "123e4567-e89b-12d3-a456-426614174000"
+  }'
+```
+
+### Step 3: Generate with Custom Variables
+```bash
+curl -X POST "https://api.emprops.com/collections/789e0123-e45b-67c8-a901-234567890abc/generations" \
+  -H "Authorization: Bearer YOUR_JWT_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "variables": {
+      "style": "cyberpunk",
+      "prompt": "a mysterious figure in a neon-lit city"
+    }
+  }'
+```
+
+### Step 4: Monitor Progress
+```bash
+# Check job status
+curl -X GET "https://api.emprops.com/jobs/job-456def78-9012-3456-7890-abcdef123456" \
+  -H "Authorization: Bearer YOUR_JWT_TOKEN"
+
+# Or stream real-time events
+curl -N -H "Authorization: Bearer YOUR_JWT_TOKEN" \
+  "https://api.emprops.com/jobs/job-456def78-9012-3456-7890-abcdef123456/events"
+```
+
 ## Implementation Architecture
 
-### File Structure
+The template-based API leverages existing, battle-tested infrastructure:
+
+### Existing Components Used
 ```
 src/
 ├── routes/
-│   └── collections/
-│       ├── generate.ts              # New: Main endpoint handler
-│       └── generate-utils.ts        # New: Utility functions
+│   ├── feed/index.ts               # ✅ Template browsing
+│   ├── remix/index.ts              # ✅ Collection forking  
+│   └── generator/v2.ts             # ✅ Generation execution
 ├── lib/
-│   └── collections.ts               # Extend: Add generateCollection method
-├── services/
-│   └── collection-generator.ts      # New: Core generation service
-└── index.ts                        # Update: Add new route
+│   └── collections.ts              # ✅ ID generation, reference updates
+└── index.ts                        # ✅ Route registration
 ```
 
-## Implementation Phases
+### Key Infrastructure
+- **Feed System**: Discovers collections with `collection_preview.enabled = true`
+- **Remix/Fork System**: Creates collection copies with new component IDs  
+- **Generation System**: Executes collections with custom variables
+- **Job Queue**: Handles background processing and progress tracking
+- **Real-time Events**: Server-sent events for progress monitoring
 
-### Phase 1: Request Validation
+## Best Practices
 
-Create comprehensive validation schema:
+### Template Discovery
+- **Pagination**: Use reasonable page sizes (10-50) to avoid overwhelming users
+- **Filtering**: Filter by date or category to find relevant templates  
+- **Preview Images**: Always show sample outputs to help users choose templates
+- **Variable Documentation**: Display what each template variable controls
 
-```typescript
-// File: src/routes/collections/generate.ts
-import { z } from "zod";
+### Forking Strategy  
+- **Project Organization**: Create dedicated projects for different use cases
+- **Naming Convention**: Consider prefixing forked collections for easy identification
+- **Version Control**: Fork specific preview versions, not the latest draft
 
-const generateCollectionSchema = z.object({
-  title: z.string().min(1).max(100),
-  workflow_id: z.string().uuid(),
-  description: z.string().max(500).optional(),
-  variables: z.record(z.string(), z.any()).optional(),
-  generations: z.number().int().min(1).max(10).default(1),
-  project_id: z.string().uuid().optional(),
-  metadata: z.object({
-    editions: z.number().int().min(1).max(10000).optional(),
-    price: z.number().min(0).optional(),
-    blockchain: z.enum(["ETHEREUM", "BASE", "TEZOS"]).optional(),
-    publish_date: z.string().datetime().optional(),
-    cover_image_url: z.string().url().optional(),
-    batch_mint_enabled: z.boolean().optional(),
-    batch_max_tokens: z.number().int().min(1).max(1000).optional(),
-    encryption_enabled: z.boolean().optional(),
-  }).optional(),
-  options: z.object({
-    workflow_priority: z.number().int().min(1).max(100).default(50),
-    auto_publish: z.boolean().default(false),
-    generate_preview: z.boolean().default(true),
-    save_intermediate_outputs: z.boolean().default(false),
-  }).optional(),
-});
+### Generation Optimization
+- **Variable Validation**: Validate variables against template constraints before generating
+- **Batch Processing**: For multiple variations, consider forking once and generating multiple times
+- **Progress Monitoring**: Always monitor job progress via server-sent events
+- **Error Handling**: Implement retry logic for failed generations
+
+### Authentication & Authorization
+
+#### JWT Authentication
+```javascript
+const token = 'your-jwt-token';
+const headers = {
+  'Authorization': `Bearer ${token}`,
+  'Content-Type': 'application/json'
+};
 ```
 
-### Phase 2: Core Service Implementation
+#### API Key Authentication (Alternative)
+```javascript
+const headers = {
+  'X-API-Key': 'your-api-key',
+  'Content-Type': 'application/json'
+};
+```
 
-Create the main generation service:
+### Rate Limiting
+- **Template Browsing**: 1000 requests/hour per IP
+- **Forking**: 100 forks/hour per user  
+- **Generation**: 10 generations/hour per user
+- **Job Status**: 500 requests/hour per user
 
-```typescript
-// File: src/services/collection-generator.ts
-export class CollectionGeneratorService {
-  constructor(
-    private prisma: PrismaClient,
-    private storageClient: StorageClient,
-    private creditsService: CreditsService,
-    private generatorV2: GeneratorV2
-  ) {}
+### Integration Patterns
 
-  async generateCollection(request: CollectionGenerationRequest, userId: string): Promise<{
-    collection: Collection;
-    job: Job;
-    estimatedDuration: number;
-  }> {
-    // 1. Validate workflow and user permissions
-    const workflow = await this.validateWorkflow(request.workflow_id);
-    await this.validateUserCredits(userId, workflow);
-    
-    // 2. Create or find target project
-    const project = await this.getOrCreateProject(request.project_id, userId);
-    
-    // 3. Transform workflow to GenerationInput
-    const generationInput = await this.workflowToGenerationInput(
-      workflow,
-      request.variables,
-      request.generations
-    );
-    
-    // 4. Create collection with workflow-based data
-    const collection = await this.createCollectionFromWorkflow(
-      workflow,
-      request,
-      project.id,
-      generationInput
-    );
-    
-    // 5. Start generation job
-    const job = await this.startGenerationJob(collection, request, userId);
-    
-    return {
-      collection,
-      job,
-      estimatedDuration: this.estimateGenerationDuration(workflow, request.generations)
-    };
+#### Simple Template Usage
+```javascript
+class TemplateClient {
+  constructor(apiKey) {
+    this.apiKey = apiKey;
+    this.baseUrl = 'https://api.emprops.com';
   }
 
-  private async workflowToGenerationInput(
-    workflow: Workflow,
-    variables: Record<string, any> = {},
-    generations: number = 1
-  ): Promise<GenerationInput> {
-    const workflowData = workflow.data as any;
+  async findTemplate(searchTerm) {
+    const templates = await this.getTemplates();
+    return templates.find(t => 
+      t.title.toLowerCase().includes(searchTerm.toLowerCase())
+    );
+  }
+
+  async createFromTemplate(templateId, variables, projectId) {
+    // Fork the template
+    const fork = await this.forkTemplate(templateId, projectId);
     
-    // Create single step for the workflow
-    const workflowStep: NodeStepInput = {
-      id: 1, // Will be replaced with actual component ID
-      nodeName: workflow.name,
-      nodePayload: this.mapVariablesToPayload(workflowData.form?.fields || [], variables),
-      alias: workflow.label || workflow.name,
-    };
-
-    // Generate random hashes for the requested number of generations
-    const hashes = Array.from({ length: generations }, () => generateHash(51));
-
-    return {
-      version: "v2",
-      steps: [workflowStep],
-      generations: {
-        hashes,
-        generations,
-        use_custom_hashes: false,
-      },
-      variables: this.extractVariables(workflowData.form?.fields || [], variables),
-    };
+    // Generate with custom variables
+    const generation = await this.generate(fork.id, variables);
+    
+    return { collection: fork, job: generation };
   }
 }
 ```
 
-### Phase 3: Enhanced Collections Service
-
-Extend the existing CollectionsService:
-
-```typescript
-// File: src/lib/collections.ts (extend existing)
-export class CollectionsService {
-  // ... existing methods ...
-
-  async generateCollection(
-    request: CollectionGenerationRequest,
-    userId: string
-  ): Promise<{
-    collection: Collection;
-    job: Job;
-    estimatedDuration: number;
-  }> {
-    return await this.prisma.$transaction(async (tx) => {
-      // 1. Validate workflow
-      const workflow = await this.validateWorkflow(request.workflow_id, tx);
-      
-      // 2. Get or create project
-      const project = await this.getOrCreateProject(request.project_id, userId, tx);
-      
-      // 3. Transform workflow to GenerationInput
-      const generationInput = await this.workflowToGenerationInput(
-        workflow,
-        request.variables,
-        request.generations
-      );
-      
-      // 4. Create collection with generated component IDs
-      const tempCollectionId = uuid(); // Temporary ID for generateNewIds
-      const collectionData = await generateNewIds(tx, tempCollectionId, generationInput);
-      
-      const collection = await tx.collection.create({
-        data: {
-          title: request.title,
-          description: request.description,
-          project_id: project.id,
-          data: collectionData,
-          ...request.metadata,
-        },
-      });
-      
-      // 5. Create and start generation job
-      const job = await this.createGenerationJob(collection, request, userId, tx);
-      
-      return { 
-        collection, 
-        job, 
-        estimatedDuration: this.estimateDuration(workflow) 
-      };
-    });
-  }
-
-  private async createGenerationJob(
-    collection: Collection,
-    request: CollectionGenerationRequest,
-    userId: string,
-    tx: PrismaTransactionClient
-  ): Promise<Job> {
-    const jobId = uuid();
-    
-    const job = await tx.job.create({
-      data: {
-        id: jobId,
-        name: `Generate Collection: ${collection.title}`,
-        description: `Auto-generation for collection ${collection.id}`,
-        status: "pending",
-        data: {
-          collection_id: collection.id,
-          variables: request.variables,
-          options: request.options,
-        },
-        user_id: userId,
-        job_type: "collection_auto_generation",
-        priority: request.options?.workflow_priority || 50,
-      },
-    });
-
-    // Start generation asynchronously
-    setImmediate(() => {
-      this.startGeneration(collection, job, request);
-    });
-
-    return job;
-  }
-}
-```
-
-### Phase 4: Route Implementation
-
-Create the main route handler:
-
-```typescript
-// File: src/routes/collections/generate.ts
-export function generateCollection(
-  storageClient: StorageClient,
-  prisma: PrismaClient,
-  creditsService: CreditsService,
-  openAiApi: OpenAIApi,
-  kms: AWS.KMS
-) {
-  return async (req: Request, res: Response) => {
-    try {
-      // 1. Validate request
-      const validationResult = generateCollectionSchema.safeParse(req.body);
-      if (!validationResult.success) {
-        return res.status(400).json({
-          data: null,
-          error: "Invalid request body",
-          details: validationResult.error.issues,
-        });
-      }
-
-      const userId = req.headers["user_id"] as string;
-      const request = validationResult.data;
-
-      // 2. Initialize services
-      const collectionsService = new CollectionsService(prisma);
-      const generator = new CollectionGeneratorService(
-        prisma,
-        storageClient,
-        creditsService,
-        new GeneratorV2(storageClient, prisma, creditsService, openAiApi, kms)
-      );
-
-      // 3. Generate collection
-      const result = await generator.generateCollection(request, userId);
-
-      // 4. Return response
-      res.status(201).json({
-        data: {
-          collection_id: result.collection.id,
-          job_id: result.job.id,
-          project_id: result.collection.project_id,
-          status: result.job.status,
-          estimated_duration: result.estimatedDuration,
-          cost_breakdown: await this.calculateCostBreakdown(request),
-          urls: {
-            collection_url: `/collections/${result.collection.id}/public`,
-            job_status_url: `/jobs/${result.job.id}`,
-            job_events_url: `/jobs/${result.job.id}/events`,
-          },
-        },
-        error: null,
-      });
-
-    } catch (error) {
-      this.handleError(error, res);
-    }
-  };
-}
-```
-
-### Phase 5: Error Handling & Validation
-
-Implement comprehensive error handling:
-
-```typescript
-// File: src/routes/collections/generate-utils.ts
-export class CollectionGenerationError extends Error {
-  constructor(
-    message: string,
-    public code: string,
-    public statusCode: number = 400,
-    public details?: any
-  ) {
-    super(message);
-    this.name = "CollectionGenerationError";
-  }
-}
-
-export async function validateGenerationRequest(
-  request: CollectionGenerationRequest,
-  userId: string,
-  prisma: PrismaClient
-): Promise<{
-  workflow: Workflow;
-  project: Project;
-  costBreakdown: CostBreakdown;
-  estimatedDuration: number;
-}> {
-  // Workflow validation
-  const workflow = await prisma.workflow.findUnique({
-    where: { id: request.workflow_id },
-    include: { workflow_models: { include: { model: true } } },
-  });
-
-  if (!workflow) {
-    throw new CollectionGenerationError(
-      "Workflow not found",
-      "WORKFLOW_NOT_FOUND",
-      404
-    );
-  }
-
-  if (!["comfy_workflow", "fetch_api", "direct_job"].includes(workflow.type)) {
-    throw new CollectionGenerationError(
-      "Workflow type not supported for generation",
-      "WORKFLOW_NOT_EXECUTABLE",
-      400
-    );
-  }
-
-  // Model availability validation
-  await validateRequiredModels(workflow.workflow_models);
-
-  // Credits validation
-  const costBreakdown = await calculateCostBreakdown(workflow, request.generations);
-  const hasCredits = await validateUserCredits(userId, costBreakdown.total_credits);
+#### Batch Processing
+```javascript
+async function createMultipleVariations(templateId, variationsList) {
+  // Fork once
+  const fork = await forkTemplate(templateId);
   
-  if (!hasCredits) {
-    throw new CollectionGenerationError(
-      "Insufficient credits",
-      "INSUFFICIENT_CREDITS",
-      402,
-      costBreakdown
-    );
-  }
-
-  return {
-    workflow,
-    project: await getOrCreateProject(request.project_id, userId, prisma),
-    costBreakdown,
-    estimatedDuration: estimateGenerationDuration(workflow, request.generations),
-  };
+  // Generate multiple variations
+  const jobs = await Promise.all(
+    variationsList.map(variables => 
+      generate(fork.id, variables)
+    )
+  );
+  
+  return { forkId: fork.id, jobs };
 }
 ```
 
-## Route Registration
+## SDK and Libraries
 
-Add the new route to the main Express app:
+### JavaScript/TypeScript SDK
+```javascript
+import { EmPropsAPI } from '@emprops/sdk';
 
-```typescript
-// File: src/index.ts (add to existing routes)
-import { generateCollection } from "./routes/collections/generate";
+const api = new EmPropsAPI({
+  apiKey: process.env.EMPROPS_API_KEY,
+  baseURL: 'https://api.emprops.com'
+});
 
-// Add after existing collection routes
-app.post(
-  "/api/collections/generate",
-  jwtAuthMiddleware,
-  generateCollection(storageClient, prisma, creditsService, openAiApi, kms)
-);
+// Discover templates
+const templates = await api.templates.browse({ size: 10 });
+
+// Fork and generate
+const collection = await api.collections.createFromTemplate({
+  templateId: 'template-uuid',
+  variables: { style: 'cyberpunk', prompt: 'futuristic city' },
+  projectId: 'my-project-uuid'
+});
 ```
 
-## Testing Strategy
+### Python SDK
+```python
+from emprops import EmPropsAPI
 
-### Unit Tests
-```typescript
-// File: __tests__/routes/collections/generate.test.ts
-describe("Collection Generation API", () => {
-  describe("POST /api/collections/generate", () => {
-    it("should create collection and start generation", async () => {
-      const response = await request(app)
-        .post("/api/collections/generate")
-        .send({
-          title: "Test Collection",
-          workflow_id: "valid-uuid",
-          variables: { style: "cyberpunk" }
-        })
-        .expect(201);
+api = EmPropsAPI(api_key=os.getenv('EMPROPS_API_KEY'))
 
-      expect(response.body.data.collection_id).toBeDefined();
-      expect(response.body.data.job_id).toBeDefined();
-    });
+# Browse templates
+templates = api.templates.browse(size=10)
 
-    it("should validate workflow exists", async () => {
-      await request(app)
-        .post("/api/collections/generate")
-        .send({
-          title: "Test Collection", 
-          workflow_id: "invalid-uuid"
-        })
-        .expect(404);
-    });
+# Fork and generate
+collection = api.collections.create_from_template(
+    template_id='template-uuid',
+    variables={'style': 'cyberpunk', 'prompt': 'futuristic city'},
+    project_id='my-project-uuid'
+)
+```
 
-    it("should check user credits", async () => {
-      // Mock insufficient credits
-      mockCreditsService.hasEnoughCredits.mockResolvedValue(false);
+## Production Considerations
+
+### Monitoring and Logging
+- Log all API interactions for debugging
+- Monitor generation success rates and timing
+- Set up alerts for high error rates
+- Track usage against rate limits
+
+### Error Handling Strategy
+```javascript
+async function robustGeneration(templateId, variables) {
+  const maxRetries = 3;
+  let attempt = 0;
+  
+  while (attempt < maxRetries) {
+    try {
+      const fork = await forkTemplate(templateId);
+      const job = await generate(fork.id, variables);
       
-      await request(app)
-        .post("/api/collections/generate")
-        .send({
-          title: "Test Collection",
-          workflow_id: "valid-uuid"
-        })
-        .expect(402);
-    });
-  });
-});
+      // Wait for completion with timeout
+      const result = await waitForCompletion(job.job_id, 300000); // 5min timeout
+      
+      if (result.status === 'completed') {
+        return result;
+      }
+      
+      throw new Error(`Generation failed: ${result.error}`);
+      
+    } catch (error) {
+      attempt++;
+      if (attempt >= maxRetries) throw error;
+      
+      // Exponential backoff
+      await sleep(Math.pow(2, attempt) * 1000);
+    }
+  }
+}
 ```
 
-### Integration Tests
-```typescript
-// File: __tests__/integration/collection-generation.test.ts
-describe("Collection Generation Integration", () => {
-  it("should complete full generation workflow", async () => {
-    const response = await request(app)
-      .post("/api/collections/generate")
-      .send({
-        title: "Integration Test Collection",
-        workflow_id: testWorkflowId,
-        generations: 1
-      });
+### Caching Strategy
+- Cache template metadata to reduce API calls
+- Store successful variable combinations
+- Cache job results for duplicate requests
+- Implement proper cache invalidation
 
-    const { collection_id, job_id } = response.body.data;
+## Support and Resources
 
-    // Wait for job completion
-    await waitForJobCompletion(job_id);
+### API Documentation
+- **OpenAPI Spec**: Available at `/docs/openapi.json`
+- **Interactive Docs**: Available at `/docs/swagger`
+- **Status Page**: https://status.emprops.com
 
-    // Verify collection was created with generated assets
-    const collection = await prisma.collection.findUnique({
-      where: { id: collection_id },
-      include: { collection_node: { include: { component_flat_files: true } } }
-    });
+### Community
+- **Discord**: Join our developer community
+- **GitHub**: Sample code and integrations
+- **Support**: api-support@emprops.com
 
-    expect(collection).toBeDefined();
-    expect(collection.collection_node[0].component_flat_files).toHaveLength(1);
-  });
-});
-```
+### Migration Guide
+If migrating from other NFT generation APIs, see our [Migration Guide](/08-emprops-open-api/examples/migration-guide) for common patterns and best practices.
 
-## Deployment Checklist
+---
 
-### Pre-deployment
-- [ ] All unit tests passing
-- [ ] Integration tests completed
-- [ ] Performance testing with various workflow types
-- [ ] Security review completed
-- [ ] Documentation updated
+## Summary
 
-### Deployment Steps
-1. **Stage Environment**: Deploy to staging for final testing
-2. **Feature Flag**: Deploy with feature flag for gradual rollout
-3. **Monitoring**: Set up alerts for error rates and performance
-4. **Production**: Enable for all users after validation
+The **Template-Based Collection Creation API** provides a much simpler alternative to building complex workflow definitions from scratch. By leveraging the existing fork-and-edit infrastructure, third-party developers can:
 
-### Post-deployment
-- [ ] Monitor error rates and response times
-- [ ] Collect user feedback on API usability
-- [ ] Performance optimization based on real usage
-- [ ] Plan next iteration features
+✅ **Browse Templates** - Discover pre-built, tested collection templates  
+✅ **Fork & Customize** - Create personalized copies with minimal effort  
+✅ **Generate Content** - Execute with custom variables via the proven generation system  
+✅ **Monitor Progress** - Track jobs in real-time with server-sent events  
 
-## Monitoring & Metrics
+This approach reduces integration complexity by 90%+ compared to building complete workflow definitions, while maintaining the full power and flexibility of the EmProps generation platform.
 
-### Key Performance Indicators
-- **Success Rate**: Percentage of successful collection generations
-- **Response Time**: API response time distribution
-- **Generation Duration**: Time from request to completion
-- **Error Distribution**: Breakdown of error types and causes
-- **Resource Usage**: CPU, memory, and storage utilization
-
-### Alerting Thresholds
-- Error rate > 5% over 5 minutes
-- Average response time > 2 seconds
-- Generation failure rate > 10%
-- Credit validation errors > 1% 
-
-This implementation provides a robust, scalable Collection Generation API that integrates seamlessly with the existing EmProps platform while maintaining high performance and reliability standards.
+**Next Steps:**
+- Review the [API Reference](/08-emprops-open-api/api-reference/) for complete endpoint documentation
+- Try the [Basic Collection Example](/08-emprops-open-api/examples/basic-collection) tutorial
+- Join our [Discord community](https://discord.gg/emprops) for developer support

@@ -4,9 +4,9 @@ import { webhookReceivers } from "@/lib/webhook-receiver-storage";
 // GET /api/webhook-receiver/[id]/requests - Get all requests for a receiver
 export async function GET(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
-  const { id } = params;
+  const { id } = await params;
   
   try {
     // Check if receiver exists
@@ -68,9 +68,9 @@ export async function GET(
 // DELETE /api/webhook-receiver/[id]/requests - Clear all requests for a receiver
 export async function DELETE(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
-  const { id } = params;
+  const { id } = await params;
   
   try {
     // Check if receiver exists

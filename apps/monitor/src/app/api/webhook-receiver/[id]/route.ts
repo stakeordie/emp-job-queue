@@ -40,9 +40,9 @@ function getClientIP(request: NextRequest): string {
 // Catch-all webhook receiver - handles any HTTP method
 async function handleWebhookRequest(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
-  const { id } = params;
+  const { id } = await params;
   
   try {
     // Check if receiver exists
@@ -147,31 +147,31 @@ async function handleWebhookRequest(
 }
 
 // Export all HTTP methods
-export async function GET(request: NextRequest, context: { params: { id: string } }) {
+export async function GET(request: NextRequest, context: { params: Promise<{ id: string }> }) {
   return handleWebhookRequest(request, context);
 }
 
-export async function POST(request: NextRequest, context: { params: { id: string } }) {
+export async function POST(request: NextRequest, context: { params: Promise<{ id: string }> }) {
   return handleWebhookRequest(request, context);
 }
 
-export async function PUT(request: NextRequest, context: { params: { id: string } }) {
+export async function PUT(request: NextRequest, context: { params: Promise<{ id: string }> }) {
   return handleWebhookRequest(request, context);
 }
 
-export async function PATCH(request: NextRequest, context: { params: { id: string } }) {
+export async function PATCH(request: NextRequest, context: { params: Promise<{ id: string }> }) {
   return handleWebhookRequest(request, context);
 }
 
-export async function DELETE(request: NextRequest, context: { params: { id: string } }) {
+export async function DELETE(request: NextRequest, context: { params: Promise<{ id: string }> }) {
   return handleWebhookRequest(request, context);
 }
 
-export async function HEAD(request: NextRequest, context: { params: { id: string } }) {
+export async function HEAD(request: NextRequest, context: { params: Promise<{ id: string }> }) {
   return handleWebhookRequest(request, context);
 }
 
-export async function OPTIONS(request: NextRequest, context: { params: { id: string } }) {
+export async function OPTIONS(request: NextRequest, context: { params: Promise<{ id: string }> }) {
   return handleWebhookRequest(request, context);
 }
 

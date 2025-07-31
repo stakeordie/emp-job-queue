@@ -404,6 +404,7 @@ export default function WebhookManagementPage() {
     const interval = setInterval(() => {
       fetchRecentDeliveries();
       fetchStats();
+      fetchTestRequests();
     }, 5000);
     
     return () => clearInterval(interval);
@@ -687,15 +688,210 @@ export default function WebhookManagementPage() {
               <Card>
                 <CardHeader>
                   <CardTitle>Webhook Test Receiver</CardTitle>
+                  <p className="text-sm text-muted-foreground">
+                    Generate unique test URLs to receive and inspect webhook payloads (like webhook.site)
+                  </p>
                 </CardHeader>
-                <CardContent>
-                  <div className="text-center py-8 text-muted-foreground">
-                    <p>Test receiver functionality coming soon</p>
-                    <p className="text-sm mt-2">
-                      This will generate unique test URLs that you can register as webhooks
-                      and view incoming payloads in real-time
-                    </p>
-                  </div>
+                <CardContent className="space-y-4">
+                  {!testReceiver ? (
+                    <div className="text-center py-8">
+                      <p className="text-muted-foreground mb-4">
+                        Create a test webhook receiver to get a unique URL that you can register as a webhook endpoint
+                      </p>
+                      <Button onClick={createTestReceiver} size="lg">
+                        <Plus className="h-4 w-4 mr-2" />
+                        Create Test Receiver
+                      </Button>
+                    </div>
+                  ) : (
+                    <div className="space-y-4">
+                      {/* Test Receiver Info */}
+                      <div className="p-4 border rounded-lg bg-muted/50">
+                        <div className="flex items-center justify-between mb-2">
+                          <h3 className="font-medium">Test Receiver Active</h3>
+                          <Badge variant="outline">
+                            <Clock className="h-3 w-3 mr-1" />
+                            Expires in {Math.round((testReceiver.expires_at - Date.now()) / (1000 * 60 * 60))}h
+                          </Badge>
+                        </div>
+                        
+                        <div className="space-y-2">
+                          <div>
+                            <Label className="text-xs text-muted-foreground">Webhook URL</Label>
+                            <div className="flex items-center gap-2">
+                              <Input
+                                value={testReceiver.url}
+                                readOnly
+                                className="font-mono text-sm"
+                              />
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                onClick={() => copyTestUrl(testReceiver.url)}
+                              >
+                                <Copy className="h-3 w-3" />
+                              </Button>
+                            </div>
+                          </div>
+                          
+                          <div className="flex items-center gap-2 pt-2">
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              onClick={registerTestReceiver}
+                            >
+                              <Plus className="h-3 w-3 mr-1" />
+                              Register as Webhook
+                            </Button>
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              onClick={() => window.open(testReceiver.url, '_blank')}
+                            >
+                              <ExternalLink className="h-3 w-3 mr-1" />
+                              Test URL
+                            </Button>
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              onClick={clearTestRequests}
+                              disabled={testRequests.length === 0}
+                            >
+                              <Trash2 className="h-3 w-3 mr-1" />
+                              Clear ({testRequests.length})
+                            </Button>
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Received Requests */}
+                      <div>
+                        <div className="flex items-center justify-between mb-3">
+                          <h3 className="font-medium">Received Requests ({testRequests.length})</h3>
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={fetchTestRequests}
+                          >
+                            <RefreshCw className="h-4 w-4" />
+                            Refresh
+                          </Button>
+                        </div>
+
+                        {testRequests.length === 0 ? (
+                          <div className="text-center py-8 text-muted-foreground border rounded-lg">
+                            <p>No webhook requests received yet</p>
+                            <p className="text-sm mt-2">
+                              Send a webhook to <code className="bg-muted px-1 rounded">{testReceiver.url}</code> to see it here
+                            </p>
+                          </div>
+                        ) : (
+                          <div className="space-y-2">
+                            {testRequests.map((req) => (
+                              <div
+                                key={req.id}
+                                className={`p-3 border rounded cursor-pointer transition-colors ${
+                                  selectedTestRequest?.id === req.id
+                                    ? 'border-blue-500 bg-blue-50'
+                                    : 'hover:bg-muted/50'
+                                }`}
+                                onClick={() => setSelectedTestRequest(req)}
+                              >
+                                <div className="flex items-center justify-between">
+                                  <div className="flex items-center gap-3">
+                                    <Badge variant={req.method === 'POST' ? 'default' : 'outline'}>
+                                      {req.method}
+                                    </Badge>
+                                    <span className="text-sm text-muted-foreground">
+                                      {formatTimestamp(req.timestamp)}
+                                    </span>
+                                    {req.user_agent && (
+                                      <span className="text-xs text-muted-foreground">
+                                        {req.user_agent.split(' ')[0]}
+                                      </span>
+                                    )}
+                                  </div>
+                                  <div className="text-xs text-muted-foreground">
+                                    {req.ip}
+                                  </div>
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+
+                        {/* Request Details */}
+                        {selectedTestRequest && (
+                          <Card className="mt-4">
+                            <CardHeader>
+                              <CardTitle className="text-sm">
+                                Request Details - {selectedTestRequest.method} at {formatTimestamp(selectedTestRequest.timestamp)}
+                              </CardTitle>
+                            </CardHeader>
+                            <CardContent className="space-y-4">
+                              {/* Headers */}
+                              <div>
+                                <Label className="text-xs font-medium text-muted-foreground">Headers</Label>
+                                <div className="mt-1 p-3 bg-muted rounded text-xs font-mono overflow-x-auto">
+                                  {Object.entries(selectedTestRequest.headers).length === 0 ? (
+                                    <span className="text-muted-foreground">No headers</span>
+                                  ) : (
+                                    <pre>{JSON.stringify(selectedTestRequest.headers, null, 2)}</pre>
+                                  )}
+                                </div>
+                              </div>
+
+                              {/* Query Parameters */}
+                              {Object.keys(selectedTestRequest.query).length > 0 && (
+                                <div>
+                                  <Label className="text-xs font-medium text-muted-foreground">Query Parameters</Label>
+                                  <div className="mt-1 p-3 bg-muted rounded text-xs font-mono overflow-x-auto">
+                                    <pre>{JSON.stringify(selectedTestRequest.query, null, 2)}</pre>
+                                  </div>
+                                </div>
+                              )}
+
+                              {/* Body */}
+                              <div>
+                                <Label className="text-xs font-medium text-muted-foreground">Body</Label>
+                                <div className="mt-1 p-3 bg-muted rounded text-xs font-mono overflow-x-auto max-h-64 overflow-y-auto">
+                                  {selectedTestRequest.body === null || selectedTestRequest.body === '' ? (
+                                    <span className="text-muted-foreground">No body content</span>
+                                  ) : (
+                                    <pre>
+                                      {typeof selectedTestRequest.body === 'string'
+                                        ? selectedTestRequest.body
+                                        : JSON.stringify(selectedTestRequest.body, null, 2)}
+                                    </pre>
+                                  )}
+                                </div>
+                              </div>
+
+                              {/* Metadata */}
+                              <div>
+                                <Label className="text-xs font-medium text-muted-foreground">Request Metadata</Label>
+                                <div className="mt-1 p-3 bg-muted rounded text-xs">
+                                  <div className="grid grid-cols-2 gap-2">
+                                    <div>
+                                      <span className="font-medium">Request ID:</span> {selectedTestRequest.id}
+                                    </div>
+                                    <div>
+                                      <span className="font-medium">IP Address:</span> {selectedTestRequest.ip}
+                                    </div>
+                                    {selectedTestRequest.user_agent && (
+                                      <div className="col-span-2">
+                                        <span className="font-medium">User Agent:</span> {selectedTestRequest.user_agent}
+                                      </div>
+                                    )}
+                                  </div>
+                                </div>
+                              </div>
+                            </CardContent>
+                          </Card>
+                        )}
+                      </div>
+                    </div>
+                  )}
                 </CardContent>
               </Card>
             </TabsContent>
