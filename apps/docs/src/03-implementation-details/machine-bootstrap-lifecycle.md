@@ -22,23 +22,23 @@ sequenceDiagram
     Note over Docker,Health: Machine Bootstrap Sequence (60-300 seconds)
     
     Docker->>Entry: Container starts
-    Entry->>Entry: Set environment variables<br/>PM2_HOME, SERVICE_MANAGER_PATH
+    Entry->>Entry: Set environment variables\nPM2_HOME, SERVICE_MANAGER_PATH
     
-    Entry->>Entry: Source .env file<br/>Load WORKERS, MACHINE_ID, etc.
+    Entry->>Entry: Source .env file\nLoad WORKERS, MACHINE_ID, etc.
     
     alt WORKER_BUNDLE_MODE=local
-        Entry->>Entry: Copy bundled worker<br/>/service-manager/worker-bundled → /workspace/
+        Entry->>Entry: Copy bundled worker\n/service-manager/worker-bundled → /workspace/
     else WORKER_BUNDLE_MODE=remote  
-        Entry->>Entry: Skip worker copy<br/>Services will download as needed
+        Entry->>Entry: Skip worker copy\nServices will download as needed
     end
     
-    Entry->>SM: Start service manager<br/>node src/index-pm2.js
+    Entry->>SM: Start service manager\nnode src/index-pm2.js
     
     SM->>Config: Load service-mapping.json
-    Config->>Config: Parse WORKERS spec<br/>e.g., "comfyui:1"
+    Config->>Config: Parse WORKERS spec\ne.g., "comfyui:1"
     
     SM->>Config: Generate PM2 ecosystem config
-    Config->>Config: Determine required services:<br/>• ComfyUI installation<br/>• Redis workers<br/>• Health monitoring
+    Config->>Config: Determine required services:\n• ComfyUI installation\n• Redis workers\n• Health monitoring
     
     SM->>PM2: Initialize PM2 daemon
     PM2->>PM2: Start PM2 process manager
@@ -51,37 +51,37 @@ sequenceDiagram
     SM->>Installer: Install required services
     
     alt ComfyUI Required
-        Installer->>Installer: Clone ComfyUI repository<br/>github.com/stakeordie/ComfyUI
-        Installer->>Installer: Install Python dependencies<br/>pip install -r requirements.txt
-        Installer->>Installer: Install custom nodes (64+)<br/>Parallel installation
-        Installer->>Installer: Create model directories<br/>/workspace/ComfyUI/models/
+        Installer->>Installer: Clone ComfyUI repository\ngithub.com/stakeordie/ComfyUI
+        Installer->>Installer: Install Python dependencies\npip install -r requirements.txt
+        Installer->>Installer: Install custom nodes (64+)\nParallel installation
+        Installer->>Installer: Create model directories\n/workspace/ComfyUI/models/
         Installer->>SM: ComfyUI installation complete
     end
     
     Note over SM,Health: PM2 Service Launch Phase (10-30 seconds)
     
     SM->>PM2: Start health server
-    PM2->>Health: health-server process<br/>Port 9090
-    Health->>Health: Initialize health endpoints<br/>/health, /status, /metrics
+    PM2->>Health: health-server process\nPort 9090
+    Health->>Health: Initialize health endpoints\n/health, /status, /metrics
     
     alt ComfyUI Services
         SM->>PM2: Start ComfyUI services
         loop For each GPU
-            PM2->>ComfyUI: comfyui-gpu0, comfyui-gpu1...<br/>python main.py --port 8188+N
-            ComfyUI->>ComfyUI: Initialize on GPU N<br/>Load models, start WebSocket server
+            PM2->>ComfyUI: comfyui-gpu0, comfyui-gpu1...\npython main.py --port 8188+N
+            ComfyUI->>ComfyUI: Initialize on GPU N\nLoad models, start WebSocket server
         end
     end
     
     SM->>PM2: Start Redis worker services  
     loop For each worker instance
-        PM2->>Worker: redis-worker-{connector}-{index}<br/>Load connector, connect to Redis
-        Worker->>Worker: Load ComfyUIConnector<br/>from bundled worker
-        Worker->>ComfyUI: Test WebSocket connection<br/>localhost:8188+N
-        Worker->>Redis: Register worker capabilities<br/>comfyui, GPU count, etc.
+        PM2->>Worker: redis-worker-{connector}-{index}\nLoad connector, connect to Redis
+        Worker->>Worker: Load ComfyUIConnector\nfrom bundled worker
+        Worker->>ComfyUI: Test WebSocket connection\nlocalhost:8188+N
+        Worker->>Redis: Register worker capabilities\ncomfyui, GPU count, etc.
     end
     
     SM->>Redis: Initialize machine status aggregator
-    Redis->>Redis: Register machine in Redis<br/>MACHINE_ID, capabilities, status
+    Redis->>Redis: Register machine in Redis\nMACHINE_ID, capabilities, status
     
     Note over SM,Health: Readiness Verification (5-15 seconds)
     
@@ -91,7 +91,7 @@ sequenceDiagram
     Health->>Redis: Verify machine registration
     
     SM->>Redis: Send machine_ready event
-    Redis->>Redis: Broadcast machine online<br/>Available for job assignment
+    Redis->>Redis: Broadcast machine online\nAvailable for job assignment
     
     Note over Docker,Health: Machine Ready - Total Time: 60-300s
 ```
@@ -106,51 +106,51 @@ sequenceDiagram
 flowchart TD
     START[Service Manager Starts] --> PARSE[Parse service-mapping.json]
     
-    PARSE --> WORKERS[Parse WORKERS env var<br/>e.g., "comfyui:1"]
+    PARSE --> WORKERS["Parse WORKERS env var\n e.g., comfyui:1"]
     
-    WORKERS --> LOOKUP[Lookup worker config<br/>in service mapping]
+    WORKERS --> LOOKUP[Lookup worker config\nin service mapping]
     
     LOOKUP --> CHECK_INSTALLER{Has installer?}
     
     CHECK_INSTALLER -->|Yes| INSTALL_REQUIRED[Installation Required]
-    CHECK_INSTALLER -->|No| SKIP_INSTALL[Skip Installation<br/>External service]
+    CHECK_INSTALLER -->|No| SKIP_INSTALL[Skip Installation\nExternal service]
     
     INSTALL_REQUIRED --> COMFYUI_INSTALL[ComfyUI Installation Pipeline]
     
     subgraph "ComfyUI Installation (30-180s)"
-        COMFYUI_INSTALL --> CLONE[Git clone ComfyUI<br/>stakeordie/ComfyUI fork]
-        CLONE --> PIP[Install Python deps<br/>pip install -r requirements.txt]
-        PIP --> CUSTOM_NODES[Install Custom Nodes<br/>64+ nodes in parallel]
-        CUSTOM_NODES --> MODELS[Create model directories<br/>/workspace/ComfyUI/models/]
-        MODELS --> ENV_FILES[Create .env files<br/>for custom nodes]
-        ENV_FILES --> VERIFY_INSTALL[Verify installation<br/>python main.py --help]
+        COMFYUI_INSTALL --> CLONE["Git clone ComfyUI\nstakeordie/ComfyUI fork"]
+        CLONE --> PIP["Install Python deps\npip install -r requirements.txt"]
+        PIP --> CUSTOM_NODES["Install Custom Nodes\n64+ nodes in parallel"]
+        CUSTOM_NODES --> MODELS["Create model directories\n/workspace/ComfyUI/models/"]
+        MODELS --> ENV_FILES["Create .env files\nfor custom nodes"]
+        ENV_FILES --> VERIFY_INSTALL["Verify installation\npython main.py --help"]
     end
     
     VERIFY_INSTALL --> PM2_CONFIG[Generate PM2 Config]
     SKIP_INSTALL --> PM2_CONFIG
     
     subgraph "PM2 Ecosystem Generation"
-        PM2_CONFIG --> DETECT_GPU[Detect GPU count<br/>nvidia-smi or mock]
-        DETECT_GPU --> SERVICE_INSTANCES[Calculate service instances<br/>1 per GPU for ComfyUI]
-        SERVICE_INSTANCES --> PORT_ASSIGN[Assign ports<br/>8188, 8189, 8190...]
-        PORT_ASSIGN --> WORKER_INSTANCES[Calculate worker instances<br/>1 per service instance]
-        WORKER_INSTANCES --> ECOSYSTEM[Generate ecosystem.config.js]
+        PM2_CONFIG --> DETECT_GPU[Detect GPU count\nnvidia-smi or mock]
+        DETECT_GPU --> SERVICE_INSTANCES[Calculate service instances\n1 per GPU for ComfyUI]
+        SERVICE_INSTANCES --> PORT_ASSIGN["Assign ports\n8188, 8189, 8190..."]
+        PORT_ASSIGN --> WORKER_INSTANCES[Calculate worker instances\n1 per service instance]
+        WORKER_INSTANCES --> ECOSYSTEM["Generate ecosystem.config.js"]
     end
     
     ECOSYSTEM --> LAUNCH[Launch PM2 Services]
     
     subgraph "Service Launch (10-30s)"
-        LAUNCH --> HEALTH_SRV[Start health-server<br/>Port 9090]
+        LAUNCH --> HEALTH_SRV[Start health-server\nPort 9090]
         HEALTH_SRV --> START_SERVICES[Start service instances]
         
-        START_SERVICES --> COMFYUI_PROC[ComfyUI Processes<br/>python main.py --port 8188+N]
-        START_SERVICES --> WORKER_PROC[Worker Processes<br/>redis-worker with connectors]
+        START_SERVICES --> COMFYUI_PROC["ComfyUI Processes\npython main.py --port 8188+N"]
+        START_SERVICES --> WORKER_PROC[Worker Processes\nredis-worker with connectors]
         
-        COMFYUI_PROC --> LOAD_MODELS[Load AI models<br/>Initialize CUDA]
-        WORKER_PROC --> LOAD_CONNECTOR[Load ComfyUIConnector<br/>Connect to localhost:8188+N]
+        COMFYUI_PROC --> LOAD_MODELS[Load AI models\nInitialize CUDA]
+        WORKER_PROC --> LOAD_CONNECTOR["Load ComfyUIConnector\nConnect to localhost:8188+N"]
         
-        LOAD_MODELS --> WEBSOCKET[Start WebSocket server<br/>Accept connections]
-        LOAD_CONNECTOR --> REDIS_CONN[Connect to Redis queue<br/>Register capabilities]
+        LOAD_MODELS --> WEBSOCKET[Start WebSocket server\nAccept connections]
+        LOAD_CONNECTOR --> REDIS_CONN[Connect to Redis queue\nRegister capabilities]
     end
     
     WEBSOCKET --> READY[Machine Ready]
@@ -195,10 +195,10 @@ When a machine starts with `WORKERS=comfyui:1`, the system:
 ```mermaid
 flowchart LR
     subgraph "ComfyUI Installation Pipeline"
-        A[Start Installation] --> B[Clone Repository<br/>stakeordie/ComfyUI]
-        B --> C[Create Python venv<br/>Install requirements.txt]
-        C --> D[Load config_nodes.json<br/>64+ custom nodes]
-        D --> E[Parallel Installation<br/>5 nodes at once]
+        A[Start Installation] --> B[Clone Repository\nstakeordie/ComfyUI]
+        B --> C[Create Python venv\nInstall requirements.txt]
+        C --> D[Load config_nodes.json\n64+ custom nodes]
+        D --> E[Parallel Installation\n5 nodes at once]
         
         subgraph "Custom Node Installation"
             E --> F1[Node 1: git clone + install]
@@ -214,8 +214,8 @@ flowchart LR
         F4 --> G
         F5 --> G
         
-        G --> H[Generate .env files<br/>for custom nodes]
-        H --> I[Verify Installation<br/>python main.py --help]
+        G --> H[Generate .env files\nfor custom nodes]
+        H --> I[Verify Installation\npython main.py --help]
         I --> J[Installation Complete]
     end
     
@@ -310,11 +310,11 @@ sequenceDiagram
     
     Worker->>CM: Load connector "ComfyUIConnector"
     CM->>Bundle: Look up connector in bundled worker
-    Bundle->>Bundle: Find ComfyUIConnector class<br/>in redis-direct-worker.js
+    Bundle->>Bundle: Find ComfyUIConnector class\nin redis-direct-worker.js
     Bundle->>CM: Return connector class
     CM->>Connector: new ComfyUIConnector("comfyui-0")
     
-    Connector->>Connector: Initialize WebSocket connection<br/>ws://localhost:8188
+    Connector->>Connector: Initialize WebSocket connection\nws://localhost:8188
     Connector->>ComfyUI: Test connection
     ComfyUI->>Connector: WebSocket handshake
     Connector->>Connector: Connection established
@@ -323,7 +323,7 @@ sequenceDiagram
     CM->>Worker: Connector loaded successfully
     
     Worker->>Redis: Register worker capabilities
-    Redis->>Redis: Store worker: {<br/>  id: "comfyui-0",<br/>  connectors: ["comfyui"],<br/>  machine_id: "comfyui-prod-test",<br/>  status: "ready"<br/>}
+    Redis->>Redis: Store worker: {\n  id: "comfyui-0",\n  connectors: ["comfyui"],\n  machine_id: "comfyui-prod-test",\n  status: "ready"\n}
     
     Worker->>Redis: Start job polling
     Redis->>Worker: No jobs available

@@ -23,6 +23,12 @@
       "value": "",
       "type": "string",
       "description": "Machine ID for machine-specific requests"
+    },
+    {
+      "key": "webhookId",
+      "value": "",
+      "type": "string",
+      "description": "Webhook ID for webhook-specific requests"
     }
   ],
   "item": [
@@ -317,6 +323,174 @@
               "path": ["api", "jobs"]
             },
             "description": "Submit a browser automation job using Playwright"
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Webhook Management",
+      "description": "Register and manage HTTP webhook endpoints for real-time job notifications",
+      "item": [
+        {
+          "name": "List All Webhooks",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/webhooks",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "webhooks"]
+            },
+            "description": "Get all registered webhook endpoints"
+          },
+          "response": []
+        },
+        {
+          "name": "Get Webhook by ID",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/webhooks/{{webhookId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "webhooks", "{{webhookId}}"]
+            },
+            "description": "Get specific webhook details by webhook ID"
+          },
+          "response": []
+        },
+        {
+          "name": "Create Webhook - Basic",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"url\": \"https://webhook.site/your-unique-id\",\n  \"events\": [\"job.submitted\", \"job.completed\", \"job.failed\"],\n  \"active\": true\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/webhooks",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "webhooks"]
+            },
+            "description": "Create a basic webhook for job events"
+          },
+          "response": []
+        },
+        {
+          "name": "Create Webhook - with Filters",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"url\": \"https://webhook.site/your-unique-id\",\n  \"events\": [\"job.completed\", \"job.failed\"],\n  \"filters\": {\n    \"job_types\": [\"comfyui\"],\n    \"job_priorities\": [1, 2, 3]\n  },\n  \"active\": true\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/webhooks",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "webhooks"]
+            },
+            "description": "Create a webhook with event filtering for specific job types and priorities"
+          },
+          "response": []
+        },
+        {
+          "name": "Create Webhook - with Security",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"url\": \"https://your-api.com/webhooks/jobs\",\n  \"secret\": \"your-secret-key-for-hmac\",\n  \"events\": [\"job.submitted\", \"job.completed\", \"job.failed\"],\n  \"headers\": {\n    \"Authorization\": \"Bearer your-api-token\",\n    \"X-Custom-Header\": \"your-value\"\n  },\n  \"retry_config\": {\n    \"max_attempts\": 3,\n    \"initial_delay_ms\": 1000,\n    \"backoff_multiplier\": 2,\n    \"max_delay_ms\": 30000\n  },\n  \"active\": true\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/webhooks",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "webhooks"]
+            },
+            "description": "Create a webhook with HMAC security, custom headers, and retry configuration"
+          },
+          "response": []
+        },
+        {
+          "name": "Update Webhook",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"active\": false,\n  \"events\": [\"job.completed\"]\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/webhooks/{{webhookId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "webhooks", "{{webhookId}}"]
+            },
+            "description": "Update webhook configuration (e.g., disable or change events)"
+          },
+          "response": []
+        },
+        {
+          "name": "Delete Webhook",
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/webhooks/{{webhookId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "webhooks", "{{webhookId}}"]
+            },
+            "description": "Delete a webhook endpoint"
+          },
+          "response": []
+        },
+        {
+          "name": "Test Webhook",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/webhooks/{{webhookId}}/test",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "webhooks", "{{webhookId}}", "test"]
+            },
+            "description": "Send a test webhook payload to verify endpoint connectivity"
+          },
+          "response": []
+        },
+        {
+          "name": "Get Webhook Statistics",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/webhooks/{{webhookId}}/stats",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "webhooks", "{{webhookId}}", "stats"]
+            },
+            "description": "Get delivery statistics for a specific webhook"
           },
           "response": []
         }

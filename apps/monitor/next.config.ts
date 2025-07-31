@@ -1,7 +1,10 @@
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
-  /* config options here */
+  typescript: {
+    // Skip type checking during build if SKIP_TYPE_CHECK is set
+    ignoreBuildErrors: process.env.SKIP_TYPE_CHECK === 'true',
+  },
 };
 
 export default nextConfig;

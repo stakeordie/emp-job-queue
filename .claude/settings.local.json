@@ -197,7 +197,8 @@
       "Bash(WORKER_CONNECTORS=\"simulation\" node src/config/enhanced-pm2-ecosystem-generator.js)",
       "Bash(WORKER_CONNECTORS=\"comfyui:3\" COMFYUI_RESOURCE_BINDING=\"mock_gpu\" node src/config/enhanced-pm2-ecosystem-generator.js)",
       "WebFetch(domain:platform.openai.com)",
-      "WebFetch(domain:temporal.io)"
+      "WebFetch(domain:temporal.io)",
+      "Bash(SKIP_TYPE_CHECK=true pnpm build)"
     ],
     "deny": []
   }

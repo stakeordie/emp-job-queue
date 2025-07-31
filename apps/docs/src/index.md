@@ -31,6 +31,9 @@ features:
   - title: 6. Future Vision
     details: North Star architecture and the evolution toward specialized machine pools
     link: /06-future-vision/
+  - title: 8. EmProps Open API
+    details: REST API documentation, architecture, and implementation guides
+    link: /08-emprops-open-api/
 ---
 
 ## Welcome to EmProps Job Queue Documentation
@@ -62,6 +65,7 @@ Throughout the documentation, you'll see these indicators:
 - [System Architecture](/01-understanding-the-system/system-overview)
 - [Job Lifecycle](/02-how-it-works/job-lifecycle)
 - [WebSocket API](/03-implementation-details/websocket-api)
+- [Open API Documentation](/08-emprops-open-api/)
 
 **For Operations:**
 - [Failure Handling](/04-running-in-production/failure-handling)

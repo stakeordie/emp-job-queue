@@ -1,0 +1,703 @@
+/**
+ * Webhook Notification Service
+ *
+ * Delivers HTTP webhook notifications for job status changes and other events.
+ * Integrates with the existing EventBroadcaster system to send notifications
+ * to external systems when jobs are submitted, progress updates, complete, fail, etc.
+ */
+
+import { EventEmitter } from 'events';
+import { Redis } from 'ioredis';
+import { logger } from '../utils/logger.js';
+import { WebhookRedisStorage } from './webhook-redis-storage.js';
+import {
+  MonitorEvent,
+  JobSubmittedEvent,
+  JobStatusChangedEvent,
+  JobProgressEvent,
+  JobCompletedEvent,
+  JobFailedEvent,
+} from '../types/monitor-events.js';
+import { JobStatus } from '../types/job.js';
+
+// Webhook configuration types
+export interface WebhookEndpoint {
+  id: string;
+  url: string;
+  secret?: string; // For HMAC signature verification
+  events: WebhookEventType[];
+  filters?: WebhookFilters;
+  headers?: Record<string, string>;
+  retry_config?: WebhookRetryConfig;
+  active: boolean;
+  created_at: number;
+  updated_at: number;
+}
+
+export type WebhookEventType =
+  | 'job.submitted' // Job created and added to queue
+  | 'job.assigned' // Job assigned to worker
+  | 'job.progress' // Job progress update
+  | 'job.completed' // Job completed successfully
+  | 'job.failed' // Job failed
+  | 'job.cancelled' // Job cancelled
+  | 'job.timeout' // Job timed out
+  | 'job.status_changed' // Any job status change
+  | 'machine.startup' // Machine came online
+  | 'machine.shutdown' // Machine went offline
+  | 'worker.connected' // Worker connected
+  | 'worker.disconnected'; // Worker disconnected
+
+export interface WebhookFilters {
+  job_types?: string[]; // Filter by job type (e.g., ['comfyui', 'openai'])
+  job_priorities?: number[]; // Filter by priority levels
+  machine_ids?: string[]; // Filter by specific machines
+  worker_ids?: string[]; // Filter by specific workers
+  custom_filters?: Record<string, unknown>; // Custom filter criteria
+}
+
+export interface WebhookRetryConfig {
+  max_attempts: number; // Default: 3
+  initial_delay_ms: number; // Default: 1000 (1 second)
+  backoff_multiplier: number; // Default: 2 (exponential backoff)
+  max_delay_ms: number; // Default: 30000 (30 seconds)
+}
+
+export interface WebhookPayload {
+  event_type: WebhookEventType;
+  event_id: string;
+  timestamp: number;
+  webhook_id: string;
+  data: WebhookEventData;
+  metadata?: {
+    retry_attempt?: number;
+    original_timestamp?: number;
+  };
+}
+
+export interface WebhookEventData {
+  job_id?: string;
+  job_type?: string;
+  job_status?: JobStatus;
+  worker_id?: string;
+  machine_id?: string;
+  progress?: number;
+  result?: unknown;
+  error?: string;
+  [key: string]: unknown;
+}
+
+export interface WebhookDeliveryAttempt {
+  id: string;
+  webhook_id: string;
+  event_id: string;
+  attempt_number: number;
+  timestamp: number;
+  success: boolean;
+  response_status?: number;
+  response_body?: string;
+  error_message?: string;
+  next_retry_at?: number;
+}
+
+export class WebhookNotificationService extends EventEmitter {
+  private webhookStorage: WebhookRedisStorage;
+  private webhooksCache: Map<string, WebhookEndpoint> = new Map();
+  private deliveryQueue: WebhookPayload[] = [];
+  private retryQueue: Map<string, WebhookDeliveryAttempt> = new Map();
+  private isProcessing = false;
+  private processingInterval?: NodeJS.Timeout;
+  private cacheRefreshInterval?: NodeJS.Timeout;
+
+  constructor(redis: Redis) {
+    super();
+    this.webhookStorage = new WebhookRedisStorage(redis);
+    this.startProcessing();
+    this.startCacheRefresh();
+  }
+
+  /**
+   * Register a new webhook endpoint
+   */
+  async registerWebhook(
+    config: Omit<WebhookEndpoint, 'id' | 'created_at' | 'updated_at'>
+  ): Promise<WebhookEndpoint> {
+    const webhook: WebhookEndpoint = {
+      id: this.generateId(),
+      created_at: Date.now(),
+      updated_at: Date.now(),
+      retry_config: {
+        max_attempts: 3,
+        initial_delay_ms: 1000,
+        backoff_multiplier: 2,
+        max_delay_ms: 30000,
+        ...config.retry_config,
+      },
+      ...config,
+    };
+
+    await this.webhookStorage.storeWebhook(webhook);
+    this.webhooksCache.set(webhook.id, webhook);
+
+    logger.info(`Webhook registered: ${webhook.id} -> ${webhook.url}`, {
+      webhook_id: webhook.id,
+      events: webhook.events,
+      filters: webhook.filters,
+    });
+
+    return webhook;
+  }
+
+  /**
+   * Update an existing webhook
+   */
+  async updateWebhook(
+    id: string,
+    updates: Partial<WebhookEndpoint>
+  ): Promise<WebhookEndpoint | null> {
+    const updatedWebhook = await this.webhookStorage.updateWebhook(id, updates);
+    if (updatedWebhook) {
+      this.webhooksCache.set(id, updatedWebhook);
+      logger.info(`Webhook updated: ${id}`, { updates });
+    }
+    return updatedWebhook;
+  }
+
+  /**
+   * Delete a webhook
+   */
+  async deleteWebhook(id: string): Promise<boolean> {
+    const deleted = await this.webhookStorage.deleteWebhook(id);
+    if (deleted) {
+      this.webhooksCache.delete(id);
+      logger.info(`Webhook deleted: ${id}`);
+    }
+    return deleted;
+  }
+
+  /**
+   * Get all webhooks
+   */
+  async getWebhooks(): Promise<WebhookEndpoint[]> {
+    return await this.webhookStorage.getAllWebhooks();
+  }
+
+  /**
+   * Get a specific webhook
+   */
+  async getWebhook(id: string): Promise<WebhookEndpoint | null> {
+    // Try cache first
+    const cached = this.webhooksCache.get(id);
+    if (cached) {
+      return cached;
+    }
+
+    // Fallback to Redis
+    const webhook = await this.webhookStorage.getWebhook(id);
+    if (webhook) {
+      this.webhooksCache.set(id, webhook);
+    }
+    return webhook;
+  }
+
+  /**
+   * Process monitor events and trigger webhooks
+   */
+  async processEvent(event: MonitorEvent): Promise<void> {
+    const webhookEvent = this.convertMonitorEventToWebhookEvent(event);
+    if (!webhookEvent) {
+      return; // Event not supported for webhooks
+    }
+
+    // Find matching webhooks
+    const matchingWebhooks = this.findMatchingWebhooks(webhookEvent, event);
+
+    for (const webhook of matchingWebhooks) {
+      const payload = this.createWebhookPayload(webhook, webhookEvent, event);
+      this.queueDelivery(payload);
+    }
+  }
+
+  /**
+   * Convert monitor event to webhook event type
+   */
+  private convertMonitorEventToWebhookEvent(event: MonitorEvent): WebhookEventType | null {
+    switch (event.type) {
+      case 'job_submitted':
+        return 'job.submitted';
+      case 'job_assigned':
+        return 'job.assigned';
+      case 'update_job_progress':
+        return 'job.progress';
+      case 'complete_job':
+        return 'job.completed';
+      case 'job_failed':
+        return 'job.failed';
+      case 'job_status_changed':
+        return 'job.status_changed';
+      case 'machine_startup_complete':
+        return 'machine.startup';
+      case 'machine_shutdown':
+        return 'machine.shutdown';
+      case 'worker_connected':
+        return 'worker.connected';
+      case 'worker_disconnected':
+        return 'worker.disconnected';
+      default:
+        return null;
+    }
+  }
+
+  /**
+   * Find webhooks that match the event and filters
+   */
+  private findMatchingWebhooks(
+    webhookEventType: WebhookEventType,
+    event: MonitorEvent
+  ): WebhookEndpoint[] {
+    return Array.from(this.webhooksCache.values()).filter(webhook => {
+      // Must be active
+      if (!webhook.active) {
+        return false;
+      }
+
+      // Must subscribe to this event type
+      if (!webhook.events.includes(webhookEventType)) {
+        return false;
+      }
+
+      // Apply filters
+      if (webhook.filters) {
+        return this.eventMatchesFilters(event, webhook.filters);
+      }
+
+      return true;
+    });
+  }
+
+  /**
+   * Check if event matches webhook filters
+   */
+  private eventMatchesFilters(event: MonitorEvent, filters: WebhookFilters): boolean {
+    // Job type filter
+    if (filters.job_types) {
+      const jobEvent = event as JobSubmittedEvent | JobStatusChangedEvent;
+      if ('job_id' in jobEvent && 'job_data' in jobEvent) {
+        const jobData = jobEvent.job_data as { job_type?: string };
+        if (!filters.job_types.includes(jobData.job_type || '')) {
+          return false;
+        }
+      }
+    }
+
+    // Machine ID filter
+    if (filters.machine_ids) {
+      const machineEvent = event as unknown as Record<string, unknown>;
+      if (
+        machineEvent.machine_id &&
+        !filters.machine_ids.includes(machineEvent.machine_id as string)
+      ) {
+        return false;
+      }
+    }
+
+    // Worker ID filter
+    if (filters.worker_ids) {
+      const workerEvent = event as unknown as Record<string, unknown>;
+      if (workerEvent.worker_id && !filters.worker_ids.includes(workerEvent.worker_id as string)) {
+        return false;
+      }
+    }
+
+    // Priority filter
+    if (filters.job_priorities) {
+      const jobEvent = event as unknown as Record<string, unknown>;
+      if (
+        jobEvent.priority !== undefined &&
+        !filters.job_priorities.includes(jobEvent.priority as number)
+      ) {
+        return false;
+      }
+    }
+
+    return true;
+  }
+
+  /**
+   * Create webhook payload from event
+   */
+  private createWebhookPayload(
+    webhook: WebhookEndpoint,
+    eventType: WebhookEventType,
+    event: MonitorEvent
+  ): WebhookPayload {
+    const eventData = this.extractEventData(event);
+
+    return {
+      event_type: eventType,
+      event_id: this.generateId(),
+      timestamp: event.timestamp,
+      webhook_id: webhook.id,
+      data: eventData,
+    };
+  }
+
+  /**
+   * Extract relevant data from monitor event
+   */
+  private extractEventData(event: MonitorEvent): WebhookEventData {
+    const data: WebhookEventData = {};
+
+    // Common job event properties
+    const jobEvent = event as unknown as Record<string, unknown>;
+    if (jobEvent.job_id) data.job_id = jobEvent.job_id as string;
+    if (jobEvent.job_type) data.job_type = jobEvent.job_type as string;
+    if (jobEvent.worker_id) data.worker_id = jobEvent.worker_id as string;
+    if (jobEvent.machine_id) data.machine_id = jobEvent.machine_id as string;
+
+    // Status change events
+    if (event.type === 'job_status_changed') {
+      const statusEvent = event as JobStatusChangedEvent;
+      data.job_status = statusEvent.new_status;
+      data.old_status = statusEvent.old_status;
+    }
+
+    // Progress events
+    if (event.type === 'update_job_progress') {
+      const progressEvent = event as JobProgressEvent;
+      data.progress = progressEvent.progress;
+      // Note: stage is not available in JobProgressEvent, using optional property
+      if ('stage' in progressEvent) {
+        data.stage = (progressEvent as unknown as { stage: string }).stage;
+      }
+    }
+
+    // Completion events
+    if (event.type === 'complete_job') {
+      const completeEvent = event as JobCompletedEvent;
+      data.result = completeEvent.result;
+      data.completed_at = completeEvent.completed_at;
+    }
+
+    // Failure events
+    if (event.type === 'job_failed') {
+      const failEvent = event as JobFailedEvent;
+      data.error = failEvent.error;
+      data.failed_at = failEvent.failed_at;
+    }
+
+    return data;
+  }
+
+  /**
+   * Queue webhook delivery
+   */
+  private queueDelivery(payload: WebhookPayload): void {
+    this.deliveryQueue.push(payload);
+    logger.debug(`Webhook queued for delivery: ${payload.webhook_id}`, {
+      event_type: payload.event_type,
+      job_id: payload.data.job_id,
+    });
+  }
+
+  /**
+   * Start processing delivery queue
+   */
+  private startProcessing(): void {
+    this.processingInterval = setInterval(() => {
+      this.processDeliveryQueue();
+    }, 1000); // Process every second
+  }
+
+  /**
+   * Process webhook delivery queue
+   */
+  private async processDeliveryQueue(): Promise<void> {
+    if (this.isProcessing || this.deliveryQueue.length === 0) {
+      return;
+    }
+
+    this.isProcessing = true;
+
+    try {
+      const payload = this.deliveryQueue.shift();
+      if (!payload) return;
+      await this.deliverWebhook(payload);
+    } catch (error) {
+      logger.error('Error processing webhook delivery queue', error);
+    } finally {
+      this.isProcessing = false;
+    }
+  }
+
+  /**
+   * Deliver webhook with retry logic
+   */
+  private async deliverWebhook(payload: WebhookPayload, attemptNumber = 1): Promise<void> {
+    const webhook = await this.getWebhook(payload.webhook_id);
+    if (!webhook) {
+      logger.warn(`Webhook not found for delivery: ${payload.webhook_id}`);
+      return;
+    }
+
+    const attempt: WebhookDeliveryAttempt = {
+      id: this.generateId(),
+      webhook_id: webhook.id,
+      event_id: payload.event_id,
+      attempt_number: attemptNumber,
+      timestamp: Date.now(),
+      success: false,
+    };
+
+    try {
+      const headers: Record<string, string> = {
+        'Content-Type': 'application/json',
+        'User-Agent': 'EMP-Job-Queue-Webhook/1.0',
+        'X-Webhook-Event': payload.event_type,
+        'X-Webhook-ID': webhook.id,
+        'X-Event-ID': payload.event_id,
+        ...webhook.headers,
+      };
+
+      // Add HMAC signature if secret is configured
+      if (webhook.secret) {
+        const signature = await this.generateHmacSignature(payload, webhook.secret);
+        headers['X-Webhook-Signature'] = signature;
+      }
+
+      // Use AbortController for timeout with native fetch
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 30000);
+
+      const response = await fetch(webhook.url, {
+        method: 'POST',
+        headers,
+        body: JSON.stringify(payload),
+        signal: controller.signal,
+      });
+
+      clearTimeout(timeoutId);
+
+      attempt.response_status = response.status;
+      attempt.response_body = await response.text();
+      attempt.success = response.ok;
+
+      if (response.ok) {
+        logger.info(`Webhook delivered successfully: ${webhook.id}`, {
+          event_type: payload.event_type,
+          job_id: payload.data.job_id,
+          status: response.status,
+        });
+        this.emit('webhook.delivered', { webhook, payload, attempt });
+      } else {
+        throw new Error(`HTTP ${response.status}: ${attempt.response_body}`);
+      }
+    } catch (error) {
+      attempt.error_message = error instanceof Error ? error.message : String(error);
+
+      logger.warn(`Webhook delivery failed: ${webhook.id} (attempt ${attemptNumber})`, {
+        error: attempt.error_message,
+        event_type: payload.event_type,
+        job_id: payload.data.job_id,
+      });
+
+      // Retry logic
+      const retryConfig = webhook.retry_config || {
+        max_attempts: 3,
+        initial_delay_ms: 1000,
+        backoff_multiplier: 2,
+        max_delay_ms: 30000,
+      };
+      if (attemptNumber < retryConfig.max_attempts) {
+        const delay = Math.min(
+          retryConfig.initial_delay_ms *
+            Math.pow(retryConfig.backoff_multiplier, attemptNumber - 1),
+          retryConfig.max_delay_ms
+        );
+
+        attempt.next_retry_at = Date.now() + delay;
+        this.retryQueue.set(attempt.id, attempt);
+
+        setTimeout(() => {
+          this.retryQueue.delete(attempt.id);
+          void this.deliverWebhook(payload, attemptNumber + 1);
+        }, delay);
+
+        logger.info(`Webhook retry scheduled: ${webhook.id} in ${delay}ms`, {
+          attempt: attemptNumber + 1,
+          max_attempts: retryConfig.max_attempts,
+        });
+      } else {
+        logger.error(`Webhook delivery failed permanently: ${webhook.id}`, {
+          attempts: attemptNumber,
+          error: attempt.error_message,
+        });
+        this.emit('webhook.failed', { webhook, payload, attempt });
+      }
+    }
+
+    // Record attempt in Redis
+    await this.webhookStorage.recordDeliveryAttempt(attempt);
+    this.emit('webhook.attempt', { webhook, payload, attempt });
+  }
+
+  /**
+   * Generate HMAC signature for webhook payload
+   */
+  private async generateHmacSignature(payload: WebhookPayload, secret: string): Promise<string> {
+    const crypto = await import('crypto');
+    const body = JSON.stringify(payload);
+    const hmac = crypto.createHmac('sha256', secret);
+    hmac.update(body);
+    return `sha256=${hmac.digest('hex')}`;
+  }
+
+  /**
+   * Generate unique ID
+   */
+  private generateId(): string {
+    return `wh_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+  }
+
+  /**
+   * Get webhook delivery statistics
+   */
+  async getDeliveryStats(webhookId?: string): Promise<{
+    total_deliveries: number;
+    successful_deliveries: number;
+    failed_deliveries: number;
+    retry_queue_size: number;
+    pending_deliveries: number;
+    last_delivery_at?: number;
+    last_success_at?: number;
+    last_failure_at?: number;
+  }> {
+    if (webhookId) {
+      const stats = await this.webhookStorage.getWebhookStats(webhookId);
+      return {
+        total_deliveries: stats?.total_deliveries || 0,
+        successful_deliveries: stats?.successful_deliveries || 0,
+        failed_deliveries: stats?.failed_deliveries || 0,
+        retry_queue_size: this.retryQueue.size,
+        pending_deliveries: this.deliveryQueue.length,
+        last_delivery_at: stats?.last_delivery_at,
+        last_success_at: stats?.last_success_at,
+        last_failure_at: stats?.last_failure_at,
+      };
+    } else {
+      // Return aggregate stats
+      return {
+        total_deliveries: 0,
+        successful_deliveries: 0,
+        failed_deliveries: 0,
+        retry_queue_size: this.retryQueue.size,
+        pending_deliveries: this.deliveryQueue.length,
+      };
+    }
+  }
+
+  /**
+   * Test webhook endpoint
+   */
+  async testWebhook(webhookId: string): Promise<boolean> {
+    const webhook = await this.getWebhook(webhookId);
+    if (!webhook) {
+      throw new Error(`Webhook not found: ${webhookId}`);
+    }
+
+    const testPayload: WebhookPayload = {
+      event_type: 'job.submitted',
+      event_id: 'test_' + this.generateId(),
+      timestamp: Date.now(),
+      webhook_id: webhookId,
+      data: {
+        job_id: 'test_job_123',
+        job_type: 'test',
+        job_status: JobStatus.PENDING,
+      },
+      metadata: {
+        original_timestamp: Date.now(),
+      },
+    };
+
+    try {
+      await this.deliverWebhook(testPayload);
+      return true;
+    } catch (error) {
+      logger.error(`Webhook test failed: ${webhookId}`, error);
+      return false;
+    }
+  }
+
+  /**
+   * Start periodic cache refresh from Redis
+   */
+  private startCacheRefresh(): void {
+    this.refreshCache(); // Initial load
+    this.cacheRefreshInterval = setInterval(() => {
+      this.refreshCache();
+    }, 30000); // Refresh every 30 seconds
+  }
+
+  /**
+   * Refresh webhook cache from Redis
+   */
+  private async refreshCache(): Promise<void> {
+    try {
+      const activeWebhooks = await this.webhookStorage.getActiveWebhooks();
+
+      // Clear and rebuild cache
+      this.webhooksCache.clear();
+      for (const webhook of activeWebhooks) {
+        this.webhooksCache.set(webhook.id, webhook);
+      }
+
+      logger.debug(`Webhook cache refreshed: ${activeWebhooks.length} active webhooks`);
+    } catch (error) {
+      logger.error('Failed to refresh webhook cache:', error);
+    }
+  }
+
+  /**
+   * Get webhook storage instance (for direct access if needed)
+   */
+  getWebhookStorage(): WebhookRedisStorage {
+    return this.webhookStorage;
+  }
+
+  /**
+   * Get webhook delivery history
+   */
+  async getWebhookDeliveryHistory(webhookId: string, limit = 50) {
+    return await this.webhookStorage.getWebhookDeliveryHistory(webhookId, limit);
+  }
+
+  /**
+   * Get recent deliveries across all webhooks
+   */
+  async getRecentDeliveries(limit = 100) {
+    return await this.webhookStorage.getRecentDeliveries(limit);
+  }
+
+  /**
+   * Get webhook summary for dashboard
+   */
+  async getWebhookSummary() {
+    return await this.webhookStorage.getWebhookSummary();
+  }
+
+  /**
+   * Cleanup resources
+   */
+  destroy(): void {
+    if (this.processingInterval) {
+      clearInterval(this.processingInterval);
+    }
+    if (this.cacheRefreshInterval) {
+      clearInterval(this.cacheRefreshInterval);
+    }
+    this.webhooksCache.clear();
+    this.deliveryQueue.length = 0;
+    this.retryQueue.clear();
+  }
+}

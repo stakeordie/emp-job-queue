@@ -2,12 +2,10 @@
 
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
-import { Progress } from "@/components/ui/progress";
-import { ArrowLeft, Target, TrendingUp, Activity, Users } from "lucide-react";
+import { SimpleProgress } from "@/components/ui/simple-progress";
+import { Target, TrendingUp, Activity, Users } from "lucide-react";
 import { useMonitorStore } from "@/store";
 import { useState, useEffect } from "react";
-import Link from "next/link";
 import { NorthStarAnalytics } from "@/analytics/NorthStarAnalytics";
 import type { NorthStarMetrics } from "@/analytics/NorthStarAnalytics";
 import { JobDurationDistribution } from "@/components/northstar/JobDurationDistribution";
@@ -24,6 +22,8 @@ import { BottleneckIdentifier } from "@/components/northstar/BottleneckIdentifie
 import { NorthStarProgress } from "@/components/northstar/NorthStarProgress";
 import { StrategicMetrics } from "@/components/northstar/StrategicMetrics";
 import { ProductionReadiness } from "@/components/northstar/ProductionReadiness";
+import { ConnectionHeader } from "@/components/ConnectionHeader";
+import { JobSubmissionPanel } from "@/components/JobSubmissionPanel";
 
 function NorthStarDashboard() {
   const { jobs, workers, machines, connection } = useMonitorStore();
@@ -37,27 +37,45 @@ function NorthStarDashboard() {
     setMetrics(newMetrics);
   }, [jobs, workers, machines, analytics]);
 
+  const [isJobPanelOpen, setIsJobPanelOpen] = useState(false);
+
   if (!metrics) {
     return (
-      <main className="container mx-auto p-6">
-        <div className="flex items-center justify-center h-64">
-          <div className="text-muted-foreground">Loading North Star analytics...</div>
+      <div className="min-h-screen flex flex-col">
+        <ConnectionHeader />
+        <div className="flex flex-1">
+          <JobSubmissionPanel
+            isOpen={isJobPanelOpen}
+            onToggle={() => setIsJobPanelOpen(!isJobPanelOpen)}
+          />
+          <main className="flex-1 container mx-auto p-6">
+            <div className="flex items-center justify-center h-64">
+              <div className="text-muted-foreground">Loading North Star analytics...</div>
+            </div>
+          </main>
         </div>
-      </main>
+      </div>
     );
   }
 
   return (
-    <main className="container mx-auto p-6 space-y-6">
+    <div className="min-h-screen flex flex-col">
+      {/* Header */}
+      <ConnectionHeader />
+      
+      {/* Main Container */}
+      <div className="flex flex-1">
+        {/* Left Panel */}
+        <JobSubmissionPanel
+          isOpen={isJobPanelOpen}
+          onToggle={() => setIsJobPanelOpen(!isJobPanelOpen)}
+        />
+        
+        {/* Main Content */}
+        <main className={`flex-1 container mx-auto p-6 space-y-6 ${isJobPanelOpen ? 'ml-0' : ''}`}>
       {/* Header */}
       <div className="space-y-4">
         <div className="flex items-center gap-4">
-          <Link href="/">
-            <Button variant="outline" size="sm">
-              <ArrowLeft className="h-4 w-4 mr-2" />
-              Back to Monitor
-            </Button>
-          </Link>
           <div className="flex-1">
             <h1 className="text-2xl font-bold flex items-center gap-2">
               <Target className="h-6 w-6" />
@@ -99,7 +117,7 @@ function NorthStarDashboard() {
                    metrics.overallNorthStarProgress > 40 ? "Developing" : "Early"}
                 </Badge>
               </div>
-              <Progress value={metrics.overallNorthStarProgress} className="w-full" />
+              <SimpleProgress value={metrics.overallNorthStarProgress} className="w-full" />
               <div className="grid grid-cols-3 gap-4 text-sm">
                 <div className="text-center">
                   <div className="font-semibold">
@@ -138,7 +156,7 @@ function NorthStarDashboard() {
             <div className="text-center space-y-2">
               <div className="text-2xl font-bold text-green-600">{metrics.systemHealthScore}%</div>
               <div className="text-sm text-muted-foreground">System Health</div>
-              <Progress value={metrics.systemHealthScore} className="w-full" />
+              <SimpleProgress value={metrics.systemHealthScore} className="w-full" />
             </div>
             <div className="text-center space-y-2">
               <div className="text-2xl font-bold text-blue-600">
@@ -146,7 +164,7 @@ function NorthStarDashboard() {
               </div>
               <div className="text-sm text-muted-foreground">Job Success Rate</div>
               {metrics.jobCompletionRate !== null ? (
-                <Progress value={metrics.jobCompletionRate} className="w-full" />
+                <SimpleProgress value={metrics.jobCompletionRate} className="w-full" />
               ) : (
                 <div className="text-xs text-muted-foreground">Need completed jobs</div>
               )}
@@ -154,7 +172,7 @@ function NorthStarDashboard() {
             <div className="text-center space-y-2">
               <div className="text-2xl font-bold text-purple-600">{metrics.workerStabilityScore}%</div>
               <div className="text-sm text-muted-foreground">Worker Stability</div>
-              <Progress value={metrics.workerStabilityScore} className="w-full" />
+              <SimpleProgress value={metrics.workerStabilityScore} className="w-full" />
             </div>
             <div className="text-center space-y-2">
               <div className="text-2xl font-bold text-orange-600">
@@ -191,21 +209,21 @@ function NorthStarDashboard() {
                     <span className="text-sm">Fast Lane (&lt;30s)</span>
                     <div className="flex items-center gap-2">
                       <Badge variant="outline">{metrics.jobDurationDistribution.fastLane}%</Badge>
-                      <Progress value={metrics.jobDurationDistribution.fastLane} className="w-20" />
+                      <SimpleProgress value={metrics.jobDurationDistribution.fastLane} className="w-20" />
                     </div>
                   </div>
                   <div className="flex items-center justify-between">
                     <span className="text-sm">Standard (30s-3m)</span>
                     <div className="flex items-center gap-2">
                       <Badge variant="outline">{metrics.jobDurationDistribution.standard}%</Badge>
-                      <Progress value={metrics.jobDurationDistribution.standard} className="w-20" />
+                      <SimpleProgress value={metrics.jobDurationDistribution.standard} className="w-20" />
                     </div>
                   </div>
                   <div className="flex items-center justify-between">
                     <span className="text-sm">Heavy (&gt;3m)</span>
                     <div className="flex items-center gap-2">
                       <Badge variant="outline">{metrics.jobDurationDistribution.heavy}%</Badge>
-                      <Progress value={metrics.jobDurationDistribution.heavy} className="w-20" />
+                      <SimpleProgress value={metrics.jobDurationDistribution.heavy} className="w-20" />
                     </div>
                   </div>
                 </div>
@@ -260,7 +278,7 @@ function NorthStarDashboard() {
                         {metrics.performanceHeterogeneity.contentionScore}%
                       </Badge>
                     </div>
-                    <Progress value={metrics.performanceHeterogeneity.contentionScore} className="w-full" />
+                    <SimpleProgress value={metrics.performanceHeterogeneity.contentionScore} className="w-full" />
                   </div>
                 </div>
                 <div className="mt-4 pt-4 border-t">
@@ -312,21 +330,21 @@ function NorthStarDashboard() {
                         <span>Fast Lane</span>
                         <span className="font-medium">{machine.fastLaneScore}%</span>
                       </div>
-                      <Progress value={machine.fastLaneScore} className="w-full mt-1" />
+                      <SimpleProgress value={machine.fastLaneScore} className="w-full mt-1" />
                     </div>
                     <div>
                       <div className="flex items-center justify-between">
                         <span>Standard</span>
                         <span className="font-medium">{machine.standardScore}%</span>
                       </div>
-                      <Progress value={machine.standardScore} className="w-full mt-1" />
+                      <SimpleProgress value={machine.standardScore} className="w-full mt-1" />
                     </div>
                     <div>
                       <div className="flex items-center justify-between">
                         <span>Heavy</span>
                         <span className="font-medium">{machine.heavyScore}%</span>
                       </div>
-                      <Progress value={machine.heavyScore} className="w-full mt-1" />
+                      <SimpleProgress value={machine.heavyScore} className="w-full mt-1" />
                     </div>
                   </div>
                 </div>
@@ -457,7 +475,9 @@ function NorthStarDashboard() {
 
       {/* Bottom padding */}
       <div className="h-12" />
-    </main>
+        </main>
+      </div>
+    </div>
   );
 }
 

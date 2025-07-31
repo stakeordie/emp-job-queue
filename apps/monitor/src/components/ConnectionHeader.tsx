@@ -11,7 +11,7 @@ import {
   SelectTrigger, 
   SelectValue 
 } from "@/components/ui/select"
-import { Play, Square, X, Target, RefreshCw } from "lucide-react"
+import { Play, Square, X, Target, RefreshCw, Webhook, Home } from "lucide-react"
 import { useMonitorStore } from "@/store"
 import { useState, useEffect } from "react"
 import Link from "next/link"
@@ -141,10 +141,22 @@ export function ConnectionHeader() {
           </div>
           
           <div className="flex items-center gap-3">
+            <Link href="/">
+              <Button variant="outline" size="sm" className="flex items-center gap-2">
+                <Home className="h-3 w-3" />
+                Home
+              </Button>
+            </Link>
             <Link href="/northstar">
               <Button variant="outline" size="sm" className="flex items-center gap-2">
                 <Target className="h-3 w-3" />
                 North Star Progress
+              </Button>
+            </Link>
+            <Link href="/webhook-test">
+              <Button variant="outline" size="sm" className="flex items-center gap-2">
+                <Webhook className="h-3 w-3" />
+                Webhooks
               </Button>
             </Link>
           </div>

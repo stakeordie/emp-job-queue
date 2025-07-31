@@ -25,6 +25,7 @@
     "dev:worker": "turbo run dev --filter=worker",
     "dev:worker:local": "./scripts/dev-worker-local.sh",
     "dev:monitor": "turbo run dev --filter=monitor",
+    "dev:webhook": "turbo run dev --filter=webhook-service",
     "dev:docs": "turbo run dev --filter=docs",
     "dev:local-redis": "./scripts/dev-local-redis.sh",
     "dev:local-redis:stop": "brew services stop redis",

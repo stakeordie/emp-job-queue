@@ -35,6 +35,9 @@ services:
         reservations:
           memory: ${MEMORY_RESERVATION:-2G}
   comfyui-remote:
+    <<: *base-machine
+    profiles:
+      - comfyui-remote
     build:
       context: .
       dockerfile: Dockerfile
@@ -44,29 +47,9 @@ services:
         WORKERS: comfyui-remote:1
         MACHINE_ID: comfyui-remote-${CURRENT_ENV}
         CACHE_BUST: ${CACHE_BUST:-1}
-    image: emprops/machine:comfyui-remote
-    platform: linux/amd64
     container_name: comfyui-remote-${CURRENT_ENV}
     hostname: comfyui-remote-${CURRENT_ENV}
-    profiles:
-      - comfyui-remote
-    restart: 'no'
-    stop_grace_period: 2s
-    stop_signal: SIGTERM
-    env_file:
-      - .env.secret
-    environment:
-      NODE_ENV: production
-      ENV: ${CURRENT_ENV:-local}
-      NVIDIA_VISIBLE_DEVICES: all
-      NVIDIA_DRIVER_CAPABILITIES: compute,utility
-    working_dir: /workspace
-    deploy:
-      resources:
-        limits:
-          memory: ${MEMORY_LIMIT:-8G}
-        reservations:
-          memory: ${MEMORY_RESERVATION:-2G}
+    image: emprops/machine:comfyui-remote
   comfyui:
     build:
       context: .
@@ -101,9 +84,6 @@ services:
         reservations:
           memory: ${MEMORY_RESERVATION:-2G}
   openai:
-    <<: *base-machine
-    profiles:
-      - openai
     build:
       context: .
       dockerfile: Dockerfile
@@ -116,9 +96,29 @@ services:
         OPENAI_API_KEY: ${OPENAI_API_KEY}
         OPENAI_IMAGE_MODEL: ${OPENAI_IMAGE_MODEL}
         CLOUD_STORAGE_PROVIDER: ${CLOUD_STORAGE_PROVIDER}
+    image: emprops/machine:openai
+    platform: linux/amd64
     container_name: openai-${CURRENT_ENV}
     hostname: openai-${CURRENT_ENV}
-    image: emprops/machine:openai
+    profiles:
+      - openai
+    restart: 'no'
+    stop_grace_period: 2s
+    stop_signal: SIGTERM
+    env_file:
+      - .env.secret
+    environment:
+      NODE_ENV: production
+      ENV: ${CURRENT_ENV}
+      NVIDIA_VISIBLE_DEVICES: all
+      NVIDIA_DRIVER_CAPABILITIES: compute,utility
+    working_dir: /workspace
+    deploy:
+      resources:
+        limits:
+          memory: ${MEMORY_LIMIT:-8G}
+        reservations:
+          memory: ${MEMORY_RESERVATION:-2G}
   simulation:
     build:
       context: .

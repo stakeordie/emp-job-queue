@@ -13,7 +13,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog"
-import { Progress } from "@/components/ui/progress"
+import { SimpleProgress } from "@/components/ui/simple-progress"
 import { RefreshCw, X } from "lucide-react"
 import { MachineCard } from "@/components/MachineCard"
 import { JobDetailsModal } from "@/components/JobDetailsModal"
@@ -331,7 +331,7 @@ function Home({ isJobPanelOpen }: HomeProps) {
                                 <span className="text-xs">Progress:</span>
                                 <span className="text-xs font-medium">{job.progress}%</span>
                               </div>
-                              <Progress value={job.progress} className="w-full h-1.5" />
+                              <SimpleProgress value={job.progress} className="w-full h-1.5" />
                               {job.progress_message && (
                                 <p className="text-xs text-blue-600 truncate" title={job.progress_message}>
                                   {job.progress_message}

@@ -73,7 +73,8 @@ const config = defineConfig({
       { text: 'Implementation', link: '/03-implementation-details/' },
       { text: 'Production', link: '/04-running-in-production/' },
       { text: 'Development', link: '/05-development/' },
-      { text: 'Future', link: '/06-future-vision/' }
+      { text: 'Future', link: '/06-future-vision/' },
+      { text: 'Open API', link: '/08-emprops-open-api/' }
     ],
 
     sidebar: {
@@ -110,6 +111,8 @@ const config = defineConfig({
             { text: 'Unified Machine Architecture', link: '/03-implementation-details/unified-machine-architecture' },
             { text: 'Technical Implementation', link: '/03-implementation-details/technical-implementation' },
             { text: 'WebSocket API', link: '/03-implementation-details/websocket-api' },
+            { text: 'Machine Bootstrap & Lifecycle', link: '/03-implementation-details/machine-bootstrap-lifecycle' },
+            { text: 'Webhook Notification System', link: '/03-implementation-details/webhook-notification-system' },
             { text: 'Redis Data Structures 📝', link: '/03-implementation-details/redis-data-structures' },
             { text: 'Service Communication 📝', link: '/03-implementation-details/service-communication' },
             { text: 'API Connectors 🚧', link: '/03-implementation-details/api-connectors' }
@@ -165,6 +168,63 @@ const config = defineConfig({
             { text: 'Mermaid Diagrams', link: '/examples/mermaid' },
             { text: 'Advanced Usage', link: '/examples/advanced' },
             { text: 'Diagram Components', link: '/examples/diagram' }
+          ]
+        }
+      ],
+      '/08-emprops-open-api/': [
+        {
+          text: '8. EmProps Open API',
+          items: [
+            { text: 'Overview', link: '/08-emprops-open-api/' },
+            { text: 'Architecture', link: '/08-emprops-open-api/architecture/' },
+            { text: 'API Reference', link: '/08-emprops-open-api/api-reference/' },
+            { text: 'Implementation Guides', link: '/08-emprops-open-api/implementation-guides/' },
+            { text: 'Examples', link: '/08-emprops-open-api/examples/' }
+          ]
+        }
+      ],
+      '/08-emprops-open-api/architecture/': [
+        {
+          text: 'Architecture',
+          items: [
+            { text: 'Overview', link: '/08-emprops-open-api/architecture/' },
+            { text: 'Collection System', link: '/08-emprops-open-api/architecture/collection-system' },
+            { text: 'Frontend Collection Flow ✨', link: '/08-emprops-open-api/architecture/frontend-collection-flow' },
+            { text: 'Database Schema 📝', link: '/08-emprops-open-api/architecture/database-schema' }
+          ]
+        }
+      ],
+      '/08-emprops-open-api/api-reference/': [
+        {
+          text: 'API Reference',
+          items: [
+            { text: 'Overview', link: '/08-emprops-open-api/api-reference/' },
+            { text: 'Collections 📝', link: '/08-emprops-open-api/api-reference/collections' },
+            { text: 'Workflows 📝', link: '/08-emprops-open-api/api-reference/workflows' },
+            { text: 'Models 📝', link: '/08-emprops-open-api/api-reference/models' },
+            { text: 'Generation 📝', link: '/08-emprops-open-api/api-reference/generation' }
+          ]
+        }
+      ],
+      '/08-emprops-open-api/implementation-guides/': [
+        {
+          text: 'Implementation Guides',
+          items: [
+            { text: 'Overview', link: '/08-emprops-open-api/implementation-guides/' },
+            { text: 'Collection Creation API ✨', link: '/08-emprops-open-api/implementation-guides/collection-generation-api' },
+            { text: 'Workflow Integration 📝', link: '/08-emprops-open-api/implementation-guides/workflow-integration' },
+            { text: 'Authentication Setup 📝', link: '/08-emprops-open-api/implementation-guides/authentication-setup' }
+          ]
+        }
+      ],
+      '/08-emprops-open-api/examples/': [
+        {
+          text: 'Examples',
+          items: [
+            { text: 'Overview', link: '/08-emprops-open-api/examples/' },
+            { text: 'Basic Collection 📝', link: '/08-emprops-open-api/examples/basic-collection' },
+            { text: 'Advanced Workflows 📝', link: '/08-emprops-open-api/examples/advanced-workflows' },
+            { text: 'Progress Tracking 📝', link: '/08-emprops-open-api/examples/progress-tracking' }
           ]
         }
       ]
