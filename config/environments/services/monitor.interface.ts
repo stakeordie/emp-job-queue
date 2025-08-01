@@ -14,6 +14,8 @@ export const MonitorEnvInterface = {
     
     // Connection presets for UI (JSON string)
     "CONNECTIONS": "MONITOR_CONNECTION",
+    "WEBHOOK_SERVICE_HOST": "WEBHOOK_SERVICE_HOST",
+    "WEBHOOK_SERVICE_PORT": "WEBHOOK_SERVICE_PORT",
   },
   
   optional: {

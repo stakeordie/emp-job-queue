@@ -6,6 +6,10 @@
       "default",
       "local"
     ],
+    "webhook-service": [
+      "default",
+      "production"
+    ],
     "api-tokens": [
       "default"
     ],

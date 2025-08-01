@@ -4,27 +4,26 @@
   "components": {
     "api": [
       "default",
-      "prod-test"
+      "local"
     ],
     "webhook-service": [
       "default",
-      "prod-test"
+      "production"
     ],
     "machine": [
-      "default",
-      "prod-test"
+      "default"
     ],
     "worker": [
       "default",
-      "prod-test"
+      "production"
     ],
     "monitor": [
       "default",
-      "prod-test"
+      "production"
     ],
     "redis": [
       "default",
-      "prod-test"
+      "production"
     ],
     "storage-provider": [
       "default",
@@ -35,14 +34,13 @@
     ],
     "comfyui": [
       "default",
-      "mock"
+      "remote"
     ],
     "ollama": [
       "default"
     ],
     "simulation": [
-      "local",
-      "big"
+      "local"
     ],
     "openai": [
       "default",
