@@ -72,6 +72,28 @@ jobs:
         docker push emprops/emp-job-queue-api:latest
         docker push emprops/emp-job-queue-api:${{ steps.get_tag.outputs.tag }}
 
+
+
+    - name: Build and push WEBHOOK Docker image
+      run: |
+        # Get current date for build timestamp
+        BUILD_DATE=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
+        
+        # Build Webhook Docker image using simplified CI Dockerfile with version injection
+        docker build \
+          --build-arg WEBHOOK_VERSION="${{ steps.get_tag.outputs.tag }}" \
+          --build-arg BUILD_DATE="${BUILD_DATE}" \
+          -f apps/webhook-service/Dockerfile.ci \
+          -t emprops/emp-webhook-service:latest \
+          -t emprops/emp-webhook-service:${{ steps.get_tag.outputs.tag }} \
+          .
+        
+        # Push both tags
+        docker push emprops/emp-webhook-service:latest
+        docker push emprops/emp-webhook-service:${{ steps.get_tag.outputs.tag }}
+
+
+
     - name: Build and package worker
       run: |
         # Enable corepack and install dependencies
@@ -109,11 +131,6 @@ jobs:
         chmod +x worker-release/redis-direct-worker.js
         rm worker-release/redis-direct-worker.cjs worker-release/redis-direct-worker-clean.cjs
         
-        # Copy service-mapping.json - REQUIRED for worker to function
-        # The worker uses this to dynamically load the correct connector for each service type
-        mkdir -p worker-release/src/config
-        cp apps/machine/src/config/service-mapping.json worker-release/src/config/
-        
         # Create a minimal package.json for the bundled worker with release version
         cat > worker-release/package.json << EOF
         {
@@ -143,11 +160,6 @@ jobs:
         - Supports ComfyUI, A1111, and simulation connectors
         - Direct Redis connection (no WebSocket hub required)
         - Multi-GPU support via CUDA_VISIBLE_DEVICES
-        - Dynamic connector loading via service-mapping.json
-        
-        ## Required Files
-        - `redis-direct-worker.js` - The main bundled worker executable
-        - `src/config/service-mapping.json` - Service to connector mapping (REQUIRED)
         
         ## Environment Variables
         - `HUB_REDIS_URL` - Redis connection URL
@@ -175,7 +187,6 @@ jobs:
           
           **📦 Worker Bundle (emp-job-queue-worker.tar.gz):**
           - `redis-direct-worker.js` - **Single bundled executable** (all dependencies included)
-          - `src/config/service-mapping.json` - **Service configuration** (required for dynamic connector loading)
           - `package.json` - Package metadata
           - `README.md` - Usage instructions
           
