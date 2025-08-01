@@ -1,0 +1,105 @@
+# Docker Compose for Production Testing Environment
+# This environment simulates production conditions locally for testing
+
+version: '3.8'
+
+services:
+  # Redis - Local instance with prod-test settings
+  redis:
+    image: redis:7-alpine
+    container_name: prod-test-redis
+    ports:
+      - "6379:6379"
+    command: redis-server --maxmemory 256mb --maxmemory-policy allkeys-lru --save ""
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - prod-test-network
+
+  # API Server - Production-like configuration
+  api:
+    build:
+      context: .
+      dockerfile: apps/api/Dockerfile
+    container_name: prod-test-api
+    ports:
+      - "3331:3331"
+    environment:
+      - NODE_ENV=production
+      - REDIS_URL=redis://redis:6379
+      - LOG_LEVEL=debug
+      - HOST=0.0.0.0
+      - PORT=3331
+      - CORS_ORIGINS=http://localhost:3333
+      - MAX_PENDING_JOBS=1000
+      - JOB_CLEANUP_INTERVAL_MINUTES=10
+    depends_on:
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3331/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    networks:
+      - prod-test-network
+
+  # Webhook Service - Production-like configuration
+  webhook-service:
+    build:
+      context: .
+      dockerfile: apps/webhook-service/Dockerfile
+    container_name: prod-test-webhook-service
+    ports:
+      - "3332:3332"
+    environment:
+      - NODE_ENV=production
+      - REDIS_URL=redis://redis:6379
+      - LOG_LEVEL=debug
+      - HOST=0.0.0.0
+      - PORT=3332
+      - CORS_ORIGINS=http://localhost:3333,http://localhost:3331
+      - WEBHOOK_TIMEOUT_MS=15000
+      - MAX_RETRY_ATTEMPTS=2
+    depends_on:
+      redis:
+        condition: service_healthy
+      api:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3332/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    networks:
+      - prod-test-network
+
+  # Monitor - Web dashboard (optional for testing)
+  monitor:
+    build:
+      context: .
+      dockerfile: apps/monitor/Dockerfile
+    container_name: prod-test-monitor
+    ports:
+      - "3333:3333"
+    environment:
+      - NODE_ENV=production
+      - API_URL=http://api:3331
+      - WEBHOOK_SERVICE_URL=http://webhook-service:3332
+    depends_on:
+      api:
+        condition: service_healthy
+      webhook-service:
+        condition: service_healthy
+    networks:
+      - prod-test-network
+
+networks:
+  prod-test-network:
+    driver: bridge
+
+volumes:
+  redis-data:

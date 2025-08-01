@@ -1,0 +1,89 @@
+name: CI
+
+on:
+  push:
+    branches: [ main, master, develop ]
+  pull_request:
+    branches: [ main, master, develop ]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    
+    services:
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Enable corepack
+        run: corepack enable
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Lint all packages
+        run: pnpm turbo lint
+
+      - name: Type check all packages
+        run: pnpm turbo typecheck
+
+      - name: Test all packages
+        run: pnpm turbo test
+        env:
+          REDIS_URL: redis://localhost:6379
+
+      - name: Build all packages
+        run: pnpm turbo build
+
+  build-images:
+    needs: test
+    runs-on: ubuntu-latest
+    if: github.event_name == 'push'
+    
+    strategy:
+      matrix:
+        service: [api, webhook-service]
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Build ${{ matrix.service }} Docker image
+        run: |
+          docker build \
+            -f apps/${{ matrix.service }}/Dockerfile.ci \
+            --tag emp-${{ matrix.service }}:${{ github.sha }} \
+            --tag emp-${{ matrix.service }}:latest \
+            .
+          
+      - name: Test ${{ matrix.service }} image
+        run: |
+          # Start container in background
+          docker run -d --name test-${{ matrix.service }} \
+            -p 300${{ matrix.service == 'api' && '1' || '2' }}:300${{ matrix.service == 'api' && '1' || '2' }} \
+            emp-${{ matrix.service }}:${{ github.sha }}
+          
+          # Wait for service to start
+          sleep 10
+          
+          # Test health endpoint
+          curl -f http://localhost:300${{ matrix.service == 'api' && '1' || '2' }}/health
+          
+          # Cleanup
+          docker stop test-${{ matrix.service }}
+          docker rm test-${{ matrix.service }}

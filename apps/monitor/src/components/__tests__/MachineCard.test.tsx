@@ -2,6 +2,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import { MachineCard } from '../MachineCard';
 import type { Machine, Worker } from '@/types';
+import { WorkerStatus } from '@/types';
 
 // Mock fetch
 global.fetch = vi.fn();
@@ -19,7 +20,7 @@ describe('MachineCard', () => {
 
   const mockWorkers: Worker[] = [{
     worker_id: 'worker-1',
-    status: 'idle',
+    status: WorkerStatus.IDLE,
     capabilities: {
       worker_id: 'worker-1',
       services: ['comfyui'],

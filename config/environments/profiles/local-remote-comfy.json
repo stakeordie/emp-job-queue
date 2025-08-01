@@ -6,10 +6,12 @@
       "default",
       "local"
     ],
+    "api-tokens": [
+      "default"
+    ],
     "machine": [
       "default",
-      "local",
-      "remote"
+      "local"
     ],
     "worker": [
       "default",
@@ -25,10 +27,7 @@
     ],
     "storage-provider": [
       "default",
-      "local"
-    ],
-    "api-tokens": [
-      "default"
+      "dev"
     ],
     "comfyui": [
       "default",
@@ -38,6 +37,11 @@
       "default"
     ],
     "simulation": [
+      "local",
+      "big"
+    ],
+    "openai": [
+      "default",
       "local"
     ]
   },

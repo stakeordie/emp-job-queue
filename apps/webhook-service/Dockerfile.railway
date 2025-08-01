@@ -1,0 +1,59 @@
+# Multi-stage build for Railway deployment
+FROM node:20-alpine AS builder
+
+# Enable corepack for pnpm
+RUN corepack enable
+
+# Set working directory
+WORKDIR /app
+
+# Copy package files
+COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
+COPY packages/core/package.json ./packages/core/
+COPY apps/webhook-service/package.json ./apps/webhook-service/
+
+# Install dependencies
+RUN pnpm install --frozen-lockfile
+
+# Copy source code
+COPY packages/core ./packages/core
+COPY apps/webhook-service ./apps/webhook-service
+COPY tsconfig.json ./
+
+# Build packages
+RUN pnpm --filter @emp/core build
+RUN pnpm --filter webhook-service build
+
+# Production stage
+FROM node:20-alpine AS runner
+
+# Enable corepack for pnpm
+RUN corepack enable
+
+WORKDIR /app
+
+# Copy package files for production install
+COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
+COPY packages/core/package.json ./packages/core/
+COPY apps/webhook-service/package.json ./apps/webhook-service/
+
+# Install only production dependencies
+RUN pnpm install --frozen-lockfile --prod
+
+# Copy built packages and dependencies
+COPY --from=builder /app/packages/core/dist ./packages/core/dist
+COPY --from=builder /app/packages/core/package.json ./packages/core/
+COPY --from=builder /app/apps/webhook-service/dist ./apps/webhook-service/dist
+COPY --from=builder /app/apps/webhook-service/package.json ./apps/webhook-service/
+COPY --from=builder /app/node_modules ./node_modules
+
+# Create non-root user
+RUN addgroup -g 1001 -S nodejs
+RUN adduser -S webhook -u 1001
+USER webhook
+
+# Expose port
+EXPOSE 3332
+
+# Start command
+CMD ["pnpm", "--filter=webhook-service", "start"]

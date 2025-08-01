@@ -27,7 +27,7 @@
       "service": [
         {
           "capability": "comfyui",
-          "connector": "ComfyUIConnector",
+          "connector": "ComfyUIWebsocketConnector",
           "type": "internal"
         }
       ],
@@ -55,7 +55,7 @@
           "type": "external"
         },
         {
-          "capability": ["sim-fun"],
+          "capability": ["simulation"],
           "connector": "SimulationConnector",
           "type": "external"
         }

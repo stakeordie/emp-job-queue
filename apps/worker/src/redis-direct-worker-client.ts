@@ -886,6 +886,23 @@ export class RedisDirectWorkerClient {
         new Date().toISOString()
       );
 
+      // Publish job failure event for webhooks (for permanent failures only)
+      if (!shouldRetry) {
+        const failureEvent = {
+          job_id: jobId,
+          worker_id: this.workerId,
+          status: 'failed',
+          error: error,
+          failed_at: new Date().toISOString(),
+          retry_count: newRetryCount,
+          can_retry: false,
+          timestamp: Date.now(),
+        };
+
+        await this.redis.publish('job_failed', JSON.stringify(failureEvent));
+        logger.info(`📢 Worker ${this.workerId} published failure event for job ${jobId}`);
+      }
+
       // Update worker status back to idle
       await this.updateWorkerStatus('idle');
     } catch (err) {

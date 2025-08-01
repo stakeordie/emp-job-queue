@@ -123,6 +123,20 @@ export class RedisService implements RedisServiceInterface {
     const score = effectivePriority * 1000000 + (Number.MAX_SAFE_INTEGER - effectiveDateTime);
     await this.redis.zadd('jobs:pending', score, jobId);
 
+    // Publish job submission event for webhooks
+    const submissionEvent = {
+      job_id: jobId,
+      service_required: job.service_required,
+      priority: job.priority,
+      payload: job.payload,
+      requirements: job.requirements,
+      customer_id: job.customer_id,
+      created_at: job.created_at,
+      status: 'pending',
+      timestamp: Date.now(),
+    };
+    await this.redis.publish('job_submitted', JSON.stringify(submissionEvent));
+
     logger.info(`Job ${jobId} submitted with priority ${job.priority}`);
     return jobId;
   }

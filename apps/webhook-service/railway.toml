@@ -1,0 +1,14 @@
+[build]
+builder = "dockerfile"
+dockerfilePath = "Dockerfile.railway"
+
+[deploy]
+restartPolicyType = "always"
+
+[env]
+NODE_ENV = "production"
+CORS_ORIGINS = "*"
+LOG_LEVEL = "info"
+PORT = "3332"
+# REDIS_URL will be set via Railway environment variables
+# REDIS_URL = "redis://localhost:6379"

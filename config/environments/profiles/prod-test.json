@@ -1,25 +1,30 @@
 {
   "name": "Production Testing",
-  "description": "Local development with production API and development Redis",
+  "description": "Production-like environment for testing with local Redis, debug logging, and webhook service integration",
   "components": {
     "api": [
       "default",
-      "production"
+      "prod-test"
+    ],
+    "webhook-service": [
+      "default",
+      "prod-test"
     ],
     "machine": [
-      "default"
+      "default",
+      "prod-test"
     ],
     "worker": [
       "default",
-      "production"
+      "prod-test"
     ],
     "monitor": [
       "default",
-      "production"
+      "prod-test"
     ],
     "redis": [
       "default",
-      "production"
+      "prod-test"
     ],
     "storage-provider": [
       "default",
@@ -30,7 +35,7 @@
     ],
     "comfyui": [
       "default",
-      "remote"
+      "mock"
     ],
     "ollama": [
       "default"

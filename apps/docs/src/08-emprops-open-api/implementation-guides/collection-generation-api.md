@@ -33,15 +33,15 @@ interface FeedQuery {
 
 #### Response Schema
 ```typescript
-interface TemplateResponse {
+interface FeedResponse {
   data: {
     collections: Array<{
       id: string;                    // Collection ID for forking
-      title: string;                 // Template name
-      description?: string;          // Template description
-      preview_enabled: boolean;      // Always true for discoverable templates
+      title: string;                 // Collection name
+      description?: string;          // Collection description
+      preview_enabled: boolean;      // Always true for discoverable collections
       is_remixable: boolean;        // Can be forked by others
-      sample_images: Array<{        // Example outputs
+      sample_images: Array<{        // Example outputs from this collection
         url: string;
         alt_text: string;
       }>;
@@ -118,19 +118,33 @@ Content-Type: application/json
 }
 ```
 
-### 2. Fork Template: `POST /collections/:collectionId/remix`
+### 2. Fork Collection: `POST /collections/:collectionId/remix`
 
 #### Authentication
 - **Required**: JWT middleware authentication
 - **Authorization**: User must have valid account
 - **Rate Limiting**: Standard rate limits apply (100 requests/hour per user)
 
+#### URL Parameters
+- `collectionId` - The ID of the collection you want to fork
+
 #### Request Schema
 ```typescript
 interface ForkRequest {
-  project_id?: string;    // Target project ID (creates default if missing)
+  project_id?: string;    // Optional: Which project to create the fork in (uses default if missing)
+  farcaster_id?: string;  // Optional: Farcaster ID to create collection for (creates farcaster user if needed)
 }
 ```
+
+#### Farcaster User Creation
+
+When `farcaster_id` is provided:
+1. **Find or Create**: System looks for existing `miniapp_user` with that Farcaster ID
+2. **Auto-provision**: If not found, creates new farcaster user record  
+3. **Collection Ownership**: Forked collection belongs to the farcaster user
+4. **No Access Control**: Farcaster user cannot directly access/edit the collection
+5. **Public Display**: Collection can be displayed as belonging to `@farcasteruser`
+6. **Future Linking**: When user signs up and connects Farcaster, they inherit ownership
 
 #### Response Schema
 ```typescript
@@ -146,13 +160,25 @@ interface ForkResponse {
 }
 ```
 
-#### Example Request
+#### Example Request (Regular Fork)
 ```http
 POST /collections/550e8400-e29b-41d4-a716-446655440000/remix
 Authorization: Bearer <jwt_token>
 Content-Type: application/json
 
 {
+  "project_id": "123e4567-e89b-12d3-a456-426614174000"
+}
+```
+
+#### Example Request (Fork for Farcaster User)
+```http
+POST /collections/550e8400-e29b-41d4-a716-446655440000/remix
+Authorization: Bearer <jwt_token>
+Content-Type: application/json
+
+{
+  "farcaster_id": "12345",
   "project_id": "123e4567-e89b-12d3-a456-426614174000"
 }
 ```
@@ -171,7 +197,7 @@ Content-Type: application/json
 }
 ```
 
-### 3. Edit Collection: `PUT /collections/:id`
+### 3. Edit Collection: `PUT /projects/:projectId/collections/:collectionId`
 
 #### Authentication
 - **Required**: JWT middleware authentication
@@ -185,17 +211,30 @@ interface CollectionEditRequest {
   title?: string;                    // Collection name
   description?: string;              // Collection description
   
-  // Generation Settings
+  // NFT Configuration
+  editions?: number;                 // Number of NFT editions
+  price?: number;                    // Price in ETH/USD
+  blockchain?: "ETHEREUM" | "BASE" | "TEZOS";
+  publish_date?: string;             // ISO date for scheduled publishing
+  cover_image_url?: string;          // Collection cover image
+  
+  // Minting Settings
+  batch_mint_enabled?: boolean;      // Enable batch minting
+  batch_max_tokens?: number;         // Max tokens per batch
+  encryption_enabled?: boolean;      // Enable content encryption
+  archived?: boolean;                // Archive collection
+  
+  // Generation Workflow (the main customization)
   data?: {
     version: "v2";
     steps: Array<{
-      id: number;
+      id: number;                    // Component ID (from fork)
       nodeName: string;              // e.g., "stable-diffusion-xl" 
       nodePayload: {
         prompt?: string;             // Main generation prompt
         negative_prompt?: string;    // What to avoid
-        width?: number;              // Image width (512, 1024, etc.)
-        height?: number;             // Image height
+        width?: number;              // Image width (512, 768, 1024, 1536)
+        height?: number;             // Image height (512, 768, 1024, 1536)
         steps?: number;              // Generation steps (20-50)
         cfg_scale?: number;          // Prompt adherence (1-20)
         seed?: number;               // Random seed (-1 for random)
@@ -203,14 +242,14 @@ interface CollectionEditRequest {
       alias?: string;                // Human-readable step name
     }>;
     generations: {
-      generations: number;           // Number of outputs to create
+      generations: number;           // Number of outputs to create (1-10)
       hashes?: string[];             // Custom random seeds
       use_custom_hashes?: boolean;
     };
     variables?: Array<{
       name: string;                  // Variable name (e.g., "style")
       type: "pick" | "text" | "number";
-      value?: any;                   // Default value
+      value?: any;                   // Default value or options
       lock_value?: boolean;          // Prevent changes during generation
       test_value?: any;              // Value for testing
     }>;
@@ -220,32 +259,27 @@ interface CollectionEditRequest {
 
 #### Response Schema
 ```typescript
-interface CollectionEditResponse {
-  data: {
-    id: string;                      // Collection ID
-    title: string;                   // Updated title
-    description?: string;            // Updated description
-    updated_at: string;              // ISO timestamp
-    data: GenerationInput;           // Updated workflow definition
-  };
-  error: null | string;
-}
+// Success: 204 No Content (empty response body)
+// The collection has been updated successfully
 ```
 
 #### Example Request (Edit the forked collection)
 ```http
-PUT /collections/789e0123-e45b-67c8-a901-234567890abc
+PUT /projects/123e4567-e89b-12d3-a456-426614174000/collections/789e0123-e45b-67c8-a901-234567890abc
 Authorization: Bearer <jwt_token>
 Content-Type: application/json
 
 {
   "title": "My Custom AI Portraits",
   "description": "Personalized portrait generator with my preferred settings",
+  "editions": 100,
+  "price": 0.08,
+  "blockchain": "ETHEREUM",
   "data": {
     "version": "v2",
     "steps": [
       {
-        "id": 1,
+        "id": 12345,
         "nodeName": "stable-diffusion-xl",
         "nodePayload": {
           "prompt": "professional headshot of {{subject}}, {{style}} style, studio lighting",
@@ -288,22 +322,8 @@ Content-Type: application/json
 ```
 
 #### Example Response
-```json
-{
-  "data": {
-    "id": "789e0123-e45b-67c8-a901-234567890abc",
-    "title": "My Custom AI Portraits",
-    "description": "Personalized portrait generator with my preferred settings", 
-    "updated_at": "2024-07-31T16:45:00Z",
-    "data": {
-      "version": "v2",
-      "steps": [...],
-      "generations": {...},
-      "variables": [...]
-    }
-  },
-  "error": null
-}
+```http
+HTTP/1.1 204 No Content
 ```
 
 ### 4. Generate from Custom Collection: `POST /collections/:id/generations`
@@ -381,7 +401,7 @@ Content-Type: application/json
 }
 ## Complete Workflow Example
 
-Here's a complete example showing how to use the template-based API:
+Here's a complete example showing how to use the fork-and-edit API:
 
 ### Step 1: Browse Templates
 ```bash
@@ -389,7 +409,7 @@ curl -X GET "https://api.emprops.com/feed?size=3" \
   -H "Content-Type: application/json"
 ```
 
-### Step 2: Fork a Template
+### Step 2a: Fork a Collection (Regular User)
 ```bash
 curl -X POST "https://api.emprops.com/collections/550e8400-e29b-41d4-a716-446655440000/remix" \
   -H "Authorization: Bearer YOUR_JWT_TOKEN" \
@@ -397,22 +417,67 @@ curl -X POST "https://api.emprops.com/collections/550e8400-e29b-41d4-a716-446655
   -d '{
     "project_id": "123e4567-e89b-12d3-a456-426614174000"
   }'
+# Returns: {"data": {"id": "789e0123-...", "title": "Fork of AI Portrait Generator", ...}}
 ```
 
-### Step 3: Generate with Custom Variables
+### Step 2b: Fork a Collection (For Farcaster User)
+```bash
+curl -X POST "https://api.emprops.com/collections/550e8400-e29b-41d4-a716-446655440000/remix" \
+  -H "Authorization: Bearer YOUR_JWT_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "farcaster_id": "12345",
+    "project_id": "123e4567-e89b-12d3-a456-426614174000"
+  }'
+# Creates/finds farcaster user and forks collection for them
+# Returns: {"data": {"id": "abc123-...", "title": "Fork of AI Portrait Generator", ...}}
+```
+
+### Step 3: Edit Your Forked Collection
+```bash
+curl -X PUT "https://api.emprops.com/projects/123e4567-e89b-12d3-a456-426614174000/collections/789e0123-e45b-67c8-a901-234567890abc" \
+  -H "Authorization: Bearer YOUR_JWT_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "title": "My Custom Portrait Generator",
+    "editions": 200,
+    "price": 0.05,
+    "data": {
+      "version": "v2",
+      "steps": [{
+        "id": 12345,
+        "nodeName": "stable-diffusion-xl",
+        "nodePayload": {
+          "prompt": "professional {{style}} portrait of {{subject}}, high quality",
+          "width": 1024,
+          "height": 1024,
+          "steps": 30
+        }
+      }],
+      "generations": {"generations": 5},
+      "variables": [
+        {"name": "subject", "type": "text", "test_value": "business executive"},
+        {"name": "style", "type": "pick", "value": {"values": ["corporate", "artistic", "casual"]}}
+      ]
+    }
+  }'
+# Returns: HTTP 204 No Content (success)
+```
+
+### Step 4: Generate from Your Custom Collection
 ```bash
 curl -X POST "https://api.emprops.com/collections/789e0123-e45b-67c8-a901-234567890abc/generations" \
   -H "Authorization: Bearer YOUR_JWT_TOKEN" \
   -H "Content-Type: application/json" \
   -d '{
     "variables": {
-      "style": "cyberpunk",
-      "prompt": "a mysterious figure in a neon-lit city"
+      "subject": "tech startup founder",
+      "style": "corporate"
     }
   }'
 ```
 
-### Step 4: Monitor Progress
+### Step 5: Monitor Progress
 ```bash
 # Check job status
 curl -X GET "https://api.emprops.com/jobs/job-456def78-9012-3456-7890-abcdef123456" \
@@ -641,12 +706,14 @@ If migrating from other NFT generation APIs, see our [Migration Guide](/08-empro
 
 The **Template-Based Collection Creation API** provides a much simpler alternative to building complex workflow definitions from scratch. By leveraging the existing fork-and-edit infrastructure, third-party developers can:
 
-✅ **Browse Templates** - Discover pre-built, tested collection templates  
-✅ **Fork & Customize** - Create personalized copies with minimal effort  
-✅ **Generate Content** - Execute with custom variables via the proven generation system  
-✅ **Monitor Progress** - Track jobs in real-time with server-sent events  
+✅ **Browse Templates** - Discover pre-built, tested collection templates via feed  
+✅ **Fork Templates** - Create their own editable copies of existing collections  
+✅ **Edit Collections** - Modify prompts, resolution, variables, pricing, output count, etc.  
+✅ **Save Customizations** - Persist their personalized collection configurations  
+✅ **Generate Content** - Execute their custom collections with runtime variables  
+✅ **Monitor Progress** - Track generation jobs in real-time with server-sent events  
 
-This approach reduces integration complexity by 90%+ compared to building complete workflow definitions, while maintaining the full power and flexibility of the EmProps generation platform.
+This approach reduces integration complexity by 90%+ compared to building complete workflow definitions, while providing full customization capabilities including prompts, AI model settings, NFT configuration, and variable definitions.
 
 **Next Steps:**
 - Review the [API Reference](/08-emprops-open-api/api-reference/) for complete endpoint documentation

@@ -7,6 +7,9 @@ This section contains step-by-step guides for implementing new features and inte
 ### [Collection Creation API](/08-emprops-open-api/implementation-guides/collection-generation-api)
 Complete implementation plan for a third-party Collection Creation API that allows external systems to create collections programmatically without using the EmProps frontend.
 
+### [Social Collection API](/08-emprops-open-api/implementation-guides/social-collection-api) ✅
+Custodial API for forking and managing collections on behalf of social platform users (Farcaster, Twitter, Discord, etc.) without requiring full system accounts. Collections are held in custody by the API entity.
+
 ### [Workflow Integration](/08-emprops-open-api/implementation-guides/workflow-integration) 📝
 Guide for integrating new workflow types with the generation system.
 

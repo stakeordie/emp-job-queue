@@ -1,0 +1,41 @@
+# Simplified Dockerfile for CI that builds everything in one stage
+FROM node:20-alpine
+
+# Version and build date injection
+ARG WEBHOOK_VERSION=latest
+ARG BUILD_DATE
+
+# Enable corepack for pnpm
+RUN corepack enable
+
+# Set working directory
+WORKDIR /app
+
+# Copy entire repository
+COPY . .
+
+# Install dependencies and build
+RUN pnpm install --no-frozen-lockfile && \
+    pnpm --filter @emp/core build && \
+    pnpm --filter webhook-service build
+
+# Inject version into webhook service package.json
+RUN if [ "$WEBHOOK_VERSION" != "latest" ]; then \
+      cd apps/webhook-service && \
+      sed -i "s/\"version\": \"[^\"]*\"/\"version\": \"${WEBHOOK_VERSION}\"/" package.json; \
+    fi
+
+# Create non-root user
+RUN addgroup -g 1001 -S nodejs && \
+    adduser -S webhook -u 1001
+
+# Change ownership of the app directory
+RUN chown -R webhook:nodejs /app
+
+USER webhook
+
+# Expose port
+EXPOSE 3332
+
+# Start command
+CMD ["pnpm", "--filter=webhook-service", "start"]

@@ -26,6 +26,25 @@ export interface WebhookDeliveryHistory {
   total_count: number;
 }
 
+export interface WebhookTestReceiver {
+  id: string;
+  created_at: number;
+  expires_at: number;
+  url: string;
+  requests: WebhookTestReceiverRequest[];
+}
+
+export interface WebhookTestReceiverRequest {
+  id: string;
+  timestamp: number;
+  method: string;
+  headers: Record<string, string>;
+  body: unknown;
+  query: Record<string, string>;
+  user_agent?: string;
+  ip?: string;
+}
+
 export class WebhookRedisStorage {
   private redis: Redis;
 
@@ -35,6 +54,10 @@ export class WebhookRedisStorage {
   private static readonly WEBHOOK_ATTEMPTS_KEY = (id: string) => `webhooks:attempts:${id}`;
   private static readonly WEBHOOK_ACTIVE_SET = 'webhooks:active';
   private static readonly WEBHOOK_DELIVERY_LOG = 'webhooks:delivery_log';
+  
+  // Test receiver key patterns
+  private static readonly TEST_RECEIVER_KEY = (id: string) => `webhook_test_receiver:${id}`;
+  private static readonly TEST_RECEIVER_SET = 'webhook_test_receivers:active';
 
   constructor(redis: Redis) {
     this.redis = redis;
@@ -205,6 +228,9 @@ export class WebhookRedisStorage {
    */
   async recordDeliveryAttempt(attempt: WebhookDeliveryAttempt): Promise<void> {
     try {
+      // Get webhook details to include URL in delivery log
+      const webhook = await this.getWebhook(attempt.webhook_id);
+      
       const pipeline = this.redis.pipeline();
 
       // Store attempt details
@@ -234,6 +260,9 @@ export class WebhookRedisStorage {
         timestamp: attempt.timestamp,
         attempt_number: attempt.attempt_number,
         response_status: attempt.response_status,
+        error_message: attempt.error_message,
+        response_body: attempt.response_body,
+        url: webhook?.url, // Include the webhook URL for debugging
       };
       pipeline.lpush(WebhookRedisStorage.WEBHOOK_DELIVERY_LOG, JSON.stringify(logEntry));
       pipeline.ltrim(WebhookRedisStorage.WEBHOOK_DELIVERY_LOG, 0, 999); // Keep last 1000 deliveries
@@ -243,6 +272,7 @@ export class WebhookRedisStorage {
       logger.debug(`Delivery attempt recorded for webhook ${attempt.webhook_id}`, {
         success: attempt.success,
         attempt_number: attempt.attempt_number,
+        url: webhook?.url,
       });
     } catch (error) {
       logger.error(`Failed to record delivery attempt for webhook ${attempt.webhook_id}:`, error);
@@ -326,6 +356,9 @@ export class WebhookRedisStorage {
       timestamp: number;
       attempt_number: number;
       response_status?: number;
+      error_message?: string;
+      response_body?: string;
+      url?: string;
     }>
   > {
     try {
@@ -485,5 +518,224 @@ export class WebhookRedisStorage {
       logger.error('Failed to cleanup old webhook data:', error);
       return { deleted_attempts: 0, deleted_logs: 0 };
     }
+  }
+
+  // ======================
+  // Test Receiver Methods
+  // ======================
+
+  /**
+   * Create a new webhook test receiver
+   */
+  async createTestReceiver(): Promise<WebhookTestReceiver> {
+    const id = this.generateTestReceiverId();
+    const now = Date.now();
+    const expiresAt = now + (24 * 60 * 60 * 1000); // 24 hours
+    
+    const receiver: WebhookTestReceiver = {
+      id,
+      created_at: now,
+      expires_at: expiresAt,
+      url: `${process.env.WEBHOOK_SERVICE_URL || 'http://localhost:3332'}/test-receivers/${id}/webhook`,
+      requests: [],
+    };
+
+    // Store receiver in Redis with expiration
+    const key = WebhookRedisStorage.TEST_RECEIVER_KEY(id);
+    await this.redis.setex(key, 24 * 3600, JSON.stringify(receiver)); // 24 hours
+    
+    // Add to active set
+    await this.redis.sadd(WebhookRedisStorage.TEST_RECEIVER_SET, id);
+    
+    logger.debug(`Test receiver created: ${id}`, {
+      expires_at: new Date(expiresAt).toISOString(),
+    });
+    
+    return receiver;
+  }
+
+  /**
+   * Get a webhook test receiver by ID
+   */
+  async getTestReceiver(id: string): Promise<WebhookTestReceiver | null> {
+    try {
+      const key = WebhookRedisStorage.TEST_RECEIVER_KEY(id);
+      const data = await this.redis.get(key);
+      
+      if (!data) {
+        // Remove from active set if not found
+        await this.redis.srem(WebhookRedisStorage.TEST_RECEIVER_SET, id);
+        return null;
+      }
+
+      const receiver = JSON.parse(data) as WebhookTestReceiver;
+      
+      // Check if expired
+      if (receiver.expires_at < Date.now()) {
+        await this.deleteTestReceiver(id);
+        return null;
+      }
+
+      return receiver;
+    } catch (error) {
+      logger.error(`Error getting test receiver ${id}:`, error);
+      return null;
+    }
+  }
+
+  /**
+   * Add a request to a webhook test receiver
+   */
+  async addTestReceiverRequest(receiverId: string, request: WebhookTestReceiverRequest): Promise<boolean> {
+    try {
+      const receiver = await this.getTestReceiver(receiverId);
+      if (!receiver) {
+        return false;
+      }
+
+      // Add request to the beginning of the array
+      receiver.requests.unshift(request);
+      
+      // Keep only the last 100 requests
+      if (receiver.requests.length > 100) {
+        receiver.requests = receiver.requests.slice(0, 100);
+      }
+
+      // Save updated receiver back to Redis
+      const key = WebhookRedisStorage.TEST_RECEIVER_KEY(receiverId);
+      const ttl = await this.redis.ttl(key);
+      
+      if (ttl > 0) {
+        await this.redis.setex(key, ttl, JSON.stringify(receiver));
+        return true;
+      } else {
+        // TTL expired, remove from active set
+        await this.redis.srem(WebhookRedisStorage.TEST_RECEIVER_SET, receiverId);
+        return false;
+      }
+    } catch (error) {
+      logger.error(`Error adding request to test receiver ${receiverId}:`, error);
+      return false;
+    }
+  }
+
+  /**
+   * Get all requests for a test receiver
+   */
+  async getTestReceiverRequests(receiverId: string): Promise<WebhookTestReceiverRequest[]> {
+    const receiver = await this.getTestReceiver(receiverId);
+    return receiver?.requests || [];
+  }
+
+  /**
+   * Clear all requests for a test receiver
+   */
+  async clearTestReceiverRequests(receiverId: string): Promise<number> {
+    try {
+      const receiver = await this.getTestReceiver(receiverId);
+      if (!receiver) {
+        return 0;
+      }
+
+      const requestCount = receiver.requests.length;
+      receiver.requests = [];
+
+      // Save updated receiver back to Redis
+      const key = WebhookRedisStorage.TEST_RECEIVER_KEY(receiverId);
+      const ttl = await this.redis.ttl(key);
+      
+      if (ttl > 0) {
+        await this.redis.setex(key, ttl, JSON.stringify(receiver));
+      }
+
+      return requestCount;
+    } catch (error) {
+      logger.error(`Error clearing requests for test receiver ${receiverId}:`, error);
+      return 0;
+    }
+  }
+
+  /**
+   * Delete a webhook test receiver
+   */
+  async deleteTestReceiver(id: string): Promise<boolean> {
+    try {
+      const key = WebhookRedisStorage.TEST_RECEIVER_KEY(id);
+      const deleted = await this.redis.del(key);
+      await this.redis.srem(WebhookRedisStorage.TEST_RECEIVER_SET, id);
+      
+      if (deleted > 0) {
+        logger.debug(`Test receiver deleted: ${id}`);
+        return true;
+      }
+      
+      return false;
+    } catch (error) {
+      logger.error(`Error deleting test receiver ${id}:`, error);
+      return false;
+    }
+  }
+
+  /**
+   * Get all active test receivers
+   */
+  async getAllTestReceivers(): Promise<WebhookTestReceiver[]> {
+    try {
+      const activeIds = await this.redis.smembers(WebhookRedisStorage.TEST_RECEIVER_SET);
+      const receivers: WebhookTestReceiver[] = [];
+
+      for (const id of activeIds) {
+        const receiver = await this.getTestReceiver(id);
+        if (receiver) {
+          receivers.push(receiver);
+        }
+      }
+
+      return receivers.sort((a, b) => b.created_at - a.created_at);
+    } catch (error) {
+      logger.error('Error getting all test receivers:', error);
+      return [];
+    }
+  }
+
+  /**
+   * Cleanup expired test receivers
+   */
+  async cleanupExpiredTestReceivers(): Promise<number> {
+    try {
+      const activeIds = await this.redis.smembers(WebhookRedisStorage.TEST_RECEIVER_SET);
+      let cleanedCount = 0;
+
+      for (const id of activeIds) {
+        const key = WebhookRedisStorage.TEST_RECEIVER_KEY(id);
+        const exists = await this.redis.exists(key);
+        
+        if (!exists) {
+          await this.redis.srem(WebhookRedisStorage.TEST_RECEIVER_SET, id);
+          cleanedCount++;
+        }
+      }
+
+      if (cleanedCount > 0) {
+        logger.debug(`Cleaned up ${cleanedCount} expired test receivers`);
+      }
+
+      return cleanedCount;
+    } catch (error) {
+      logger.error('Error during test receiver cleanup:', error);
+      return 0;
+    }
+  }
+
+  /**
+   * Generate a unique test receiver ID
+   */
+  private generateTestReceiverId(): string {
+    const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
+    let result = '';
+    for (let i = 0; i < 16; i++) {
+      result += chars.charAt(Math.floor(Math.random() * chars.length));
+    }
+    return result;
   }
 }

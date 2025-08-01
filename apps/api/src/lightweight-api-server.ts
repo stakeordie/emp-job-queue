@@ -2391,7 +2391,22 @@ export class LightweightAPIServer {
     // Broadcast job_submitted to both monitors and clients via EventBroadcaster
     this.eventBroadcaster.broadcast(jobSubmittedEvent);
 
+    // ALSO publish job_submitted event to Redis for webhook notifications
+    const submissionEvent = {
+      job_id: jobId,
+      service_required: job.service_required,
+      priority: job.priority,
+      payload: job.payload,
+      requirements: job.requirements,
+      customer_id: job.customer_id,
+      created_at: job.created_at,
+      status: 'pending',
+      timestamp: Date.now(),
+    };
+    await this.redis.publish('job_submitted', JSON.stringify(submissionEvent));
+
     logger.info(`📢 [DEBUG] Broadcasted job_submitted event for ${jobId}`);
+    logger.info(`📢 [DEBUG] Published job_submitted to Redis for webhooks: ${jobId}`);
 
     logger.info(`Job ${jobId} submitted via lightweight API (${job.service_required})`);
     return jobId;

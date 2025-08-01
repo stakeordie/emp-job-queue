@@ -35,18 +35,13 @@ export interface WebhookEndpoint {
 }
 
 export type WebhookEventType =
-  | 'job.submitted' // Job created and added to queue
-  | 'job.assigned' // Job assigned to worker
-  | 'job.progress' // Job progress update
-  | 'job.completed' // Job completed successfully
-  | 'job.failed' // Job failed
-  | 'job.cancelled' // Job cancelled
-  | 'job.timeout' // Job timed out
-  | 'job.status_changed' // Any job status change
-  | 'machine.startup' // Machine came online
-  | 'machine.shutdown' // Machine went offline
-  | 'worker.connected' // Worker connected
-  | 'worker.disconnected'; // Worker disconnected
+  | 'job_submitted' // Job submitted to queue (published by API)
+  | 'update_job_progress' // Job progress updates (published by workers)
+  | 'complete_job' // Job completed successfully (published by workers)
+  | 'job_failed' // Job failed permanently (published by workers)
+  | 'cancel_job' // Job cancelled (published by API)
+  | 'worker_status' // Worker status changes
+  | 'machine_status' // Machine status changes
 
 export interface WebhookFilters {
   job_types?: string[]; // Filter by job type (e.g., ['comfyui', 'openai'])
@@ -224,25 +219,19 @@ export class WebhookNotificationService extends EventEmitter {
   private convertMonitorEventToWebhookEvent(event: MonitorEvent): WebhookEventType | null {
     switch (event.type) {
       case 'job_submitted':
-        return 'job.submitted';
-      case 'job_assigned':
-        return 'job.assigned';
+        return 'job_submitted';
       case 'update_job_progress':
-        return 'job.progress';
+        return 'update_job_progress';
       case 'complete_job':
-        return 'job.completed';
+        return 'complete_job';
       case 'job_failed':
-        return 'job.failed';
-      case 'job_status_changed':
-        return 'job.status_changed';
-      case 'machine_startup_complete':
-        return 'machine.startup';
-      case 'machine_shutdown':
-        return 'machine.shutdown';
+        return 'job_failed';
       case 'worker_connected':
-        return 'worker.connected';
       case 'worker_disconnected':
-        return 'worker.disconnected';
+        return 'worker_status';
+      case 'machine_startup_complete':
+      case 'machine_shutdown':
+        return 'machine_status';
       default:
         return null;
     }
@@ -354,6 +343,16 @@ export class WebhookNotificationService extends EventEmitter {
     if (jobEvent.job_type) data.job_type = jobEvent.job_type as string;
     if (jobEvent.worker_id) data.worker_id = jobEvent.worker_id as string;
     if (jobEvent.machine_id) data.machine_id = jobEvent.machine_id as string;
+
+    // Job submission events  
+    if (event.type === 'job_submitted') {
+      data.job_status = JobStatus.PENDING;
+      data.priority = jobEvent.priority as number;
+      data.payload = jobEvent.payload;
+      data.requirements = jobEvent.requirements;
+      data.customer_id = jobEvent.customer_id as string;
+      data.submitted_at = jobEvent.created_at || jobEvent.timestamp;
+    }
 
     // Status change events
     if (event.type === 'job_status_changed') {
@@ -605,27 +604,165 @@ export class WebhookNotificationService extends EventEmitter {
       throw new Error(`Webhook not found: ${webhookId}`);
     }
 
-    const testPayload: WebhookPayload = {
-      event_type: 'job.submitted',
-      event_id: 'test_' + this.generateId(),
-      timestamp: Date.now(),
+    const baseEventId = 'test_wh_' + Date.now() + '_' + this.generateId().slice(-9);
+    const timestamp = Date.now();
+    let allTestsSucceeded = true;
+
+    // Send a test event for each event type the webhook is subscribed to
+    for (const eventType of webhook.events) {
+      const testPayload = this.createTestPayloadForEventType(eventType, baseEventId, webhookId, timestamp);
+      
+      try {
+        await this.deliverWebhook(testPayload);
+        logger.debug(`Test event sent successfully: ${eventType}`, { webhook_id: webhookId });
+      } catch (error) {
+        logger.error(`Test event failed: ${eventType}`, { webhook_id: webhookId, error });
+        allTestsSucceeded = false;
+      }
+    }
+
+    return allTestsSucceeded;
+  }
+
+  private createTestPayloadForEventType(eventType: string, baseEventId: string, webhookId: string, timestamp: number): WebhookPayload {
+    const testJobId = 'test_job_' + Date.now();
+    const testWorkerId = 'test_worker_' + Math.random().toString(36).substr(2, 5);
+
+    const basePayload = {
+      event_id: `${baseEventId}_${eventType}`,
+      timestamp,
       webhook_id: webhookId,
-      data: {
-        job_id: 'test_job_123',
-        job_type: 'test',
-        job_status: JobStatus.PENDING,
-      },
       metadata: {
-        original_timestamp: Date.now(),
+        original_timestamp: timestamp,
+        test_event: true,
       },
     };
 
-    try {
-      await this.deliverWebhook(testPayload);
-      return true;
-    } catch (error) {
-      logger.error(`Webhook test failed: ${webhookId}`, error);
-      return false;
+    switch (eventType) {
+      case 'job_submitted':
+        return {
+          ...basePayload,
+          event_type: 'job_submitted',
+          data: {
+            job_id: testJobId,
+            job_type: 'comfyui',
+            priority: 100,
+            payload: {
+              test_data: 'Sample job submission for webhook testing',
+              workflow: 'test_workflow.json'
+            },
+            requirements: {
+              hardware: { gpu_memory_gb: 8 },
+              models: ['test_model.safetensors']
+            },
+            customer_id: 'test_customer_123',
+            submitted_at: new Date(timestamp).toISOString(),
+            status: 'pending',
+          },
+        };
+
+      case 'update_job_progress':
+        return {
+          ...basePayload,
+          event_type: 'update_job_progress',
+          data: {
+            job_id: testJobId,
+            worker_id: testWorkerId,
+            progress: 45,
+            progress_message: 'Processing test workflow...',
+            status: 'in_progress',
+            current_step: 'Test Step 3',
+            total_steps: 5,
+            estimated_completion: new Date(timestamp + 60000).toISOString(),
+          },
+        };
+
+      case 'complete_job':
+        return {
+          ...basePayload,
+          event_type: 'complete_job',
+          data: {
+            job_id: testJobId,
+            worker_id: testWorkerId,
+            progress: 100,
+            result: { 
+              output: 'Test job completed successfully',
+              files: ['test_output.png'],
+              duration_ms: 5000 
+            },
+            completed_at: new Date(timestamp).toISOString(),
+            status: 'completed',
+            message: 'Test job finished successfully',
+          },
+        };
+
+      case 'job_failed':
+        return {
+          ...basePayload,
+          event_type: 'job_failed',
+          data: {
+            job_id: testJobId,
+            worker_id: testWorkerId,
+            error: 'Test failure: Connection timeout during processing',
+            failed_at: new Date(timestamp).toISOString(),
+            status: 'failed',
+            can_retry: false,
+            retry_count: 3,
+          },
+        };
+
+      case 'cancel_job':
+        return {
+          ...basePayload,
+          event_type: 'cancel_job',
+          data: {
+            job_id: testJobId,
+            worker_id: testWorkerId,
+            cancelled_at: new Date(timestamp).toISOString(),
+            reason: 'Test cancellation: User requested stop',
+            cancelled_by: 'test_user',
+          },
+        };
+
+      case 'worker_status':
+        return {
+          ...basePayload,
+          event_type: 'worker_status',
+          data: {
+            worker_id: testWorkerId,
+            machine_id: 'test_machine_' + Math.random().toString(36).substr(2, 5),
+            status: 'busy',
+            previous_status: 'idle',
+            capabilities: ['comfyui', 'simulation'],
+            current_job_id: testJobId,
+          },
+        };
+
+      case 'machine_status':
+        return {
+          ...basePayload,
+          event_type: 'machine_status',
+          data: {
+            machine_id: 'test_machine_' + Math.random().toString(36).substr(2, 5),
+            status: 'ready',
+            health: 'healthy',
+            worker_count: 2,
+            services: ['comfyui', 'simulation'],
+            startup_time: 15000,
+          },
+        };
+
+      default:
+        // Fallback for unknown event types
+        return {
+          ...basePayload,
+          event_type: eventType as WebhookEventType,
+          data: {
+            job_id: testJobId,
+            test_event_type: eventType,
+            message: `Test event for ${eventType}`,
+          },
+        };
     }
   }
 

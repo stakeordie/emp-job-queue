@@ -331,6 +331,232 @@ export function setupWebhookRoutes(app: Express, webhookProcessor: WebhookProces
     }
   });
 
+  // =================
+  // Test Receiver Routes
+  // =================
+
+  // POST /test-receivers - Create a new test receiver
+  app.post('/test-receivers', async (req: Request, res: Response) => {
+    try {
+      const webhookStorage = webhookProcessor.getWebhookStorage();
+      await webhookStorage.cleanupExpiredTestReceivers();
+
+      // Check if we're at the limit
+      const allReceivers = await webhookStorage.getAllTestReceivers();
+      const MAX_RECEIVERS = 100;
+      if (allReceivers.length >= MAX_RECEIVERS) {
+        return res.status(429).json({
+          success: false,
+          error: 'Maximum number of test receivers reached. Try again later.',
+        });
+      }
+
+      const receiver = await webhookStorage.createTestReceiver();
+
+      logger.info(`Test receiver created: ${receiver.id}`);
+
+      res.status(201).json({
+        success: true,
+        data: {
+          id: receiver.id,
+          url: receiver.url,
+          view_url: `${process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'}/webhook-test?receiver=${receiver.id}`,
+          created_at: receiver.created_at,
+          expires_at: receiver.expires_at,
+          expires_in_hours: 24,
+        },
+      });
+    } catch (error) {
+      logger.error('Error creating test receiver:', error);
+      res.status(500).json({
+        success: false,
+        error: 'Failed to create test receiver',
+        message: error instanceof Error ? error.message : 'Unknown error',
+      });
+    }
+  });
+
+  // GET /test-receivers - Get all active test receivers (for debugging)
+  app.get('/test-receivers', async (req: Request, res: Response) => {
+    try {
+      const webhookStorage = webhookProcessor.getWebhookStorage();
+      await webhookStorage.cleanupExpiredTestReceivers();
+      
+      const allReceivers = await webhookStorage.getAllTestReceivers();
+      const receivers = allReceivers.map(receiver => ({
+        id: receiver.id,
+        url: receiver.url,
+        created_at: receiver.created_at,
+        expires_at: receiver.expires_at,
+        request_count: receiver.requests.length,
+      }));
+
+      res.json({
+        success: true,
+        data: receivers,
+        total: receivers.length,
+        max_receivers: 100,
+      });
+    } catch (error) {
+      logger.error('Error fetching test receivers:', error);
+      res.status(500).json({
+        success: false,
+        error: 'Failed to fetch test receivers',
+      });
+    }
+  });
+
+  // GET /test-receivers/:id/requests - Get all requests for a test receiver
+  app.get('/test-receivers/:id/requests', async (req: Request, res: Response) => {
+    try {
+      const { id } = req.params;
+      const webhookStorage = webhookProcessor.getWebhookStorage();
+      
+      const receiver = await webhookStorage.getTestReceiver(id);
+      if (!receiver) {
+        return res.status(404).json({
+          success: false,
+          error: 'Test receiver not found',
+        });
+      }
+
+      const limit = parseInt(req.query.limit as string) || 50;
+      const requests = receiver.requests.slice(0, limit);
+
+      res.json({
+        success: true,
+        data: {
+          receiver_id: receiver.id,
+          receiver_url: receiver.url,
+          created_at: receiver.created_at,
+          expires_at: receiver.expires_at,
+          requests: requests,
+          total_requests: receiver.requests.length,
+          returned_count: requests.length,
+        },
+      });
+    } catch (error) {
+      logger.error(`Error fetching requests for test receiver ${req.params.id}:`, error);
+      res.status(500).json({
+        success: false,
+        error: 'Failed to fetch test receiver requests',
+        message: error instanceof Error ? error.message : 'Unknown error',
+      });
+    }
+  });
+
+  // DELETE /test-receivers/:id/requests - Clear all requests for a test receiver
+  app.delete('/test-receivers/:id/requests', async (req: Request, res: Response) => {
+    try {
+      const { id } = req.params;
+      const webhookStorage = webhookProcessor.getWebhookStorage();
+      
+      const clearedCount = await webhookStorage.clearTestReceiverRequests(id);
+      
+      if (clearedCount === 0) {
+        const receiver = await webhookStorage.getTestReceiver(id);
+        if (!receiver) {
+          return res.status(404).json({
+            success: false,
+            error: 'Test receiver not found',
+          });
+        }
+      }
+
+      logger.info(`Cleared ${clearedCount} requests for test receiver ${id}`);
+
+      res.json({
+        success: true,
+        message: `Cleared ${clearedCount} test receiver requests`,
+        cleared_count: clearedCount,
+      });
+    } catch (error) {
+      logger.error(`Error clearing requests for test receiver ${req.params.id}:`, error);
+      res.status(500).json({
+        success: false,
+        error: 'Failed to clear test receiver requests',
+        message: error instanceof Error ? error.message : 'Unknown error',
+      });
+    }
+  });
+
+  // Handle webhook test receiver requests (catch-all for any HTTP method)
+  const handleTestReceiverRequest = async (req: Request, res: Response) => {
+    const { id } = req.params;
+    
+    try {
+      const webhookStorage = webhookProcessor.getWebhookStorage();
+      const receiver = await webhookStorage.getTestReceiver(id);
+      
+      if (!receiver) {
+        return res.status(404).json({
+          success: false,
+          error: 'Test receiver not found',
+          message: 'This test receiver URL may have expired or been deleted',
+        });
+      }
+
+      // Parse request body
+      let body: unknown = null;
+      const contentType = req.headers['content-type'] || '';
+      
+      if (contentType.includes('application/json')) {
+        body = req.body;
+      } else if (contentType.includes('application/x-www-form-urlencoded')) {
+        body = req.body;
+      } else {
+        // For other content types, body should already be parsed by Express
+        body = req.body;
+      }
+
+      // Extract query parameters
+      const query: Record<string, string> = {};
+      Object.entries(req.query).forEach(([key, value]) => {
+        query[key] = String(value);
+      });
+
+      // Create test receiver request record
+      const testRequest = {
+        id: `req_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+        timestamp: Date.now(),
+        method: req.method,
+        headers: req.headers as any,
+        body: body,
+        query: query,
+        user_agent: req.headers['user-agent'],
+        ip: req.ip || req.connection.remoteAddress || 'unknown',
+      };
+
+      await webhookStorage.addTestReceiverRequest(id, testRequest);
+
+      logger.debug(`Test receiver ${id} received ${req.method} request`, {
+        request_id: testRequest.id,
+        method: req.method,
+      });
+
+      // Return success response
+      res.json({
+        success: true,
+        message: 'Test webhook received successfully',
+        receiver_id: id,
+        request_id: testRequest.id,
+        timestamp: testRequest.timestamp,
+      });
+    } catch (error) {
+      logger.error(`Error processing test receiver request for ${id}:`, error);
+      res.status(500).json({
+        success: false,
+        error: 'Failed to process test receiver request',
+        message: error instanceof Error ? error.message : 'Unknown error',
+      });
+    }
+  };
+
+  // Mount test receiver webhook handler for all HTTP methods
+  ['get', 'post', 'put', 'patch', 'delete', 'head', 'options'].forEach(method => {
+    (app as any)[method]('/test-receivers/:id/webhook', handleTestReceiverRequest);
+  });
+
   logger.info('✅ Webhook routes configured', {
     endpoints: [
       'POST /webhooks',
@@ -343,6 +569,11 @@ export function setupWebhookRoutes(app: Express, webhookProcessor: WebhookProces
       'GET /webhooks/:id/deliveries',
       'GET /stats/summary',
       'GET /deliveries/recent',
+      'POST /test-receivers',
+      'GET /test-receivers',
+      'GET /test-receivers/:id/requests',
+      'DELETE /test-receivers/:id/requests',
+      'ALL /test-receivers/:id/webhook',
     ],
   });
 }
