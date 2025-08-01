@@ -2,16 +2,8 @@ name: Deploy Webhook Service
 
 on:
   push:
-    branches: [ main, master ]
-    paths:
-      - 'apps/webhook-service/**'
-      - 'packages/core/**'
-      - '.github/workflows/webhook-service-deploy.yml'
-  pull_request:
-    branches: [ main, master ]
-    paths:
-      - 'apps/webhook-service/**'
-      - 'packages/core/**'
+    tags:
+      - 'v*'
 
 env:
   REGISTRY: ghcr.io
