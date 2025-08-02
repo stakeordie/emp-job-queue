@@ -29,6 +29,10 @@
     },
     "clean": {
       "cache": false
+    },
+    "deploy": {
+      "dependsOn": ["^build"],
+      "outputs": ["standalone/**"]
     }
   },
   "globalEnv": ["NODE_ENV", "CI", "REDIS_URL", "API_PORT"],

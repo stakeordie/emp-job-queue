@@ -15,7 +15,7 @@
     "test:ui": "vitest --ui",
     "test:coverage": "vitest --coverage",
     "clean": "rm -rf dist",
-    "deploy": "./build-standalone.sh"
+    "deploy": "turbo build --filter=webhook-service --output-mode=standalone --output-dir=standalone"
   },
   "dependencies": {
     "@emp/core": "workspace:*",

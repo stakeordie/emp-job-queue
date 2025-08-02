@@ -1,0 +1,6 @@
+[build]
+builder = "dockercompose"
+dockerComposeFile = "docker-compose.railway.yml"
+
+[deploy]
+restartPolicyType = "always"
