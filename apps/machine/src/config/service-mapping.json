@@ -27,7 +27,7 @@
       "service": [
         {
           "capability": "comfyui",
-          "connector": "ComfyUIWebsocketConnector",
+          "connector": "ComfyUIConnector",
           "type": "internal"
         }
       ],

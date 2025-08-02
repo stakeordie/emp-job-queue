@@ -40,32 +40,23 @@ const schema = Joi.object({
     skipDownload: Joi.boolean().default(false) // Skip download entirely if local path is set
   }),
   
-  // Service configuration
-  services: Joi.object({
-    nginx: Joi.object({
-      enabled: Joi.boolean().default(true),
-      port: Joi.number().port().default(80)
-    }),
+  // Worker-driven configuration
+  workers: Joi.object({
+    connectors: Joi.string().default('simulation:1'),
+    bundleMode: Joi.string().valid('local', 'remote').default('remote')
+  }),
+  
+  // Port configurations
+  ports: Joi.object({
     comfyui: Joi.object({
-      enabled: Joi.boolean().default(true),
-      basePort: Joi.number().port().default(8188)
-    }),
-    automatic1111: Joi.object({
-      enabled: Joi.boolean().default(true),
-      basePort: Joi.number().port().default(3001)
-    }),
-    redisWorker: Joi.object({
-      enabled: Joi.boolean().default(true)
-    }),
-    ollama: Joi.object({
-      enabled: Joi.boolean().default(true),
-      port: Joi.number().port().default(11434),
-      models: Joi.array().items(Joi.string()).default(['llama3'])
+      base: Joi.number().port().default(8188),
+      increment: Joi.number().integer().min(1).default(1)
     }),
     simulation: Joi.object({
-      enabled: Joi.boolean().default(false),
-      port: Joi.number().port().default(8299)
-    })
+      base: Joi.number().port().default(8299)
+    }),
+    nginx: Joi.number().port().default(80),
+    ollama: Joi.number().port().default(11434)
   }),
   
   // Logging configuration
@@ -131,31 +122,22 @@ function buildConfig() {
       useLocalPath: process.env.WORKER_LOCAL_PATH,
       skipDownload: !!process.env.WORKER_LOCAL_PATH
     },
-    services: {
-      nginx: {
-        enabled: process.env.MACHINE_ENABLE_NGINX === 'true',
-        port: parseInt(process.env.NGINX_PORT || '80')
-      },
+    // Worker-driven service configuration - services determined by WORKERS environment variable
+    workers: {
+      connectors: process.env.WORKERS || process.env.WORKER_CONNECTORS || 'simulation:1',
+      bundleMode: process.env.WORKER_BUNDLE_MODE || 'remote'
+    },
+    // Port configurations for services when needed
+    ports: {
       comfyui: {
-        enabled: process.env.MACHINE_ENABLE_COMFYUI === 'true',
-        basePort: parseInt(process.env.COMFYUI_BASE_PORT || '8188')
-      },
-      automatic1111: {
-        enabled: process.env.MACHINE_ENABLE_A1111 === 'true',
-        basePort: parseInt(process.env.A1111_BASE_PORT || '3001')
-      },
-      redisWorker: {
-        enabled: process.env.MACHINE_ENABLE_REDIS_WORKERS === 'true'
-      },
-      ollama: {
-        enabled: process.env.MACHINE_ENABLE_OLLAMA === 'true',
-        port: parseInt(process.env.OLLAMA_PORT || '11434'),
-        models: process.env.OLLAMA_MODELS?.split(',').map(s => s.trim())
+        base: parseInt(process.env.COMFYUI_BASE_PORT || '8188'),
+        increment: parseInt(process.env.COMFYUI_PORT_INCREMENT || '1')
       },
       simulation: {
-        enabled: process.env.MACHINE_ENABLE_SIMULATION === 'true',
-        port: parseInt(process.env.SIMULATION_PORT || '8299')
-      }
+        base: parseInt(process.env.SIMULATION_PORT || '8299')
+      },
+      nginx: parseInt(process.env.NGINX_PORT || '80'),
+      ollama: parseInt(process.env.OLLAMA_PORT || '11434')
     },
     logging: {
       level: process.env.LOG_LEVEL,
@@ -187,10 +169,15 @@ function buildConfig() {
 let config;
 try {
   const rawConfig = buildConfig();
+  console.log('DEBUG: Raw config workers section:', rawConfig.workers);
+  
   const { error, value } = schema.validate(rawConfig, { 
     abortEarly: false,
     stripUnknown: true 
   });
+  
+  console.log('DEBUG: Validation error:', error);
+  console.log('DEBUG: Validated config workers section:', value?.workers);
   
   if (error) {
     logger.error('Configuration validation failed:', error.details);
@@ -200,9 +187,8 @@ try {
   config = value;
   logger.info('Configuration loaded successfully', {
     gpuCount: config.machine.gpu.count,
-    services: Object.entries(config.services)
-      .filter(([_, s]) => s.enabled)
-      .map(([name]) => name)
+    workers: config.workers?.connectors || 'not configured',
+    bundleMode: config.workers?.bundleMode || 'not configured'
   });
 } catch (error) {
   logger.error('Failed to load configuration:', error);

@@ -115,21 +115,47 @@ async function startPM2Services() {
       // Continue anyway - not critical for startup
     }
     
-    // Get GPU count for all services
-    const gpuCount = parseInt(process.env.MACHINE_NUM_GPUS || '2');
+    // Start ComfyUI services if needed based on WORKERS configuration
+    const workerConnectors = process.env.WORKERS || '';
+    const enableComfyUI = workerConnectors.includes('comfyui:') && !workerConnectors.includes('comfyui-remote:');
     
-    // Start ComfyUI env creator if enabled  
-    const enableComfyUI = process.env.MACHINE_ENABLE_COMFYUI === 'true';
     if (enableComfyUI) {
+      logger.info(`ComfyUI services needed based on WORKERS: ${workerConnectors}`);
+      
+      // Determine number of ComfyUI instances to start
+      let comfyuiCount = 0;
+      const workerMatch = workerConnectors.match(/comfyui:(\d+)/);
+      if (workerMatch) {
+        comfyuiCount = parseInt(workerMatch[1]);
+      }
+      
+      // Check if we're in mock_gpu mode
+      const isMockGpu = process.env.COMFYUI_RESOURCE_BINDING === 'mock_gpu';
+      
+      if (isMockGpu) {
+        // In mock_gpu mode, use the worker count directly
+        logger.info(`Mock GPU mode: Starting ${comfyuiCount} ComfyUI instances as requested`);
+      } else {
+        // In real GPU mode, detect actual GPUs and use minimum
+        const actualGpuCount = parseInt(process.env.MACHINE_NUM_GPUS || '0');
+        if (actualGpuCount > 0) {
+          const originalCount = comfyuiCount;
+          comfyuiCount = Math.min(comfyuiCount, actualGpuCount);
+          if (originalCount !== comfyuiCount) {
+            logger.warn(`Requested ${originalCount} ComfyUI workers but only ${actualGpuCount} GPUs available. Starting ${comfyuiCount} instances.`);
+          }
+        }
+      }
+      
       await pm2Manager.pm2Exec('start /workspace/pm2-ecosystem.config.cjs --only comfyui-env-creator');
       logger.info('ComfyUI env creator service started');
       
       // Wait for ComfyUI env setup to complete (much faster than full installation)
       await new Promise(resolve => setTimeout(resolve, 3000));
       
-      // Start ComfyUI service instances (per GPU)
+      // Start ComfyUI service instances
       const comfyuiServices = [];
-      for (let gpu = 0; gpu < gpuCount; gpu++) {
+      for (let gpu = 0; gpu < comfyuiCount; gpu++) {
         comfyuiServices.push(`comfyui-gpu${gpu}`);
       }
       
@@ -141,16 +167,24 @@ async function startPM2Services() {
         logger.info('Waiting for ComfyUI services to initialize...');
         await new Promise(resolve => setTimeout(resolve, 5000));
       }
+    } else {
+      logger.info(`ComfyUI services not needed. WORKERS: ${workerConnectors}`);
     }
     
     // Start simulation service BEFORE workers (so workers can connect to it)
-    if (process.env.MACHINE_ENABLE_SIMULATION === 'true') {
+    const enableSimulation = workerConnectors.includes('simulation:');
+    
+    if (enableSimulation) {
+      logger.info(`Simulation service needed based on WORKERS: ${workerConnectors}`);
+      
       await pm2Manager.pm2Exec('start /workspace/pm2-ecosystem.config.cjs --only simulation');
       logger.info('Simulation service started');
       
       // Wait for simulation service to be ready
       logger.info('Waiting for simulation service to initialize...');
       await new Promise(resolve => setTimeout(resolve, 3000));
+    } else {
+      logger.info(`Simulation service not needed. WORKERS: ${workerConnectors}`);
     }
     
     // Worker-driven mode: Start all worker processes from the ecosystem config
@@ -270,26 +304,21 @@ async function generatePM2EcosystemConfig() {
     const workerConnectors = process.env.WORKERS || process.env.WORKER_CONNECTORS || 'simulation:1'; // Default fallback
     
     // Worker-driven mode: determine services from WORKERS
-    const enableComfyUI = workerConnectors.includes('comfyui:') && !workerConnectors.includes('comfyui-remote:');
-    const enableSimulation = workerConnectors.includes('simulation:');
-    const enableRedisWorker = false; // Redis workers are created by worker-driven generator
+    const detectEnableComfyUI = workerConnectors.includes('comfyui:') && !workerConnectors.includes('comfyui-remote:');
+    const detectEnableSimulation = workerConnectors.includes('simulation:');
     
     logger.info('Worker-driven service detection:', {
       workerConnectors,
-      enableComfyUI,
-      enableSimulation,
-      enableRedisWorker
+      enableComfyUI: detectEnableComfyUI,
+      enableSimulation: detectEnableSimulation
     });
     
-    logger.info('🚀 Using worker-driven PM2 ecosystem generator (only system)');
+    logger.info('🚀 Using worker-driven PM2 ecosystem generator');
     await execa('node', ['/service-manager/generate-pm2-ecosystem-worker-driven.js'], {
       cwd: '/workspace',
       env: {
         ...process.env,
-        MACHINE_NUM_GPUS: config.machine.gpu.count.toString(),
-        MACHINE_ENABLE_COMFYUI: enableComfyUI ? 'true' : 'false',
-        MACHINE_ENABLE_SIMULATION: enableSimulation ? 'true' : 'false',
-        MACHINE_ENABLE_REDIS_WORKERS: enableRedisWorker ? 'true' : 'false'
+        MACHINE_NUM_GPUS: config.machine.gpu.count.toString()
       }
     });
     
@@ -696,7 +725,6 @@ async function checkSystemHealth() {
     }
 
     // Check status aggregator Redis connection
-    const statusHealth = statusAggregator.getCurrentStatus();
     health.services['status-aggregator'] = {
       healthy: statusAggregator.isConnected,
       error: statusAggregator.isConnected ? null : 'Not connected to Redis'

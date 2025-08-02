@@ -48,17 +48,15 @@ export class DockerComposeManager {
         'MACHINE_NUM_GPUS',
         'MACHINE_GPU_MEMORY_GB', 
         'MACHINE_GPU_MODEL',
-        'MACHINE_ENABLE_COMFYUI',
-        'MACHINE_ENABLE_REDIS_WORKERS',
-        'MACHINE_ENABLE_SIMULATION'
+        'WORKERS'
       ],
       optional: [
-        'MACHINE_ENABLE_NGINX',
-        'MACHINE_ENABLE_A1111',
-        'MACHINE_ENABLE_OLLAMA',
+        'WORKER_BUNDLE_MODE',
         'MACHINE_HEALTH_PORT',
         'MACHINE_LOG_LEVEL',
-        'MACHINE_TEST_MODE'
+        'MACHINE_TEST_MODE',
+        'COMFYUI_BASE_PORT',
+        'SIMULATION_PORT'
       ]
     };
   }

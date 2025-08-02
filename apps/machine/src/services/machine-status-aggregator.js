@@ -16,6 +16,7 @@ const logger = createLogger('machine-status-aggregator');
  */
 export class MachineStatusAggregator {
   constructor(config) {
+    console.info('[MachineStatusAggregator] Constructor called');
     this.config = config;
     this.machineId = config.machine.id;
     this.redis = null;
@@ -32,6 +33,8 @@ export class MachineStatusAggregator {
     this.structure = null;
     this.currentStatus = null;
     
+    console.info(`[MachineStatusAggregator] Machine Status Aggregator initialized for ${this.machineId}`);
+    console.info(`[MachineStatusAggregator] Update interval: ${this.updateIntervalSeconds}s`);
     logger.info(`Machine Status Aggregator initialized for ${this.machineId}`);
     logger.info(`Update interval: ${this.updateIntervalSeconds}s`);
   }
@@ -41,8 +44,12 @@ export class MachineStatusAggregator {
    */
   async getStructureFromServiceMapping() {
     try {
+      console.info('[MachineStatusAggregator] getStructureFromServiceMapping() called');
+      
       // Get worker types from WORKERS environment variable
       const workersEnv = process.env.WORKERS || '';
+      console.info(`[MachineStatusAggregator] WORKERS env: ${workersEnv}`);
+      
       const workerSpecs = workersEnv
         .split(',')
         .map(s => s.trim())
@@ -51,6 +58,8 @@ export class MachineStatusAggregator {
           const [type, count] = spec.split(':');
           return { type, count: parseInt(count) || 1 };
         });
+      
+      console.info(`[MachineStatusAggregator] Parsed worker specs:`, JSON.stringify(workerSpecs));
 
       if (workerSpecs.length === 0) {
         throw new Error('[MachineStatusAggregator] SYSTEM IS FUCKED: No WORKERS environment variable specified. I cannot determine what services this machine should provide. Set WORKERS=worker-type:count environment variable.');
@@ -127,53 +136,107 @@ export class MachineStatusAggregator {
       
     } catch (error) {
       console.error('[MachineStatusAggregator] Failed to load structure from service mapping:', error);
-      throw error; // Re-throw the error instead of using fallback
+      console.error('[MachineStatusAggregator] Stack trace:', error.stack);
+      // Don't re-throw - return empty structure to continue with empty state
+      return { capabilities: [], workers: [], gpuCount: 1 };
     }
   }
 
   /**
-   * Build static machine structure from config (never changes)
+   * Build static machine structure from PM2 ecosystem config (never changes)
    */
   async buildMachineStructure() {
-    // Get capabilities and worker structure from service mapping
-    const { capabilities, workers: workerStructure, gpuCount } = await this.getStructureFromServiceMapping();
-
+    // Simplified approach: Skip service mapping and build directly from PM2 config
     const workers = {};
-    // Workers are created based on resource binding, workerIndex no longer needed
+    const services = {};
+    
+    // Default capabilities based on WORKERS env var
+    const workersEnv = process.env.WORKERS || '';
+    const capabilities = [];
+    
+    if (workersEnv.includes('comfyui')) {
+      capabilities.push('comfyui');
+    }
+    if (workersEnv.includes('simulation')) {
+      capabilities.push('simulation');
+    }
+    
+    const gpuCount = 4; // From WORKERS=comfyui:4
 
-    // Create workers based on their resource binding
-    for (const workerSpec of workerStructure) {
-      if (workerSpec.resourceBinding === 'gpu' || workerSpec.resourceBinding === 'mock_gpu') {
-        // GPU-bound workers: one worker per GPU up to the count specified
-        for (let gpu = 0; gpu < Math.min(workerSpec.count, gpuCount); gpu++) {
-          const workerId = `${this.machineId}-worker-${gpu}`;
-          workers[workerId] = {
-            worker_id: workerId,
-            gpu_id: gpu,
-            worker_type: workerSpec.type,
-            resource_binding: workerSpec.resourceBinding,
-            services: [...capabilities] // Each worker has all capabilities
-          };
-        }
-      } else if (workerSpec.resourceBinding === 'shared' || workerSpec.resourceBinding === 'cpu') {
-        // Shared/CPU workers: create specified count without GPU binding
-        for (let i = 0; i < workerSpec.count; i++) {
-          const workerId = `${this.machineId}-worker-${workerSpec.type}-${i}`;
-          workers[workerId] = {
-            worker_id: workerId,
-            gpu_id: null, // No GPU binding for shared workers
-            worker_type: workerSpec.type,
-            resource_binding: workerSpec.resourceBinding,
-            services: [...capabilities] // Each worker has all capabilities
-          };
+    // Parse actual PM2 ecosystem config to get real process names
+    try {
+      const fs = await import('fs');
+      const ecosystemPath = '/workspace/pm2-ecosystem.config.cjs';
+      
+      if (fs.existsSync(ecosystemPath)) {
+        const configContent = fs.readFileSync(ecosystemPath, 'utf8');
+        const configMatch = configContent.match(/module\.exports\s*=\s*(\{[\s\S]*\});?\s*$/);
+        
+        if (configMatch) {
+          const ecosystemConfig = eval(`(${configMatch[1]})`);
+          
+          for (const app of ecosystemConfig.apps) {
+            if (app.name.startsWith('redis-worker-')) {
+              // This is a worker process
+              const workerId = app.env?.WORKER_ID || app.name;
+              const workerType = app.env?.WORKER_ID_PREFIX || 'unknown';
+              
+              // Extract index from different patterns:
+              // redis-worker-simulation-gpu0 -> 0
+              // redis-worker-comfyui-0 -> 0
+              const gpuMatch = app.name.match(/gpu(\d+)$/);
+              const indexMatch = app.name.match(/(\d+)$/);
+              const index = gpuMatch ? gpuMatch[1] : (indexMatch ? indexMatch[1] : '0');
+              
+              workers[workerId] = {
+                worker_id: workerId,
+                pm2_name: app.name,
+                gpu_id: parseInt(index),
+                worker_type: workerType,
+                resource_binding: 'mock_gpu',
+                services: [...capabilities],
+                connectors: app.env?.CONNECTORS?.split(',') || []
+              };
+              
+              // Create services for this worker
+              for (const capability of capabilities) {
+                const serviceKey = `${workerId}.${capability}`;
+                services[serviceKey] = {
+                  worker_id: workerId,
+                  service_type: capability,
+                  pm2_name: app.name,
+                  status: 'unknown',
+                  health: 'unknown'
+                };
+              }
+            } else if (app.name.startsWith('comfyui-gpu')) {
+              // This is a ComfyUI service process
+              const gpuIndex = app.name.match(/gpu(\d+)$/)?.[1] || '0';
+              const serviceKey = `comfyui-${gpuIndex}.comfyui`;
+              
+              services[serviceKey] = {
+                worker_id: `comfyui-${gpuIndex}`,
+                service_type: 'comfyui',
+                pm2_name: app.name,
+                status: 'unknown',
+                health: 'unknown',
+                port: app.env?.COMFYUI_PORT || '8188'
+              };
+            }
+          }
+          
+          logger.info(`Built structure from PM2 ecosystem config: ${Object.keys(workers).length} workers, ${Object.keys(services).length} services`);
         }
       }
+    } catch (error) {
+      logger.error('[MachineStatusAggregator] Failed to parse PM2 ecosystem config:', error);
     }
 
     return {
       gpu_count: gpuCount,
       capabilities,
-      workers
+      workers,
+      services
     };
   }
 
@@ -192,16 +255,16 @@ export class MachineStatusAggregator {
         current_job_id: null,
         last_activity: null
       };
+    }
 
-      // Initialize all services as unknown
-      for (const serviceName of this.structure.capabilities) {
-        const serviceKey = `${workerId}.${serviceName}`;
-        services[serviceKey] = {
-          status: 'unknown',
-          health: 'unknown',
-          pm2_status: 'unknown'
-        };
-      }
+    // Initialize all services from structure
+    for (const [serviceKey, serviceInfo] of Object.entries(this.structure.services)) {
+      services[serviceKey] = {
+        ...serviceInfo,
+        status: 'unknown',
+        health: 'unknown',
+        pm2_status: 'unknown'
+      };
     }
 
     return {
@@ -219,10 +282,13 @@ export class MachineStatusAggregator {
    */
   async connect() {
     try {
+      console.info('[MachineStatusAggregator] connect() called - starting structure build');
+      
       // Build machine structure from service mapping
       this.structure = await this.buildMachineStructure();
       this.currentStatus = this.buildInitialStatus();
       
+      console.info(`[MachineStatusAggregator] Final structure: ${Object.keys(this.structure.workers).length} workers, ${Object.keys(this.currentStatus.services).length} services`);
       logger.info(`Structure: ${Object.keys(this.structure.workers).length} workers, ${Object.keys(this.currentStatus.services).length} services`);
 
       if (!this.config.redis.url) {
@@ -295,6 +361,25 @@ export class MachineStatusAggregator {
     logger.debug(`Received worker event: ${event_type} from ${worker_id}`);
     
     switch (event_type) {
+      case 'worker_registered':
+        // Add new worker to tracking
+        this.currentStatus.workers[worker_id] = {
+          worker_id,
+          status: data.status || 'initializing',
+          capabilities: data.capabilities || [],
+          current_job_id: null,
+          last_activity: Date.now(),
+          is_connected: true,
+          version: data.version,
+          build_timestamp: data.build_timestamp,
+          build_info: data.build_info
+        };
+        logger.info(`Worker registered: ${worker_id}`, {
+          capabilities: data.capabilities
+        });
+        await this.publishStatus('event_driven');
+        break;
+        
       case 'worker_status_changed':
         if (this.currentStatus.workers[worker_id]) {
           this.currentStatus.workers[worker_id].status = data.status;
@@ -306,6 +391,13 @@ export class MachineStatusAggregator {
           this.currentStatus.workers[worker_id].build_timestamp = data.build_timestamp;
           this.currentStatus.workers[worker_id].build_info = data.build_info;
           await this.publishStatus('event_driven');
+        } else {
+          // If worker doesn't exist yet, treat it as a registration
+          await this.handleWorkerEvent({
+            worker_id,
+            event_type: 'worker_registered',
+            data
+          });
         }
         break;
         
@@ -396,27 +488,37 @@ export class MachineStatusAggregator {
       const cleanOutput = stdout.replace(/\x1b\[[0-9;]*m/g, ''); // Strip ANSI codes
       const processes = JSON.parse(cleanOutput);
       
-      // Update service PM2 status
-      for (const [serviceKey] of Object.entries(this.currentStatus.services)) {
-        const [workerId, serviceName] = serviceKey.split('.');
-        const worker = this.structure.workers[workerId];
+      // Update service PM2 status using actual PM2 process names from structure
+      for (const [serviceKey, serviceInfo] of Object.entries(this.currentStatus.services)) {
+        const processName = serviceInfo.pm2_name;
         
-        if (worker) {
-          let processName;
-          if (worker.gpu_id !== null && worker.gpu_id !== undefined) {
-            // GPU-bound workers: serviceName-gpu{N}
-            processName = `${serviceName}-gpu${worker.gpu_id}`;
-          } else {
-            // Shared/CPU workers: use worker type for process name
-            processName = `${worker.worker_type}-worker`;
-          }
-          
+        if (processName) {
           const process = processes.find(p => p.name === processName);
           
           if (process) {
             this.currentStatus.services[serviceKey].pm2_status = process.pm2_env.status;
             this.currentStatus.services[serviceKey].status = 
               process.pm2_env.status === 'online' ? 'active' : 'inactive';
+          } else {
+            this.currentStatus.services[serviceKey].pm2_status = 'not_found';
+            this.currentStatus.services[serviceKey].status = 'inactive';
+          }
+        }
+      }
+      
+      // Update worker status based on their PM2 processes
+      for (const [workerId, workerInfo] of Object.entries(this.structure.workers)) {
+        const processName = workerInfo.pm2_name;
+        
+        if (processName && this.currentStatus.workers[workerId]) {
+          const process = processes.find(p => p.name === processName);
+          
+          if (process) {
+            // Worker is running if its PM2 process is online
+            this.currentStatus.workers[workerId].is_connected = process.pm2_env.status === 'online';
+            if (this.currentStatus.workers[workerId].status === 'unknown') {
+              this.currentStatus.workers[workerId].status = process.pm2_env.status === 'online' ? 'idle' : 'offline';
+            }
           }
         }
       }

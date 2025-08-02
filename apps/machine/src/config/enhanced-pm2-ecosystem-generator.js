@@ -125,11 +125,37 @@ export class EnhancedPM2EcosystemGenerator {
     
     for (const spec of specs) {
       const [type, countStr] = spec.split(':');
-      const count = parseInt(countStr) || 1;
       
       if (!this.serviceMapping.workers[type]) {
         this.logger.warn(`Unknown worker type: ${type}, skipping`);
         continue;
+      }
+      
+      // Handle 'auto' count for automatic hardware detection
+      let count;
+      if (countStr && countStr.toLowerCase() === 'auto') {
+        const workerConfig = this.serviceMapping.workers[type];
+        const resourceBinding = workerConfig.resource_binding;
+        
+        if (resourceBinding === 'gpu') {
+          // For GPU workers, use detected GPU count
+          count = this.hardwareResources?.gpuCount || parseInt(process.env.MACHINE_NUM_GPUS || '1');
+          this.logger.log(`🔍 Auto-resolved ${type} GPU workers to ${count} (detected GPUs)`);
+        } else if (resourceBinding === 'mock_gpu') {
+          // For mock GPU, use a sensible default since there's no hardware constraint
+          count = parseInt(process.env.MOCK_GPU_NUM || '2');
+          this.logger.log(`🔍 Auto-resolved ${type} mock GPU workers to ${count} (from MOCK_GPU_NUM or default)`);
+        } else if (resourceBinding === 'cpu') {
+          // For CPU workers, use CPU core count
+          count = this.hardwareResources?.cpuCount || parseInt(process.env.MACHINE_NUM_CPUS || '4');
+          this.logger.log(`🔍 Auto-resolved ${type} CPU workers to ${count} (detected CPUs)`);
+        } else {
+          // Default for other resource bindings
+          count = 1;
+          this.logger.log(`🔍 Auto-resolved ${type} workers to ${count} (default for ${resourceBinding} binding)`);
+        }
+      } else {
+        count = parseInt(countStr) || 1;
       }
       
       workerSpecs.push({ type, count });
@@ -203,10 +229,11 @@ export class EnhancedPM2EcosystemGenerator {
     
     switch (binding.scaling) {
       case 'per_gpu':
-        // For mock_gpu binding, use MOCK_GPU_NUM; otherwise use actual GPU count
+        // For mock_gpu binding, use worker config count; otherwise use actual GPU count
         let gpuCount;
         if (resourceBinding === 'mock_gpu') {
-          gpuCount = parseInt(process.env.MOCK_GPU_NUM || process.env.MACHINE_NUM_GPUS || '10');
+          // Count workers from machine config instead of env var
+          gpuCount = requestedCount; // Use the actual worker count from config
         } else {
           gpuCount = this.hardwareResources?.gpuCount || parseInt(process.env.MACHINE_NUM_GPUS || '1');
         }

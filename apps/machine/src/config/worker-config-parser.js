@@ -17,9 +17,9 @@ export class WorkerConfigurationParser {
 
   /**
    * Parse WORKER_CONNECTORS environment variable
-   * Format: "comfyui:2,openai:4,playwright:1" (resource binding from service-mapping.json)
+   * Format: "comfyui:2,openai:4,playwright:1" or "comfyui:auto" (resource binding from service-mapping.json)
    */
-  parseWorkerConnectors(workerConnectorsStr) {
+  parseWorkerConnectors(workerConnectorsStr, hardwareResources = null) {
     if (!workerConnectorsStr || workerConnectorsStr.trim() === '') {
       throw new Error('WORKER_CONNECTORS cannot be empty');
     }
@@ -27,6 +27,10 @@ export class WorkerConfigurationParser {
     this.logger.log(`Parsing worker connectors: ${workerConnectorsStr}`);
     
     const workerSpecs = this.parseWorkerSpecs(workerConnectorsStr);
+    
+    // Resolve 'auto' counts based on hardware resources
+    this.resolveAutoCounts(workerSpecs, hardwareResources);
+    
     const requiredServices = this.getRequiredServices(workerSpecs);
     
     // Categorize workers by resource binding
@@ -65,9 +69,15 @@ export class WorkerConfigurationParser {
         throw new Error(`Invalid WORKER_CONNECTORS format: "${part}". Expected format: "connector:count"`);
       }
       
-      const count = parseInt(countStr);
-      if (isNaN(count) || count <= 0) {
-        throw new Error(`Invalid worker count: "${countStr}". Must be a positive integer.`);
+      // Handle 'auto' for automatic GPU detection
+      let count;
+      if (countStr.toLowerCase() === 'auto') {
+        count = 'auto'; // Will be resolved later based on resource binding
+      } else {
+        count = parseInt(countStr);
+        if (isNaN(count) || count <= 0) {
+          throw new Error(`Invalid worker count: "${countStr}". Must be a positive integer or 'auto'.`);
+        }
       }
       
       // Get binding from service mapping instead of parsing from string
@@ -92,6 +102,35 @@ export class WorkerConfigurationParser {
     return workerSpecs;
   }
   
+  /**
+   * Resolve 'auto' counts based on hardware resources and resource binding
+   */
+  resolveAutoCounts(workerSpecs, hardwareResources) {
+    for (const spec of workerSpecs) {
+      if (spec.count === 'auto') {
+        if (spec.binding === 'gpu') {
+          // For GPU workers, use detected GPU count
+          spec.count = hardwareResources?.gpuCount || parseInt(process.env.MACHINE_NUM_GPUS || '1');
+          this.logger.log(`Auto-resolved ${spec.connector} GPU workers to ${spec.count} (detected GPUs)`);
+        } else if (spec.binding === 'mock_gpu') {
+          // For mock GPU, default to a reasonable number if not specified
+          spec.count = parseInt(process.env.MOCK_GPU_NUM || '2');
+          this.logger.log(`Auto-resolved ${spec.connector} mock GPU workers to ${spec.count} (from MOCK_GPU_NUM or default)`);
+        } else if (spec.binding === 'cpu') {
+          // For CPU workers, use CPU core count or default
+          spec.count = hardwareResources?.cpuCount || parseInt(process.env.MACHINE_NUM_CPUS || '4');
+          this.logger.log(`Auto-resolved ${spec.connector} CPU workers to ${spec.count} (detected CPUs)`);
+        } else if (spec.binding === 'shared') {
+          // For shared workers, use a default
+          spec.count = 1;
+          this.logger.log(`Auto-resolved ${spec.connector} shared workers to ${spec.count} (default for shared resources)`);
+        } else {
+          throw new Error(`Cannot auto-resolve worker count for unknown binding: ${spec.binding}`);
+        }
+      }
+    }
+  }
+
   /**
    * Get required services from worker specs
    */

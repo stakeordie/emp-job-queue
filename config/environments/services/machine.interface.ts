@@ -10,12 +10,12 @@ export const MachineEnvInterface = {
   required: {
     // Redis connection (used by both machine and workers)
     "HUB_REDIS_URL": "REDIS_URL",
-    
-
 
     "WORKER_BUNDLE_MODE": "WORKER_BUNDLE_MODE",
 
-    "UNIFIED_MACHINE_STATUS":"WORKER_UNIFIED_MACHINE_STATUS"
+    "UNIFIED_MACHINE_STATUS":"WORKER_UNIFIED_MACHINE_STATUS",
+
+    "EXPOSE_PORTS":"MACHINE_EXPOSE_PORTS"
   },
   
   optional: {
@@ -34,6 +34,10 @@ export const MachineEnvInterface = {
     // Custom ComfyUI Nodes Environment Variables (unprefixed - what the nodes expect)
 
     "STATIC_MODELS": "STATIC_MODELS",
+
+    "COMFYUI_EXPOSE_PORTS":"COMFYUI_EXPOSE_PORTS",
+    "COMFYUI_EXPOSED_HOST_PORT_BASE":"COMFYUI_EXPOSED_HOST_PORT_BASE",
+    "COMFYUI_EXPOSED_CONTAINER_PORT_BASE":"COMFYUI_EXPOSED_CONTAINER_PORT_BASE",
 
     "COMFYUI_RESOURCE_BINDING": "COMFYUI_RESOURCE_BINDING",
     "OPENAI_IMAGE_MODEL": "OPENAI_IMAGE_MODEL"
@@ -65,7 +69,6 @@ export const MachineEnvInterface = {
   defaults: {
     // Worker configuration (passed to workers)
     "WORKER_MAX_CONCURRENT_JOBS": "1",
-    "WORKER_HEALTH_CHECK_INTERVAL": "30",
-    "MOCK_GPU_NUM": 10
+    "WORKER_HEALTH_CHECK_INTERVAL": "30"
   }
 };

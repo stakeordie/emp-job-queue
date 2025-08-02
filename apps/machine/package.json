@@ -17,7 +17,10 @@
     "build:workspace-packages": "../../scripts/build-workspace-packages.sh",
     "docker:build": "./scripts/build-with-version.sh",
     "docker:build:version": "./scripts/build-with-version.sh",
-    "docker:build:push": "./scripts/build-with-version.sh latest emprops basic-machine --push"
+    "docker:build:push": "./scripts/build-with-version.sh latest emprops basic-machine --push",
+    "ports:generate": "node scripts/generate-docker-compose-ports.js",
+    "docker:up": "pnpm ports:generate && docker-compose up --build",
+    "docker:up:bg": "pnpm ports:generate && docker-compose up --build -d"
   },
   "dependencies": {
     "@azure/storage-blob": "^12.27.0",

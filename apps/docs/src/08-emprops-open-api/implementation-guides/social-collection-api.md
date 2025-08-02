@@ -37,6 +37,7 @@ POST /collections/abc123/remix
 Content-Type: application/json
 
 {
+  "is_custodial": true,
   "social_org": "farcaster",
   "social_identifier": "12345",
   "project_id": "optional-project-id"
@@ -47,6 +48,7 @@ Content-Type: application/json
 
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
+| `is_custodial` | boolean | No* | Must be `true` for custodial collections |
 | `social_org` | string | No* | Social platform: `farcaster`, `twitter`, `discord`, `lens`, etc. |
 | `social_identifier` | string | No* | Platform-specific identifier (FID, Twitter ID, Discord ID, etc.) |
 | `project_id` | string | No | Specific project ID to fork into (optional) |
@@ -385,6 +387,254 @@ WHERE sl.social_org = 'farcaster'
 2. **UI Restrictions**: Custodial collections cannot be edited through the UI
 3. **Manual Transfer**: Custody transfer requires manual verification
 4. **Single Beneficiary**: Each collection can only have one social link beneficiary
+
+## Edit Custodial Collections
+
+**Endpoint**: `PUT /collections/:id/edit`
+
+This endpoint allows updating custodial collections with component form values, variable values, settings, and publish/hide functionality.
+
+### Basic Edit Request
+```http
+PUT /collections/abc123/edit
+Content-Type: application/json
+Authorization: Bearer <api_key>
+
+{
+  "social_org": "farcaster",
+  "social_identifier": "12345",
+  "title": "Updated Collection Title",
+  "description": "New description",
+  "status": "published"
+}
+```
+
+### Edit Request Parameters
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `social_org` | string | Yes* | Social platform for custodial collections |
+| `social_identifier` | string | Yes* | Platform-specific identifier |
+| `title` | string | No | Collection title |
+| `description` | string | No | Collection description |
+| `blockchain` | string | No | Target blockchain |
+| `cover_image_url` | string | No | Cover image URL |
+| `editions` | number | No | Number of editions |
+| `price` | number | No | Price per edition |
+| `data` | object | No | Workflow data containing components and variables |
+| `status` | string | No | "draft" or "published" |
+| `collection_preview` | object | No | Preview settings |
+
+*Required for custodial collections, standard collections use user authentication
+
+### Updating Component Form Values
+
+Components are stored in the `data.steps` array. Each component has `nodePayload` containing form values:
+
+```json
+{
+  "data": {
+    "steps": [
+      {
+        "id": 123,
+        "nodePayload": {
+          "prompt": "A beautiful sunset over mountains",
+          "width": 1024,
+          "height": 1024,
+          "num_inference_steps": 50,
+          "guidance_scale": 7.5,
+          "seed": 42
+        }
+      }
+    ]
+  }
+}
+```
+
+**Example**: Update an image generation component's prompt and settings:
+```http
+PUT /collections/abc123/edit
+Content-Type: application/json
+Authorization: Bearer <api_key>
+
+{
+  "social_org": "farcaster",
+  "social_identifier": "12345",
+  "data": {
+    "steps": [
+      {
+        "id": 123,
+        "nodePayload": {
+          "prompt": "A serene lake at dawn with mist",
+          "width": 1536,
+          "height": 1024,
+          "num_inference_steps": 75,
+          "guidance_scale": 8.0
+        }
+      }
+    ]
+  }
+}
+```
+
+### Updating Variable Values
+
+Variables are stored in the `data.variables` object:
+
+```json
+{
+  "data": {
+    "variables": {
+      "theme": "nature",
+      "style": "photorealistic",
+      "color_palette": ["green", "blue", "brown"],
+      "intensity": 0.8
+    }
+  }
+}
+```
+
+**Example**: Update theme and style variables:
+```http
+PUT /collections/abc123/edit
+Content-Type: application/json
+
+{
+  "social_org": "farcaster", 
+  "social_identifier": "12345",
+  "data": {
+    "variables": {
+      "theme": "urban",
+      "style": "cyberpunk",
+      "color_palette": ["neon", "purple", "blue"],
+      "intensity": 0.95
+    }
+  }
+}
+```
+
+### Publishing and Visibility Settings
+
+Control collection visibility and generation settings:
+
+```http
+PUT /collections/abc123/edit
+Content-Type: application/json
+
+{
+  "social_org": "farcaster",
+  "social_identifier": "12345",
+  "status": "published",
+  "collection_preview": {
+    "enabled": true,
+    "max_generations": 100,
+    "access_level": "PUBLIC",
+    "is_remixable": true,
+    "farcaster_collection": true
+  }
+}
+```
+
+### Complex Update Example
+
+Update multiple aspects of a collection simultaneously:
+
+```http
+PUT /collections/abc123/edit
+Content-Type: application/json
+
+{
+  "social_org": "farcaster",
+  "social_identifier": "12345",
+  "title": "My Custom Art Collection",
+  "description": "AI-generated art with custom parameters",
+  "status": "published",
+  "data": {
+    "variables": {
+      "artist_style": "van_gogh",
+      "mood": "melancholic",
+      "time_period": "evening"
+    },
+    "steps": [
+      {
+        "id": 123,
+        "nodePayload": {
+          "prompt": "A {mood} landscape in the style of {artist_style} during {time_period}",
+          "width": 1024,
+          "height": 1024,
+          "guidance_scale": 8.5,
+          "num_inference_steps": 50
+        }
+      },
+      {
+        "id": 124,
+        "nodePayload": {
+          "strength": 0.7,
+          "denoise": 0.8
+        }
+      }
+    ]
+  },
+  "collection_preview": {
+    "enabled": true,
+    "max_generations": 50,
+    "access_level": "PUBLIC"
+  }
+}
+```
+
+### Edit Response Format
+
+**Success Response (200)**:
+```json
+{
+  "data": {
+    "id": "abc123",
+    "title": "My Custom Art Collection",
+    "description": "AI-generated art with custom parameters", 
+    "status": "published",
+    "is_custodial": true,
+    "custodied_for": "social-link-uuid",
+    "data": {
+      "variables": { /* updated variables */ },
+      "steps": [ /* updated components */ ]
+    },
+    "collection_preview": {
+      "enabled": true,
+      "max_generations": 50,
+      "access_level": "PUBLIC"
+    },
+    "updated_at": "2025-01-01T12:30:00Z"
+  },
+  "error": null
+}
+```
+
+**Error Responses**:
+
+**403 - Invalid Social Credentials**:
+```json
+{
+  "data": null,
+  "error": "Social credentials do not match this custodial collection"
+}
+```
+
+**400 - Missing Social Parameters**:
+```json
+{
+  "data": null,
+  "error": "Custodial collections require social_org and social_identifier for editing"
+}
+```
+
+### Edit Constraints
+
+- **No Component Addition/Removal**: Cannot add new components or delete existing ones
+- **No Variable Addition/Removal**: Cannot create new variables or remove existing ones
+- **Update Only**: Can only modify values of existing components and variables
+- **Selective Updates**: Only explicitly provided fields are changed
+- **Custodial Authentication**: Must provide matching social credentials for custodial collections
 
 ## Next Steps
 
