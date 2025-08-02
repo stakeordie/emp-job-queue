@@ -96,7 +96,7 @@ interface WebhookTestRequest {
   event_type?: string;
 }
 
-const WEBHOOK_SERVICE_URL = 'http://localhost:3332';
+const WEBHOOK_SERVICE_URL = process.env.NEXT_PUBLIC_WEBHOOK_SERVICE_URL;
 
 const EVENT_TYPE_LABELS: Record<WebhookEventType, string> = {
   'job_submitted': 'Job Submitted (NEW)',
@@ -150,7 +150,7 @@ export default function WebhookManagementPage() {
       console.error('Failed to fetch webhooks:', error);
       toast({
         title: "Error",
-        description: "Failed to connect to webhook service. Is it running on port 3332?",
+        description: `Failed to connect to webhook service. Is it running on port ${WEBHOOK_SERVICE_URL}?`,
         variant: "destructive",
       });
     } finally {
