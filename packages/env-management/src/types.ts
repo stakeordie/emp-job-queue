@@ -1,14 +1,10 @@
 import { z } from 'zod';
 
-export const ComponentSchema = z.object({
-  redis: z.union([z.string(), z.array(z.string())]),
-  api: z.union([z.string(), z.array(z.string())]),
-  machine: z.union([z.string(), z.array(z.string())]),
-  monitor: z.union([z.string(), z.array(z.string())]),
-  comfy: z.union([z.string(), z.array(z.string())]),
-  simulation: z.union([z.string(), z.array(z.string())]).optional(),
-  worker: z.union([z.string(), z.array(z.string())]).optional(),
-});
+// Dynamic component schema - accepts any component name with string or string array values
+export const ComponentSchema = z.record(
+  z.string(), // component name (any string)
+  z.union([z.string(), z.array(z.string())]) // environment name(s)
+);
 
 export const ServiceSchema = z.object({
   command: z.string(),

@@ -12,7 +12,7 @@ import { logger } from '@emp/core';
 const config = {
   port: parseInt(process.env.WEBHOOK_SERVICE_PORT || '3332'),
   redisUrl: process.env.REDIS_URL || 'redis://localhost:6379',
-  corsOrigins: process.env.CORS_ORIGINS?.split(',') || [
+  corsOrigins: process.env.CORS_ORIGINS?.split(',').map(origin => origin.trim()) || [
     'http://localhost:3333',
     'http://localhost:3331',
     '*',
@@ -55,6 +55,7 @@ async function main(): Promise<void> {
       },
       environment: process.env.NODE_ENV || 'development',
       version: '1.0.0',
+      rawCorsEnv: process.env.CORS_ORIGINS,
     });
 
     // Create and start webhook server

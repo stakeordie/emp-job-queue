@@ -39,9 +39,23 @@ export class WebhookServer {
 
   private setupMiddleware(): void {
     // CORS support
+    const corsOrigins = this.config.corsOrigins || ['*'];
+    logger.info('Setting up CORS with origins:', corsOrigins);
+    
     this.app.use(
       cors({
-        origin: this.config.corsOrigins || ['*'],
+        origin: (origin, callback) => {
+          logger.debug('CORS check for origin:', origin, 'allowed origins:', corsOrigins);
+          // Allow requests with no origin (like mobile apps or curl requests)
+          if (!origin) return callback(null, true);
+          
+          if (corsOrigins.includes('*') || corsOrigins.includes(origin)) {
+            callback(null, true);
+          } else {
+            logger.warn('CORS blocked origin:', origin, 'allowed:', corsOrigins);
+            callback(new Error('Not allowed by CORS'));
+          }
+        },
         credentials: true,
       })
     );

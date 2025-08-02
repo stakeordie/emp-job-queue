@@ -12,8 +12,9 @@ export const ApiEnvInterface = {
     "REDIS_URL": "REDIS_URL",
     
     // HTTP server configuration
-    "PORT": "API_PORT",
-    "HOST": "API_HOST",
+    "API_PORT": "API_PORT",
+    "API_HOST": "API_HOST",
+    "WEBHOOK_SERVICE_URL": "WEBHOOK_SERVICE_URL"
   },
   
   optional: {
@@ -22,13 +23,15 @@ export const ApiEnvInterface = {
     "AUTH_TOKEN": "API_AUTH_TOKEN",
     
     // Performance tuning
-    "LOG_LEVEL": "API_LOG_LEVEL",
+    "LOG_LEVEL": "API_LOG_LEVEL"
   },
-  
+  secret: {
+    "WS_AUTH_TOKEN": "API_AUTH_TOKEN"
+  },
   defaults: {
     "PORT": "3001",
     "HOST": "0.0.0.0",
     "LOG_LEVEL": "info",
-    "CORS_ORIGINS": "*",
+    "CORS_ORIGINS": "*"
   }
 };

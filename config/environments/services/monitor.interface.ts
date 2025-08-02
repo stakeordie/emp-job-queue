@@ -32,7 +32,9 @@ export const MonitorEnvInterface = {
     // Development
     "LOG_LEVEL": "MONITOR_LOG_LEVEL",
   },
-  
+  secret: {
+    "WS_AUTH_TOKEN": "API_AUTH_TOKEN"
+  },
   defaults: {
     "PORT": "3003",
     "HOST": "0.0.0.0",
