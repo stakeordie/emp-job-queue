@@ -12,11 +12,22 @@ import { logger } from '@emp/core';
 const config = {
   port: parseInt(process.env.WEBHOOK_SERVICE_PORT || '3332'),
   redisUrl: process.env.REDIS_URL || 'redis://localhost:6379',
-  corsOrigins: process.env.CORS_ORIGINS?.split(',').map(origin => origin.trim()) || [
-    'http://localhost:3333',
-    'http://localhost:3331',
-    '*',
-  ],
+  corsOrigins: (() => {
+    const corsEnv = process.env.CORS_ORIGINS;
+    if (corsEnv) {
+      const origins = corsEnv.split(',').map(origin => origin.trim());
+      // Always include localhost for development
+      if (!origins.includes('http://localhost:3333')) {
+        origins.push('http://localhost:3333');
+      }
+      return origins;
+    }
+    return [
+      'http://localhost:3333',
+      'http://localhost:3331',
+      '*',
+    ];
+  })(),
 };
 
 // Global error handlers

@@ -45,18 +45,37 @@ export class WebhookServer {
     this.app.use(
       cors({
         origin: (origin, callback) => {
-          logger.debug('CORS check for origin:', origin, 'allowed origins:', corsOrigins);
-          // Allow requests with no origin (like mobile apps or curl requests)
-          if (!origin) return callback(null, true);
+          logger.info('CORS check for origin:', origin, 'allowed origins:', corsOrigins);
           
-          if (corsOrigins.includes('*') || corsOrigins.includes(origin)) {
-            callback(null, true);
-          } else {
-            logger.warn('CORS blocked origin:', origin, 'allowed:', corsOrigins);
-            callback(new Error('Not allowed by CORS'));
+          // Allow requests with no origin (like mobile apps or curl requests)
+          if (!origin) {
+            logger.info('CORS: Allowing request with no origin');
+            return callback(null, true);
           }
+          
+          // Check if origin is explicitly allowed
+          if (corsOrigins.includes('*')) {
+            logger.info('CORS: Allowing all origins (*)');
+            return callback(null, true);
+          }
+          
+          if (corsOrigins.includes(origin)) {
+            logger.info('CORS: Allowing explicitly listed origin:', origin);
+            return callback(null, true);
+          }
+          
+          // Special case: allow localhost variants for development
+          if (origin.includes('localhost') || origin.includes('127.0.0.1')) {
+            logger.info('CORS: Allowing localhost origin for development:', origin);
+            return callback(null, true);
+          }
+          
+          logger.warn('CORS BLOCKED origin:', origin, 'allowed origins:', corsOrigins);
+          callback(new Error(`Not allowed by CORS: ${origin}`));
         },
         credentials: true,
+        methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
+        allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With', 'Accept', 'Origin'],
       })
     );
 
