@@ -76,8 +76,8 @@ services:
       dockerfile: Dockerfile
       target: comfyui
       args:
-        WORKER_SPEC: comfyui:4
-        WORKERS: comfyui:4
+        WORKER_SPEC: comfyui:1
+        WORKERS: comfyui:1
         MACHINE_ID: comfyui-${CURRENT_ENV}
         CACHE_BUST: ${CACHE_BUST:-1}
     container_name: comfyui-${CURRENT_ENV}
@@ -85,9 +85,6 @@ services:
     ports:
       - ${EXPOSE_PORTS:-9090}:9090
       - '3188:8188'
-      - '3189:8189'
-      - '3190:8190'
-      - '3191:8191'
     image: emprops/machine:comfyui
   openai:
     build:

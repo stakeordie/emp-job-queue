@@ -106,7 +106,7 @@ export class AssetSaver {
       // For Azure, wait for CDN to be available before returning
       let fileUrl: string;
       if (provider === 'azure' && process.env.CLOUD_CDN_URL) {
-        const cdnUrl = `${process.env.CLOUD_CDN_URL}/${storageKey}`;
+        const cdnUrl = `https://${process.env.CLOUD_CDN_URL}/${storageKey}`;
         logger.info(`🌐 Waiting for CDN availability: ${cdnUrl}`);
 
         // Poll CDN until it's available (required before job completion)
