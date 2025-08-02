@@ -1,6 +1,0 @@
-[build]
-builder = "dockerfile"
-# Each service will override the dockerfilePath
-
-[deploy]
-restartPolicyType = "always"
