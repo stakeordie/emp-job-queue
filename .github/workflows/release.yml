@@ -95,17 +95,15 @@ jobs:
     - name: Deploy to Railway
       run: |
         # Install Railway CLI
-        npm install -g @railway/cli
+        pnpm install @railway/cli
 
-        # Deploy webhook service
-        railway service emp-webhook-service
-        railway up --detach
+        # Deploy webhook service (uses RAILWAY_TOKEN env var for auth)
+        railway up --service emp-webhook-service --detach
 
-        railway service emp-job-queue-production
-        railway up --detach
+        # Deploy API service
+        railway up --service emp-job-queue-production --detach
       env:
         RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
-
 
 
 

@@ -201,7 +201,8 @@
       "WebFetch(domain:temporal.io)",
       "Bash(SKIP_TYPE_CHECK=true pnpm build)",
       "Bash(./build-standalone.sh:*)",
-      "Bash(git filter-branch:*)"
+      "Bash(git filter-branch:*)",
+      "WebFetch(domain:docs.railway.com)"
     ],
     "deny": []
   }
