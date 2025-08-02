@@ -17,7 +17,16 @@ async function main() {
   const config = {
     port: parseInt(process.env.API_PORT || '3331'),
     redisUrl: process.env.REDIS_URL || 'redis://localhost:6379',
-    corsOrigins: process.env.CORS_ORIGINS ? process.env.CORS_ORIGINS.split(',') : ['*'],
+    corsOrigins: (() => {
+      const corsEnv = process.env.CORS_ORIGINS;
+      if (corsEnv) {
+        const origins = corsEnv.split(',').map(origin => origin.trim());
+        logger.info('API CORS Origins configured:', origins);
+        return origins;
+      }
+      logger.info('API CORS Origins defaulting to wildcard');
+      return ['*'];
+    })(),
   };
 
   logger.info('Starting API server with config:', config);

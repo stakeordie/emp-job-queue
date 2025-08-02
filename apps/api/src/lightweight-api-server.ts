@@ -174,34 +174,62 @@ export class LightweightAPIServer {
   }
 
   private setupMiddleware(): void {
-    // CORS support - Enhanced for remote connections
+    // Enhanced CORS support with detailed logging
     this.app.use((req, res, next) => {
       const allowedOrigins = this.config.corsOrigins || ['*'];
       const origin = req.headers.origin;
 
-      // Log CORS requests for debugging
-      if (origin) {
-        logger.debug(`CORS request from origin: ${origin}, allowed: ${allowedOrigins.join(', ')}`);
-      }
+      logger.info('API CORS check for origin:', origin, 'allowed origins:', allowedOrigins);
 
-      // Handle CORS headers
-      if (allowedOrigins.includes('*')) {
-        // Allow all origins
-        res.setHeader('Access-Control-Allow-Origin', '*');
-      } else if (origin && allowedOrigins.includes(origin)) {
-        // Allow specific origin
-        res.setHeader('Access-Control-Allow-Origin', origin);
-      } else if (origin) {
-        // Log blocked origins for debugging
-        logger.warn(
-          `CORS: Blocked origin ${origin}, allowed origins: ${allowedOrigins.join(', ')}`
-        );
-        // Don't set CORS header for blocked origins
-      } else {
-        // No origin header - set wildcard if allowed, otherwise no CORS header
+      // Allow requests with no origin (like mobile apps or curl requests)
+      if (!origin) {
+        logger.info('API CORS: Allowing request with no origin');
         if (allowedOrigins.includes('*')) {
           res.setHeader('Access-Control-Allow-Origin', '*');
         }
+        res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS, HEAD');
+        res.setHeader(
+          'Access-Control-Allow-Headers',
+          'Content-Type, Authorization, X-Requested-With, Accept, Origin'
+        );
+        res.setHeader('Access-Control-Allow-Credentials', 'true');
+        res.setHeader('Access-Control-Max-Age', '86400');
+        
+        if (req.method === 'OPTIONS') {
+          res.sendStatus(200);
+          return;
+        }
+        return next();
+      }
+
+      // Check if origin is explicitly allowed
+      if (allowedOrigins.includes('*')) {
+        logger.info('API CORS: Allowing all origins (*)');
+        res.setHeader('Access-Control-Allow-Origin', '*');
+      } else if (allowedOrigins.includes(origin)) {
+        logger.info('API CORS: Allowing explicitly listed origin:', origin);
+        res.setHeader('Access-Control-Allow-Origin', origin);
+      } else if (origin.includes('localhost') || origin.includes('127.0.0.1')) {
+        // Special case: allow localhost variants for development
+        logger.info('API CORS: Allowing localhost origin for development:', origin);
+        res.setHeader('Access-Control-Allow-Origin', origin);
+      } else {
+        // Block the origin
+        logger.warn('API CORS BLOCKED origin:', origin, 'allowed origins:', allowedOrigins);
+        // Don't set CORS header for blocked origins - this will cause the browser to block
+        res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS, HEAD');
+        res.setHeader(
+          'Access-Control-Allow-Headers',
+          'Content-Type, Authorization, X-Requested-With, Accept, Origin'
+        );
+        res.setHeader('Access-Control-Allow-Credentials', 'true');
+        res.setHeader('Access-Control-Max-Age', '86400');
+        
+        if (req.method === 'OPTIONS') {
+          res.sendStatus(200);
+          return;
+        }
+        return next();
       }
 
       res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS, HEAD');
