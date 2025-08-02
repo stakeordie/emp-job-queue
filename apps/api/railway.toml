@@ -1,0 +1,13 @@
+[build]
+builder = "dockerfile"
+dockerfilePath = "Dockerfile.railway"
+
+[deploy]
+restartPolicyType = "always"
+
+[env]
+NODE_ENV = "production"
+CORS_ORIGINS = "*"
+LOG_LEVEL = "info"
+WS_AUTH_TOKEN = "3u8sdj5389fj3kljsf90u"
+REDIS_URL = "redis://default:JQSoNVpIPsuaDQYicNvocglialxPrTjj@ballast.proxy.rlwy.net:30645"
