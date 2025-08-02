@@ -92,6 +92,22 @@ jobs:
         docker push emprops/emp-webhook-service:latest
         docker push emprops/emp-webhook-service:${{ steps.get_tag.outputs.tag }}
 
+    - name: Deploy to Railway
+      run: |
+        # Install Railway CLI
+        npm install -g @railway/cli
+
+        # Deploy webhook service
+        railway login --token ${{ secrets.RAILWAY_TOKEN }}
+        railway service emp-webhook-service
+        railway up --detach
+
+        railway service emp-job-queue-production
+        railway up --detach
+      env:
+        RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
+
+
 
 
     - name: Build and package worker
