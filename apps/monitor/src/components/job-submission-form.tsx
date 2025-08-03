@@ -75,6 +75,11 @@ function generateFreshPayload(jobType: string, useCpuMode: boolean = false): Rec
     };
   }
   
+  // For delegated jobs, return base payload
+  if (jobType === 'delegated') {
+    return DEFAULT_PAYLOADS.delegated;
+  }
+  
   // For ComfyUI, update the seed to prevent caching
   if (jobType === 'comfyui' || payloadKey === 'comfyui-cpu') {
     const basePayload = DEFAULT_PAYLOADS[payloadKey as keyof typeof DEFAULT_PAYLOADS];
@@ -303,6 +308,16 @@ const DEFAULT_PAYLOADS = {
     size: "1024x1024",
     quality: "standard",
     n: 1
+  },
+  delegated: {
+    service_name: "external_service",
+    task_type: "processing",
+    parameters: {
+      wait_for_completion: true,
+      timeout_seconds: 300
+    },
+    callback_url: "https://your-service.com/webhook",
+    metadata: {}
   }
 };
 
@@ -312,6 +327,7 @@ const SERVICE_TYPES = [
   { value: 'a1111', label: 'Automatic1111' },
   { value: 'openai_text', label: 'OpenAI Text' },
   { value: 'openai_image', label: 'OpenAI Image' },
+  { value: 'delegated', label: 'Delegated Job' },
   { value: 'comfyui-sim', label: 'ComfyUI (Simulated)' },
   { value: 'a1111-sim', label: 'A1111 (Simulated)' },
   { value: 'rest', label: 'REST API' }
