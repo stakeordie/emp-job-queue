@@ -42,12 +42,13 @@ export class WebhookProcessor extends EventEmitter {
   
   // Workflow tracking for completion detection
   private workflowTracker = new Map<string, {
-    steps: Set<string>;           // job_ids in this workflow
-    completedSteps: Set<string>;  // completed job_ids
-    failedSteps: Set<string>;     // failed job_ids  
-    totalSteps?: number;          // expected total steps (if known)
+    steps: Map<number, string>;   // step_number -> job_id mapping
+    completedSteps: Set<number>;  // completed step numbers (1-indexed)
+    failedSteps: Set<number>;     // failed step numbers (1-indexed)
+    totalSteps?: number;          // total steps in workflow (from job submission)
     startTime: number;
     lastUpdate: number;
+    currentStep?: number;         // highest current_step seen
   }>();
   
   private workflowCleanupInterval?: NodeJS.Timeout;
@@ -194,7 +195,8 @@ export class WebhookProcessor extends EventEmitter {
         logger.debug('Cleaning up stale workflow', { 
           workflowId, 
           ageHours: Math.round(age / (60 * 60 * 1000)),
-          steps: workflow.steps.size,
+          totalSteps: workflow.totalSteps,
+          stepsSeenCount: workflow.steps.size,
           completed: workflow.completedSteps.size,
           failed: workflow.failedSteps.size
         });
@@ -260,6 +262,9 @@ export class WebhookProcessor extends EventEmitter {
 
   private async trackWorkflowProgress(event: RedisJobEvent): Promise<void> {
     const workflowId = (event as any).workflow_id;
+    const currentStep = (event as any).current_step;
+    const totalSteps = (event as any).total_steps;
+    
     if (!workflowId || !event.job_id) {
       return; // No workflow tracking needed
     }
@@ -270,7 +275,7 @@ export class WebhookProcessor extends EventEmitter {
     // Initialize workflow tracking if not exists
     if (!workflow) {
       workflow = {
-        steps: new Set(),
+        steps: new Map(),
         completedSteps: new Set(),
         failedSteps: new Set(),
         startTime: now,
@@ -280,33 +285,43 @@ export class WebhookProcessor extends EventEmitter {
       logger.debug('Started tracking workflow', { workflowId });
     }
 
-    // Update last activity
+    // Update workflow metadata
     workflow.lastUpdate = now;
+    if (totalSteps && !workflow.totalSteps) {
+      workflow.totalSteps = totalSteps;
+      logger.debug('Set workflow total steps', { workflowId, totalSteps });
+    }
+    if (currentStep && (!workflow.currentStep || currentStep > workflow.currentStep)) {
+      workflow.currentStep = currentStep;
+    }
 
-    // Track job in workflow
-    workflow.steps.add(event.job_id);
+    // Track step in workflow (use current_step as key, fallback to step_number)
+    const stepNumber = currentStep || (event as any).step_number || 1;
+    workflow.steps.set(stepNumber, event.job_id);
 
     // Handle completion/failure
-    const wasCompleted = workflow.completedSteps.has(event.job_id);
-    const wasFailed = workflow.failedSteps.has(event.job_id);
+    const wasCompleted = workflow.completedSteps.has(stepNumber);
+    const wasFailed = workflow.failedSteps.has(stepNumber);
 
     if (event.type === 'complete_job' && !wasCompleted) {
-      workflow.completedSteps.add(event.job_id);
-      workflow.failedSteps.delete(event.job_id); // Remove from failed if it was there
+      workflow.completedSteps.add(stepNumber);
+      workflow.failedSteps.delete(stepNumber); // Remove from failed if it was there
       logger.debug('Workflow step completed', { 
         workflowId, 
         jobId: event.job_id,
+        stepNumber,
         completed: workflow.completedSteps.size,
-        total: workflow.steps.size
+        total: workflow.totalSteps || workflow.steps.size
       });
     } else if (event.type === 'job_failed' && !wasFailed) {
-      workflow.failedSteps.add(event.job_id);
-      workflow.completedSteps.delete(event.job_id); // Remove from completed if it was there
+      workflow.failedSteps.add(stepNumber);
+      workflow.completedSteps.delete(stepNumber); // Remove from completed if it was there
       logger.debug('Workflow step failed', { 
         workflowId, 
         jobId: event.job_id,
+        stepNumber,
         failed: workflow.failedSteps.size,
-        total: workflow.steps.size
+        total: workflow.totalSteps || workflow.steps.size
       });
     }
 
@@ -319,12 +334,18 @@ export class WebhookProcessor extends EventEmitter {
     workflow: NonNullable<ReturnType<typeof this.workflowTracker.get>>,
     triggeringEvent: RedisJobEvent
   ): Promise<void> {
-    const totalSteps = workflow.steps.size;
+    // Only check completion if we know the total steps
+    if (!workflow.totalSteps) {
+      logger.debug('Workflow total steps unknown, deferring completion check', { workflowId });
+      return;
+    }
+
+    const totalSteps = workflow.totalSteps;
     const completedSteps = workflow.completedSteps.size;
     const failedSteps = workflow.failedSteps.size;
     const finishedSteps = completedSteps + failedSteps;
 
-    // Check if workflow is complete (all steps finished)
+    // Check if workflow is complete (all expected steps finished)
     if (finishedSteps === totalSteps && totalSteps > 0) {
       const isSuccess = failedSteps === 0;
       const duration = Date.now() - workflow.startTime;
@@ -335,7 +356,9 @@ export class WebhookProcessor extends EventEmitter {
         completedSteps,
         failedSteps,
         success: isSuccess,
-        duration: `${duration}ms`
+        duration: `${duration}ms`,
+        finishedSteps,
+        stepsSeenSoFar: workflow.steps.size
       });
 
       // Create workflow completion event
@@ -352,6 +375,13 @@ export class WebhookProcessor extends EventEmitter {
         end_time: Date.now(),
         trigger_job_id: triggeringEvent.job_id,
         trigger_event_type: triggeringEvent.type,
+        current_step: (triggeringEvent as any).current_step,
+        step_details: Array.from(workflow.steps.entries()).map(([stepNum, jobId]) => ({
+          step_number: stepNum,
+          job_id: jobId,
+          completed: workflow.completedSteps.has(stepNum),
+          failed: workflow.failedSteps.has(stepNum)
+        }))
       };
 
       // Send workflow completion webhook
@@ -365,6 +395,15 @@ export class WebhookProcessor extends EventEmitter {
       // Clean up workflow tracking (keep memory usage bounded)
       this.workflowTracker.delete(workflowId);
       logger.debug('Cleaned up workflow tracking', { workflowId });
+    } else {
+      logger.debug('Workflow not yet complete', {
+        workflowId,
+        finishedSteps,
+        totalSteps,
+        completedSteps,
+        failedSteps,
+        progress: `${finishedSteps}/${totalSteps}`
+      });
     }
   }
 
@@ -378,6 +417,10 @@ export class WebhookProcessor extends EventEmitter {
       machine_id: redisEvent.machine_id,
       workflow_id: (redisEvent as any).workflow_id,
       step_number: (redisEvent as any).step_number,
+      current_step: (redisEvent as any).current_step,
+      total_steps: (redisEvent as any).total_steps,
+      workflow_priority: (redisEvent as any).workflow_priority,
+      workflow_datetime: (redisEvent as any).workflow_datetime,
     };
 
     // For direct Redis pub/sub events, the event data is the complete event object
@@ -547,12 +590,17 @@ export class WebhookProcessor extends EventEmitter {
   getWorkflowStats() {
     const workflows = Array.from(this.workflowTracker.entries()).map(([workflowId, workflow]) => ({
       workflow_id: workflowId,
-      total_steps: workflow.steps.size,
+      total_steps: workflow.totalSteps,
+      steps_seen: workflow.steps.size,
       completed_steps: workflow.completedSteps.size,
       failed_steps: workflow.failedSteps.size,
+      current_step: workflow.currentStep,
       start_time: workflow.startTime,
       last_update: workflow.lastUpdate,
       age_minutes: Math.round((Date.now() - workflow.startTime) / (60 * 1000)),
+      progress: workflow.totalSteps 
+        ? `${workflow.completedSteps.size + workflow.failedSteps.size}/${workflow.totalSteps}`
+        : `${workflow.completedSteps.size + workflow.failedSteps.size}/?`,
     }));
 
     return {
