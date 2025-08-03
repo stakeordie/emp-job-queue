@@ -1290,6 +1290,10 @@ export class LightweightAPIServer {
             }
           };
           
+          // Assign a dummy worker_id to delegated jobs so completeJob() doesn't reject them
+          const dummyWorkerId = `delegated_client_${clientId}`;
+          await this.redis.hset(`job:${jobId}`, 'worker_id', dummyWorkerId);
+          
           // Use the Redis service to complete the job
           await this.redisService.completeJob(jobId, jobResult);
           
