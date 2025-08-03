@@ -2317,6 +2317,16 @@ export class LightweightAPIServer {
     logger.info(
       `[JOB SUBMIT START] Job ${jobId} - Monitor still connected: ${this.eventBroadcaster.getMonitorCount()} monitors`
     );
+    
+    // DEBUG: Log the incoming jobData to see what we're receiving
+    console.log(`🔍 API SUBMIT DEBUG Job ${jobId}:`, {
+      total_steps: jobData.total_steps,
+      total_steps_type: typeof jobData.total_steps,
+      step_number: jobData.step_number,
+      step_number_type: typeof jobData.step_number,
+      workflow_id: jobData.workflow_id,
+      full_jobData_keys: Object.keys(jobData)
+    });
     const now = new Date().toISOString();
 
     const job: Job = {
@@ -2338,6 +2348,7 @@ export class LightweightAPIServer {
       workflow_priority: jobData.workflow_priority as number | undefined,
       workflow_datetime: jobData.workflow_datetime as number | undefined,
       step_number: jobData.step_number as number | undefined,
+      total_steps: jobData.total_steps as number | undefined,
     };
 
     logger.info(`Job:`, JSON.stringify(job, null, 2));
@@ -2361,6 +2372,7 @@ export class LightweightAPIServer {
       workflow_priority: job.workflow_priority?.toString() || '',
       workflow_datetime: job.workflow_datetime?.toString() || '',
       step_number: job.step_number?.toString() || '',
+      total_steps: job.total_steps?.toString() || '',
     });
 
     // Add to pending queue with workflow-aware scoring
@@ -2403,6 +2415,7 @@ export class LightweightAPIServer {
         workflow_priority: jobData.workflow_priority as number,
         workflow_datetime: jobData.workflow_datetime as number,
         step_number: jobData.step_number as number,
+        total_steps: jobData.total_steps as number,
         customer_id: job.customer_id,
         requirements: job.requirements,
         created_at: Date.now(),
@@ -2430,6 +2443,12 @@ export class LightweightAPIServer {
       created_at: job.created_at,
       status: 'pending',
       timestamp: Date.now(),
+      // Workflow fields for workflow tracking and events
+      workflow_id: job.workflow_id,
+      workflow_priority: job.workflow_priority,
+      workflow_datetime: job.workflow_datetime,
+      step_number: job.step_number,
+      total_steps: job.total_steps,
     };
     await this.redis.publish('job_submitted', JSON.stringify(submissionEvent));
 
@@ -2463,6 +2482,12 @@ export class LightweightAPIServer {
       last_failed_worker: jobData.last_failed_worker || undefined,
       processing_time: jobData.processing_time ? parseInt(jobData.processing_time) : undefined,
       estimated_completion: jobData.estimated_completion || undefined,
+      // Workflow fields
+      workflow_id: jobData.workflow_id || undefined,
+      workflow_priority: jobData.workflow_priority ? parseInt(jobData.workflow_priority) : undefined,
+      workflow_datetime: jobData.workflow_datetime ? parseInt(jobData.workflow_datetime) : undefined,
+      step_number: jobData.step_number ? parseInt(jobData.step_number) : undefined,
+      total_steps: jobData.total_steps && jobData.total_steps !== '' ? parseInt(jobData.total_steps) : undefined,
     };
   }
 
@@ -2606,6 +2631,7 @@ export class LightweightAPIServer {
   private parseJobData(jobData: Record<string, string>): Job | null {
     if (!jobData.id) return null;
 
+
     return {
       id: jobData.id,
       service_required: jobData.service_required,
@@ -2625,6 +2651,12 @@ export class LightweightAPIServer {
       last_failed_worker: jobData.last_failed_worker || undefined,
       processing_time: jobData.processing_time ? parseInt(jobData.processing_time) : undefined,
       estimated_completion: jobData.estimated_completion || undefined,
+      // Workflow fields
+      workflow_id: jobData.workflow_id || undefined,
+      workflow_priority: jobData.workflow_priority ? parseInt(jobData.workflow_priority) : undefined,
+      workflow_datetime: jobData.workflow_datetime ? parseInt(jobData.workflow_datetime) : undefined,
+      step_number: jobData.step_number ? parseInt(jobData.step_number) : undefined,
+      total_steps: jobData.total_steps && jobData.total_steps !== '' ? parseInt(jobData.total_steps) : undefined,
     };
   }
 

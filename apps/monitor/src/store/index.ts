@@ -72,6 +72,20 @@ interface MonitorStore {
   // UI state
   ui: UIState;
   
+  // Simulation workflow tracking (local orchestration)
+  simulationWorkflows: Map<string, {
+    workflow_id: string;
+    total_steps: number;
+    current_step: number;
+    job_type: string;
+    priority: number;
+    customer_id?: string;
+    workflow_priority?: number;
+    workflow_datetime?: number;
+    requirements?: JobRequirements;
+    basePayload: Record<string, unknown>;
+    useCpuMode: boolean;
+  }>;
   
   // Actions
   setConnection: (state: Partial<ConnectionState>) => void;
@@ -98,6 +112,21 @@ interface MonitorStore {
   syncJobState: (jobId?: string) => void;
   cancelJob: (jobId: string) => void;
   deleteMachine: (machineId: string) => void;
+  
+  // Simulation workflow orchestration
+  trackSimulationWorkflow: (workflowId: string, config: {
+    total_steps: number;
+    job_type: string;
+    priority: number;
+    customer_id?: string;
+    workflow_priority?: number;
+    workflow_datetime?: number;
+    requirements?: JobRequirements;
+    basePayload: Record<string, unknown>;
+    useCpuMode: boolean;
+  }) => void;
+  submitNextSimulationStep: (workflowId: string) => void;
+  removeSimulationWorkflow: (workflowId: string) => void;
   fetchApiVersion: () => Promise<void>;
   
   // Pagination actions
@@ -140,6 +169,8 @@ export const useMonitorStore = create<MonitorStore>()(
       debugMode: false,
       theme: 'system',
     },
+    
+    simulationWorkflows: new Map(),
     
     // Connection actions
     setConnection: (state) =>
@@ -193,7 +224,28 @@ export const useMonitorStore = create<MonitorStore>()(
         
         // Create new jobs array with atomic update
         const newJobs = [...state.jobs];
-        newJobs[jobIndex] = { ...currentJob, ...updates };
+        
+        // Filter out undefined values from updates to preserve existing data
+        const filteredUpdates = Object.entries(updates).reduce((acc, [key, value]) => {
+          if (value !== undefined) {
+            acc[key] = value;
+          }
+          return acc;
+        }, {} as Record<string, unknown>);
+        
+        // Debug log for tracking total_steps - only log recent jobs
+        const jobTimestamp = currentJob.created_at || 0;
+        const fiveMinutesAgo = Date.now() - (5 * 60 * 1000);
+        if (jobTimestamp > fiveMinutesAgo && currentJob.step_number !== undefined) {
+          console.log('[Store] updateJob:', {
+            jobId,
+            current_total_steps: currentJob.total_steps,
+            updates_total_steps: updates.total_steps,
+            will_have_total_steps: filteredUpdates.total_steps !== undefined ? filteredUpdates.total_steps : currentJob.total_steps
+          });
+        }
+        
+        newJobs[jobIndex] = { ...currentJob, ...filteredUpdates };
         
         return { jobs: newJobs };
       }),
@@ -432,6 +484,8 @@ export const useMonitorStore = create<MonitorStore>()(
           if (Array.isArray(jobs)) {
             jobs.forEach((jobData: unknown) => {
               const job = jobData as Record<string, unknown>;
+              
+              
               addJob({
                 id: (job.id as string) || (job.job_id as string),
                 job_type: (job.job_type as string) || (job.service_required as string) || (job.type as string) || 'unknown',
@@ -448,6 +502,7 @@ export const useMonitorStore = create<MonitorStore>()(
                 workflow_priority: job.workflow_priority as number,
                 workflow_datetime: job.workflow_datetime as number,
                 step_number: job.step_number as number,
+                total_steps: job.total_steps as number,
                 created_at: (job.created_at as number) || new Date(job.created_at as string).getTime() || Date.now(),
                 assigned_at: job.assigned_at as number,
                 started_at: job.started_at as number,
@@ -1249,11 +1304,13 @@ export const useMonitorStore = create<MonitorStore>()(
               workflow_priority?: number;
               workflow_datetime?: number;
               step_number?: number;
+              total_steps?: number;
               created_at: number;
             };
             timestamp: number;
           };
           const jobData = jobEvent.job_data;
+          
           addJob({
             id: jobEvent.job_id,
             job_type: jobData.job_type,
@@ -1266,6 +1323,7 @@ export const useMonitorStore = create<MonitorStore>()(
             workflow_priority: jobData.workflow_priority,
             workflow_datetime: jobData.workflow_datetime,
             step_number: jobData.step_number,
+            total_steps: jobData.total_steps,
             created_at: jobData.created_at,
             assigned_at: undefined,
             started_at: undefined,
@@ -1409,15 +1467,84 @@ export const useMonitorStore = create<MonitorStore>()(
             break;
           }
           
+          // Prevent duplicate completion events
+          if (currentJob?.status === 'completed') {
+            console.log(`[WORKFLOW] Job ${jobEvent.job_id} already completed, skipping duplicate completion event`);
+            break;
+          }
+          
           // Use direct update for completion events (no throttling needed for final states)
+          // Preserve existing total_steps and other workflow info when marking as completed
+          const currentJobData = get().jobs.find(job => job.id === jobEvent.job_id);
+          
+          // Debug logging for total_steps preservation
+          if (jobEvent.job_id.includes('d860fb0a') || currentJobData?.total_steps !== undefined) {
+            console.log('[Store] complete_job - preserving total_steps:', {
+              jobId: jobEvent.job_id,
+              currentJobData_exists: !!currentJobData,
+              currentJobData_total_steps: currentJobData?.total_steps,
+              will_update_with: {
+                total_steps: currentJobData?.total_steps,
+                step_number: currentJobData?.step_number
+              }
+            });
+          }
+          
           updateJob(jobEvent.job_id, {
             status: 'completed' as JobStatus,
             worker_id: jobEvent.worker_id,
             result: jobEvent.result,
             completed_at: jobEvent.completed_at,
             progress: 100,
-            progress_message: 'Job completed successfully'
+            progress_message: 'Job completed successfully',
+            // Preserve existing workflow-related fields - only include if they exist
+            ...(currentJobData?.total_steps !== undefined && { total_steps: currentJobData.total_steps }),
+            ...(currentJobData?.step_number !== undefined && { step_number: currentJobData.step_number }),
+            ...(currentJobData?.workflow_id !== undefined && { workflow_id: currentJobData.workflow_id }),
+            ...(currentJobData?.workflow_priority !== undefined && { workflow_priority: currentJobData.workflow_priority }),
+            ...(currentJobData?.workflow_datetime !== undefined && { workflow_datetime: currentJobData.workflow_datetime })
           });
+          
+          // Check if this is a simulation job that's part of a tracked workflow
+          const completedJob = get().jobs.find(job => job.id === jobEvent.job_id);
+          
+          if (completedJob?.workflow_id) {
+            const allWorkflowJobs = get().jobs.filter(job => job.workflow_id === completedJob.workflow_id);
+            const completedJobWorkflowId = completedJob.workflow_id;
+            
+            console.log(`[WORKFLOW] Job completion detected: ${jobEvent.job_id}`);
+            console.log(`[WORKFLOW] - Workflow ID: ${completedJob.workflow_id}`);
+            console.log(`[WORKFLOW] - Step: ${completedJob.step_number}, Total Steps: ${completedJob.total_steps}`);
+            console.log(`[WORKFLOW] - All workflow jobs count: ${allWorkflowJobs.length}`);
+            console.log(`[WORKFLOW] - Job statuses: ${allWorkflowJobs.map(j => `${j.step_number}:${j.status}`).join(', ')}`);
+            console.log(`[WORKFLOW] - Is tracked: ${get().simulationWorkflows.has(completedJobWorkflowId)}`);
+            
+            // Check if total_steps is missing and try to get it from tracked workflow
+            let totalSteps = completedJob?.total_steps;
+            if (!totalSteps && completedJob?.workflow_id) {
+              const trackedWorkflow = get().simulationWorkflows.get(completedJob.workflow_id);
+              if (trackedWorkflow) {
+                totalSteps = trackedWorkflow.total_steps;
+                console.log(`[WORKFLOW] Retrieved total_steps from tracked workflow: ${totalSteps}`);
+              }
+            }
+            
+            if (completedJob && 
+                completedJob.job_type === 'simulation' && 
+                completedJob.workflow_id && 
+                completedJob.step_number && 
+                totalSteps && 
+                get().simulationWorkflows.has(completedJob.workflow_id)) {
+              
+              console.log(`[WORKFLOW] Triggering auto-progression for workflow ${completedJob.workflow_id}, step ${completedJob.step_number}/${totalSteps}`);
+              
+              // Auto-submit the next step in the workflow
+              get().submitNextSimulationStep(completedJob.workflow_id);
+            } else {
+              console.log(`[WORKFLOW] Skipping auto-progression - missing requirements`);
+            }
+          }
+          
           break;
         }
         
@@ -1711,6 +1838,105 @@ export const useMonitorStore = create<MonitorStore>()(
         failed_at: Date.now()
       });
     },
+
+    // Simulation workflow orchestration
+    trackSimulationWorkflow: (workflowId, config) =>
+      set((state) => {
+        const newWorkflows = new Map(state.simulationWorkflows);
+        newWorkflows.set(workflowId, {
+          workflow_id: workflowId,
+          current_step: 1,
+          ...config
+        });
+        return { simulationWorkflows: newWorkflows };
+      }),
+
+    submitNextSimulationStep: (workflowId) => {
+      const state = get();
+      const workflow = state.simulationWorkflows.get(workflowId);
+      
+      if (!workflow) {
+        console.warn(`No simulation workflow found with ID: ${workflowId}`);
+        return;
+      }
+
+      // Get ALL workflow jobs (including pending, running, completed, failed)
+      const allWorkflowJobs = state.jobs.filter(job => job.workflow_id === workflowId);
+      
+      // Find completed jobs and sort by step_number descending
+      const completedJobs = allWorkflowJobs
+        .filter(job => job.status === 'completed')
+        .sort((a, b) => (b.step_number || 0) - (a.step_number || 0));
+      
+      const lastCompletedJob = completedJobs[0];
+      if (!lastCompletedJob || !lastCompletedJob.step_number) {
+        console.warn(`No completed job found for workflow ${workflowId}`);
+        return;
+      }
+
+      // Use total_steps from tracked workflow (more reliable than job data)
+      const totalSteps = workflow.total_steps;
+      const nextStep = lastCompletedJob.step_number + 1;
+      
+      if (nextStep > totalSteps) {
+        // Workflow complete - remove from tracking
+        state.removeSimulationWorkflow(workflowId);
+        console.log(`Simulation workflow ${workflowId} completed all ${totalSteps} steps`);
+        return;
+      }
+
+      // CRITICAL: Check if the next step is already submitted/running to prevent duplicates
+      const nextStepJobs = allWorkflowJobs.filter(job => job.step_number === nextStep);
+      if (nextStepJobs.length > 0) {
+        console.log(`Step ${nextStep} for workflow ${workflowId} already exists (${nextStepJobs.length} jobs). Statuses: ${nextStepJobs.map(j => j.status).join(', ')}`);
+        return; // Don't submit duplicate step
+      }
+
+      // Double-check: ensure we haven't already submitted this step recently
+      const recentStepJobs = allWorkflowJobs.filter(job => 
+        job.step_number === nextStep && 
+        job.created_at && 
+        (Date.now() - new Date(job.created_at).getTime()) < 5000 // Within last 5 seconds
+      );
+      
+      if (recentStepJobs.length > 0) {
+        console.log(`Step ${nextStep} for workflow ${workflowId} was recently submitted. Skipping duplicate.`);
+        return;
+      }
+
+      // Generate fresh payload for the next step
+      // For simulation, just create a new random payload
+      const freshPayload = workflow.job_type === 'simulation' ? {
+        steps: 20,
+        seed: Math.floor(Math.random() * 1000000000),
+        simulation_time: 5
+      } : workflow.basePayload;
+      
+      const jobData = {
+        job_type: workflow.job_type,
+        service_required: workflow.job_type,
+        priority: workflow.priority,
+        payload: freshPayload,
+        customer_id: workflow.customer_id,
+        requirements: workflow.requirements,
+        workflow_id: workflowId,
+        workflow_priority: workflow.workflow_priority,
+        workflow_datetime: workflow.workflow_datetime,
+        step_number: nextStep,
+        total_steps: totalSteps,
+      };
+
+      // Submit the next step with additional logging
+      console.log(`[WORKFLOW] Auto-submitting step ${nextStep}/${totalSteps} for workflow ${workflowId} (completed: ${completedJobs.length}, total jobs: ${allWorkflowJobs.length})`);
+      state.submitJob(jobData);
+    },
+
+    removeSimulationWorkflow: (workflowId) =>
+      set((state) => {
+        const newWorkflows = new Map(state.simulationWorkflows);
+        newWorkflows.delete(workflowId);
+        return { simulationWorkflows: newWorkflows };
+      }),
 
   }))
 );

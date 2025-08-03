@@ -734,6 +734,9 @@ export class RedisDirectWorkerClient {
     try {
       logger.info(`🎉 Worker ${this.workerId} completing job ${jobId}`);
 
+      // Fetch the job data to get workflow fields for completion event
+      const jobData = await this.redis.hgetall(`job:${jobId}`);
+
       // Update job status
       await this.redis.hmset(`job:${jobId}`, {
         status: JobStatus.COMPLETED,
@@ -788,10 +791,22 @@ export class RedisDirectWorkerClient {
         message: 'Job completed successfully',
         result: result,
         timestamp: Date.now(),
+        // Include workflow fields for webhook service workflow tracking
+        ...(jobData.workflow_id && { workflow_id: jobData.workflow_id }),
+        ...(jobData.step_number && { step_number: parseInt(jobData.step_number) }),
+        ...(jobData.total_steps && { total_steps: parseInt(jobData.total_steps) }),
+        ...(jobData.workflow_priority && {
+          workflow_priority: parseInt(jobData.workflow_priority),
+        }),
+        ...(jobData.workflow_datetime && {
+          workflow_datetime: parseInt(jobData.workflow_datetime),
+        }),
       };
 
       await this.redis.publish('complete_job', JSON.stringify(completionEvent));
-      logger.info(`📢 Worker ${this.workerId} published completion event for job ${jobId}`);
+      logger.info(
+        `📢 Worker ${this.workerId} published completion event for job ${jobId}${jobData.workflow_id ? ` (workflow: ${jobData.workflow_id}, step: ${jobData.step_number}/${jobData.total_steps})` : ''}`
+      );
 
       // Update worker status back to idle
       await this.updateWorkerStatus('idle');
@@ -897,10 +912,18 @@ export class RedisDirectWorkerClient {
           retry_count: newRetryCount,
           can_retry: false,
           timestamp: Date.now(),
+          // Include workflow fields for webhook service workflow tracking
+          ...(job.workflow_id && { workflow_id: job.workflow_id }),
+          ...(job.step_number && { step_number: job.step_number }),
+          ...(job.total_steps && { total_steps: job.total_steps }),
+          ...(job.workflow_priority && { workflow_priority: job.workflow_priority }),
+          ...(job.workflow_datetime && { workflow_datetime: job.workflow_datetime }),
         };
 
         await this.redis.publish('job_failed', JSON.stringify(failureEvent));
-        logger.info(`📢 Worker ${this.workerId} published failure event for job ${jobId}`);
+        logger.info(
+          `📢 Worker ${this.workerId} published failure event for job ${jobId}${job.workflow_id ? ` (workflow: ${job.workflow_id}, step: ${job.step_number}/${job.total_steps})` : ''}`
+        );
       }
 
       // Update worker status back to idle

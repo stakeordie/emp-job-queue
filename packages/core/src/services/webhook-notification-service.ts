@@ -82,6 +82,13 @@ export interface WebhookEventData {
   progress?: number;
   result?: unknown;
   error?: string;
+  // Workflow fields - CRITICAL for workflow tracking
+  workflow_id?: string;
+  workflow_priority?: number;
+  workflow_datetime?: number;
+  step_number?: number;
+  total_steps?: number;
+  current_step?: number;
   [key: string]: unknown;
 }
 
@@ -106,12 +113,29 @@ export class WebhookNotificationService extends EventEmitter {
   private isProcessing = false;
   private processingInterval?: NodeJS.Timeout;
   private cacheRefreshInterval?: NodeJS.Timeout;
+  private throttleCleanupInterval?: NodeJS.Timeout;
+  
+  // Throttling: Track last progress webhook sent per job (1 per second max)
+  private lastProgressWebhookSent: Map<string, number> = new Map();
+  private readonly PROGRESS_THROTTLE_MS = 1000; // 1 second
+
+  // Workflow tracking for completion detection (independent of subscriptions)
+  private workflowTracker = new Map<string, {
+    steps: Map<number, string>;   // step_number -> job_id mapping
+    completedSteps: Set<number>;  // completed step numbers (1-indexed)
+    failedSteps: Set<number>;     // failed step numbers (1-indexed)
+    totalSteps?: number;          // total steps in workflow (from job submission)
+    startTime: number;
+    lastUpdate: number;
+    currentStep?: number;         // highest current_step seen
+  }>();
 
   constructor(redis: Redis) {
     super();
     this.webhookStorage = new WebhookRedisStorage(redis);
     this.startProcessing();
     this.startCacheRefresh();
+    this.startThrottleCleanup();
   }
 
   /**
@@ -202,18 +226,354 @@ export class WebhookNotificationService extends EventEmitter {
    * Process monitor events and trigger webhooks
    */
   async processEvent(event: MonitorEvent): Promise<void> {
+    // DEBUG: Log event processing (skip progress updates to reduce noise)
+    if (event.type !== 'update_job_progress') {
+      logger.info(`📥 [WEBHOOK DEBUG] Processing event for webhooks`, {
+        event_type: event.type,
+        job_id: (event as any).job_id,
+        workflow_id: (event as any).workflow_id,
+        timestamp: event.timestamp,
+      });
+    }
+
     const webhookEvent = this.convertMonitorEventToWebhookEvent(event);
     if (!webhookEvent) {
+      logger.debug(`📤 [WEBHOOK DEBUG] Event not supported for webhooks: ${event.type}`);
       return; // Event not supported for webhooks
     }
 
-    // Find matching webhooks
+    // ALWAYS process workflow tracking events for workflow detection
+    // even if no webhooks are subscribed to individual job events
+    await this.processWorkflowTracking(event, webhookEvent);
+
+    // THROTTLING: Check if this is a progress update and if we should throttle it
+    if (webhookEvent === 'update_job_progress') {
+      const jobId = (event as any).job_id as string;
+      if (jobId && this.shouldThrottleProgressWebhook(jobId)) {
+        logger.debug(`⏱️ [WEBHOOK DEBUG] Throttling progress webhook for job ${jobId} (< 1 second since last)`);
+        return;
+      }
+    }
+
+    // Find matching webhooks for THIS specific event (only send if explicitly subscribed)
     const matchingWebhooks = this.findMatchingWebhooks(webhookEvent, event);
+    
+    // Only log for non-progress events to reduce noise
+    if (event.type !== 'update_job_progress') {
+      logger.info(`🎯 [WEBHOOK DEBUG] Found ${matchingWebhooks.length} matching webhooks for ${event.type}`);
+    }
 
     for (const webhook of matchingWebhooks) {
       const payload = this.createWebhookPayload(webhook, webhookEvent, event);
+      
+      // Only log for non-progress events to reduce noise
+      if (event.type !== 'update_job_progress') {
+        logger.info(`📋 [WEBHOOK DEBUG] Queueing webhook delivery`, {
+          webhook_id: webhook.id,
+          webhook_url: webhook.url,
+          event_type: webhookEvent,
+          job_id: (event as any).job_id,
+          workflow_id: (event as any).workflow_id,
+        });
+      }
+      
       this.queueDelivery(payload);
     }
+  }
+
+  /**
+   * Process workflow tracking for completion detection (independent of subscriptions)
+   */
+  private async processWorkflowTracking(event: MonitorEvent, webhookEventType: WebhookEventType): Promise<void> {
+    const jobEvent = event as unknown as Record<string, unknown>;
+    const workflowId = jobEvent.workflow_id as string;
+    const jobId = jobEvent.job_id as string;
+    const currentStep = jobEvent.current_step as number;
+    const stepNumber = jobEvent.step_number as number;
+    const totalSteps = jobEvent.total_steps as number;
+
+    // DEBUG: Log extracted data for workflow events
+    if (workflowId) {
+      logger.info('📋 [WORKFLOW TRACKING] Processing workflow event', {
+        eventType: webhookEventType,
+        workflowId,
+        jobId,
+        currentStep,
+        stepNumber,
+        totalSteps,
+        rawEvent: {
+          type: event.type,
+          workflow_id: jobEvent.workflow_id,
+          job_id: jobEvent.job_id,
+          current_step: jobEvent.current_step,
+          step_number: jobEvent.step_number,
+          total_steps: jobEvent.total_steps
+        }
+      });
+    }
+
+    // Only track workflow events
+    if (!workflowId || !jobId) {
+      return;
+    }
+
+    const now = Date.now();
+    let workflow = this.workflowTracker.get(workflowId);
+
+    // Initialize workflow tracking if not exists
+    if (!workflow) {
+      workflow = {
+        steps: new Map(),
+        completedSteps: new Set(),
+        failedSteps: new Set(),
+        startTime: now,
+        lastUpdate: now,
+      };
+      this.workflowTracker.set(workflowId, workflow);
+      logger.debug('Started tracking workflow', { workflowId });
+    }
+
+    // Update workflow metadata
+    workflow.lastUpdate = now;
+    if (totalSteps && !workflow.totalSteps) {
+      workflow.totalSteps = totalSteps;
+      logger.debug('Set workflow total steps', { workflowId, totalSteps });
+    }
+    if (currentStep && (!workflow.currentStep || currentStep > workflow.currentStep)) {
+      workflow.currentStep = currentStep;
+    }
+
+    // Track step in workflow
+    const effectiveStepNumber = currentStep || stepNumber || 1;
+    workflow.steps.set(effectiveStepNumber, jobId);
+
+    // Check if this is the first step being submitted (workflow_submitted event)
+    if (webhookEventType === 'job_submitted' && effectiveStepNumber === 1 && workflow.steps.size === 1) {
+      await this.sendWorkflowEvent('workflow_submitted', workflowId, event);
+    }
+
+    // Handle completion/failure
+    const wasCompleted = workflow.completedSteps.has(effectiveStepNumber);
+    const wasFailed = workflow.failedSteps.has(effectiveStepNumber);
+
+    if (webhookEventType === 'complete_job' && !wasCompleted) {
+      workflow.completedSteps.add(effectiveStepNumber);
+      workflow.failedSteps.delete(effectiveStepNumber);
+      logger.info('🎯 [WORKFLOW COMPLETION] Step completed', { 
+        workflowId, 
+        jobId,
+        stepNumber: effectiveStepNumber,
+        completed: workflow.completedSteps.size,
+        total: workflow.totalSteps || workflow.steps.size,
+        allSteps: Array.from(workflow.steps.entries()).map(([step, job]) => `${step}:${job}`),
+        completedSteps: Array.from(workflow.completedSteps),
+        failedSteps: Array.from(workflow.failedSteps)
+      });
+    } else if (webhookEventType === 'job_failed' && !wasFailed) {
+      workflow.failedSteps.add(effectiveStepNumber);
+      workflow.completedSteps.delete(effectiveStepNumber);
+      logger.info('❌ [WORKFLOW COMPLETION] Step failed', { 
+        workflowId, 
+        jobId,
+        stepNumber: effectiveStepNumber,
+        failed: workflow.failedSteps.size,
+        total: workflow.totalSteps || workflow.steps.size,
+        allSteps: Array.from(workflow.steps.entries()).map(([step, job]) => `${step}:${job}`),
+        completedSteps: Array.from(workflow.completedSteps),
+        failedSteps: Array.from(workflow.failedSteps)
+      });
+    } else if (webhookEventType === 'complete_job' && wasCompleted) {
+      logger.debug('🔄 [WORKFLOW COMPLETION] Step already completed, skipping', { workflowId, jobId, stepNumber: effectiveStepNumber });
+    }
+
+    // Check for workflow completion
+    await this.checkWorkflowCompletion(workflowId, workflow, event);
+  }
+
+  /**
+   * Send workflow events to subscribed webhooks
+   */
+  private async sendWorkflowEvent(eventType: 'workflow_submitted' | 'workflow_completed' | 'workflow_failed', workflowId: string, triggeringEvent: MonitorEvent): Promise<void> {
+    const workflowEvent = this.createWorkflowEvent(eventType, workflowId, triggeringEvent);
+    
+    // Find webhooks subscribed to this workflow event type
+    const matchingWebhooks = this.findMatchingWebhooksForEventType(eventType);
+    
+    logger.info(`🎯 [WORKFLOW] Found ${matchingWebhooks.length} webhooks for ${eventType}`, { workflowId });
+
+    for (const webhook of matchingWebhooks) {
+      const payload = {
+        event_type: eventType,
+        event_id: this.generateId(),
+        timestamp: Date.now(),
+        webhook_id: webhook.id,
+        data: workflowEvent,
+      };
+      
+      logger.info(`📋 [WORKFLOW] Queueing ${eventType} webhook`, {
+        webhook_id: webhook.id,
+        webhook_url: webhook.url,
+        workflow_id: workflowId,
+      });
+      
+      this.queueDelivery(payload);
+    }
+  }
+
+  /**
+   * Create workflow event data
+   */
+  private createWorkflowEvent(eventType: string, workflowId: string, triggeringEvent: MonitorEvent): Record<string, unknown> {
+    const jobEvent = triggeringEvent as unknown as Record<string, unknown>;
+    const workflow = this.workflowTracker.get(workflowId);
+    
+    const baseEvent = {
+      workflow_id: workflowId,
+      timestamp: Date.now(),
+      trigger_job_id: jobEvent.job_id,
+      trigger_event_type: triggeringEvent.type,
+    };
+
+    if (eventType === 'workflow_submitted') {
+      return {
+        ...baseEvent,
+        first_job_id: jobEvent.job_id,
+        total_steps: jobEvent.total_steps,
+        workflow_priority: jobEvent.workflow_priority,
+        workflow_datetime: jobEvent.workflow_datetime,
+        customer_id: jobEvent.customer_id,
+        service_required: jobEvent.service_required,
+      };
+    }
+
+    if (workflow && (eventType === 'workflow_completed' || eventType === 'workflow_failed')) {
+      const isSuccess = eventType === 'workflow_completed';
+      const duration = Date.now() - workflow.startTime;
+      
+      return {
+        ...baseEvent,
+        success: isSuccess,
+        total_steps: workflow.totalSteps,
+        completed_steps: workflow.completedSteps.size,
+        failed_steps: workflow.failedSteps.size,
+        duration_ms: duration,
+        start_time: workflow.startTime,
+        end_time: Date.now(),
+        current_step: jobEvent.current_step,
+        step_details: Array.from(workflow.steps.entries()).map(([stepNum, stepJobId]) => ({
+          step_number: stepNum,
+          job_id: stepJobId,
+          completed: workflow.completedSteps.has(stepNum),
+          failed: workflow.failedSteps.has(stepNum)
+        }))
+      };
+    }
+
+    return baseEvent;
+  }
+
+  /**
+   * Find webhooks matching a specific event type
+   */
+  private findMatchingWebhooksForEventType(eventType: WebhookEventType): WebhookEndpoint[] {
+    const allWebhooks = Array.from(this.webhooksCache.values());
+    return allWebhooks.filter(webhook => 
+      webhook.active && webhook.events.includes(eventType)
+    );
+  }
+
+  /**
+   * Check for workflow completion
+   */
+  private async checkWorkflowCompletion(workflowId: string, workflow: NonNullable<ReturnType<typeof this.workflowTracker.get>>, triggeringEvent: MonitorEvent): Promise<void> {
+    const totalSteps = workflow.totalSteps;
+    const completedSteps = workflow.completedSteps.size;
+    const failedSteps = workflow.failedSteps.size;
+    const finishedSteps = completedSteps + failedSteps;
+
+    logger.info('🔍 [WORKFLOW COMPLETION] Checking completion status', {
+      workflowId,
+      totalSteps: totalSteps || 'unknown',
+      completedSteps,
+      failedSteps,
+      finishedSteps,
+      allSteps: Array.from(workflow.steps.entries()).map(([step, job]) => `${step}:${job}`),
+      completedStepsList: Array.from(workflow.completedSteps),
+      failedStepsList: Array.from(workflow.failedSteps)
+    });
+
+    if (!totalSteps) {
+      logger.debug('Workflow total steps unknown, deferring completion check', { workflowId });
+      return;
+    }
+
+    if (finishedSteps === totalSteps && totalSteps > 0) {
+      const isSuccess = failedSteps === 0;
+      const eventType = isSuccess ? 'workflow_completed' : 'workflow_failed';
+      
+      logger.info('🎉 [WORKFLOW COMPLETION] Workflow completion detected!', {
+        workflowId,
+        totalSteps,
+        completedSteps,
+        failedSteps,
+        success: isSuccess,
+        eventType
+      });
+
+      await this.sendWorkflowEvent(eventType, workflowId, triggeringEvent);
+      
+      // Clean up workflow tracking
+      this.workflowTracker.delete(workflowId);
+      logger.debug('Cleaned up workflow tracking', { workflowId });
+    } else {
+      logger.debug('🚧 [WORKFLOW COMPLETION] Workflow not yet complete', {
+        workflowId,
+        finishedSteps,
+        totalSteps,
+        stillNeed: totalSteps - finishedSteps
+      });
+    }
+  }
+
+  /**
+   * Check if progress webhook should be throttled for this job
+   */
+  private shouldThrottleProgressWebhook(jobId: string): boolean {
+    const now = Date.now();
+    const lastSent = this.lastProgressWebhookSent.get(jobId);
+    
+    if (!lastSent || (now - lastSent) >= this.PROGRESS_THROTTLE_MS) {
+      // Update the timestamp and allow the webhook
+      this.lastProgressWebhookSent.set(jobId, now);
+      return false; // Don't throttle
+    }
+    
+    return true; // Throttle this webhook
+  }
+
+  /**
+   * Start periodic cleanup of throttling map to prevent memory leaks
+   */
+  private startThrottleCleanup(): void {
+    // Clean up throttling entries older than 5 minutes every minute
+    this.throttleCleanupInterval = setInterval(() => {
+      const now = Date.now();
+      const staleThreshold = 5 * 60 * 1000; // 5 minutes
+      let cleaned = 0;
+
+      for (const [jobId, timestamp] of this.lastProgressWebhookSent.entries()) {
+        if (now - timestamp > staleThreshold) {
+          this.lastProgressWebhookSent.delete(jobId);
+          cleaned++;
+        }
+      }
+
+      if (cleaned > 0) {
+        logger.debug(`Cleaned up ${cleaned} stale throttling entries`, {
+          remaining: this.lastProgressWebhookSent.size
+        });
+      }
+    }, 60 * 1000); // Run every minute
   }
 
   /**
@@ -347,6 +707,14 @@ export class WebhookNotificationService extends EventEmitter {
     if (jobEvent.worker_id) data.worker_id = jobEvent.worker_id as string;
     if (jobEvent.machine_id) data.machine_id = jobEvent.machine_id as string;
 
+    // IMPORTANT: Include workflow fields in webhook payload
+    if (jobEvent.workflow_id) data.workflow_id = jobEvent.workflow_id as string;
+    if (jobEvent.workflow_priority) data.workflow_priority = jobEvent.workflow_priority as number;
+    if (jobEvent.workflow_datetime) data.workflow_datetime = jobEvent.workflow_datetime as number;
+    if (jobEvent.step_number) data.step_number = jobEvent.step_number as number;
+    if (jobEvent.total_steps) data.total_steps = jobEvent.total_steps as number;
+    if (jobEvent.current_step) data.current_step = jobEvent.current_step as number;
+
     // Job submission events  
     if (event.type === 'job_submitted') {
       data.job_status = JobStatus.PENDING;
@@ -441,6 +809,22 @@ export class WebhookNotificationService extends EventEmitter {
       logger.warn(`Webhook not found for delivery: ${payload.webhook_id}`);
       return;
     }
+
+    // DEBUG: Log webhook delivery attempt
+    logger.info(`🚀 [WEBHOOK DEBUG] Sending webhook`, {
+      webhook_id: webhook.id,
+      webhook_url: webhook.url,
+      event_type: payload.event_type,
+      event_id: payload.event_id,
+      attempt_number: attemptNumber,
+      job_id: payload.data?.job_id,
+      workflow_id: payload.data?.workflow_id,
+      payload_summary: {
+        type: payload.event_type,
+        timestamp: payload.timestamp,
+        data_keys: Object.keys(payload.data || {}),
+      }
+    });
 
     const attempt: WebhookDeliveryAttempt = {
       id: this.generateId(),
@@ -674,7 +1058,7 @@ export class WebhookNotificationService extends EventEmitter {
             progress: 45,
             progress_message: 'Processing test workflow...',
             status: 'in_progress',
-            current_step: 'Test Step 3',
+            current_step: 3,
             total_steps: 5,
             estimated_completion: new Date(timestamp + 60000).toISOString(),
           },
@@ -836,8 +1220,13 @@ export class WebhookNotificationService extends EventEmitter {
     if (this.cacheRefreshInterval) {
       clearInterval(this.cacheRefreshInterval);
     }
+    if (this.throttleCleanupInterval) {
+      clearInterval(this.throttleCleanupInterval);
+    }
     this.webhooksCache.clear();
     this.deliveryQueue.length = 0;
     this.retryQueue.clear();
+    this.lastProgressWebhookSent.clear(); // Clean up throttling map
+    this.workflowTracker.clear(); // Clean up workflow tracking
   }
 }

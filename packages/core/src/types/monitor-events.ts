@@ -148,6 +148,7 @@ export interface JobSubmittedEvent extends BaseMonitorEvent {
     workflow_priority?: number;
     workflow_datetime?: number;
     step_number?: number;
+    total_steps?: number;
     customer_id?: string;
     requirements?: JobRequirements;
     created_at: number;
