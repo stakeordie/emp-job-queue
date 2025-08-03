@@ -229,12 +229,6 @@ export class WebhookNotificationService extends EventEmitter {
         return 'complete_job';
       case 'job_failed':
         return 'job_failed';
-      case 'workflow_completed':
-        return 'workflow_completed';
-      case 'workflow_submitted':
-        return 'workflow_submitted';
-      case 'workflow_failed':
-        return 'workflow_failed';
       case 'worker_connected':
       case 'worker_disconnected':
         return 'worker_status';
