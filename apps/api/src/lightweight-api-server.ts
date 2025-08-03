@@ -1256,7 +1256,7 @@ export class LightweightAPIServer {
       case 'delegated_job_result':
         try {
           const jobId = message.job_id as string;
-          const resultData = message.result;
+          const resultData = message.result as any; // Cast to any for property access
           
           if (!jobId || !resultData) {
             throw new Error('Missing required fields: job_id and result');
@@ -1290,7 +1290,8 @@ export class LightweightAPIServer {
             }
           };
           
-          await this.completeJob(jobId, jobResult);
+          // Use the Redis service to complete the job
+          await this.redisService.completeJob(jobId, jobResult);
           
           ws.send(JSON.stringify({
             type: 'delegated_job_acknowledged',
