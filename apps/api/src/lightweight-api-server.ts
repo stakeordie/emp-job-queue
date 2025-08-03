@@ -1254,6 +1254,7 @@ export class LightweightAPIServer {
         break;
 
       case 'delegated_job_result':
+        logger.info("THIS MUST SHOW")
         try {
           const jobId = message.job_id as string;
           const resultData = message.result as any; // Cast to any for property access
@@ -1277,7 +1278,7 @@ export class LightweightAPIServer {
             logger.info(`Delegated job ${jobId} marked for retry`);
             break; // Exit without completing the job
           }
-          
+          logger.info("THIS MUST SHOW=2")
           // Success or failed case - complete the job
           const success = resultData.success === true || resultData.data === 'completed';
           const jobResult = {
@@ -1292,9 +1293,13 @@ export class LightweightAPIServer {
           
           // Assign a dummy worker_id to delegated jobs so completeJob() doesn't reject them
           const dummyWorkerId = `delegated_client_${clientId}`;
+
+
           await this.redis.hset(`job:${jobId}`, 'worker_id', dummyWorkerId);
           
           // Use the Redis service to complete the job
+          logger.info(`JobID: ${jobId}`)
+          logger.info(`JobResult: ${jobResult}`)
           await this.redisService.completeJob(jobId, jobResult);
           
           ws.send(JSON.stringify({
@@ -1902,6 +1907,9 @@ export class LightweightAPIServer {
             await this.broadcastCompletion(completionData.job_id, completionData);
             logger.info(
               `📢 Broadcasted job completion event to clients and monitors: ${completionData.job_id}`
+            );
+            logger.info(
+              `📢 COMPLETION DATA: ${completionData}`
             );
             logger.info(
               `[JOB COMPLETE] After broadcasting completion - Monitor still connected: ${this.eventBroadcaster.getMonitorCount()} monitors`

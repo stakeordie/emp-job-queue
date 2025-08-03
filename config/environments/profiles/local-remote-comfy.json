@@ -8,7 +8,7 @@
     ],
     "webhook-service": [
       "default",
-      "production"
+      "local"
     ],
     "api-tokens": [
       "default"
@@ -41,8 +41,7 @@
       "default"
     ],
     "simulation": [
-      "local",
-      "big"
+      "local"
     ],
     "openai": [
       "default",

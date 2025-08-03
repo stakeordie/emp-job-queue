@@ -228,6 +228,7 @@ export class RedisService implements RedisServiceInterface {
   }
 
   async completeJob(jobId: string, result: JobResult): Promise<void> {
+    logger.info("RIGHT HERE completeJob CALLED")
     try {
       const job = await this.getJob(jobId);
       if (!job || !job.worker_id) {

@@ -35,9 +35,6 @@ services:
         reservations:
           memory: ${MEMORY_RESERVATION:-2G}
   comfyui-remote:
-    <<: *base-machine
-    profiles:
-      - comfyui-remote
     build:
       context: .
       dockerfile: Dockerfile
@@ -47,11 +44,31 @@ services:
         WORKERS: comfyui-remote:1
         MACHINE_ID: comfyui-remote
         CACHE_BUST: ${CACHE_BUST:-1}
+    image: emprops/machine:comfyui-remote
+    platform: linux/amd64
     container_name: comfyui-remote-${CURRENT_ENV}
     hostname: comfyui-remote
+    profiles:
+      - comfyui-remote
+    restart: 'no'
+    stop_grace_period: 2s
+    stop_signal: SIGTERM
+    env_file:
+      - .env.secret
+    environment:
+      NODE_ENV: production
+      ENV: ${CURRENT_ENV}
+      NVIDIA_VISIBLE_DEVICES: all
+      NVIDIA_DRIVER_CAPABILITIES: compute,utility
+    working_dir: /workspace
+    deploy:
+      resources:
+        limits:
+          memory: ${MEMORY_LIMIT:-8G}
+        reservations:
+          memory: ${MEMORY_RESERVATION:-2G}
     ports:
       - ${EXPOSE_PORTS:-9090}:9090
-    image: emprops/machine:comfyui-remote
   comfyui:
     build:
       context: .
@@ -292,6 +309,24 @@ services:
       - '3195:8195'
       - '3196:8196'
       - '3197:8197'
+  comfyui-remote-local:
+    <<: *base-machine
+    profiles:
+      - comfyui-remote-local
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: base
+      args:
+        WORKER_SPEC: comfyui-remote:1
+        WORKERS: comfyui-remote:1
+        MACHINE_ID: comfyui-remote-local
+        CACHE_BUST: ${CACHE_BUST:-1}
+    container_name: comfyui-remote-local-${CURRENT_ENV}
+    hostname: comfyui-remote-local
+    ports:
+      - ${EXPOSE_PORTS:-9090}:9090
+    image: emprops/machine:comfyui-remote-local
 networks:
   default:
     name: emp-job-queue
