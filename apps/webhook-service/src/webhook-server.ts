@@ -137,6 +137,7 @@ export class WebhookServer {
           active_webhooks: this.webhookProcessor.getActiveWebhookCount(),
           total_deliveries: this.webhookProcessor.getTotalDeliveries(),
           failed_deliveries: this.webhookProcessor.getFailedDeliveries(),
+          workflow_tracking: this.webhookProcessor.getWorkflowStats(),
         },
         request: {
           method: req.method,
