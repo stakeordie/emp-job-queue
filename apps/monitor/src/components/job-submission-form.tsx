@@ -887,8 +887,8 @@ export function DelegatedJobCompletion() {
 
   const completeDelegatedJob = async () => {
     console.log('completeDelegatedJob called', { selectedJobId, isConnected: connection.isConnected });
-    if (!selectedJobId || !connection.isConnected) {
-      console.log('Early return - missing jobId or not connected');
+    if (!selectedJobId) {
+      console.error('No job selected for completion');
       return;
     }
 
@@ -914,21 +914,35 @@ export function DelegatedJobCompletion() {
       console.log('Sending WebSocket message:', message);
       console.log('Job identifier used:', { internal_id: selectedJobId, customer_id: selectedJob?.customer_id, final_id: jobIdentifier });
       
+      // Get the websocket service and check connection status
       const websocketService = useMonitorStore.getState().websocketService;
+      const connectionStatus = websocketService.getConnectionStatus();
+      const isConnected = websocketService.isConnected();
+      
       console.log('WebSocket connection status:', {
-        isConnected: websocketService.isConnected(),
-        connectionStatus: websocketService.getConnectionStatus()
+        isConnected,
+        connectionStatus,
+        monitorConnected: connectionStatus.monitor?.connected,
+        clientConnected: connectionStatus.client?.connected
       });
       
+      if (!isConnected) {
+        console.error('WebSocket not connected - cannot send message');
+        console.error('Connection details:', connectionStatus);
+        return;
+      }
+      
       const success = websocketService.submitJob(message);
+      console.log('WebSocket submitJob result:', success);
+      
       if (success) {
         console.log('WebSocket message sent successfully');
         // Reset form on success
         setSelectedJobId('');
         setResultData('{"success": true, "data": "completed"}');
       } else {
-        console.error('Failed to send WebSocket message - not connected');
-        console.error('WebSocket connection details:', websocketService.getConnectionStatus());
+        console.error('Failed to send WebSocket message');
+        console.error('WebSocket connection details:', connectionStatus);
       }
     } catch (error) {
       console.error('Failed to complete delegated job:', error);
