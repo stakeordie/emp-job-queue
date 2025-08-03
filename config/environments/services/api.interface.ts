@@ -14,7 +14,8 @@ export const ApiEnvInterface = {
     // HTTP server configuration
     "API_PORT": "API_PORT",
     "API_HOST": "API_HOST",
-    "WEBHOOK_SERVICE_URL": "WEBHOOK_SERVICE_URL"
+    "WEBHOOK_SERVICE_URL": "WEBHOOK_SERVICE_URL",
+    "WS_AUTH_TOKEN": "API_AUTH_TOKEN"
   },
   
   optional: {
@@ -24,9 +25,6 @@ export const ApiEnvInterface = {
     
     // Performance tuning
     "LOG_LEVEL": "API_LOG_LEVEL"
-  },
-  secret: {
-    "WS_AUTH_TOKEN": "API_AUTH_TOKEN"
   },
   defaults: {
     "PORT": "3001",

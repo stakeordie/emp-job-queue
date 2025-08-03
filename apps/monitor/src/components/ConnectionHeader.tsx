@@ -19,63 +19,78 @@ import Link from "next/link"
 // Environment presets - load from environment variable
 const getConnectionPresets = () => {
   try {
-    const connectionsEnv = process.env.CONNECTIONS;
+    const connectionsEnv = process.env.NEXT_PUBLIC_CONNECTIONS;
     if (connectionsEnv) {
       const connections = JSON.parse(connectionsEnv);
       const presets: Record<string, { websocket: string; auth: string; name: string }> = {};
       
-      connections.forEach((conn: { NAME: string; WS_URL: string; AUTH_KEY?: string }) => {
-        const name = conn.NAME.toLowerCase();
-        presets[name] = {
-          websocket: `http://${conn.WS_URL}`,
-          auth: conn.AUTH_KEY || '3u8sdj5389fj3kljsf90u',
-          name: conn.NAME
-        };
+      // Handle both single object and array of objects
+      const connectionList = Array.isArray(connections) ? connections : [connections];
+      
+      // Validate that each connection has the required fields
+      connectionList.forEach((conn: any) => {
+        if (conn && typeof conn === 'object' && conn.NAME && conn.WS_URL) {
+          const name = conn.NAME.toLowerCase();
+          const protocol = conn.is_ssl ? 'wss://' : 'ws://';
+          presets[name] = {
+            websocket: `${protocol}${conn.WS_URL}`,
+            auth: conn.AUTH_KEY || '3u8sdj5389fj3kljsf90u',
+            name: conn.NAME
+          };
+        } else {
+          console.warn('Invalid connection object:', conn);
+        }
       });
       
-      return presets;
+      if (Object.keys(presets).length > 0) {
+        return { presets, isSingleConnection: !Array.isArray(connections) };
+      }
     }
   } catch (error) {
-    console.warn('Failed to parse CONNECTIONS environment variable:', error);
+    console.warn('Failed to parse NEXT_PUBLIC_CONNECTIONS environment variable:', error);
   }
   
-  // Fallback to hardcoded presets if env var is not available
-  return {
-    local: {
-      websocket: 'http://localhost:3331',
-      auth: '3u8sdj5389fj3kljsf90u',
-      name: 'Local Dev'
-    },
-    railway: {
-      websocket: 'wss://redisserver-production.up.railway.app',
-      auth: '3u8sdj5389fj3kljsf90u',
-      name: 'Railway (Old)'
-    },
-    railwaynew: {
-      websocket: 'wss://emp-job-queue-production.up.railway.app',
-      auth: '3u8sdj5389fj3kljsf90u',
-      name: 'Railway (New)'
-    }
-  };
+  // No CONNECTIONS environment variable - return null
+  return null;
 };
 
-const CONNECTION_PRESETS = getConnectionPresets();
+const CONNECTION_CONFIG = getConnectionPresets();
 
 export function ConnectionHeader() {
   const { connection, connect, disconnect, setConnection, refreshMonitor, apiVersion, fetchApiVersion } = useMonitorStore();
-  const [websocketUrl, setWebsocketUrl] = useState(CONNECTION_PRESETS.local.websocket);
-  const [authToken, setAuthToken] = useState(CONNECTION_PRESETS.local.auth);
-  const [selectedPreset, setSelectedPreset] = useState('local');
   
-  // Check if auto-connect is enabled via environment variable (only in production)
+  // Handle different connection states
+  if (!CONNECTION_CONFIG) {
+    // No CONNECTIONS environment variable - show error
+    return (
+      <div className="bg-red-50 border-b border-red-200 px-6 py-4">
+        <div className="text-red-800 text-center">
+          <p className="font-medium">No CONNECTIONS environment variable configured</p>
+          <p className="text-sm">Please set the NEXT_PUBLIC_CONNECTIONS environment variable with connection configuration.</p>
+        </div>
+      </div>
+    );
+  }
+
+  const { presets, isSingleConnection } = CONNECTION_CONFIG;
+  const presetKeys = Object.keys(presets);
+  const firstPreset = presetKeys[0];
+  
+  const [websocketUrl, setWebsocketUrl] = useState(presets[firstPreset]?.websocket || '');
+  const [authToken, setAuthToken] = useState(presets[firstPreset]?.auth || '');
+  const [selectedPreset, setSelectedPreset] = useState(firstPreset);
+  
+  // Check if auto-connect is enabled via environment variable
   const autoConnectUrl = process.env.NEXT_PUBLIC_WS_URL;
   const isProduction = process.env.NODE_ENV === 'production';
-  const isAutoConnectEnabled = isProduction && !!autoConnectUrl;
+  
+  // Hide selector if NEXT_PUBLIC_WS_URL in production OR if single connection
+  const isAutoConnectEnabled = (isProduction && !!autoConnectUrl) || isSingleConnection;
 
   const handlePresetChange = (preset: string) => {
     setSelectedPreset(preset);
-    if (CONNECTION_PRESETS[preset as keyof typeof CONNECTION_PRESETS]) {
-      const config = CONNECTION_PRESETS[preset as keyof typeof CONNECTION_PRESETS];
+    if (presets[preset]) {
+      const config = presets[preset];
       setWebsocketUrl(config.websocket);
       setAuthToken(config.auth);
     }
@@ -165,10 +180,12 @@ export function ConnectionHeader() {
         {/* Right side - Connection Controls */}
         <div className="flex items-center gap-4">
           {isAutoConnectEnabled ? (
-            /* Auto-connect mode (production only) - show simplified controls */
+            /* Auto-connect mode - show simplified controls */
             <div className="flex items-center gap-2">
               <Label className="text-xs">Auto-connecting to:</Label>
-              <code className="text-xs bg-muted px-2 py-1 rounded">{autoConnectUrl}</code>
+              <code className="text-xs bg-muted px-2 py-1 rounded">
+                {autoConnectUrl || (isSingleConnection ? presets[firstPreset]?.websocket : 'Unknown')}
+              </code>
             </div>
           ) : (
             /* Development mode or no auto-connect URL - show full manual controls */
@@ -181,7 +198,7 @@ export function ConnectionHeader() {
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
-                    {Object.entries(CONNECTION_PRESETS).map(([key, config]) => (
+                    {Object.entries(presets).map(([key, config]) => (
                       <SelectItem key={key} value={key}>
                         {config.name}
                       </SelectItem>

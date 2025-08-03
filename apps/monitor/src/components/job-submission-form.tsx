@@ -850,3 +850,164 @@ export function JobSubmissionForm() {
     </Card>
   );
 }
+
+// Delegated Job Completion Component
+export function DelegatedJobCompletion() {
+  const { jobs, connection } = useMonitorStore();
+  const [selectedJobId, setSelectedJobId] = useState('');
+  const [resultData, setResultData] = useState('{"success": true, "data": "completed"}');
+  const [isCompleting, setIsCompleting] = useState(false);
+
+  // Filter delegated jobs that are still pending
+  const delegatedJobs = jobs.filter(job => 
+    job.job_type === 'delegated' && 
+    job.status === 'pending'
+  );
+
+  // Debug logging
+  console.log('All jobs:', jobs.length);
+  console.log('Jobs with job_type:', jobs.map(j => ({ id: j.id, job_type: j.job_type, status: j.status })));
+  console.log('Delegated jobs found:', delegatedJobs.length);
+
+  const completeDelegatedJob = async () => {
+    console.log('completeDelegatedJob called', { selectedJobId, isConnected: connection.isConnected });
+    if (!selectedJobId || !connection.isConnected) {
+      console.log('Early return - missing jobId or not connected');
+      return;
+    }
+
+    setIsCompleting(true);
+    try {
+      let parsedResult;
+      try {
+        parsedResult = JSON.parse(resultData);
+      } catch {
+        parsedResult = { success: true, data: resultData };
+      }
+
+      // Find the selected job to get its customer_id (like ComfyUI does)
+      const selectedJob = delegatedJobs.find(job => job.id === selectedJobId);
+      const jobIdentifier = selectedJob?.customer_id || selectedJobId; // Use customer_id if available, fallback to internal ID
+
+      const message = {
+        type: 'delegated_job_result',
+        job_id: jobIdentifier, // Use customer ID for consistency with ComfyUI pattern
+        result: parsedResult,
+      };
+
+      console.log('Sending WebSocket message:', message);
+      console.log('Job identifier used:', { internal_id: selectedJobId, customer_id: selectedJob?.customer_id, final_id: jobIdentifier });
+      
+      const websocketService = useMonitorStore.getState().websocketService;
+      const success = websocketService.submitJob(message);
+      if (success) {
+        console.log('WebSocket message sent successfully');
+        // Reset form on success
+        setSelectedJobId('');
+        setResultData('{"success": true, "data": "completed"}');
+      } else {
+        console.error('Failed to send WebSocket message - not connected');
+      }
+    } catch (error) {
+      console.error('Failed to complete delegated job:', error);
+    } finally {
+      setIsCompleting(false);
+    }
+  };
+
+  if (delegatedJobs.length === 0) {
+    return null; // Don't show the component if no delegated jobs
+  }
+
+  return (
+    <Card className="mt-4">
+      <CardHeader className="pb-2">
+        <CardTitle className="text-lg flex items-center gap-2">
+          Complete Delegated Jobs
+          <Badge variant="secondary" className="text-xs">
+            {delegatedJobs.length} pending
+          </Badge>
+        </CardTitle>
+      </CardHeader>
+      <CardContent className="p-3">
+        <div className="space-y-3">
+          <div className="space-y-1">
+            <Label htmlFor="delegated-job-select" className="text-xs">Select Delegated Job</Label>
+            <Select value={selectedJobId} onValueChange={setSelectedJobId}>
+              <SelectTrigger id="delegated-job-select" size="sm">
+                <SelectValue placeholder="Choose a delegated job to complete" />
+              </SelectTrigger>
+              <SelectContent>
+                {delegatedJobs.map((job) => (
+                  <SelectItem key={job.id} value={job.id}>
+                    {job.id} - {job.delegated_service || 'Unknown Service'} 
+                    {job.workflow_id && ` (${job.workflow_id})`}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+
+          <div className="space-y-2">
+            <div className="flex items-center justify-between">
+              <Label htmlFor="result-data" className="text-xs">Result Data</Label>
+              <div className="flex gap-1">
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  className="h-6 px-2 text-xs text-green-600 border-green-200 hover:bg-green-50"
+                  onClick={() => setResultData('{"success": true, "data": "completed"}')}
+                >
+                  ✓ Success
+                </Button>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  className="h-6 px-2 text-xs text-yellow-600 border-yellow-200 hover:bg-yellow-50"
+                  onClick={() => setResultData('{"success": false, "data": "retry", "error": "Enter retry reason here"}')}
+                >
+                  ↻ Retry
+                </Button>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  className="h-6 px-2 text-xs text-red-600 border-red-200 hover:bg-red-50"
+                  onClick={() => setResultData('{"success": false, "data": "failed", "error": "Enter error message here"}')}
+                >
+                  ✗ Failed
+                </Button>
+              </div>
+            </div>
+            <textarea
+              id="result-data"
+              value={resultData}
+              onChange={(e) => setResultData(e.target.value)}
+              className="w-full px-2 py-1 border rounded-md resize-y font-mono text-xs"
+              rows={3}
+              placeholder='{"success": true, "data": "execution_result"}'
+            />
+            <div className="text-xs text-muted-foreground">
+              <div className="font-medium mb-1">Quick templates:</div>
+              <div className="space-y-1">
+                <div className="text-green-600">✓ <strong>Success:</strong> <code>{`{"success": true, "data": "completed"}`}</code></div>
+                <div className="text-yellow-600">↻ <strong>Retry:</strong> <code>{`{"success": false, "data": "retry", "error": "reason"}`}</code></div>
+                <div className="text-red-600">✗ <strong>Failed:</strong> <code>{`{"success": false, "data": "failed", "error": "reason"}`}</code></div>
+              </div>
+            </div>
+          </div>
+
+          <Button
+            onClick={completeDelegatedJob}
+            disabled={!selectedJobId || !connection.isConnected || isCompleting}
+            className="w-full h-8 text-sm"
+          >
+            {isCompleting ? 'Completing...' : 'Complete Job'}
+          </Button>
+        </div>
+      </CardContent>
+    </Card>
+  );
+}

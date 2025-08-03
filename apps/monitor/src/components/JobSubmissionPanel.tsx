@@ -2,7 +2,7 @@
 
 import { Button } from "@/components/ui/button"
 import { PanelLeftOpen, PanelLeftClose } from "lucide-react"
-import { JobSubmissionForm } from "@/components/job-submission-form"
+import { JobSubmissionForm, DelegatedJobCompletion } from "@/components/job-submission-form"
 import { JobResultsCard } from "@/components/JobResultsCard"
 
 interface JobSubmissionPanelProps {
@@ -67,6 +67,9 @@ export function JobSubmissionPanel({ isOpen, onToggle }: JobSubmissionPanelProps
           <div className="flex-1 overflow-y-auto p-4 space-y-4">
             {/* Job Submission Form */}
             <JobSubmissionForm />
+
+            {/* Delegated Job Completion */}
+            <DelegatedJobCompletion />
 
             {/* Job Results */}
             <JobResultsCard />

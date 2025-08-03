@@ -13,9 +13,10 @@ export const MonitorEnvInterface = {
     "HOST": "MONITOR_HOST",
     
     // Connection presets for UI (JSON string)
-    "CONNECTIONS": "MONITOR_CONNECTION",
+    "NEXT_PUBLIC_CONNECTIONS": "MONITOR_CONNECTION",
     "WEBHOOK_SERVICE_URL": "WEBHOOK_SERVICE_URL",
     "NEXT_PUBLIC_WEBHOOK_SERVICE_URL": "WEBHOOK_SERVICE_URL",
+    "WS_AUTH_TOKEN": "API_AUTH_TOKEN"
   },
   
   optional: {
@@ -31,9 +32,6 @@ export const MonitorEnvInterface = {
     
     // Development
     "LOG_LEVEL": "MONITOR_LOG_LEVEL",
-  },
-  secret: {
-    "WS_AUTH_TOKEN": "API_AUTH_TOKEN"
   },
   defaults: {
     "PORT": "3003",
