@@ -299,6 +299,11 @@ export class WebhookProcessor extends EventEmitter {
     const stepNumber = currentStep || (event as any).step_number || 1;
     workflow.steps.set(stepNumber, event.job_id);
 
+    // Check if this is the first step being submitted (workflow_submitted event)
+    if (event.type === 'job_submitted' && stepNumber === 1 && workflow.steps.size === 1) {
+      await this.sendWorkflowSubmittedEvent(workflowId, event);
+    }
+
     // Handle completion/failure
     const wasCompleted = workflow.completedSteps.has(stepNumber);
     const wasFailed = workflow.failedSteps.has(stepNumber);
@@ -327,6 +332,27 @@ export class WebhookProcessor extends EventEmitter {
 
     // Check for workflow completion
     await this.checkWorkflowCompletion(workflowId, workflow, event);
+  }
+
+  private async sendWorkflowSubmittedEvent(workflowId: string, triggeringEvent: RedisJobEvent): Promise<void> {
+    const workflowSubmittedEvent = {
+      type: 'workflow_submitted',
+      workflow_id: workflowId,
+      timestamp: Date.now(),
+      first_job_id: triggeringEvent.job_id,
+      total_steps: (triggeringEvent as any).total_steps,
+      workflow_priority: (triggeringEvent as any).workflow_priority,
+      workflow_datetime: (triggeringEvent as any).workflow_datetime,
+      customer_id: (triggeringEvent as any).customer_id,
+      service_required: (triggeringEvent as any).service_required,
+    };
+
+    try {
+      await this.webhookService.processEvent(workflowSubmittedEvent as any);
+      logger.info('Workflow submitted webhook sent', { workflowId });
+    } catch (error) {
+      logger.error('Failed to send workflow submitted webhook', { workflowId, error });
+    }
   }
 
   private async checkWorkflowCompletion(
@@ -361,9 +387,10 @@ export class WebhookProcessor extends EventEmitter {
         stepsSeenSoFar: workflow.steps.size
       });
 
-      // Create workflow completion event
+      // Create workflow completion event (success or failure)
+      const eventType = isSuccess ? 'workflow_completed' : 'workflow_failed';
       const workflowCompletionEvent = {
-        type: 'workflow_completed',
+        type: eventType,
         workflow_id: workflowId,
         timestamp: Date.now(),
         success: isSuccess,
@@ -384,12 +411,12 @@ export class WebhookProcessor extends EventEmitter {
         }))
       };
 
-      // Send workflow completion webhook
+      // Send workflow completion/failure webhook
       try {
         await this.webhookService.processEvent(workflowCompletionEvent as any);
-        logger.info('Workflow completion webhook sent', { workflowId });
+        logger.info(`Workflow ${eventType} webhook sent`, { workflowId, isSuccess });
       } catch (error) {
-        logger.error('Failed to send workflow completion webhook', { workflowId, error });
+        logger.error(`Failed to send workflow ${eventType} webhook`, { workflowId, error });
       }
 
       // Clean up workflow tracking (keep memory usage bounded)
