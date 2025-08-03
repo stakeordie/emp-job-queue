@@ -347,7 +347,7 @@ export function JobSubmissionForm() {
   const [requirementPairs, setRequirementPairs] = useState<RequirementPair[]>([
     { id: '1', key: '', value: '', type: 'must_have' }
   ]);
-  const { submitJob, connection } = useMonitorStore();
+  const { submitJob, connection, trackSimulationWorkflow } = useMonitorStore();
 
   const form = useForm({
     resolver: zodResolver(jobSubmissionSchema),
@@ -483,9 +483,8 @@ export function JobSubmissionForm() {
   const onSubmit = async (data: JobSubmissionData) => {
     try {
       // Parse JSON payload
-      let parsedPayload;
       try {
-        parsedPayload = JSON.parse(data.payload);
+        JSON.parse(data.payload);
       } catch {
         throw new Error('Invalid JSON in payload');
       }
@@ -493,34 +492,55 @@ export function JobSubmissionForm() {
       // Build requirements from key-value pairs
       const parsedRequirements = buildRequirementsObject();
 
-      const job_number = data.batch_number;
+      const batchSize = data.batch_number; // Number of workflows to create
+      const stepsPerWorkflow = data.step_number !== '' ? data.step_number as number : 1; // Steps within each workflow
 
       // Service type is always the selected job type (CPU mode only changes payload, not service routing)
       const serviceType = data.job_type;
 
-      const jobData = {
-        job_type: serviceType,
-        service_required: serviceType,
-        priority: data.priority,
-        payload: parsedPayload,
-        customer_id: data.customer_id && data.customer_id.trim() ? data.customer_id : undefined,
-        requirements: parsedRequirements || { service_type: serviceType },
-        workflow_id: data.workflow_id && data.workflow_id.trim() ? data.workflow_id : undefined,
-        workflow_priority: data.workflow_priority !== '' ? data.workflow_priority : undefined,
-        workflow_datetime: data.workflow_datetime !== '' ? data.workflow_datetime : undefined,
-        step_number: data.step_number !== '' ? data.step_number : undefined,
-      };
+      // Create multiple workflows (batch)
+      for(let workflowIndex = 1; workflowIndex <= batchSize; workflowIndex++){
+        // Generate a unique workflow ID for this batch item
+        const baseWorkflowId = data.workflow_id && data.workflow_id.trim() ? data.workflow_id : `workflow-${Date.now()}`;
+        const currentWorkflowId = batchSize > 1 ? `${baseWorkflowId}-${workflowIndex}` : baseWorkflowId;
 
-      for(let v = 1; v <= job_number; v++){
-        // Generate fresh random payload for each job in the batch
+        // For each workflow, only submit the FIRST step (step 1)
+        // The UI will automatically submit subsequent steps when previous steps complete
         const freshPayload = generateFreshPayload(serviceType, useCpuMode);
         
-        const jobWithFreshPayload = {
-          ...jobData,
-          payload: freshPayload
+        const jobData = {
+          job_type: serviceType,
+          service_required: serviceType,
+          priority: data.priority,
+          payload: freshPayload,
+          customer_id: data.customer_id && data.customer_id.trim() ? data.customer_id : undefined,
+          requirements: parsedRequirements || { service_type: serviceType },
+          workflow_id: currentWorkflowId,
+          workflow_priority: data.workflow_priority !== '' ? data.workflow_priority : undefined,
+          workflow_datetime: data.workflow_datetime !== '' ? data.workflow_datetime : undefined,
+          step_number: 1, // Always start with step 1
+          total_steps: stepsPerWorkflow, // Tell the system how many total steps this workflow has
         };
         
-        submitJob(jobWithFreshPayload);
+        // For simulation jobs with multiple steps, register the workflow for auto-progression
+        if (serviceType === 'simulation' && stepsPerWorkflow > 1) {
+          trackSimulationWorkflow(currentWorkflowId, {
+            total_steps: stepsPerWorkflow,
+            job_type: serviceType,
+            priority: data.priority,
+            customer_id: data.customer_id && data.customer_id.trim() ? data.customer_id : undefined,
+            workflow_priority: data.workflow_priority !== '' ? data.workflow_priority : undefined,
+            workflow_datetime: data.workflow_datetime !== '' ? data.workflow_datetime : undefined,
+            requirements: parsedRequirements || { service_type: serviceType },
+            basePayload: freshPayload,
+            useCpuMode: useCpuMode
+          });
+          
+          console.log(`Registered simulation workflow ${currentWorkflowId} with ${stepsPerWorkflow} steps`);
+        }
+        
+        // Submit only the first step - subsequent steps will be submitted automatically
+        submitJob(jobData);
         setLastSubmission(new Date().toLocaleTimeString());
       }
       
@@ -776,29 +796,32 @@ export function JobSubmissionForm() {
             </div>
 
             <div className="space-y-1">
-              <Label htmlFor="step_number" className="text-xs">Step Number</Label>
+              <Label htmlFor="step_number" className="text-xs">Steps per Workflow</Label>
               <Input
                 id="step_number"
                 type="number"
-                min="0"
+                min="1"
                 className="h-8"
                 {...register('step_number')}
-                placeholder="optional"
+                placeholder="creates 1→2→3... steps"
               />
             </div>
           </div>
 
-          <div>
-            <Label htmlFor="batch_number" className="text-xs">Batch Number</Label>
-              <Input
-                id="batch_number"
-                type="number"
-                min="1"
-                max="100"
-                className="h-8"
-                {...register('batch_number')}
-                placeholder="0-100"
-              />
+          <div className="space-y-1">
+            <Label htmlFor="batch_number" className="text-xs">Batch Size</Label>
+            <Input
+              id="batch_number"
+              type="number"
+              min="1"
+              max="100"
+              className="h-8"
+              {...register('batch_number')}
+              placeholder="creates sequential jobs"
+            />
+            <div className="text-xs text-muted-foreground">
+              Creates multiple workflows. If &quot;Steps per Workflow&quot; is set, each workflow will have that many sequential steps.
+            </div>
           </div>
 
           <div className="flex gap-2">

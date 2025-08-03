@@ -28,7 +28,10 @@ type WebhookEventType =
   | 'job_failed'           // Job failure (FAILURE) 
   | 'cancel_job'           // Job cancellation
   | 'worker_status'        // Worker status changes
-  | 'machine_status'       // Machine status changes;
+  | 'machine_status'       // Machine status changes
+  | 'workflow_completed'   // Workflow completed (all steps finished)
+  | 'workflow_submitted'   // First job in workflow submitted
+  | 'workflow_failed';     // Workflow failed (partial or complete failure)
 
 interface WebhookEndpoint {
   id: string;
@@ -106,6 +109,9 @@ const EVENT_TYPE_LABELS: Record<WebhookEventType, string> = {
   'cancel_job': 'Job Cancelled',
   'worker_status': 'Worker Status Changes',
   'machine_status': 'Machine Status Changes',
+  'workflow_completed': 'Workflow Completed',
+  'workflow_submitted': 'Workflow Submitted',
+  'workflow_failed': 'Workflow Failed',
 };
 
 export default function WebhookManagementPage() {

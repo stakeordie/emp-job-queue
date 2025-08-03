@@ -134,7 +134,7 @@ class ComposeBuilder {
     const serviceMapping = await this.loadServiceMapping();
     const environment = {
       'WORKERS': workerSpec.raw,
-      'MACHINE_ID': `${workerSpec.profileName}-\${CURRENT_ENV}`
+      'MACHINE_ID': workerSpec.profileName
     };
 
     // Collect all required and optional environment variables for all workers
@@ -260,14 +260,14 @@ class ComposeBuilder {
         args: {
           WORKER_SPEC: workerSpec.raw,
           WORKERS: workerSpec.raw,
-          MACHINE_ID: `${workerSpec.profileName}-\${CURRENT_ENV}`,
+          MACHINE_ID: workerSpec.profileName,
           CACHE_BUST: '${CACHE_BUST:-1}',
           // Add all environment variables as build args
           ...(await this.generateEnvironmentForWorkerSpec(workerSpec))
         }
       },
       container_name: `${workerSpec.profileName}-\${CURRENT_ENV}`,
-      hostname: `${workerSpec.profileName}-\${CURRENT_ENV}`,
+      hostname: workerSpec.profileName,
       // Generate ports specific to this machine configuration
       ports: this.generatePortsForWorkerSpec(workerSpec)
     };

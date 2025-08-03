@@ -15,7 +15,6 @@ export const MachineEnvInterface = {
 
     "UNIFIED_MACHINE_STATUS":"WORKER_UNIFIED_MACHINE_STATUS",
 
-    "EXPOSE_PORTS":"MACHINE_EXPOSE_PORTS"
   },
   
   optional: {
@@ -23,6 +22,7 @@ export const MachineEnvInterface = {
     // Machine monitoring and health
     "MACHINE_HEALTH_PORT": "MACHINE_HEALTH_PORT",
     "MACHINE_LOG_LEVEL": "MACHINE_LOG_LEVEL",
+    "EXPOSE_PORTS":"MACHINE_EXPOSE_PORTS",
 
     // Worker authentication and security
     "WORKER_WEBSOCKET_AUTH_TOKEN": "REDIS_PASSWORD",

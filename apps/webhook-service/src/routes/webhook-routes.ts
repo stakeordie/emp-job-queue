@@ -381,7 +381,7 @@ export function setupWebhookRoutes(app: Express, webhookProcessor: WebhookProces
     try {
       const webhookStorage = webhookProcessor.getWebhookStorage();
       await webhookStorage.cleanupExpiredTestReceivers();
-      
+
       const allReceivers = await webhookStorage.getAllTestReceivers();
       const receivers = allReceivers.map(receiver => ({
         id: receiver.id,
@@ -411,7 +411,7 @@ export function setupWebhookRoutes(app: Express, webhookProcessor: WebhookProces
     try {
       const { id } = req.params;
       const webhookStorage = webhookProcessor.getWebhookStorage();
-      
+
       const receiver = await webhookStorage.getTestReceiver(id);
       if (!receiver) {
         return res.status(404).json({
@@ -450,9 +450,9 @@ export function setupWebhookRoutes(app: Express, webhookProcessor: WebhookProces
     try {
       const { id } = req.params;
       const webhookStorage = webhookProcessor.getWebhookStorage();
-      
+
       const clearedCount = await webhookStorage.clearTestReceiverRequests(id);
-      
+
       if (clearedCount === 0) {
         const receiver = await webhookStorage.getTestReceiver(id);
         if (!receiver) {
@@ -483,11 +483,11 @@ export function setupWebhookRoutes(app: Express, webhookProcessor: WebhookProces
   // Handle webhook test receiver requests (catch-all for any HTTP method)
   const handleTestReceiverRequest = async (req: Request, res: Response) => {
     const { id } = req.params;
-    
+
     try {
       const webhookStorage = webhookProcessor.getWebhookStorage();
       const receiver = await webhookStorage.getTestReceiver(id);
-      
+
       if (!receiver) {
         return res.status(404).json({
           success: false,
@@ -499,7 +499,7 @@ export function setupWebhookRoutes(app: Express, webhookProcessor: WebhookProces
       // Parse request body
       let body: unknown = null;
       const contentType = req.headers['content-type'] || '';
-      
+
       if (contentType.includes('application/json')) {
         body = req.body;
       } else if (contentType.includes('application/x-www-form-urlencoded')) {

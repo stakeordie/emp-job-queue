@@ -35,6 +35,9 @@ services:
         reservations:
           memory: ${MEMORY_RESERVATION:-2G}
   comfyui-remote:
+    <<: *base-machine
+    profiles:
+      - comfyui-remote
     build:
       context: .
       dockerfile: Dockerfile
@@ -42,14 +45,29 @@ services:
       args:
         WORKER_SPEC: comfyui-remote:1
         WORKERS: comfyui-remote:1
-        MACHINE_ID: comfyui-remote-${CURRENT_ENV}
+        MACHINE_ID: comfyui-remote
         CACHE_BUST: ${CACHE_BUST:-1}
-    image: emprops/machine:comfyui-remote
-    platform: linux/amd64
     container_name: comfyui-remote-${CURRENT_ENV}
-    hostname: comfyui-remote-${CURRENT_ENV}
+    hostname: comfyui-remote
+    ports:
+      - ${EXPOSE_PORTS:-9090}:9090
+    image: emprops/machine:comfyui-remote
+  comfyui:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: comfyui
+      args:
+        WORKER_SPEC: comfyui:1
+        WORKERS: comfyui:1
+        MACHINE_ID: comfyui
+        CACHE_BUST: ${CACHE_BUST:-1}
+    image: emprops/machine:comfyui
+    platform: linux/amd64
+    container_name: comfyui-${CURRENT_ENV}
+    hostname: comfyui
     profiles:
-      - comfyui-remote
+      - comfyui
     restart: 'no'
     stop_grace_period: 2s
     stop_signal: SIGTERM
@@ -67,25 +85,9 @@ services:
           memory: ${MEMORY_LIMIT:-8G}
         reservations:
           memory: ${MEMORY_RESERVATION:-2G}
-  comfyui:
-    <<: *base-machine
-    profiles:
-      - comfyui
-    build:
-      context: .
-      dockerfile: Dockerfile
-      target: comfyui
-      args:
-        WORKER_SPEC: comfyui:1
-        WORKERS: comfyui:1
-        MACHINE_ID: comfyui-${CURRENT_ENV}
-        CACHE_BUST: ${CACHE_BUST:-1}
-    container_name: comfyui-${CURRENT_ENV}
-    hostname: comfyui-${CURRENT_ENV}
     ports:
       - ${EXPOSE_PORTS:-9090}:9090
       - '3188:8188'
-    image: emprops/machine:comfyui
   openai:
     build:
       context: .
@@ -94,7 +96,7 @@ services:
       args:
         WORKER_SPEC: openai:5
         WORKERS: openai:5
-        MACHINE_ID: openai-${CURRENT_ENV}
+        MACHINE_ID: openai
         CACHE_BUST: ${CACHE_BUST:-1}
         OPENAI_API_KEY: ${OPENAI_API_KEY}
         OPENAI_IMAGE_MODEL: ${OPENAI_IMAGE_MODEL}
@@ -102,7 +104,7 @@ services:
     image: emprops/machine:openai
     platform: linux/amd64
     container_name: openai-${CURRENT_ENV}
-    hostname: openai-${CURRENT_ENV}
+    hostname: openai
     profiles:
       - openai
     restart: 'no'
@@ -122,6 +124,8 @@ services:
           memory: ${MEMORY_LIMIT:-8G}
         reservations:
           memory: ${MEMORY_RESERVATION:-2G}
+    ports:
+      - ${EXPOSE_PORTS:-9090}:9090
   simulation:
     build:
       context: .
@@ -133,7 +137,7 @@ services:
     image: emprops/machine:simulation
     platform: linux/amd64
     container_name: simulation-${ENV:-local}
-    hostname: simulation-${ENV:-local}
+    hostname: simulation
     profiles:
       - simulation
     restart: 'no'
@@ -143,7 +147,7 @@ services:
       - .env.secret
     environment:
       WORKERS: simulation:5
-      MACHINE_ID: simulation-${ENV:-local}
+      MACHINE_ID: simulation
     working_dir: /workspace
     deploy:
       resources:
@@ -162,7 +166,7 @@ services:
     image: emprops/machine:openai-text
     platform: linux/amd64
     container_name: openai-text-${ENV:-local}
-    hostname: openai-text-${ENV:-local}
+    hostname: openai-text
     profiles:
       - openai-text
     restart: 'no'
@@ -172,7 +176,7 @@ services:
       - .env.secret
     environment:
       WORKERS: openai-text:5
-      MACHINE_ID: openai-text-${ENV:-local}
+      MACHINE_ID: openai-text
       OPENAI_API_KEY: ${OPENAI_API_KEY}
     working_dir: /workspace
     deploy:
@@ -192,7 +196,7 @@ services:
     image: emprops/machine:sim
     platform: linux/amd64
     container_name: sim-${ENV:-local}
-    hostname: sim-${ENV:-local}
+    hostname: sim
     profiles:
       - sim
     restart: 'no'
@@ -202,7 +206,7 @@ services:
       - .env.secret
     environment:
       WORKERS: simulation:10
-      MACHINE_ID: sim-${ENV:-local}
+      MACHINE_ID: sim
     working_dir: /workspace
     deploy:
       resources:
@@ -218,12 +222,12 @@ services:
       args:
         WORKER_SPEC: comfyui-remote:1
         WORKERS: comfyui-remote:1
-        MACHINE_ID: comfyui-remote-test-${ENV:-local}
+        MACHINE_ID: comfyui-remote-test
         CACHE_BUST: ${CACHE_BUST:-1}
     image: emprops/machine:comfyui-remote-test
     platform: linux/amd64
     container_name: comfyui-remote-test-${ENV:-local}
-    hostname: comfyui-remote-test-${ENV:-local}
+    hostname: comfyui-remote-test
     profiles:
       - comfyui-remote-test
     restart: 'no'
@@ -243,6 +247,51 @@ services:
           memory: ${MEMORY_LIMIT:-8G}
         reservations:
           memory: ${MEMORY_RESERVATION:-2G}
+  sim-local:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: simulation
+      args:
+        WORKER_SPEC: simulation:10
+        WORKERS: simulation:10
+        MACHINE_ID: sim-local
+        CACHE_BUST: ${CACHE_BUST:-1}
+    image: emprops/machine:sim-local
+    platform: linux/amd64
+    container_name: sim-local-${CURRENT_ENV}
+    hostname: sim-local
+    profiles:
+      - sim-local
+    restart: 'no'
+    stop_grace_period: 2s
+    stop_signal: SIGTERM
+    env_file:
+      - .env.secret
+    environment:
+      NODE_ENV: production
+      ENV: ${CURRENT_ENV}
+      NVIDIA_VISIBLE_DEVICES: all
+      NVIDIA_DRIVER_CAPABILITIES: compute,utility
+    working_dir: /workspace
+    deploy:
+      resources:
+        limits:
+          memory: ${MEMORY_LIMIT:-8G}
+        reservations:
+          memory: ${MEMORY_RESERVATION:-2G}
+    ports:
+      - ${EXPOSE_PORTS:-9090}:9090
+      - '3188:8188'
+      - '3189:8189'
+      - '3190:8190'
+      - '3191:8191'
+      - '3192:8192'
+      - '3193:8193'
+      - '3194:8194'
+      - '3195:8195'
+      - '3196:8196'
+      - '3197:8197'
 networks:
   default:
     name: emp-job-queue

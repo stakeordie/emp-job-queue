@@ -19,7 +19,7 @@ export function JobResultsCard({ className }: JobResultsCardProps) {
 
   // Get 10 most recent completed jobs
   const recentCompletedJobs = useMemo(() => {
-    return jobs
+    const completed = jobs
       .filter(job => job.status === 'completed')
       .sort((a, b) => {
         // Sort by completion time DESC (newest first)
@@ -28,6 +28,8 @@ export function JobResultsCard({ className }: JobResultsCardProps) {
         return bTime - aTime;
       })
       .slice(0, 10); // Only show 10 most recent
+    
+    return completed;
   }, [jobs]);
 
 
@@ -129,7 +131,8 @@ Recent Job Results ({recentCompletedJobs.length}/10)
                       {job.workflow_id && (
                         <span className="text-purple-600 font-medium">
                           {` • 🔗 ${job.workflow_id}`}
-                          {job.step_number !== undefined && ` (step ${job.step_number})`}
+                          {job.step_number !== undefined && job.total_steps ? ` (Step ${job.step_number} of ${job.total_steps})` : ''}
+                          {job.step_number !== undefined && !job.total_steps && ` (step ${job.step_number})`}
                         </span>
                       )}
                     </p>

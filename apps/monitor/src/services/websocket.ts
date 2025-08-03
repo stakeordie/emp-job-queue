@@ -131,6 +131,7 @@ export class EventStreamService {
           if (data.type === 'full_state_snapshot') {
             console.log('[WebSocket] Processing monitor event:', data.type);
             console.log('[WebSocket] Full state snapshot data:', JSON.stringify(data, null, 2));
+            
           } else {
             console.log('[WebSocket] Processing monitor event:', data.type);
           }

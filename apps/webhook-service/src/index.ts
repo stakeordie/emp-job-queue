@@ -22,11 +22,7 @@ const config = {
       }
       return origins;
     }
-    return [
-      'http://localhost:3333',
-      'http://localhost:3331',
-      '*',
-    ];
+    return ['http://localhost:3333', 'http://localhost:3331', '*'];
   })(),
 };
 

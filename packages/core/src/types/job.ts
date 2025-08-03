@@ -11,6 +11,7 @@ export interface Job {
   workflow_priority?: number;
   workflow_datetime?: number;
   step_number?: number;
+  total_steps?: number;
   created_at: string;
   assigned_at?: string;
   started_at?: string;
@@ -97,6 +98,7 @@ export interface JobSubmissionRequest {
   workflow_priority?: number;
   workflow_datetime?: number;
   step_number?: number;
+  total_steps?: number;
   max_retries?: number;
   timeout_minutes?: number;
 }

@@ -40,36 +40,36 @@ export class WebhookServer {
   private setupMiddleware(): void {
     // CORS support
     const corsOrigins = this.config.corsOrigins || ['*'];
-    logger.info('Setting up CORS with origins:', corsOrigins);
-    
+    //logger.info('Setting up CORS with origins:', corsOrigins);
+
     this.app.use(
       cors({
         origin: (origin, callback) => {
-          logger.info('CORS check for origin:', origin, 'allowed origins:', corsOrigins);
-          
+          //logger.info('CORS check for origin:', origin, 'allowed origins:', corsOrigins);
+
           // Allow requests with no origin (like mobile apps or curl requests)
           if (!origin) {
-            logger.info('CORS: Allowing request with no origin');
+            //logger.info('CORS: Allowing request with no origin');
             return callback(null, true);
           }
-          
+
           // Check if origin is explicitly allowed
           if (corsOrigins.includes('*')) {
-            logger.info('CORS: Allowing all origins (*)');
+            //logger.info('CORS: Allowing all origins (*)');
             return callback(null, true);
           }
-          
+
           if (corsOrigins.includes(origin)) {
-            logger.info('CORS: Allowing explicitly listed origin:', origin);
+            //logger.info('CORS: Allowing explicitly listed origin:', origin);
             return callback(null, true);
           }
-          
+
           // Special case: allow localhost variants for development
           if (origin.includes('localhost') || origin.includes('127.0.0.1')) {
-            logger.info('CORS: Allowing localhost origin for development:', origin);
+            //logger.info('CORS: Allowing localhost origin for development:', origin);
             return callback(null, true);
           }
-          
+
           logger.warn('CORS BLOCKED origin:', origin, 'allowed origins:', corsOrigins);
           callback(new Error(`Not allowed by CORS: ${origin}`));
         },

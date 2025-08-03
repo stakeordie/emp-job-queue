@@ -39,25 +39,28 @@ export class WebhookProcessor extends EventEmitter {
     skippedEvents: 0,
     failedEvents: 0,
   };
-  
+
   // Workflow tracking for completion detection
-  private workflowTracker = new Map<string, {
-    steps: Map<number, string>;   // step_number -> job_id mapping
-    completedSteps: Set<number>;  // completed step numbers (1-indexed)
-    failedSteps: Set<number>;     // failed step numbers (1-indexed)
-    totalSteps?: number;          // total steps in workflow (from job submission)
-    startTime: number;
-    lastUpdate: number;
-    currentStep?: number;         // highest current_step seen
-  }>();
-  
+  private workflowTracker = new Map<
+    string,
+    {
+      steps: Map<number, string>; // step_number -> job_id mapping
+      completedSteps: Set<number>; // completed step numbers (1-indexed)
+      failedSteps: Set<number>; // failed step numbers (1-indexed)
+      totalSteps?: number; // total steps in workflow (from job submission)
+      startTime: number;
+      lastUpdate: number;
+      currentStep?: number; // highest current_step seen
+    }
+  >();
+
   private workflowCleanupInterval?: NodeJS.Timeout;
 
   // Redis channels to subscribe to (ONLY channels actually published by the system)
   private readonly EVENT_CHANNELS = [
     'job_submitted', // Job submission events (published by API)
     'update_job_progress', // Job progress updates (published by workers)
-    'complete_job', // Job completion events (published by workers)  
+    'complete_job', // Job completion events (published by workers)
     'job_failed', // Job failure events (published by workers)
     'cancel_job', // Job cancellation events (published by API)
     'worker_status', // Worker status events (published by API/workers)
@@ -122,11 +125,11 @@ export class WebhookProcessor extends EventEmitter {
       // Subscribe to regular channels
       const regularChannels = this.EVENT_CHANNELS.filter(channel => !channel.includes('*'));
       const patternChannels = this.EVENT_CHANNELS.filter(channel => channel.includes('*'));
-      
+
       if (regularChannels.length > 0) {
         await this.subscriber.subscribe(...regularChannels);
       }
-      
+
       if (patternChannels.length > 0) {
         await this.subscriber.psubscribe(...patternChannels);
       }
@@ -178,9 +181,12 @@ export class WebhookProcessor extends EventEmitter {
 
   private startWorkflowCleanup(): void {
     // Clean up stale workflows every 10 minutes
-    this.workflowCleanupInterval = setInterval(() => {
-      this.cleanupStaleWorkflows();
-    }, 10 * 60 * 1000); // 10 minutes
+    this.workflowCleanupInterval = setInterval(
+      () => {
+        this.cleanupStaleWorkflows();
+      },
+      10 * 60 * 1000
+    ); // 10 minutes
   }
 
   private cleanupStaleWorkflows(): void {
@@ -190,26 +196,26 @@ export class WebhookProcessor extends EventEmitter {
 
     for (const [workflowId, workflow] of this.workflowTracker.entries()) {
       const age = now - workflow.lastUpdate;
-      
+
       if (age > staleThreshold) {
-        logger.debug('Cleaning up stale workflow', { 
-          workflowId, 
+        logger.debug('Cleaning up stale workflow', {
+          workflowId,
           ageHours: Math.round(age / (60 * 60 * 1000)),
           totalSteps: workflow.totalSteps,
           stepsSeenCount: workflow.steps.size,
           completed: workflow.completedSteps.size,
-          failed: workflow.failedSteps.size
+          failed: workflow.failedSteps.size,
         });
-        
+
         this.workflowTracker.delete(workflowId);
         cleaned++;
       }
     }
 
     if (cleaned > 0) {
-      logger.info('Cleaned up stale workflows', { 
-        cleaned, 
-        remaining: this.workflowTracker.size 
+      logger.info('Cleaned up stale workflows', {
+        cleaned,
+        remaining: this.workflowTracker.size,
       });
     }
   }
@@ -219,7 +225,7 @@ export class WebhookProcessor extends EventEmitter {
 
     try {
       const eventData: any = JSON.parse(message);
-      
+
       // Set the event type based on the channel name since pub/sub events don't have 'type' field
       const event: RedisJobEvent = {
         ...eventData,
@@ -239,11 +245,11 @@ export class WebhookProcessor extends EventEmitter {
       if (monitorEvent) {
         // Track workflow progress for completion detection
         await this.trackWorkflowProgress(event);
-        
+
         // Process through webhook service
         await this.webhookService.processEvent(monitorEvent as any);
         this.eventStats.processedEvents++;
-        
+
         logger.debug('Successfully processed webhook event', {
           channel,
           jobId: event.job_id,
@@ -264,7 +270,7 @@ export class WebhookProcessor extends EventEmitter {
     const workflowId = (event as any).workflow_id;
     const currentStep = (event as any).current_step;
     const totalSteps = (event as any).total_steps;
-    
+
     if (!workflowId || !event.job_id) {
       return; // No workflow tracking needed
     }
@@ -311,22 +317,22 @@ export class WebhookProcessor extends EventEmitter {
     if (event.type === 'complete_job' && !wasCompleted) {
       workflow.completedSteps.add(stepNumber);
       workflow.failedSteps.delete(stepNumber); // Remove from failed if it was there
-      logger.debug('Workflow step completed', { 
-        workflowId, 
+      logger.debug('Workflow step completed', {
+        workflowId,
         jobId: event.job_id,
         stepNumber,
         completed: workflow.completedSteps.size,
-        total: workflow.totalSteps || workflow.steps.size
+        total: workflow.totalSteps || workflow.steps.size,
       });
     } else if (event.type === 'job_failed' && !wasFailed) {
       workflow.failedSteps.add(stepNumber);
       workflow.completedSteps.delete(stepNumber); // Remove from completed if it was there
-      logger.debug('Workflow step failed', { 
-        workflowId, 
+      logger.debug('Workflow step failed', {
+        workflowId,
         jobId: event.job_id,
         stepNumber,
         failed: workflow.failedSteps.size,
-        total: workflow.totalSteps || workflow.steps.size
+        total: workflow.totalSteps || workflow.steps.size,
       });
     }
 
@@ -334,7 +340,10 @@ export class WebhookProcessor extends EventEmitter {
     await this.checkWorkflowCompletion(workflowId, workflow, event);
   }
 
-  private async sendWorkflowSubmittedEvent(workflowId: string, triggeringEvent: RedisJobEvent): Promise<void> {
+  private async sendWorkflowSubmittedEvent(
+    workflowId: string,
+    triggeringEvent: RedisJobEvent
+  ): Promise<void> {
     const workflowSubmittedEvent = {
       type: 'workflow_submitted',
       workflow_id: workflowId,
@@ -356,7 +365,7 @@ export class WebhookProcessor extends EventEmitter {
   }
 
   private async checkWorkflowCompletion(
-    workflowId: string, 
+    workflowId: string,
     workflow: NonNullable<ReturnType<typeof this.workflowTracker.get>>,
     triggeringEvent: RedisJobEvent
   ): Promise<void> {
@@ -384,7 +393,7 @@ export class WebhookProcessor extends EventEmitter {
         success: isSuccess,
         duration: `${duration}ms`,
         finishedSteps,
-        stepsSeenSoFar: workflow.steps.size
+        stepsSeenSoFar: workflow.steps.size,
       });
 
       // Create workflow completion event (success or failure)
@@ -407,8 +416,8 @@ export class WebhookProcessor extends EventEmitter {
           step_number: stepNum,
           job_id: jobId,
           completed: workflow.completedSteps.has(stepNum),
-          failed: workflow.failedSteps.has(stepNum)
-        }))
+          failed: workflow.failedSteps.has(stepNum),
+        })),
       };
 
       // Send workflow completion/failure webhook
@@ -429,7 +438,7 @@ export class WebhookProcessor extends EventEmitter {
         totalSteps,
         completedSteps,
         failedSteps,
-        progress: `${finishedSteps}/${totalSteps}`
+        progress: `${finishedSteps}/${totalSteps}`,
       });
     }
   }
@@ -519,7 +528,7 @@ export class WebhookProcessor extends EventEmitter {
           current_job_id: redisEvent.current_job_id,
         };
 
-      // Handle machine status pattern matches (machine:status:*)  
+      // Handle machine status pattern matches (machine:status:*)
       default:
         if (redisEvent.type && redisEvent.type.startsWith('machine:status:')) {
           return {
@@ -533,7 +542,7 @@ export class WebhookProcessor extends EventEmitter {
             startup_time: redisEvent.startup_time,
           };
         }
-        
+
         // Event type not supported for webhooks
         return null;
     }
@@ -625,7 +634,7 @@ export class WebhookProcessor extends EventEmitter {
       start_time: workflow.startTime,
       last_update: workflow.lastUpdate,
       age_minutes: Math.round((Date.now() - workflow.startTime) / (60 * 1000)),
-      progress: workflow.totalSteps 
+      progress: workflow.totalSteps
         ? `${workflow.completedSteps.size + workflow.failedSteps.size}/${workflow.totalSteps}`
         : `${workflow.completedSteps.size + workflow.failedSteps.size}/?`,
     }));
