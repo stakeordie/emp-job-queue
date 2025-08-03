@@ -98,10 +98,10 @@ jobs:
         pnpm install -w @railway/cli
 
         # Deploy webhook service (uses RAILWAY_TOKEN env var for auth)
-        railway up --service emp-webhook-service --detach
+        npx railway up --service emp-webhook-service --detach
 
         # Deploy API service
-        railway up --service emp-job-queue-production --detach
+        npx railway up --service emp-job-queue-production --detach
       env:
         RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
 
