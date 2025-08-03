@@ -1253,6 +1253,68 @@ export class LightweightAPIServer {
         }
         break;
 
+      case 'delegated_job_result':
+        try {
+          const jobId = message.job_id as string;
+          const resultData = message.result;
+          
+          if (!jobId || !resultData) {
+            throw new Error('Missing required fields: job_id and result');
+          }
+          
+          logger.info(`Client ${clientId} completing delegated job ${jobId}:`, resultData);
+          
+          // Handle different result types
+          if (resultData.data === 'retry') {
+            // Retry case - just acknowledge, keep job pending
+            ws.send(JSON.stringify({
+              type: 'delegated_job_acknowledged',
+              action: 'retry_acknowledged',
+              job_id: jobId,
+              message_id: message.id,
+              timestamp: new Date().toISOString(),
+            }));
+            logger.info(`Delegated job ${jobId} marked for retry`);
+            break; // Exit without completing the job
+          }
+          
+          // Success or failed case - complete the job
+          const success = resultData.success === true || resultData.data === 'completed';
+          const jobResult = {
+            success,
+            data: resultData.data,
+            error: resultData.error,
+            metadata: {
+              completed_by: 'delegated_service',
+              client_id: clientId
+            }
+          };
+          
+          await this.completeJob(jobId, jobResult);
+          
+          ws.send(JSON.stringify({
+            type: 'delegated_job_acknowledged',
+            action: success ? 'completed' : 'failed',
+            job_id: jobId,
+            message_id: message.id,
+            timestamp: new Date().toISOString(),
+          }));
+          
+          logger.info(`Delegated job ${jobId} ${success ? 'completed' : 'failed'} by client ${clientId}`);
+          
+        } catch (error) {
+          logger.error(`Failed to handle delegated job result from client ${clientId}:`, error);
+          ws.send(
+            JSON.stringify({
+              type: 'error',
+              message_id: message.id,
+              error: error instanceof Error ? error.message : 'Failed to process delegated job result',
+              timestamp: new Date().toISOString(),
+            })
+          );
+        }
+        break;
+
       // 'pong' case removed - now handled by WebSocket pong event
 
       default:
