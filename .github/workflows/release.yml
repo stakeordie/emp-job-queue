@@ -94,8 +94,8 @@ jobs:
 
     - name: Deploy to Railway
       run: |
-        # Install Railway CLI
-        pnpm install @railway/cli
+        # Install Railway CLI (allow workspace root installation)
+        pnpm install -w @railway/cli
 
         # Deploy webhook service (uses RAILWAY_TOKEN env var for auth)
         railway up --service emp-webhook-service --detach
