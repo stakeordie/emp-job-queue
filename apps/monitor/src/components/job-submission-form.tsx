@@ -915,6 +915,11 @@ export function DelegatedJobCompletion() {
       console.log('Job identifier used:', { internal_id: selectedJobId, customer_id: selectedJob?.customer_id, final_id: jobIdentifier });
       
       const websocketService = useMonitorStore.getState().websocketService;
+      console.log('WebSocket connection status:', {
+        isConnected: websocketService.isConnected(),
+        connectionStatus: websocketService.getConnectionStatus()
+      });
+      
       const success = websocketService.submitJob(message);
       if (success) {
         console.log('WebSocket message sent successfully');
@@ -923,6 +928,7 @@ export function DelegatedJobCompletion() {
         setResultData('{"success": true, "data": "completed"}');
       } else {
         console.error('Failed to send WebSocket message - not connected');
+        console.error('WebSocket connection details:', websocketService.getConnectionStatus());
       }
     } catch (error) {
       console.error('Failed to complete delegated job:', error);
