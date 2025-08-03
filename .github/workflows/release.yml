@@ -92,21 +92,6 @@ jobs:
         docker push emprops/emp-webhook-service:latest
         docker push emprops/emp-webhook-service:${{ steps.get_tag.outputs.tag }}
 
-    - name: Deploy to Railway
-      run: |
-        # Install Railway CLI (allow workspace root installation)
-        pnpm install -w @railway/cli
-
-        # Deploy webhook service (uses RAILWAY_TOKEN env var for auth)
-        npx railway up --service emp-webhook-service --detach
-
-        # Deploy API service
-        npx railway up --service emp-job-queue-production --detach
-      env:
-        RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
-
-
-
     - name: Build and package worker
       run: |
         # Enable corepack and install dependencies
@@ -262,3 +247,16 @@ jobs:
         prerelease: false
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+    - name: Deploy to Railway
+      run: |
+        # Install Railway CLI (allow workspace root installation)
+        pnpm install -w @railway/cli
+
+        # Deploy webhook service (uses RAILWAY_TOKEN env var for auth)
+        npx railway up --service emp-webhook-service --detach
+
+        # Deploy API service
+        npx railway up --service emp-job-queue-production --detach
+      env:
+        RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
