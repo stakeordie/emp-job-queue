@@ -385,7 +385,7 @@ export class WebhookProcessor extends EventEmitter {
       const isSuccess = failedSteps === 0;
       const duration = Date.now() - workflow.startTime;
 
-      logger.info('Workflow completion detected', {
+      logger.info('Workflow completion detectedHEREHREHRE', {
         workflowId,
         totalSteps,
         completedSteps,

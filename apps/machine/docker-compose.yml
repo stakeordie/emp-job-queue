@@ -141,8 +141,6 @@ services:
           memory: ${MEMORY_LIMIT:-8G}
         reservations:
           memory: ${MEMORY_RESERVATION:-2G}
-    ports:
-      - ${EXPOSE_PORTS:-9090}:9090
   simulation:
     build:
       context: .
@@ -310,9 +308,6 @@ services:
       - '3196:8196'
       - '3197:8197'
   comfyui-remote-local:
-    <<: *base-machine
-    profiles:
-      - comfyui-remote-local
     build:
       context: .
       dockerfile: Dockerfile
@@ -322,11 +317,52 @@ services:
         WORKERS: comfyui-remote:1
         MACHINE_ID: comfyui-remote-local
         CACHE_BUST: ${CACHE_BUST:-1}
+    image: emprops/machine:comfyui-remote-local
+    platform: linux/amd64
     container_name: comfyui-remote-local-${CURRENT_ENV}
     hostname: comfyui-remote-local
+    profiles:
+      - comfyui-remote-local
+    restart: 'no'
+    stop_grace_period: 2s
+    stop_signal: SIGTERM
+    env_file:
+      - .env.secret
+    environment:
+      NODE_ENV: production
+      ENV: ${CURRENT_ENV}
+      NVIDIA_VISIBLE_DEVICES: all
+      NVIDIA_DRIVER_CAPABILITIES: compute,utility
+    working_dir: /workspace
+    deploy:
+      resources:
+        limits:
+          memory: ${MEMORY_LIMIT:-8G}
+        reservations:
+          memory: ${MEMORY_RESERVATION:-2G}
     ports:
       - ${EXPOSE_PORTS:-9090}:9090
-    image: emprops/machine:comfyui-remote-local
+  openai-production:
+    <<: *base-machine
+    profiles:
+      - openai-production
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: base
+      args:
+        WORKER_SPEC: openai:5
+        WORKERS: openai:5
+        MACHINE_ID: openai-production
+        CACHE_BUST: ${CACHE_BUST:-1}
+        OPENAI_API_KEY: ${OPENAI_API_KEY}
+        OPENAI_IMAGE_MODEL: ${OPENAI_IMAGE_MODEL}
+        CLOUD_STORAGE_PROVIDER: ${CLOUD_STORAGE_PROVIDER}
+    container_name: openai-production-${ENV:-local}
+    hostname: openai-production-${ENV:-local}
+    ports:
+      - ${EXPOSE_PORTS:-9090}:9090
+    image: emprops/machine:openai-production
 networks:
   default:
     name: emp-job-queue
