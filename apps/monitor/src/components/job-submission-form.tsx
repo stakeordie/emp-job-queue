@@ -12,6 +12,7 @@ import { Badge } from '@/components/ui/badge';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Checkbox } from '@/components/ui/checkbox';
 import { useMonitorStore } from '@/store';
+import { websocketService } from '@/services/websocket';
 import { Plus, X } from 'lucide-react';
 
 // Random sentence generators for batch testing
@@ -914,8 +915,7 @@ export function DelegatedJobCompletion() {
       console.log('Sending WebSocket message:', message);
       console.log('Job identifier used:', { internal_id: selectedJobId, customer_id: selectedJob?.customer_id, final_id: jobIdentifier });
       
-      // Get the websocket service and check connection status
-      const websocketService = useMonitorStore.getState().websocketService;
+      // Check connection status using imported websocketService
       const connectionStatus = websocketService.getConnectionStatus();
       const isConnected = websocketService.isConnected();
       
