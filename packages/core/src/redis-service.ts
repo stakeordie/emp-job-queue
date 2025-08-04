@@ -89,22 +89,22 @@ export class RedisService implements RedisServiceInterface {
 
   // Job Management - matches Python implementation exactly
   async submitJob(
-    jobData: Omit<Job, 'id' | 'created_at' | 'status' | 'retry_count'>
+    jobSubmissionData: Omit<Job, 'id' | 'created_at' | 'status' | 'retry_count'>
   ): Promise<string> {
     const jobId = uuidv4();
     const now = new Date().toISOString();
 
     const job: Job = {
-      ...jobData,
+      ...jobSubmissionData,
       id: jobId,
       created_at: now,
       status: JobStatus.PENDING,
       retry_count: 0,
-      max_retries: jobData.max_retries || 3,
+      max_retries: jobSubmissionData.max_retries || 3,
     };
 
-    // Store job details
-    await this.redis.hmset(`job:${jobId}`, {
+    // Store job details including workflow metadata
+    const jobData: Record<string, string> = {
       id: job.id,
       service_required: job.service_required,
       priority: job.priority.toString(),
@@ -115,7 +115,26 @@ export class RedisService implements RedisServiceInterface {
       status: job.status,
       retry_count: job.retry_count.toString(),
       max_retries: job.max_retries.toString(),
-    });
+    };
+    
+    // Add workflow fields if they exist
+    if (job.workflow_id) {
+      jobData.workflow_id = job.workflow_id;
+    }
+    if (job.workflow_priority !== undefined) {
+      jobData.workflow_priority = job.workflow_priority.toString();
+    }
+    if (job.workflow_datetime !== undefined) {
+      jobData.workflow_datetime = job.workflow_datetime.toString();
+    }
+    if (job.step_number !== undefined) {
+      jobData.step_number = job.step_number.toString();
+    }
+    if (job.total_steps !== undefined) {
+      jobData.total_steps = job.total_steps.toString();
+    }
+
+    await this.redis.hmset(`job:${jobId}`, jobData);
 
     // Add to priority queue with workflow-aware scoring
     const effectivePriority = job.workflow_priority || job.priority;
@@ -134,10 +153,22 @@ export class RedisService implements RedisServiceInterface {
       created_at: job.created_at,
       status: 'pending',
       timestamp: Date.now(),
+      // Include workflow fields for webhook service workflow tracking
+      ...(job.workflow_id && { workflow_id: job.workflow_id }),
+      ...(job.workflow_priority !== undefined && { workflow_priority: job.workflow_priority }),
+      ...(job.workflow_datetime !== undefined && { workflow_datetime: job.workflow_datetime }),
+      ...(job.step_number !== undefined && { step_number: job.step_number }),
+      ...(job.total_steps !== undefined && { total_steps: job.total_steps }),
+      ...(job.step_number !== undefined && { current_step: job.step_number }), // webhook processor expects current_step
     };
     await this.redis.publish('job_submitted', JSON.stringify(submissionEvent));
 
-    logger.info(`Job ${jobId} submitted with priority ${job.priority}`);
+    // Only log workflow jobs for debugging
+    if (job.workflow_id) {
+      logger.info(`📝 REDIS-SERVICE: Submitted workflow job ${jobId} (workflow: ${job.workflow_id}, step: ${job.step_number}/${job.total_steps}, service: ${job.service_required})`);
+    } else {
+      logger.info(`📝 REDIS-SERVICE: Submitted job ${jobId} (service: ${job.service_required}, no workflow)`);
+    }
     return jobId;
   }
 
@@ -152,6 +183,11 @@ export class RedisService implements RedisServiceInterface {
       payload: JSON.parse(jobData.payload || '{}'),
       requirements: jobData.requirements ? JSON.parse(jobData.requirements) : undefined,
       customer_id: jobData.customer_id || undefined,
+      workflow_id: jobData.workflow_id || undefined,
+      workflow_priority: jobData.workflow_priority ? parseInt(jobData.workflow_priority) : undefined,
+      workflow_datetime: jobData.workflow_datetime ? parseInt(jobData.workflow_datetime) : undefined,
+      step_number: jobData.step_number ? parseInt(jobData.step_number) : undefined,
+      total_steps: jobData.total_steps ? parseInt(jobData.total_steps) : undefined,
       created_at: jobData.created_at,
       assigned_at: jobData.assigned_at || undefined,
       started_at: jobData.started_at || undefined,
@@ -228,12 +264,16 @@ export class RedisService implements RedisServiceInterface {
   }
 
   async completeJob(jobId: string, result: JobResult): Promise<void> {
-    logger.info("RIGHT HERE completeJob CALLED")
     try {
       const job = await this.getJob(jobId);
       if (!job || !job.worker_id) {
         logger.warn(`Cannot complete job ${jobId} - job not found or no worker assigned`);
         return;
+      }
+
+      // Only log workflow jobs for debugging
+      if (job.workflow_id) {
+        logger.info(`🔄 REDIS-SERVICE: Completing workflow job ${jobId} (workflow: ${job.workflow_id}, step: ${job.step_number}/${job.total_steps})`);
       }
 
       // Phase 1A: Simple Redis operations instead of Lua scripts
@@ -257,14 +297,30 @@ export class RedisService implements RedisServiceInterface {
         await this.redis.hset(`job:${jobId}`, 'processing_time', result.processing_time.toString());
       }
 
-      // Publish completion
-      await this.publishMessage('complete_job', {
+      // Create completion message with workflow fields for webhook tracking
+      const completionMessage = {
         job_id: jobId,
         result,
         completed_at: new Date().toISOString(),
-      });
+        // Include workflow fields for webhook service workflow tracking
+        workflow_id: job.workflow_id,
+        workflow_priority: job.workflow_priority,
+        workflow_datetime: job.workflow_datetime,
+        step_number: job.step_number,
+        total_steps: job.total_steps,
+        current_step: job.step_number, // webhook processor expects current_step
+        worker_id: job.worker_id,
+        service_required: job.service_required,
+        customer_id: job.customer_id,
+        timestamp: Date.now(),
+      };
 
-      logger.info(`Job ${jobId} atomically completed by worker ${job.worker_id}`);
+      // Publish completion
+      await this.publishMessage('complete_job', completionMessage);
+
+      if (job.workflow_id) {
+        logger.info(`✅ REDIS-SERVICE: Published workflow completion for ${jobId}`);
+      }
     } catch (error) {
       logger.error(`Failed to complete job ${jobId}:`, error);
       throw error;

@@ -1254,7 +1254,6 @@ export class LightweightAPIServer {
         break;
 
       case 'delegated_job_result':
-        logger.info("THIS MUST SHOW")
         try {
           const jobId = message.job_id as string;
           const resultData = message.result as any; // Cast to any for property access
@@ -1263,7 +1262,15 @@ export class LightweightAPIServer {
             throw new Error('Missing required fields: job_id and result');
           }
           
-          logger.info(`Client ${clientId} completing delegated job ${jobId}:`, resultData);
+          // Get job details to check for workflow metadata
+          const jobDetails = await this.redisService.getJob(jobId);
+          
+          // Only log workflow jobs
+          if (jobDetails?.workflow_id) {
+            logger.info(`🎯 API-SERVER: Completing delegated workflow job ${jobId} (workflow: ${jobDetails.workflow_id}, step: ${jobDetails.step_number}/${jobDetails.total_steps})`);
+          } else {
+            logger.info(`🎯 API-SERVER: Completing delegated job ${jobId} (no workflow)`);
+          }
           
           // Handle different result types
           if (resultData.data === 'retry') {
@@ -1310,7 +1317,9 @@ export class LightweightAPIServer {
             timestamp: new Date().toISOString(),
           }));
           
-          logger.info(`Delegated job ${jobId} ${success ? 'completed' : 'failed'} by client ${clientId}`);
+          if (jobDetails?.workflow_id) {
+            logger.info(`✅ API-SERVER: Delegated workflow job ${jobId} ${success ? 'completed' : 'failed'}`);
+          }
           
         } catch (error) {
           logger.error(`Failed to handle delegated job result from client ${clientId}:`, error);

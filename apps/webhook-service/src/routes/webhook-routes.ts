@@ -520,10 +520,12 @@ export function setupWebhookRoutes(app: Express, webhookProcessor: WebhookProces
         id: `req_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
         timestamp: Date.now(),
         method: req.method,
-        headers: req.headers as any,
+        headers: Object.fromEntries(
+          Object.entries(req.headers).map(([key, value]) => [key, String(value || '')])
+        ),
         body: body,
         query: query,
-        user_agent: req.headers['user-agent'],
+        user_agent: req.headers['user-agent'] as string,
         ip: req.ip || req.connection.remoteAddress || 'unknown',
       };
 
@@ -554,7 +556,12 @@ export function setupWebhookRoutes(app: Express, webhookProcessor: WebhookProces
 
   // Mount test receiver webhook handler for all HTTP methods
   ['get', 'post', 'put', 'patch', 'delete', 'head', 'options'].forEach(method => {
-    (app as any)[method]('/test-receivers/:id/webhook', handleTestReceiverRequest);
+    (
+      app as unknown as Record<
+        string,
+        (path: string, handler: typeof handleTestReceiverRequest) => void
+      >
+    )[method]('/test-receivers/:id/webhook', handleTestReceiverRequest);
   });
 
   logger.info('✅ Webhook routes configured', {

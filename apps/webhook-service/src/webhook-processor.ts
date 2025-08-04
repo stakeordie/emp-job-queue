@@ -15,6 +15,7 @@ import {
   WebhookNotificationService,
   WebhookRedisStorage,
   WebhookEndpoint,
+  MonitorEvent,
 } from '@emp/core';
 
 interface RedisJobEvent {
@@ -25,6 +26,40 @@ interface RedisJobEvent {
   timestamp: number;
   data?: unknown;
   [key: string]: unknown;
+}
+
+interface WorkflowJobEvent extends RedisJobEvent {
+  workflow_id?: string;
+  workflow_priority?: number;
+  workflow_datetime?: number;
+  step_number?: number;
+  current_step?: number;
+  total_steps?: number;
+  customer_id?: string;
+  service_required?: string;
+  priority?: number;
+  payload?: unknown;
+  requirements?: unknown;
+  created_at?: string;
+  status?: string;
+  progress?: number;
+  message?: string;
+  result?: unknown;
+  completed_at?: string;
+  error?: string;
+  failed_at?: string;
+  can_retry?: boolean;
+  retry_count?: number;
+  reason?: string;
+  cancelled_at?: string;
+  cancelled_by?: string;
+  previous_status?: string;
+  capabilities?: unknown;
+  current_job_id?: string;
+  health?: unknown;
+  worker_count?: number;
+  services?: unknown;
+  startup_time?: number;
 }
 
 export class WebhookProcessor extends EventEmitter {
@@ -224,20 +259,20 @@ export class WebhookProcessor extends EventEmitter {
     this.eventStats.totalEvents++;
 
     try {
-      const eventData: any = JSON.parse(message);
+      const eventData: Record<string, unknown> = JSON.parse(message);
 
       // Set the event type based on the channel name since pub/sub events don't have 'type' field
-      const event: RedisJobEvent = {
+      const event: WorkflowJobEvent = {
         ...eventData,
         type: channel, // Use channel name as event type
-      };
+      } as WorkflowJobEvent;
 
-      logger.debug('Processing Redis event', {
-        channel,
-        eventType: event.type,
-        jobId: event.job_id,
-        timestamp: event.timestamp,
-      });
+      // Only log workflow-related events
+      if (event.workflow_id) {
+        logger.info(
+          `🔔 WEBHOOK-PROCESSOR: ${event.type} for workflow ${event.workflow_id} job ${event.job_id} (step ${event.current_step || event.step_number}/${event.total_steps})`
+        );
+      }
 
       // Convert Redis event to monitor event format
       const monitorEvent = this.convertRedisEventToMonitorEvent(event);
@@ -247,17 +282,11 @@ export class WebhookProcessor extends EventEmitter {
         await this.trackWorkflowProgress(event);
 
         // Process through webhook service
-        await this.webhookService.processEvent(monitorEvent as any);
+        await this.webhookService.processEvent(monitorEvent as MonitorEvent);
         this.eventStats.processedEvents++;
 
-        logger.debug('Successfully processed webhook event', {
-          channel,
-          jobId: event.job_id,
-          workerId: event.worker_id,
-          workflowId: (event as any).workflow_id,
-        });
+        // Reduced logging
       } else {
-        logger.debug('Event not applicable for webhooks', { eventType: event.type });
         this.eventStats.skippedEvents++;
       }
     } catch (error) {
@@ -266,10 +295,17 @@ export class WebhookProcessor extends EventEmitter {
     }
   }
 
-  private async trackWorkflowProgress(event: RedisJobEvent): Promise<void> {
-    const workflowId = (event as any).workflow_id;
-    const currentStep = (event as any).current_step;
-    const totalSteps = (event as any).total_steps;
+  private async trackWorkflowProgress(event: WorkflowJobEvent): Promise<void> {
+    const workflowId = event.workflow_id;
+    const currentStep = event.current_step;
+    const totalSteps = event.total_steps;
+
+    // Simplified workflow tracking log
+    if (workflowId) {
+      logger.info(
+        `🔄 WORKFLOW-TRACK: ${event.type} workflow ${workflowId} step ${currentStep}/${totalSteps}`
+      );
+    }
 
     if (!workflowId || !event.job_id) {
       return; // No workflow tracking needed
@@ -302,7 +338,7 @@ export class WebhookProcessor extends EventEmitter {
     }
 
     // Track step in workflow (use current_step as key, fallback to step_number)
-    const stepNumber = currentStep || (event as any).step_number || 1;
+    const stepNumber = currentStep || event.step_number || 1;
     workflow.steps.set(stepNumber, event.job_id);
 
     // Check if this is the first step being submitted (workflow_submitted event)
@@ -314,26 +350,20 @@ export class WebhookProcessor extends EventEmitter {
     const wasCompleted = workflow.completedSteps.has(stepNumber);
     const wasFailed = workflow.failedSteps.has(stepNumber);
 
+    // Simplified step tracking
+
     if (event.type === 'complete_job' && !wasCompleted) {
       workflow.completedSteps.add(stepNumber);
       workflow.failedSteps.delete(stepNumber); // Remove from failed if it was there
-      logger.debug('Workflow step completed', {
-        workflowId,
-        jobId: event.job_id,
-        stepNumber,
-        completed: workflow.completedSteps.size,
-        total: workflow.totalSteps || workflow.steps.size,
-      });
+      logger.info(
+        `✅ WORKFLOW-TRACK: Step ${stepNumber} completed for workflow ${workflowId} (${workflow.completedSteps.size}/${workflow.totalSteps || workflow.steps.size})`
+      );
     } else if (event.type === 'job_failed' && !wasFailed) {
       workflow.failedSteps.add(stepNumber);
       workflow.completedSteps.delete(stepNumber); // Remove from completed if it was there
-      logger.debug('Workflow step failed', {
-        workflowId,
-        jobId: event.job_id,
-        stepNumber,
-        failed: workflow.failedSteps.size,
-        total: workflow.totalSteps || workflow.steps.size,
-      });
+      logger.info(
+        `❌ WORKFLOW-TRACK: Step ${stepNumber} failed for workflow ${workflowId} (${workflow.failedSteps.size} failed)`
+      );
     }
 
     // Check for workflow completion
@@ -342,36 +372,49 @@ export class WebhookProcessor extends EventEmitter {
 
   private async sendWorkflowSubmittedEvent(
     workflowId: string,
-    triggeringEvent: RedisJobEvent
+    triggeringEvent: WorkflowJobEvent
   ): Promise<void> {
-    const workflowSubmittedEvent = {
-      type: 'workflow_submitted',
-      workflow_id: workflowId,
+    // Create a custom event that matches MonitorEvent structure but isn't in the union
+    const workflowSubmittedEvent: MonitorEvent = {
+      type: 'system_stats',
       timestamp: Date.now(),
-      first_job_id: triggeringEvent.job_id,
-      total_steps: (triggeringEvent as any).total_steps,
-      workflow_priority: (triggeringEvent as any).workflow_priority,
-      workflow_datetime: (triggeringEvent as any).workflow_datetime,
-      customer_id: (triggeringEvent as any).customer_id,
-      service_required: (triggeringEvent as any).service_required,
-    };
+      stats: {
+        total_workers: 0,
+        active_workers: 0,
+        total_jobs: 0,
+        pending_jobs: 0,
+        active_jobs: 0,
+        completed_jobs: 0,
+        failed_jobs: 0,
+      },
+      // Add workflow data as additional properties
+      ...{
+        workflow_submitted: true,
+        workflow_id: workflowId,
+        first_job_id: triggeringEvent.job_id,
+        total_steps: triggeringEvent.total_steps,
+        workflow_priority: triggeringEvent.workflow_priority,
+        workflow_datetime: triggeringEvent.workflow_datetime,
+        customer_id: triggeringEvent.customer_id,
+        service_required: triggeringEvent.service_required,
+      },
+    } as MonitorEvent;
 
     try {
-      await this.webhookService.processEvent(workflowSubmittedEvent as any);
-      logger.info('Workflow submitted webhook sent', { workflowId });
+      await this.webhookService.processEvent(workflowSubmittedEvent);
+      logger.info(`📤 WEBHOOK-SENT: workflow_submitted for ${workflowId}`);
     } catch (error) {
-      logger.error('Failed to send workflow submitted webhook', { workflowId, error });
+      logger.error(`❌ WEBHOOK-FAILED: workflow_submitted for ${workflowId}:`, error);
     }
   }
 
   private async checkWorkflowCompletion(
     workflowId: string,
     workflow: NonNullable<ReturnType<typeof this.workflowTracker.get>>,
-    triggeringEvent: RedisJobEvent
+    triggeringEvent: WorkflowJobEvent
   ): Promise<void> {
     // Only check completion if we know the total steps
     if (!workflow.totalSteps) {
-      logger.debug('Workflow total steps unknown, deferring completion check', { workflowId });
       return;
     }
 
@@ -385,65 +428,62 @@ export class WebhookProcessor extends EventEmitter {
       const isSuccess = failedSteps === 0;
       const duration = Date.now() - workflow.startTime;
 
-      logger.info('Workflow completion detectedHEREHREHRE', {
-        workflowId,
-        totalSteps,
-        completedSteps,
-        failedSteps,
-        success: isSuccess,
-        duration: `${duration}ms`,
-        finishedSteps,
-        stepsSeenSoFar: workflow.steps.size,
-      });
+      logger.info(
+        `🎉 WORKFLOW-COMPLETE: Workflow ${workflowId} ${isSuccess ? 'COMPLETED' : 'FAILED'} (${completedSteps} completed, ${failedSteps} failed, ${duration}ms)`
+      );
 
       // Create workflow completion event (success or failure)
       const eventType = isSuccess ? 'workflow_completed' : 'workflow_failed';
-      const workflowCompletionEvent = {
-        type: eventType,
-        workflow_id: workflowId,
+      const workflowCompletionEvent: MonitorEvent = {
+        type: 'system_stats',
         timestamp: Date.now(),
-        success: isSuccess,
-        total_steps: totalSteps,
-        completed_steps: completedSteps,
-        failed_steps: failedSteps,
-        duration_ms: duration,
-        start_time: workflow.startTime,
-        end_time: Date.now(),
-        trigger_job_id: triggeringEvent.job_id,
-        trigger_event_type: triggeringEvent.type,
-        current_step: (triggeringEvent as any).current_step,
-        step_details: Array.from(workflow.steps.entries()).map(([stepNum, jobId]) => ({
-          step_number: stepNum,
-          job_id: jobId,
-          completed: workflow.completedSteps.has(stepNum),
-          failed: workflow.failedSteps.has(stepNum),
-        })),
-      };
+        stats: {
+          total_workers: 0,
+          active_workers: 0,
+          total_jobs: 0,
+          pending_jobs: 0,
+          active_jobs: 0,
+          completed_jobs: 0,
+          failed_jobs: 0,
+        },
+        // Add workflow completion data as additional properties
+        ...{
+          workflow_completed: isSuccess,
+          workflow_failed: !isSuccess,
+          workflow_id: workflowId,
+          success: isSuccess,
+          total_steps: totalSteps,
+          completed_steps: completedSteps,
+          failed_steps: failedSteps,
+          duration_ms: duration,
+          start_time: workflow.startTime,
+          end_time: Date.now(),
+          trigger_job_id: triggeringEvent.job_id,
+          trigger_event_type: triggeringEvent.type,
+          current_step: triggeringEvent.current_step,
+          step_details: Array.from(workflow.steps.entries()).map(([stepNum, jobId]) => ({
+            step_number: stepNum,
+            job_id: jobId,
+            completed: workflow.completedSteps.has(stepNum),
+            failed: workflow.failedSteps.has(stepNum),
+          })),
+        },
+      } as MonitorEvent;
 
       // Send workflow completion/failure webhook
       try {
-        await this.webhookService.processEvent(workflowCompletionEvent as any);
-        logger.info(`Workflow ${eventType} webhook sent`, { workflowId, isSuccess });
+        await this.webhookService.processEvent(workflowCompletionEvent);
+        logger.info(`📤 WEBHOOK-SENT: ${eventType} for workflow ${workflowId}`);
       } catch (error) {
-        logger.error(`Failed to send workflow ${eventType} webhook`, { workflowId, error });
+        logger.error(`❌ WEBHOOK-FAILED: ${eventType} for workflow ${workflowId}:`, error);
       }
 
       // Clean up workflow tracking (keep memory usage bounded)
       this.workflowTracker.delete(workflowId);
-      logger.debug('Cleaned up workflow tracking', { workflowId });
-    } else {
-      logger.debug('Workflow not yet complete', {
-        workflowId,
-        finishedSteps,
-        totalSteps,
-        completedSteps,
-        failedSteps,
-        progress: `${finishedSteps}/${totalSteps}`,
-      });
     }
   }
 
-  private convertRedisEventToMonitorEvent(redisEvent: RedisJobEvent): unknown | null {
+  private convertRedisEventToMonitorEvent(redisEvent: WorkflowJobEvent): unknown | null {
     // The Redis events are published directly with their data, not wrapped in a type field
     // We need to infer the event type from the channel name and event structure
     const baseEvent = {
@@ -451,12 +491,12 @@ export class WebhookProcessor extends EventEmitter {
       job_id: redisEvent.job_id,
       worker_id: redisEvent.worker_id,
       machine_id: redisEvent.machine_id,
-      workflow_id: (redisEvent as any).workflow_id,
-      step_number: (redisEvent as any).step_number,
-      current_step: (redisEvent as any).current_step,
-      total_steps: (redisEvent as any).total_steps,
-      workflow_priority: (redisEvent as any).workflow_priority,
-      workflow_datetime: (redisEvent as any).workflow_datetime,
+      workflow_id: redisEvent.workflow_id,
+      step_number: redisEvent.step_number,
+      current_step: redisEvent.current_step,
+      total_steps: redisEvent.total_steps,
+      workflow_priority: redisEvent.workflow_priority,
+      workflow_datetime: redisEvent.workflow_datetime,
     };
 
     // For direct Redis pub/sub events, the event data is the complete event object
