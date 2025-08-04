@@ -92,14 +92,36 @@ class DockerComposePortGenerator {
   generatePortMappings(workerConfig) {
     const portMappings = [];
     
-    // Always include health monitoring port
-    const healthPort = process.env.EXPOSE_PORTS || '9090';
+    // Check if ports are disabled
+    if (process.env.DISABLE_PORTS === 'true') {
+      this.logger.log('All ports disabled by DISABLE_PORTS flag');
+      
+      // Check for runtime port mappings
+      const runtimePorts = process.env.RUNTIME_PORTS;
+      if (runtimePorts) {
+        const mappings = runtimePorts.split(',').map(mapping => `"${mapping}"`);
+        portMappings.push(...mappings);
+        this.logger.log(`Using runtime port mappings: ${mappings.join(', ')}`);
+      }
+      
+      return portMappings;
+    }
+    
+    // Legacy behavior - calculate health port based on machine instance
+    const machineInstance = parseInt(process.env.MACHINE_INSTANCE || '0');
+    const baseHealthPort = parseInt(process.env.MACHINE_HEALTH_PORT || '9090');
+    const healthPort = process.env.EXPOSE_PORTS || (baseHealthPort + machineInstance * 10);
+    
     portMappings.push(`"${healthPort}:9090"`);
+    
+    if (machineInstance > 0) {
+      this.logger.log(`Using machine instance ${machineInstance} - health port: ${healthPort}`);
+    }
     
     // Generate ComfyUI ports if enabled
     const comfyuiExposeEnabled = process.env.COMFYUI_EXPOSE_PORTS === 'true';
     if (comfyuiExposeEnabled) {
-      const comfyuiPorts = this.generateComfyUIPorts(workerConfig);
+      const comfyuiPorts = this.generateComfyUIPorts(workerConfig, machineInstance);
       portMappings.push(...comfyuiPorts);
     }
     
@@ -107,7 +129,7 @@ class DockerComposePortGenerator {
     return portMappings;
   }
 
-  generateComfyUIPorts(workerConfig) {
+  generateComfyUIPorts(workerConfig, machineInstance = 0) {
     const ports = [];
     
     // Find ComfyUI workers
@@ -121,7 +143,9 @@ class DockerComposePortGenerator {
       return ports;
     }
     
-    const hostPortBase = parseInt(process.env.COMFYUI_EXPOSED_HOST_PORT_BASE || '3188');
+    // Apply machine instance offset to avoid conflicts
+    const baseHostPort = parseInt(process.env.COMFYUI_EXPOSED_HOST_PORT_BASE || '3188');
+    const hostPortBase = baseHostPort + (machineInstance * 100); // Each machine gets 100 port range
     const containerPortBase = parseInt(process.env.COMFYUI_EXPOSED_CONTAINER_PORT_BASE || '8188');
     
     // Generate ports for each ComfyUI worker instance
@@ -148,25 +172,34 @@ class DockerComposePortGenerator {
     
     let composeContent = fs.readFileSync(composePath, 'utf8');
     
-    // Create the new ports section
-    const portsSection = portMappings.map(port => `      - ${port}`).join('\n');
-    
-    // Replace the ports section in base-machine
-    const portsRegex = /(ports:\s*\n)([\s\S]*?)(\n\s+deploy:)/;
-    const newPortsSection = `$1      # Health monitoring port (always exposed)\n${portsSection}\n$3`;
-    
-    if (portsRegex.test(composeContent)) {
-      composeContent = composeContent.replace(portsRegex, newPortsSection);
+    // Handle the case where there are no port mappings
+    if (portMappings.length === 0) {
+      // Remove the ports section entirely for services without port mappings
+      const portsRegex = /(\n\s*)ports:\s*\n\s*#[^\n]*\n/g;
+      composeContent = composeContent.replace(portsRegex, '\n');
+      
+      this.logger.log('✅ Removed empty ports sections from docker-compose.yml');
     } else {
-      this.logger.error('Could not find ports section in docker-compose.yml');
-      throw new Error('Invalid docker-compose.yml format');
+      // Create the new ports section
+      const portsSection = portMappings.map(port => `      - ${port}`).join('\n');
+      
+      // Replace the ports section in base-machine
+      const portsRegex = /(ports:\s*\n)([\s\S]*?)(\n\s+deploy:)/;
+      const newPortsSection = `$1      # Health monitoring port (always exposed)\n${portsSection}\n$3`;
+      
+      if (portsRegex.test(composeContent)) {
+        composeContent = composeContent.replace(portsRegex, newPortsSection);
+      } else {
+        this.logger.error('Could not find ports section in docker-compose.yml');
+        throw new Error('Invalid docker-compose.yml format');
+      }
     }
     
     // Write the updated content
     fs.writeFileSync(composePath, composeContent);
     
     this.logger.log(`✅ Updated docker-compose.yml with ${portMappings.length} port mappings`);
-    this.logger.log(`Port mappings: ${portMappings.join(', ')}`);
+    this.logger.log(`Port mappings: ${portMappings.length > 0 ? portMappings.join(', ') : 'No ports'}`);
   }
 }
 

@@ -19,6 +19,10 @@
     "OpenAIImageConnector": {
       "path": "./redis-direct-worker.js",
       "description": "OpenAI image generation API connector"
+    },
+    "OpenAIImg2ImgConnector": {
+      "path": "./redis-direct-worker.js",
+      "description": "OpenAI image-to-image generation API connector"
     }
   },
 
@@ -78,7 +82,7 @@
       "resource_binding": "cpu",
       "build_stage": "playwright",
       "service_instances_per_machine": "${PLAYWRIGHT_INSTANCES_PER_MACHINE:-1}",
-      "ports": ["${PLAYWRIGHT_BASE_PORT:-9090}"],
+      "ports": ["${PLAYWRIGHT_BASE_PORT:-9092}"],
       "port_increment": "${PLAYWRIGHT_PORT_INCREMENT:-0}",
       "description": "Playwright browser automation service",
       "installer_config": {
@@ -120,6 +124,11 @@
         {
           "capability": "openai_image",
           "connector": "OpenAIImageConnector",
+          "type": "external"
+        },
+        {
+          "capability": "openai_img2img",
+          "connector": "OpenAIImg2ImgConnector",
           "type": "external"
         }
       ],

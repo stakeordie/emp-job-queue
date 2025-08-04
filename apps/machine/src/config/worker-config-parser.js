@@ -86,7 +86,16 @@ export class WorkerConfigurationParser {
         throw new Error(`Unknown connector: "${connector}". Check service-mapping.json for supported connectors.`);
       }
       
-      const binding = mapping.resource_binding;
+      // Handle environment variable expansion in resource_binding
+      let binding = mapping.resource_binding;
+      if (typeof binding === 'string' && binding.includes('${')) {
+        // Extract environment variable name and default value
+        const match = binding.match(/\$\{([^:}]+)(?::([^}]+))?\}/);
+        if (match) {
+          const [, envVar, defaultValue] = match;
+          binding = process.env[envVar] || defaultValue || 'shared';
+        }
+      }
       
       workerSpecs.push({
         connector,
@@ -156,7 +165,8 @@ export class WorkerConfigurationParser {
     
     try {
       const serviceMapping = JSON.parse(fs.readFileSync(serviceMappingPath, 'utf8'));
-      return serviceMapping.connectors[connector];
+      // Look for the connector in the workers section
+      return serviceMapping.workers[connector];
     } catch (error) {
       this.logger.error(`Failed to load service mapping from ${serviceMappingPath}: ${error.message}`);
       throw new Error(`Service mapping file not found or invalid. Cannot proceed without connector definitions.`);
