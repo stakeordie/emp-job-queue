@@ -254,15 +254,15 @@ jobs:
         npm install -g @railway/cli
 
         # Redeploy webhook service from Docker Hub (uses RAILWAY_TOKEN env var for auth)
-        railway redeploy --service emp-webhook-service
+        railway redeploy --service emp-webhook-service --yes
 
         # Redeploy API service from Docker Hub  
-        railway redeploy --service emp-job-queue-production
+        railway redeploy --service emp-job-queue-production --yes
 
         # Redeploy API service from Docker Hub  
-        railway redeploy --service openai-machine
+        railway redeploy --service openai-machine --yes
 
         # Redeploy API service from Docker Hub  
-        railway redeploy --service comfyui-remote-machine
+        railway redeploy --service comfyui-remote-machine --yes
       env:
         RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
