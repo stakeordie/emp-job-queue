@@ -1,0 +1,52 @@
+{
+  "name": "Development Mixed",
+  "description": "Local development with production API and development Redis",
+  "components": {
+    "api": [
+      "default",
+      "local"
+    ],
+    "webhook-service": [
+      "default",
+      "local"
+    ],
+    "api-tokens": [
+      "default"
+    ],
+    "machine": [
+      "default",
+      "local"
+    ],
+    "worker": [
+      "default",
+      "local"
+    ],
+    "monitor": [
+      "default",
+      "local"
+    ],
+    "redis": [
+      "default",
+      "local"
+    ],
+    "storage-provider": [
+      "default",
+      "production"
+    ],
+    "comfyui": [
+      "default",
+      "local"
+    ],
+    "ollama": [
+      "default"
+    ],
+    "simulation": [
+      "local"
+    ],
+    "openai": [
+      "default",
+      "local"
+    ]
+  },
+  "services": {}
+}
