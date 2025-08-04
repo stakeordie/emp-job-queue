@@ -16,7 +16,7 @@ export const WebhookServiceEnvInterface = {
     "NEXT_PUBLIC_APP_URL": "WEBHOOK_SERVICE_URL"
   },
   secret: {
-    "WS_AUTH_TOKEN": "API_AUTH_TOKEN"
+    "AUTH_TOKEN": "AUTH_TOKEN"
   },
   optional: {
   },

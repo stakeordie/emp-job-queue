@@ -15,13 +15,12 @@ export const ApiEnvInterface = {
     "API_PORT": "API_PORT",
     "API_HOST": "API_HOST",
     "WEBHOOK_SERVICE_URL": "WEBHOOK_SERVICE_URL",
-    "WS_AUTH_TOKEN": "API_AUTH_TOKEN"
+    "AUTH_TOKEN": "AUTH_TOKEN"
   },
   
   optional: {
     // CORS and security
     "CORS_ORIGINS": "API_CORS_ORIGINS",
-    "AUTH_TOKEN": "API_AUTH_TOKEN",
     
     // Performance tuning
     "LOG_LEVEL": "API_LOG_LEVEL"

@@ -16,7 +16,7 @@ export const MonitorEnvInterface = {
     "NEXT_PUBLIC_CONNECTIONS": "MONITOR_CONNECTION",
     "WEBHOOK_SERVICE_URL": "WEBHOOK_SERVICE_URL",
     "NEXT_PUBLIC_WEBHOOK_SERVICE_URL": "WEBHOOK_SERVICE_URL",
-    "WS_AUTH_TOKEN": "API_AUTH_TOKEN"
+    "AUTH_TOKEN": "AUTH_TOKEN"
   },
   
   optional: {
@@ -26,9 +26,6 @@ export const MonitorEnvInterface = {
     // Client-side auto-connect (exposed to browser)
     "NEXT_PUBLIC_DEFAULT_REDIS_URL": "REDIS_URL",
     "NEXT_PUBLIC_DEFAULT_WS_URL": "API_WEBSOCKET_URL",
-    
-    // Security
-    "AUTH_TOKEN": "MONITOR_AUTH_TOKEN",
     
     // Development
     "LOG_LEVEL": "MONITOR_LOG_LEVEL",

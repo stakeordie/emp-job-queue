@@ -136,7 +136,7 @@ export class LightweightAPIServer {
 
   private isValidToken(token: string): boolean {
     // Use environment variable for token validation, fallback to hardcoded for dev
-    const validToken = process.env.WS_AUTH_TOKEN || '3u8sdj5389fj3kljsf90u';
+    const validToken = process.env.AUTH_TOKEN || '3u8sdj5389fj3kljsf90u';
     return token === validToken;
   }
 
