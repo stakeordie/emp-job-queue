@@ -34,14 +34,5 @@ export const MonitorEnvInterface = {
     "LOG_LEVEL": "MONITOR_LOG_LEVEL",
   },
   defaults: {
-    "PORT": "3003",
-    "HOST": "0.0.0.0",
-    "CONNECTIONS": JSON.stringify({
-      "local": {
-        "name": "Local Development",
-        "redis": "redis://localhost:6379",
-        "websocket": "ws://localhost:3001/ws"
-      }
-    }),
   }
 };
