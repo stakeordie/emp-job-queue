@@ -7,7 +7,7 @@ restartPolicyType = "always"
 
 [env]
 NODE_ENV = "production"
-CORS_ORIGINS = "*"
+CORS_ORIGINS = "http://localhost:3333,https://qmonitor.emerge.pizza,https://qredapi.emerge.pizza,*"
 LOG_LEVEL = "info"
 PORT = "3332"
 # REDIS_URL will be set via Railway environment variables
