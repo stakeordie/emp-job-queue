@@ -907,7 +907,7 @@ export function DelegatedJobCompletion() {
       const jobIdentifier = selectedJob?.customer_id || selectedJobId; // Use customer_id if available, fallback to internal ID
 
       const message = {
-        type: 'delegated_job_result',
+        type: 'delegated_job_result' as const,
         job_id: jobIdentifier, // Use customer ID for consistency with ComfyUI pattern
         result: parsedResult,
       };
@@ -921,9 +921,7 @@ export function DelegatedJobCompletion() {
       
       console.log('WebSocket connection status:', {
         isConnected,
-        connectionStatus,
-        monitorConnected: connectionStatus.monitor?.connected,
-        clientConnected: connectionStatus.client?.connected
+        connectionStatus
       });
       
       if (!isConnected) {
@@ -976,7 +974,7 @@ export function DelegatedJobCompletion() {
               <SelectContent>
                 {delegatedJobs.map((job) => (
                   <SelectItem key={job.id} value={job.id}>
-                    {job.id} - {job.delegated_service || 'Unknown Service'} 
+                    {job.id} - {job.job_type || 'Unknown Service'} 
                     {job.workflow_id && ` (${job.workflow_id})`}
                   </SelectItem>
                 ))}

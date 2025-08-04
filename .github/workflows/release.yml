@@ -250,13 +250,13 @@ jobs:
 
     - name: Deploy to Railway
       run: |
-        # Install Railway CLI (allow workspace root installation)
-        pnpm install -w @railway/cli
+        # Install Railway CLI globally using npm to avoid pnpm workspace issues
+        npm install -g @railway/cli
 
         # Deploy webhook service (uses RAILWAY_TOKEN env var for auth)
-        npx railway up --service emp-webhook-service --detach
+        railway up --service emp-webhook-service --detach
 
         # Deploy API service
-        npx railway up --service emp-job-queue-production --detach
+        railway up --service emp-job-queue-production --detach
       env:
         RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}

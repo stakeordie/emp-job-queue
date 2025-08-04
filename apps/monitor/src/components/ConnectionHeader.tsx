@@ -28,14 +28,15 @@ const getConnectionPresets = () => {
       const connectionList = Array.isArray(connections) ? connections : [connections];
       
       // Validate that each connection has the required fields
-      connectionList.forEach((conn: any) => {
-        if (conn && typeof conn === 'object' && conn.NAME && conn.WS_URL) {
-          const name = conn.NAME.toLowerCase();
-          const protocol = conn.is_ssl ? 'wss://' : 'ws://';
+      connectionList.forEach((conn: unknown) => {
+        if (conn && typeof conn === 'object' && 'NAME' in conn && 'WS_URL' in conn) {
+          const connObj = conn as { NAME: string; WS_URL: string; is_ssl?: boolean; AUTH_KEY?: string };
+          const name = connObj.NAME.toLowerCase();
+          const protocol = connObj.is_ssl ? 'wss://' : 'ws://';
           presets[name] = {
-            websocket: `${protocol}${conn.WS_URL}`,
-            auth: conn.AUTH_KEY || '3u8sdj5389fj3kljsf90u',
-            name: conn.NAME
+            websocket: `${protocol}${connObj.WS_URL}`,
+            auth: connObj.AUTH_KEY || '3u8sdj5389fj3kljsf90u',
+            name: connObj.NAME
           };
         } else {
           console.warn('Invalid connection object:', conn);
@@ -59,8 +60,36 @@ const CONNECTION_CONFIG = getConnectionPresets();
 export function ConnectionHeader() {
   const { connection, connect, disconnect, setConnection, refreshMonitor, apiVersion, fetchApiVersion } = useMonitorStore();
   
+  // Initialize state with defaults first (hooks must always be called)
+  const hasConfig = !!CONNECTION_CONFIG;
+  const presets = hasConfig ? CONNECTION_CONFIG.presets : {};
+  const isSingleConnection = hasConfig ? CONNECTION_CONFIG.isSingleConnection : false;
+  const presetKeys = Object.keys(presets);
+  const firstPreset = presetKeys[0] || '';
+  
+  const [websocketUrl, setWebsocketUrl] = useState(presets[firstPreset]?.websocket || '');
+  const [authToken, setAuthToken] = useState(presets[firstPreset]?.auth || '');
+  const [selectedPreset, setSelectedPreset] = useState(firstPreset);
+  
+  // Auto-clear connection error after 3 seconds
+  useEffect(() => {
+    if (connection.error) {
+      const timer = setTimeout(() => {
+        setConnection({ error: undefined });
+      }, 3000);
+      return () => clearTimeout(timer);
+    }
+  }, [connection.error, setConnection]);
+
+  // Fetch API version when connected
+  useEffect(() => {
+    if (connection.isConnected && !apiVersion) {
+      fetchApiVersion();
+    }
+  }, [connection.isConnected, apiVersion, fetchApiVersion]);
+  
   // Handle different connection states
-  if (!CONNECTION_CONFIG) {
+  if (!hasConfig) {
     // No CONNECTIONS environment variable - show error
     return (
       <div className="bg-red-50 border-b border-red-200 px-6 py-4">
@@ -71,14 +100,6 @@ export function ConnectionHeader() {
       </div>
     );
   }
-
-  const { presets, isSingleConnection } = CONNECTION_CONFIG;
-  const presetKeys = Object.keys(presets);
-  const firstPreset = presetKeys[0];
-  
-  const [websocketUrl, setWebsocketUrl] = useState(presets[firstPreset]?.websocket || '');
-  const [authToken, setAuthToken] = useState(presets[firstPreset]?.auth || '');
-  const [selectedPreset, setSelectedPreset] = useState(firstPreset);
   
   // Check if auto-connect is enabled via environment variable
   const autoConnectUrl = process.env.NEXT_PUBLIC_WS_URL;
@@ -120,23 +141,6 @@ export function ConnectionHeader() {
       window.location.reload();
     }, 500);
   };
-
-  // Auto-clear connection error after 3 seconds
-  useEffect(() => {
-    if (connection.error) {
-      const timer = setTimeout(() => {
-        setConnection({ error: undefined });
-      }, 3000);
-      return () => clearTimeout(timer);
-    }
-  }, [connection.error, setConnection]);
-
-  // Fetch API version when connected
-  useEffect(() => {
-    if (connection.isConnected && !apiVersion) {
-      fetchApiVersion();
-    }
-  }, [connection.isConnected, apiVersion, fetchApiVersion]);
 
   return (
     <header className="h-20 bg-background border-b border-border flex-shrink-0">

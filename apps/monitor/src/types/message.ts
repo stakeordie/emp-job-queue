@@ -10,7 +10,8 @@ export type MessageType =
   | 'heartbeat'
   | 'error'
   | 'sync_job_state'
-  | 'cancel_job';
+  | 'cancel_job'
+  | 'delegated_job_result';
 
 export interface BaseMessage {
   id: string;
@@ -71,4 +72,10 @@ export interface SyncJobStateMessage extends BaseMessage {
 export interface CancelJobMessage extends BaseMessage {
   type: 'cancel_job';
   job_id: string;
+}
+
+export interface DelegatedJobResultMessage extends BaseMessage {
+  type: 'delegated_job_result';
+  job_id: string;
+  result: unknown;
 }
