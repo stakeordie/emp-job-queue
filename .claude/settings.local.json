@@ -202,7 +202,8 @@
       "Bash(SKIP_TYPE_CHECK=true pnpm build)",
       "Bash(./build-standalone.sh:*)",
       "Bash(git filter-branch:*)",
-      "WebFetch(domain:docs.railway.com)"
+      "WebFetch(domain:docs.railway.com)",
+      "Bash(git stash:*)"
     ],
     "deny": []
   }
