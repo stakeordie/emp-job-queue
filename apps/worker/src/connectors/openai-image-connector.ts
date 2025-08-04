@@ -582,60 +582,96 @@ export class OpenAIImageConnector extends BaseConnector {
       throw new Error('OpenAI client not initialized');
     }
 
+    // Use background + streaming as the primary approach (reliable + trackable)
     try {
-      const payload = jobData.payload as any;
-      const model = payload.model || this.defaultModel;
-      const size = payload.size || this.defaultSize;
-      const quality = payload.quality || this.defaultQuality;
-      const n = Math.min(payload.n || 1, 1); // DALL-E 3 only supports n=1
-
-      // Get the prompt from either prompt or description field
-      const prompt = payload.prompt || payload.description;
-      if (!prompt) {
-        throw new Error('Job must contain either "prompt" or "description" field');
-      }
-
-      logger.info(
-        `Processing image generation job with model ${model}, size ${size} with streaming`
+      return await this.processWithBackgroundStreaming(jobData, progressCallback);
+    } catch (backgroundError) {
+      logger.warn(
+        `Background streaming failed for job ${jobData.id}: ${backgroundError.message}. Falling back to traditional streaming.`
       );
-
-      // PROOF: Log exact request parameters
-      logger.info(`PROOF - Model being sent to API: "${model}"`);
-      logger.info(`PROOF - Connector defaultModel: "${this.defaultModel}"`);
-      logger.info(`PROOF - Payload model (if any): "${payload.model || 'undefined'}"`);
-      logger.info(`PROOF - Request will use model: "${model}" for OpenAI Responses API`);
-
-      // Report initial progress
-      if (progressCallback) {
-        await progressCallback({
-          job_id: jobData.id,
-          progress: 10,
-          message: `Starting image generation with ${model}`,
-          current_step: 'initializing',
-        });
+      try {
+        return await this.processWithStreaming(jobData, progressCallback);
+      } catch (streamingError) {
+        logger.warn(
+          `Traditional streaming failed for job ${jobData.id}: ${streamingError.message}. Falling back to non-streaming.`
+        );
+        try {
+          return await this.processWithoutStreaming(jobData, progressCallback);
+        } catch (fallbackError) {
+          logger.error(`All three approaches failed for job ${jobData.id}`);
+          throw new Error(`OpenAI Image generation failed: ${fallbackError.message}`);
+        }
       }
+    }
+  }
 
-      // Use Responses API with streaming for progress updates
-      const stream = await this.client.responses.create({
-        model,
-        input: prompt,
-        stream: true as const,
-        tools: [{ type: 'image_generation' as const, partial_images: 2 }],
+  private async processWithBackgroundStreaming(jobData: JobData, progressCallback?: ProgressCallback): Promise<JobResult> {
+    const payload = jobData.payload as any;
+    const model = payload.model || this.defaultModel;
+    const size = payload.size || this.defaultSize;
+    const quality = payload.quality || this.defaultQuality;
+
+    // Get the prompt from either prompt or description field
+    const prompt = payload.prompt || payload.description;
+    if (!prompt) {
+      throw new Error('Job must contain either "prompt" or "description" field');
+    }
+
+    logger.info(`Processing image generation job with model ${model}, size ${size} with background streaming`);
+
+    // Report initial progress
+    if (progressCallback) {
+      await progressCallback({
+        job_id: jobData.id,
+        progress: 5,
+        message: `Starting image generation with ${model} (background streaming)`,
+        current_step: 'initializing',
       });
+    }
 
-      let finalImageUrl: string | undefined;
-      let revisedPrompt: string | undefined;
-      let partialCount = 0;
-      const partialImages: string[] = [];
+    // Use background + streaming approach for reliable job tracking
+    const stream = await this.client!.responses.create({
+      model,
+      input: prompt,
+      background: true,
+      stream: true,
+      tools: [{ type: 'image_generation' as const, partial_images: 2 }],
+    });
 
-      // Process streaming response
+    let openaiJobId: string | null = null;
+    let partialCount = 0;
+    const partialImages: string[] = [];
+    let cursor: number | null = null;
+
+    // Process background streaming response
+    try {
       for await (const event of stream) {
+        cursor = event.sequence_number;
+
+        // Capture OpenAI job ID for tracking
+        if (event.type === 'response.created' && event.response?.id) {
+          openaiJobId = event.response.id;
+          logger.info(`OpenAI background job started: ${openaiJobId} for job ${jobData.id}`);
+          
+          if (progressCallback) {
+            await progressCallback({
+              job_id: jobData.id,
+              progress: 15,
+              message: `OpenAI job ${openaiJobId} started`,
+              current_step: 'processing',
+              metadata: {
+                openai_job_id: openaiJobId,
+                sequence_number: cursor,
+              },
+            });
+          }
+        }
+
         if (event.type === 'response.image_generation_call.partial_image') {
           partialCount++;
-          const progress = Math.min(85, 10 + partialCount * 35); // Progress from 10% to 85%
+          const progress = Math.min(85, 15 + partialCount * 35); // Progress from 15% to 85%
 
-          // Convert base64 to buffer and then to data URL for immediate use
-          const imageBuffer = Buffer.from(event.partial_image_b64, 'base64');
+          // Convert base64 to data URL for immediate use
           const partialImageDataUrl = `data:image/png;base64,${event.partial_image_b64}`;
           partialImages.push(partialImageDataUrl);
 
@@ -646,91 +682,309 @@ export class OpenAIImageConnector extends BaseConnector {
               message: `Partial image ${partialCount} received`,
               current_step: 'generating',
               metadata: {
+                openai_job_id: openaiJobId,
                 partial_image_index: event.partial_image_index,
-                partial_image_data_url: partialImageDataUrl,
                 partial_count: partialCount,
+                sequence_number: cursor,
               },
             });
           }
 
           logger.info(
-            `Received partial image ${partialCount} (index ${event.partial_image_index}) for job ${jobData.id}`
+            `Received partial image ${partialCount} (index ${event.partial_image_index}) for OpenAI job ${openaiJobId} -> job ${jobData.id}`
           );
         } else if (event.type.includes('done')) {
-          // Stream is complete, need to get final image
+          // Stream is complete
           if (progressCallback) {
             await progressCallback({
               job_id: jobData.id,
               progress: 95,
               message: 'Finalizing image...',
               current_step: 'finalizing',
+              metadata: {
+                openai_job_id: openaiJobId,
+                sequence_number: cursor,
+              },
             });
           }
         }
       }
-
-      // Process final image with optional asset saving
-      let savedAsset: { filePath: string; fileName: string; fileUrl: string } | null = null;
-
-      if (partialImages.length > 0) {
-        const finalImageDataUrl = partialImages[partialImages.length - 1];
-
-        // Check if we should save assets (default: true)
-        const saveAssets = payload.save_assets !== false; // Default to true unless explicitly false
-
-        if (saveAssets) {
-          // Extract MIME type and base64 data from data URL
-          const mimeMatch = finalImageDataUrl.match(/^data:([^;]+);base64,/);
-          const mimeType = mimeMatch ? mimeMatch[1] : 'image/png';
-          const base64Data = finalImageDataUrl.replace(/^data:[^;]+;base64,/, '');
-          savedAsset = await AssetSaver.saveAssetToCloud(base64Data, jobData.id, jobData, mimeType);
-
-          finalImageUrl = savedAsset.fileUrl; // Use cloud storage URL as primary result
-          logger.info(`Image saved and verified in cloud storage: ${savedAsset.fileName}`);
-        } else {
-          finalImageUrl = finalImageDataUrl; // Use data URL directly
-          logger.info(`Image returned as data URL (save_assets=false)`);
-        }
-
-        if (progressCallback) {
-          await progressCallback({
-            job_id: jobData.id,
-            progress: 100,
-            message: saveAssets ? 'Image saved successfully' : 'Image generation complete',
-            current_step: 'completed',
-            metadata: {
-              final_image_url: finalImageUrl,
-              total_partial_images: partialCount,
-              saved_asset: savedAsset,
-              save_assets: saveAssets,
-            },
-          });
-        }
-
-        logger.info(
-          `Final image ready for job ${jobData.id} (${partialCount} partial images, saved: ${saveAssets})`
+    } catch (streamError) {
+      // If we have an OpenAI job ID, we can potentially recover by polling
+      if (openaiJobId) {
+        logger.warn(
+          `Background streaming failed for OpenAI job ${openaiJobId}, but we have job ID for potential recovery: ${streamError.message}`
         );
+        throw new Error(`Background streaming interrupted for trackable job ${openaiJobId}: ${streamError.message}`);
       } else {
-        throw new Error('No partial images received from OpenAI streaming response');
+        throw new Error(`Background streaming failed before job ID was obtained: ${streamError.message}`);
+      }
+    }
+
+    // Check if we received any partial images
+    if (partialImages.length === 0) {
+      const errorMsg = openaiJobId 
+        ? `No partial images received from OpenAI background job ${openaiJobId}`
+        : 'No partial images received from OpenAI background streaming response';
+      throw new Error(errorMsg);
+    }
+
+    logger.info(`Background streaming successful for OpenAI job ${openaiJobId} -> job ${jobData.id}`);
+    
+    return await this.finalizeImageProcessing(jobData, partialImages, partialCount, progressCallback, {
+      openai_job_id: openaiJobId,
+      sequence_number: cursor,
+      approach: 'background_streaming'
+    });
+  }
+
+  private async processWithStreaming(jobData: JobData, progressCallback?: ProgressCallback): Promise<JobResult> {
+    const payload = jobData.payload as any;
+    const model = payload.model || this.defaultModel;
+    const size = payload.size || this.defaultSize;
+    const quality = payload.quality || this.defaultQuality;
+
+    // Get the prompt from either prompt or description field
+    const prompt = payload.prompt || payload.description;
+    if (!prompt) {
+      throw new Error('Job must contain either "prompt" or "description" field');
+    }
+
+    logger.info(`Processing image generation job with model ${model}, size ${size} with streaming`);
+
+    // Report initial progress
+    if (progressCallback) {
+      await progressCallback({
+        job_id: jobData.id,
+        progress: 10,
+        message: `Starting image generation with ${model} (streaming)`,
+        current_step: 'initializing',
+      });
+    }
+
+    // Use Responses API with streaming for progress updates
+    const stream = await this.client!.responses.create({
+      model,
+      input: prompt,
+      stream: true as const,
+      tools: [{ type: 'image_generation' as const, partial_images: 2 }],
+    });
+
+    let finalImageUrl: string | undefined;
+    let revisedPrompt: string | undefined;
+    let partialCount = 0;
+    const partialImages: string[] = [];
+    let streamTimeout: NodeJS.Timeout | null = null;
+
+    // Set a timeout for streaming response
+    const streamPromise = new Promise<void>((resolve, reject) => {
+      streamTimeout = setTimeout(() => {
+        reject(new Error('Streaming response timeout after 60 seconds'));
+      }, 60000);
+
+      // Process streaming response
+      (async () => {
+        try {
+          for await (const event of stream) {
+            if (event.type === 'response.image_generation_call.partial_image') {
+              partialCount++;
+              const progress = Math.min(85, 10 + partialCount * 35); // Progress from 10% to 85%
+
+              // Convert base64 to buffer and then to data URL for immediate use
+              const imageBuffer = Buffer.from(event.partial_image_b64, 'base64');
+              const partialImageDataUrl = `data:image/png;base64,${event.partial_image_b64}`;
+              partialImages.push(partialImageDataUrl);
+
+              if (progressCallback) {
+                await progressCallback({
+                  job_id: jobData.id,
+                  progress,
+                  message: `Partial image ${partialCount} received`,
+                  current_step: 'generating',
+                  metadata: {
+                    partial_image_index: event.partial_image_index,
+                    partial_image_data_url: partialImageDataUrl,
+                    partial_count: partialCount,
+                  },
+                });
+              }
+
+              logger.info(
+                `Received partial image ${partialCount} (index ${event.partial_image_index}) for job ${jobData.id}`
+              );
+            } else if (event.type.includes('done')) {
+              // Stream is complete, need to get final image
+              if (progressCallback) {
+                await progressCallback({
+                  job_id: jobData.id,
+                  progress: 95,
+                  message: 'Finalizing image...',
+                  current_step: 'finalizing',
+                });
+              }
+            }
+          }
+          resolve();
+        } catch (error) {
+          reject(error);
+        }
+      })();
+    });
+
+    try {
+      await streamPromise;
+    } finally {
+      if (streamTimeout) {
+        clearTimeout(streamTimeout);
+      }
+    }
+
+    // Check if we received any partial images
+    if (partialImages.length === 0) {
+      throw new Error('No partial images received from OpenAI streaming response');
+    }
+
+    return await this.finalizeImageProcessing(jobData, partialImages, partialCount, progressCallback);
+  }
+
+  private async processWithoutStreaming(jobData: JobData, progressCallback?: ProgressCallback): Promise<JobResult> {
+    const payload = jobData.payload as any;
+    const model = payload.model || this.defaultModel;
+    const size = payload.size || this.defaultSize;
+    const quality = payload.quality || this.defaultQuality;
+
+    // Get the prompt from either prompt or description field
+    const prompt = payload.prompt || payload.description;
+    if (!prompt) {
+      throw new Error('Job must contain either "prompt" or "description" field');
+    }
+
+    logger.info(`Processing image generation job with model ${model}, size ${size} without streaming (fallback)`);
+
+    // Report initial progress
+    if (progressCallback) {
+      await progressCallback({
+        job_id: jobData.id,
+        progress: 20,
+        message: `Starting image generation with ${model} (non-streaming fallback)`,
+        current_step: 'initializing',
+      });
+    }
+
+    // Use regular DALL-E API as fallback
+    try {
+      const response = await this.client!.images.generate({
+        model: model.includes('dall-e') ? model : 'dall-e-3', // Ensure valid model for direct API
+        prompt,
+        n: 1,
+        size: size as any,
+        quality: quality as any,
+        response_format: 'b64_json',
+      });
+
+      if (progressCallback) {
+        await progressCallback({
+          job_id: jobData.id,
+          progress: 80,
+          message: 'Image generated successfully',
+          current_step: 'processing',
+        });
       }
 
-      // Return minimal response like ComfyUI - asset is saved but URL not returned
-      // The client can construct the URL from job metadata if needed
-      return {
-        success: true,
-        data: {
-          model_used: model,
-          size: size,
-          quality: quality,
-          revised_prompt: revisedPrompt,
-          partial_images_received: partialCount,
-        },
-        processing_time_ms: 0, // Will be calculated by base class
-      };
+      if (!response.data || response.data.length === 0 || !response.data[0].b64_json) {
+        throw new Error('No image data received from OpenAI DALL-E API');
+      }
+
+      // Convert to data URL format for consistency with streaming approach
+      const base64Data = response.data[0].b64_json;
+      const dataUrl = `data:image/png;base64,${base64Data}`;
+      const partialImages = [dataUrl];
+
+      logger.info(`Non-streaming fallback successful for job ${jobData.id}`);
+
+      return await this.finalizeImageProcessing(jobData, partialImages, 1, progressCallback);
     } catch (error) {
-      logger.error(`OpenAI Image processing failed: ${error.message}`);
-      throw error;
+      logger.error(`Non-streaming fallback also failed: ${error.message}`);
+      throw new Error(`Both streaming and non-streaming approaches failed: ${error.message}`);
     }
+  }
+
+  private async finalizeImageProcessing(
+    jobData: JobData,
+    partialImages: string[],
+    partialCount: number,
+    progressCallback?: ProgressCallback,
+    openaiMetadata?: {
+      openai_job_id?: string | null;
+      sequence_number?: number | null;
+      approach?: string;
+    }
+  ): Promise<JobResult> {
+    const payload = jobData.payload as any;
+    const model = payload.model || this.defaultModel;
+    const size = payload.size || this.defaultSize;
+    const quality = payload.quality || this.defaultQuality;
+
+    // Process final image with optional asset saving
+    let savedAsset: { filePath: string; fileName: string; fileUrl: string } | null = null;
+    let finalImageUrl: string | undefined;
+
+    if (partialImages.length > 0) {
+      const finalImageDataUrl = partialImages[partialImages.length - 1];
+
+      // Check if we should save assets (default: true)
+      const saveAssets = payload.save_assets !== false; // Default to true unless explicitly false
+
+      if (saveAssets) {
+        // Extract MIME type and base64 data from data URL
+        const mimeMatch = finalImageDataUrl.match(/^data:([^;]+);base64,/);
+        const mimeType = mimeMatch ? mimeMatch[1] : 'image/png';
+        const base64Data = finalImageDataUrl.replace(/^data:[^;]+;base64,/, '');
+        savedAsset = await AssetSaver.saveAssetToCloud(base64Data, jobData.id, jobData, mimeType);
+
+        finalImageUrl = savedAsset.fileUrl; // Use cloud storage URL as primary result
+        logger.info(`Image saved and verified in cloud storage: ${savedAsset.fileName}`);
+      } else {
+        finalImageUrl = finalImageDataUrl; // Use data URL directly
+        logger.info(`Image returned as data URL (save_assets=false)`);
+      }
+
+      if (progressCallback) {
+        await progressCallback({
+          job_id: jobData.id,
+          progress: 100,
+          message: saveAssets ? 'Image saved successfully' : 'Image generation complete',
+          current_step: 'completed',
+          metadata: {
+            final_image_url: finalImageUrl,
+            total_partial_images: partialCount,
+            saved_asset: savedAsset,
+            save_assets: saveAssets,
+            ...openaiMetadata,
+          },
+        });
+      }
+
+      logger.info(
+        `Final image ready for job ${jobData.id} (${partialCount} partial images, saved: ${saveAssets})${openaiMetadata?.openai_job_id ? ` OpenAI job: ${openaiMetadata.openai_job_id}` : ''}`
+      );
+    } else {
+      throw new Error('No images available for finalization');
+    }
+
+    // Return minimal response like ComfyUI - asset is saved but URL not returned
+    // The client can construct the URL from job metadata if needed
+    return {
+      success: true,
+      data: {
+        model_used: model,
+        size: size,
+        quality: quality,
+        partial_images_received: partialCount,
+        ...openaiMetadata,
+      },
+      processing_time_ms: 0, // Will be calculated by base class
+    };
   }
 
   async cleanupService(): Promise<void> {
