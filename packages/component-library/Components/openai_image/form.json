@@ -14,7 +14,10 @@
       "placeholder": "Describe the image you want to generate...",
       "default": "",
       "display": true,
-      "group": "main",
+      "group": [
+        "main",
+        "advanced"
+      ],
       "required": true
     },
     {
@@ -29,7 +32,9 @@
         }
       ],
       "display": false,
-      "group": "advanced"
+      "group": [
+        "advanced"
+      ]
     },
     {
       "id": "size",
@@ -51,7 +56,9 @@
         }
       ],
       "display": true,
-      "group": "advanced"
+      "group": [
+        "advanced"
+      ]
     },
     {
       "id": "quality",
@@ -69,7 +76,9 @@
         }
       ],
       "display": true,
-      "group": "advanced"
+      "group": [
+        "advanced"
+      ]
     }
   ]
 }

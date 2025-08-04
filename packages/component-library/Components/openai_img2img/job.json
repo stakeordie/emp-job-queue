@@ -1,0 +1,9 @@
+{
+  "service_required": "openai_img2img",
+  "payload": {
+    "prompt": "",
+    "images": []
+  },
+  "response_type": "image",
+  "output_field": "data"
+}

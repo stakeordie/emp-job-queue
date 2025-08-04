@@ -1,0 +1,31 @@
+{
+  "config": {
+    "groupOrder": [
+      "main"
+    ],
+    "componentGroup": "image"
+  },
+  "fields": [
+    {
+      "id": "image",
+      "name": "Image",
+      "type": "image_loader",
+      "display": true,
+      "group": [
+        "main"
+      ]
+    },
+    {
+      "id": "prompt",
+      "name": "Prompt",
+      "type": "prompt_editor",
+      "placeholder": "Describe the image you want to generate...",
+      "default": "",
+      "display": true,
+      "group": [
+        "main"
+      ],
+      "required": true
+    }
+  ]
+}

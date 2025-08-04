@@ -1,0 +1,10 @@
+[
+  {
+    "id": "image",
+    "pathJq": ".payload.images[0]"
+  },
+  {
+    "id": "prompt",
+    "pathJq": ".payload.prompt"
+  }
+]
