@@ -46,12 +46,12 @@ export class WebhookServer {
       cors({
         origin: (origin, callback) => {
           try {
-            logger.info('🔍 CORS callback triggered', { 
-              origin, 
-              corsOrigins, 
+            logger.info('🔍 CORS callback triggered', {
+              origin,
+              corsOrigins,
               hasOrigin: !!origin,
               corsOriginsType: typeof corsOrigins,
-              corsOriginsArray: Array.isArray(corsOrigins)
+              corsOriginsArray: Array.isArray(corsOrigins),
             });
 
             // Allow requests with no origin (like mobile apps or curl requests)
@@ -77,14 +77,13 @@ export class WebhookServer {
               return callback(null, true);
             }
 
-            logger.error('❌ CORS BLOCKED origin', { 
-              origin, 
+            logger.error('❌ CORS BLOCKED origin', {
+              origin,
               corsOrigins,
               exactMatch: corsOrigins.includes(origin),
-              containsLocalhost: origin.includes('localhost')
+              containsLocalhost: origin.includes('localhost'),
             });
             return callback(new Error(`Not allowed by CORS: ${origin}`), false);
-            
           } catch (error) {
             logger.error('💥 CORS callback error:', error);
             return callback(error, false);

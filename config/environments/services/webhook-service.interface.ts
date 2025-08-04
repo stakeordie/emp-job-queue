@@ -14,9 +14,7 @@ export const WebhookServiceEnvInterface = {
     "CORS_ORIGINS": "WEBHOOK_SERVICE_CORS_ORIGINS",
     "NODE_ENV": "NODE_ENV",
     "NEXT_PUBLIC_APP_URL": "WEBHOOK_SERVICE_URL"
-  },
-  secret: {
-    "AUTH_TOKEN": "AUTH_TOKEN"
+    "AUTH_TOKEN": "API_AUTH_TOKEN"
   },
   optional: {
   },

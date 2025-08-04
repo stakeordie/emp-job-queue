@@ -15,7 +15,7 @@ export const ApiEnvInterface = {
     "API_PORT": "API_PORT",
     "API_HOST": "API_HOST",
     "WEBHOOK_SERVICE_URL": "WEBHOOK_SERVICE_URL",
-    "AUTH_TOKEN": "AUTH_TOKEN"
+    "AUTH_TOKEN": "API_AUTH_TOKEN"
   },
   
   optional: {
