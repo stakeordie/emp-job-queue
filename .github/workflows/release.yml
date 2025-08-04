@@ -258,5 +258,11 @@ jobs:
 
         # Redeploy API service from Docker Hub  
         railway redeploy --service emp-job-queue-production
+
+        # Redeploy API service from Docker Hub  
+        railway redeploy --service openai-machine
+
+        # Redeploy API service from Docker Hub  
+        railway redeploy --service comfyui-remote-machine
       env:
         RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}

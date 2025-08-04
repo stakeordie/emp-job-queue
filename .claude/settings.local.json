@@ -203,7 +203,8 @@
       "Bash(./build-standalone.sh:*)",
       "Bash(git filter-branch:*)",
       "WebFetch(domain:docs.railway.com)",
-      "Bash(git stash:*)"
+      "Bash(git stash:*)",
+      "Bash(DISABLE_PORTS=true RUNTIME_PORTS=9090:9090,3188:8188 WORKERS=simulation:1 node scripts/generate-docker-compose-ports.js)"
     ],
     "deny": []
   }
