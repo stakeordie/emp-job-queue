@@ -14,23 +14,18 @@ const config = {
   redisUrl: process.env.REDIS_URL || 'redis://localhost:6379',
   corsOrigins: (() => {
     const corsEnv = process.env.CORS_ORIGINS;
-    console.log('🔍 CORS ENV RAW:', JSON.stringify(corsEnv));
     
     if (corsEnv) {
       const origins = corsEnv.split(',').map(origin => origin.trim());
-      console.log('🔍 CORS PARSED:', JSON.stringify(origins));
       
       // Always include localhost for development
       if (!origins.includes('http://localhost:3333')) {
         origins.push('http://localhost:3333');
-        console.log('🔍 CORS ADDED LOCALHOST:', JSON.stringify(origins));
       }
       return origins;
     }
     
-    const defaults = ['http://localhost:3333', 'http://localhost:3331', '*'];
-    console.log('🔍 CORS DEFAULTS:', JSON.stringify(defaults));
-    return defaults;
+    return ['http://localhost:3333', 'http://localhost:3331', '*'];
   })(),
 };
 
