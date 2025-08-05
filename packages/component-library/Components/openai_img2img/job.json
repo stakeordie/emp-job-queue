@@ -5,6 +5,5 @@
     "images": []
   },
   "response_type": "image",
-  "size": "1024x1024",
   "output_field": "data"
 }

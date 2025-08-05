@@ -21,22 +21,6 @@
       "required": true
     },
     {
-      "id": "model",
-      "name": "Model",
-      "type": "select",
-      "default": "gpt-4.1",
-      "options": [
-        {
-          "value": "gpt-4.1",
-          "label": "GPT-4.1"
-        }
-      ],
-      "display": false,
-      "group": [
-        "advanced"
-      ]
-    },
-    {
       "id": "size",
       "name": "Image Size",
       "type": "select",

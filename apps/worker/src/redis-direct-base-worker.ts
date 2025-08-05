@@ -112,8 +112,8 @@ export class RedisDirectBaseWorker {
 
     // Configuration from environment - match existing patterns
     this.pollIntervalMs = parseInt(process.env.POLL_INTERVAL_MS || '1000'); // Faster polling for Redis-direct
-    // ENFORCED: Workers process exactly ONE job at a time - no concurrency within a worker
-    this.maxConcurrentJobs = 1; // NEVER change this - workers are single-job processors
+    // Workers process exactly ONE job at a time - concurrency comes from multiple workers
+    this.maxConcurrentJobs = 1;
     this.jobTimeoutMinutes = parseInt(process.env.JOB_TIMEOUT_MINUTES || '30');
 
     // Build capabilities
@@ -225,9 +225,9 @@ export class RedisDirectBaseWorker {
       max_concurrent_customers: parseInt(process.env.MAX_CONCURRENT_CUSTOMERS || '10'),
     };
 
-    // Performance configuration - Single job processing only
+    // Performance configuration - Single job processing per worker
     const performance: PerformanceConfig = {
-      concurrent_jobs: 1, // ENFORCED: Each worker processes exactly one job at a time
+      concurrent_jobs: 1, // Each worker processes exactly one job at a time
       quality_levels: (process.env.QUALITY_LEVELS || 'fast,balanced,quality')
         .split(',')
         .map(s => s.trim()),
@@ -556,12 +556,6 @@ export class RedisDirectBaseWorker {
     // CRITICAL FIX: Check if job is already being processed
     if (this.currentJobs.has(job.id)) {
       logger.warn(`Job ${job.id} is already being processed by this worker, ignoring duplicate`);
-      return;
-    }
-
-    // CRITICAL FIX: Double-check worker status
-    if (this.status === WorkerStatus.BUSY) {
-      logger.warn(`Worker ${this.workerId} is already ${this.status}, cannot take job ${job.id}`);
       return;
     }
 

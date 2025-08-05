@@ -299,6 +299,37 @@ export class OpenAIImg2ImgConnector extends OpenAIBaseConnector {
       };
 
       logger.info(`🚀 Creating OpenAI background img2img request for job ${jobData.id}`);
+      
+      // Debug: Log exactly what we're sending to OpenAI
+      if (process.env.OPENAI_DEBUG === 'true') {
+        logger.info(`🔍 OpenAI Request Config for job ${jobData.id}:`);
+        logger.info(`   Model: ${requestConfig.model}`);
+        logger.info(`   Background: ${requestConfig.background}`);
+        logger.info(`   Stream: ${requestConfig.stream}`);
+        logger.info(`   Tools: ${JSON.stringify(requestConfig.tools)}`);
+        logger.info(`   Input length: ${requestConfig.input.length}`);
+        requestConfig.input.forEach((item, index) => {
+          if (item.role === 'user' && item.content) {
+            logger.info(`   Input[${index}] role: ${item.role}, content items: ${item.content.length}`);
+            item.content.forEach((contentItem, contentIndex) => {
+              if (contentItem.type === 'input_text') {
+                logger.info(`     Content[${contentIndex}]: text (${contentItem.text.length} chars)`);
+              } else if (contentItem.type === 'input_image') {
+                let imageDesc: string;
+                if ('image_url' in contentItem && contentItem.image_url) {
+                  imageDesc = `data URL (${contentItem.image_url.length} chars)`;
+                } else if ('file_id' in contentItem && contentItem.file_id) {
+                  imageDesc = `file_id: ${contentItem.file_id}`;
+                } else {
+                  imageDesc = 'unknown image format';
+                }
+                logger.info(`     Content[${contentIndex}]: image (${imageDesc})`);
+              }
+            });
+          }
+        });
+      }
+      
       const response = await this.client.responses.create(requestConfig);
 
       // Extract OpenAI job ID from response (handle type properly)

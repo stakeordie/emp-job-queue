@@ -27,7 +27,7 @@
     ],
     "storage-provider": [
       "default",
-      "dev"
+      "production"
     ],
     "api-tokens": [
       "default"
@@ -44,7 +44,7 @@
     ],
     "openai": [
       "default",
-      "local"
+      "production"
     ]
   },
   "services": {}

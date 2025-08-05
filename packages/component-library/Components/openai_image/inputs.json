@@ -4,19 +4,11 @@
     "pathJq": ".payload.prompt"
   },
   {
-    "id": "max_tokens",
-    "pathJq": ".max_tokens"
-  },
-  {
-    "id": "temperature",
-    "pathJq": ".temperature"
-  },
-  {
     "id": "size",
-    "pathJq": ".size"
+    "pathJq": ".payload.tools.[0].size"
   },
   {
     "id": "quality",
-    "pathJq": ".quality"
+    "pathJq": ".payload.tools.[0].quality"
   }
 ]

@@ -6,7 +6,9 @@
   "type": "module",
   "scripts": {
     "build": "turbo run build",
-    "dev": "pnpm env:build --profile=full-local && turbo run dev",
+    "dev": "turbo run dev",
+    "dev:local": "DISABLE_PORTS=true turbo run dev --parallel",
+    "dev:prod": "NODE_ENV=production DISABLE_PORTS=false turbo run dev",
     "lint": "turbo run lint",
     "typecheck": "turbo run typecheck",
     "test": "turbo run test",

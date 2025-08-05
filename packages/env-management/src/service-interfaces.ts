@@ -43,7 +43,12 @@ export class ServiceInterfaceManager {
         // Dynamic import for ES modules
         try {
           const module = await import(filePath);
-          const interfaceName = `${serviceName.charAt(0).toUpperCase()}${serviceName.slice(1)}EnvInterface`;
+          // Convert kebab-case to PascalCase (e.g., webhook-service -> WebhookService)
+          const pascalCaseName = serviceName
+            .split('-')
+            .map(part => part.charAt(0).toUpperCase() + part.slice(1))
+            .join('');
+          const interfaceName = `${pascalCaseName}EnvInterface`;
           const serviceInterface = module[interfaceName];
 
           if (serviceInterface) {

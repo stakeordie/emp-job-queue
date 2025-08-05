@@ -49,6 +49,23 @@ export abstract class OpenAIBaseConnector extends BaseConnector {
   }
 
   /**
+   * Format OpenAI messages by converting \n to actual line breaks
+   */
+  protected formatMessage(message: string): string {
+    return message.replace(/\\n/g, '\n').replace(/\\t/g, '\t');
+  }
+
+  /**
+   * Truncate base64 data for logging (show first/last chars only)
+   */
+  protected truncateBase64(data: string, showChars: number = 50): string {
+    if (data.length <= showChars * 2) {
+      return data;
+    }
+    return `${data.substring(0, showChars)}...${data.substring(data.length - showChars)} (${data.length} chars total)`;
+  }
+
+  /**
    * Initialize OpenAI client with shared configuration
    */
   protected async initializeOpenAIClient(): Promise<void> {
@@ -134,9 +151,34 @@ export abstract class OpenAIBaseConnector extends BaseConnector {
         
         try {
           const responseBody = await clonedResponse.text();
-          const truncatedResponse = responseBody.length > 3000 ? 
-            responseBody.substring(0, 3000) + '...[TRUNCATED]' : responseBody;
-          logger.info(`   Body: ${truncatedResponse}`);
+          
+          // Smart truncation based on response type
+          let loggedBody: string;
+          
+          try {
+            const parsed = JSON.parse(responseBody);
+            
+            // Handle model list responses (very verbose)
+            if (parsed.object === 'list' && Array.isArray(parsed.data) && parsed.data[0]?.object === 'model') {
+              loggedBody = `Model list response: ${parsed.data.length} models (${parsed.data.slice(0, 3).map(m => m.id).join(', ')}${parsed.data.length > 3 ? ', ...' : ''})`;
+            }
+            // Handle job status responses (what we care about)
+            else if (parsed.status && parsed.id) {
+              const output = parsed.output ? ` output: ${parsed.output.length} items` : '';
+              loggedBody = `Job status: ${parsed.status}${output}`;
+            }
+            // Other responses - truncate more aggressively
+            else {
+              loggedBody = responseBody.length > 500 ? 
+                responseBody.substring(0, 500) + '...[TRUNCATED]' : responseBody;
+            }
+          } catch {
+            // Not JSON, just truncate
+            loggedBody = responseBody.length > 500 ? 
+              responseBody.substring(0, 500) + '...[TRUNCATED]' : responseBody;
+          }
+          
+          logger.info(`   Body: ${loggedBody}`);
         } catch (bodyError) {
           logger.info(`   Body: [Could not read response body: ${bodyError.message}]`);
         }
@@ -146,7 +188,7 @@ export abstract class OpenAIBaseConnector extends BaseConnector {
       } catch (error) {
         const duration = Date.now() - startTime;
         logger.error(`❌ OpenAI API Request Failed [${this.connector_id}] (${duration}ms):`);
-        logger.error(`   Error: ${error.message}`);
+        logger.error(`   Error: ${this.formatMessage(error.message)}`);
         logger.error(`   Stack: ${error.stack}`);
         throw error;
       }
@@ -195,6 +237,31 @@ export abstract class OpenAIBaseConnector extends BaseConnector {
         const currentStatus = statusResponse.status;
         
         logger.info(`📊 Poll attempt ${pollAttempts}/${maxAttempts} for OpenAI job ${openaiJobId}: status=${currentStatus}`);
+        
+        // Debug: Show what's in each poll response
+        if (process.env.OPENAI_DEBUG === 'true') {
+          logger.info(`🔍 Poll ${pollAttempts} Response Debug:`);
+          logger.info(`   Status: ${currentStatus}`);
+          logger.info(`   Has output: ${!!statusResponse.output}`);
+          if (statusResponse.output) {
+            logger.info(`   Output type: ${Array.isArray(statusResponse.output) ? 'array' : typeof statusResponse.output}`);
+            if (Array.isArray(statusResponse.output)) {
+              logger.info(`   Output length: ${statusResponse.output.length}`);
+              statusResponse.output.forEach((item, index) => {
+                logger.info(`   Output[${index}]: type=${item.type}`);
+                // Check if this item has a result property (type-safe check)
+                if ('result' in item && item.result && typeof item.result === 'string') {
+                  // Only show base64 if explicitly requested with OPENAI_DEBUG_VERBOSE
+                  if (process.env.OPENAI_DEBUG_VERBOSE === 'true') {
+                    logger.info(`   Output[${index}] result: ${this.truncateBase64(item.result)}`);
+                  } else {
+                    logger.info(`   Output[${index}] result: <base64 data: ${item.result.length} chars>`);
+                  }
+                }
+              });
+            }
+          }
+        }
 
         // Update progress if status changed
         if (currentStatus !== lastStatus) {
@@ -221,6 +288,24 @@ export abstract class OpenAIBaseConnector extends BaseConnector {
         if (currentStatus === 'completed') {
           logger.info(`✅ OpenAI job ${openaiJobId} completed after ${pollAttempts} polls (${Date.now() - startTime}ms)`);
           
+          // Debug: Log the entire response to understand what OpenAI returned
+          if (process.env.OPENAI_DEBUG === 'true') {
+            logger.info(`🔍 OpenAI Response Debug for job ${openaiJobId}:`);
+            logger.info(`   Status: ${currentStatus}`);
+            
+            // Sanitize response for logging (remove large base64 data)
+            const sanitizedResponse = { ...statusResponse };
+            if (sanitizedResponse.output && Array.isArray(sanitizedResponse.output)) {
+              sanitizedResponse.output = sanitizedResponse.output.map(item => {
+                if ('result' in item && item.result && typeof item.result === 'string' && item.result.length > 100) {
+                  return { ...item, result: `<base64 data: ${item.result.length} chars>` };
+                }
+                return item;
+              });
+            }
+            logger.info(`   Full Response: ${JSON.stringify(sanitizedResponse, null, 2)}`);
+          }
+          
           // Extract generated images from completed response
           const images: string[] = [];
           
@@ -229,13 +314,31 @@ export abstract class OpenAIBaseConnector extends BaseConnector {
               if (output.type === 'image_generation_call' && output.result) {
                 // Store base64 directly (will be processed by connector)
                 images.push(output.result);
-                logger.info(`🖼️  Extracted image from completed OpenAI job ${openaiJobId} (${output.result.length} chars)`);
+                // Only show base64 if explicitly requested
+                if (process.env.OPENAI_DEBUG_VERBOSE === 'true') {
+                  logger.info(`🖼️  Extracted image from completed OpenAI job ${openaiJobId}: ${this.truncateBase64(output.result)}`);
+                } else {
+                  logger.info(`🖼️  Extracted image from completed OpenAI job ${openaiJobId} (${output.result.length} chars)`);
+                }
               }
             }
           }
 
           if (images.length === 0) {
-            throw new Error(`OpenAI job ${openaiJobId} completed but no images found in output`);
+            logger.error(`❌ No images found in OpenAI response for job ${openaiJobId}`);
+            logger.error(`   Response has output: ${!!statusResponse.output}`);
+            logger.error(`   Response output type: ${Array.isArray(statusResponse.output) ? 'array' : typeof statusResponse.output}`);
+            // Sanitize output for error logging
+            const sanitizedOutput = statusResponse.output && Array.isArray(statusResponse.output) 
+              ? statusResponse.output.map(item => {
+                  if ('result' in item && item.result && typeof item.result === 'string' && item.result.length > 100) {
+                    return { ...item, result: `<base64 data: ${item.result.length} chars>` };
+                  }
+                  return item;
+                })
+              : statusResponse.output;
+            logger.error(`   Response output structure: ${JSON.stringify(sanitizedOutput, null, 2)}`);
+            throw new Error(`OpenAI job ${openaiJobId} completed but no images found in output. Check logs for response details.`);
           }
 
           return {
@@ -247,7 +350,8 @@ export abstract class OpenAIBaseConnector extends BaseConnector {
 
         // Check if job failed
         if (currentStatus === 'failed' || currentStatus === 'cancelled') {
-          const errorMessage = statusResponse.error?.message || `Job ${currentStatus}`;
+          const rawErrorMessage = statusResponse.error?.message || `Job ${currentStatus}`;
+          const errorMessage = this.formatMessage(rawErrorMessage);
           throw new Error(`OpenAI job ${openaiJobId} ${currentStatus}: ${errorMessage}`);
         }
 
@@ -258,11 +362,11 @@ export abstract class OpenAIBaseConnector extends BaseConnector {
         }
 
       } catch (pollError) {
-        logger.warn(`⚠️  Poll attempt ${pollAttempts} failed for OpenAI job ${openaiJobId}: ${pollError.message}`);
+        logger.warn(`⚠️  Poll attempt ${pollAttempts} failed for OpenAI job ${openaiJobId}: ${this.formatMessage(pollError.message)}`);
         
         // If this is the last attempt, throw the error
         if (pollAttempts >= maxAttempts) {
-          throw new Error(`Polling failed after ${maxAttempts} attempts: ${pollError.message}`);
+          throw new Error(`Polling failed after ${maxAttempts} attempts: ${this.formatMessage(pollError.message)}`);
         }
       }
 
@@ -297,7 +401,7 @@ export abstract class OpenAIBaseConnector extends BaseConnector {
       const models = await this.client.models.list();
       return models.data.length > 0;
     } catch (error) {
-      logger.warn(`OpenAI connector ${this.connector_id} health check failed: ${error.message}`);
+      logger.warn(`OpenAI connector ${this.connector_id} health check failed: ${this.formatMessage(error.message)}`);
       return false;
     }
   }
@@ -313,7 +417,7 @@ export abstract class OpenAIBaseConnector extends BaseConnector {
       const models = await this.client.models.list();
       return models.data.filter(model => model.id.includes('gpt')).map(model => model.id);
     } catch (error) {
-      logger.warn(`Failed to fetch OpenAI models for ${this.connector_id}: ${error.message}`);
+      logger.warn(`Failed to fetch OpenAI models for ${this.connector_id}: ${this.formatMessage(error.message)}`);
       return [];
     }
   }

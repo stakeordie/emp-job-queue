@@ -42,7 +42,7 @@ export class EnvironmentBuilder {
     const serviceEnvPath = outputPath || `.env.${serviceName}`;
 
     // Split variables into public and secret based on service interface
-    const { publicVars, secretVars } = this.splitVariablesByInterface(serviceVars);
+    const { publicVars, secretVars } = this.splitVariablesByInterface(serviceName, serviceVars);
 
     // Add CURRENT_ENV to public vars if provided
     if (currentEnv) {
@@ -56,11 +56,14 @@ export class EnvironmentBuilder {
     await fs.promises.writeFile(serviceEnvPath, publicContent, 'utf8');
 
     // Write secret variables to .env.secret (runtime injection via compose)
-    const secretPath = serviceEnvPath.replace('.env', '.env.secret');
-    const secretContent = Object.entries(secretVars)
-      .map(([key, value]) => `${key}=${value}`)
-      .join('\n');
-    await fs.promises.writeFile(secretPath, secretContent, 'utf8');
+    // Only create .env.secret if there are actually secret variables
+    if (Object.keys(secretVars).length > 0) {
+      const secretPath = serviceEnvPath.replace('.env', '.env.secret');
+      const secretContent = Object.entries(secretVars)
+        .map(([key, value]) => `${key}=${value}`)
+        .join('\n');
+      await fs.promises.writeFile(secretPath, secretContent, 'utf8');
+    }
   }
 
   /**
@@ -475,27 +478,25 @@ export class EnvironmentBuilder {
   /**
    * Split environment variables into public (.env) and secret (.env.secret) based on service interfaces
    */
-  private splitVariablesByInterface(vars: { [key: string]: string }): {
+  private splitVariablesByInterface(serviceName: string, vars: { [key: string]: string }): {
     publicVars: { [key: string]: string };
     secretVars: { [key: string]: string };
   } {
     const publicVars: { [key: string]: string } = {};
     const secretVars: { [key: string]: string } = {};
 
-    // Get all secret variable names from loaded service interfaces
+    // Get secret variable names only from the specific service interface
     const secretVariableNames = new Set<string>();
-
-    // Collect secret variable names from all service interfaces
-    const availableInterfaces = this.serviceInterfaces.getInterfaces();
-    for (const [_serviceName, serviceInterface] of availableInterfaces) {
-      if (serviceInterface.secret) {
-        for (const appVar of Object.keys(serviceInterface.secret)) {
-          secretVariableNames.add(appVar);
-        }
+    
+    // Get the specific service interface
+    const serviceInterface = this.serviceInterfaces.getInterfaces().get(serviceName);
+    if (serviceInterface?.secret) {
+      for (const appVar of Object.keys(serviceInterface.secret)) {
+        secretVariableNames.add(appVar);
       }
     }
 
-    // Split variables based on whether they're in the secrets list
+    // Split variables based on whether they're in the service's secrets list
     for (const [key, value] of Object.entries(vars)) {
       if (secretVariableNames.has(key)) {
         secretVars[key] = value;

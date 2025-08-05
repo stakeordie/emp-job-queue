@@ -266,11 +266,15 @@ class ComposeBuilder {
           ...(await this.generateEnvironmentForWorkerSpec(workerSpec))
         }
       },
-      container_name: `${workerSpec.profileName}-\${CURRENT_ENV}`,
-      hostname: workerSpec.profileName,
-      // Generate ports specific to this machine configuration
-      ports: this.generatePortsForWorkerSpec(workerSpec)
+      container_name: workerSpec.profileName,
+      hostname: workerSpec.profileName
     };
+    
+    // Only add ports if there are any to add
+    const ports = this.generatePortsForWorkerSpec(workerSpec);
+    if (ports.length > 0) {
+      baseConfig.ports = ports;
+    }
 
     // Add image tag if specified
     if (tag) {
@@ -284,28 +288,35 @@ class ComposeBuilder {
    * Generate port mappings for worker specification
    */
   generatePortsForWorkerSpec(workerSpec) {
-    const ports = [];
-    
-    // Always include health monitoring port
-    ports.push('${EXPOSE_PORTS:-9090}:9090');
-    
-    // Generate ComfyUI ports for ComfyUI workers
-    let totalComfyUIInstances = 0;
-    for (const connector of workerSpec.connectors) {
-      if (connector.connector === 'comfyui' || connector.binding === 'gpu' || connector.binding === 'mock_gpu') {
-        totalComfyUIInstances += connector.count;
-      }
+    // Check if ports are disabled - if so, return no ports at all
+    if (process.env.DISABLE_PORTS === 'true') {
+      return []; // No ports when DISABLE_PORTS=true
     }
     
-    // Generate port mappings for each ComfyUI instance
-    // Just list them out - simpler and more explicit
-    const comfyUIPortMappings = [
-      '3188:8188', '3189:8189', '3190:8190', '3191:8191', '3192:8192',
-      '3193:8193', '3194:8194', '3195:8195', '3196:8196', '3197:8197'
-    ];
+    const ports = [];
     
-    for (let i = 0; i < totalComfyUIInstances && i < comfyUIPortMappings.length; i++) {
-      ports.push(comfyUIPortMappings[i]);
+    // Include health monitoring port
+    ports.push('${EXPOSE_PORTS:-9090}:9090');
+    
+    // Only add ComfyUI ports if COMFYUI_EXPOSE_PORTS is true
+    if (process.env.COMFYUI_EXPOSE_PORTS === 'true') {
+      // Generate ComfyUI ports for actual ComfyUI workers (not simulation)
+      let totalComfyUIInstances = 0;
+      for (const connector of workerSpec.connectors) {
+        if (connector.connector === 'comfyui' || connector.connector === 'comfyui-remote') {
+          totalComfyUIInstances += connector.count;
+        }
+      }
+      
+      // Generate port mappings for each ComfyUI instance
+      const comfyUIPortMappings = [
+        '3188:8188', '3189:8189', '3190:8190', '3191:8191', '3192:8192',
+        '3193:8193', '3194:8194', '3195:8195', '3196:8196', '3197:8197'
+      ];
+      
+      for (let i = 0; i < totalComfyUIInstances && i < comfyUIPortMappings.length; i++) {
+        ports.push(comfyUIPortMappings[i]);
+      }
     }
     
     return ports;

@@ -944,11 +944,11 @@ export class RedisDirectWorkerClient {
           return;
         }
 
-        // CRITICAL FIX: Check if worker is already busy before requesting jobs
+        // Skip job request if worker is already busy (processing a job)
         const workerStatus = await this.getWorkerStatus();
         if (workerStatus === 'busy') {
           logger.debug(`Worker ${this.workerId} is ${workerStatus}, skipping job request`);
-          // Schedule next poll
+          // Schedule next poll - will try again when current job completes
           this.pollTimeout = setTimeout(poll, this.pollIntervalMs);
           return;
         }

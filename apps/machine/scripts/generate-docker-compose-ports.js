@@ -94,16 +94,8 @@ class DockerComposePortGenerator {
     
     // Check if ports are disabled
     if (process.env.DISABLE_PORTS === 'true') {
-      this.logger.log('All ports disabled by DISABLE_PORTS flag');
-      
-      // Check for runtime port mappings
-      const runtimePorts = process.env.RUNTIME_PORTS;
-      if (runtimePorts) {
-        const mappings = runtimePorts.split(',').map(mapping => `"${mapping}"`);
-        portMappings.push(...mappings);
-        this.logger.log(`Using runtime port mappings: ${mappings.join(', ')}`);
-      }
-      
+      this.logger.log('All ports disabled by DISABLE_PORTS flag - NO PORTS will be exposed');
+      // Return empty array - no ports at all, not even health port
       return portMappings;
     }
     
@@ -132,10 +124,11 @@ class DockerComposePortGenerator {
   generateComfyUIPorts(workerConfig, machineInstance = 0) {
     const ports = [];
     
-    // Find ComfyUI workers
+    // Find ComfyUI workers only (exclude simulation workers)
     const comfyuiWorkers = workerConfig.workers.filter(w => 
       w.connector === 'comfyui' || 
-      (w.binding === 'gpu' || w.binding === 'mock_gpu')
+      (w.connector === 'comfyui-remote') ||
+      (w.binding === 'gpu' && w.connector !== 'simulation')
     );
     
     if (comfyuiWorkers.length === 0) {

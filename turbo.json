@@ -4,11 +4,13 @@
   "tasks": {
     "build": {
       "dependsOn": ["^build"],
-      "outputs": ["dist/**", ".next/**", "build/**"]
+      "outputs": ["dist/**", ".next/**", "build/**"],
+      "env": ["NODE_ENV", "CURRENT_ENV"]
     },
     "test": {
       "dependsOn": ["build"],
-      "outputs": ["coverage/**"]
+      "outputs": ["coverage/**"],
+      "env": ["NODE_ENV"]
     },
     "lint": {
       "outputs": []
@@ -22,7 +24,23 @@
     },
     "dev": {
       "cache": false,
-      "persistent": true
+      "persistent": true,
+      "env": ["NODE_ENV", "LOG_LEVEL", "*_PORT", "*_HOST"]
+    },
+    "dev:api": {
+      "cache": false,
+      "persistent": true,
+      "env": ["API_*", "WEBHOOK_*", "CORS_*", "AUTH_TOKEN"]
+    },
+    "dev:monitor": {
+      "cache": false,
+      "persistent": true,
+      "env": ["MONITOR_*", "WEBSOCKET_*", "AUTH_TOKEN"]
+    },
+    "dev:machine": {
+      "cache": false,
+      "persistent": true,
+      "env": ["MACHINE_*", "WORKER_*", "DISABLE_PORTS", "COMFYUI_*"]
     },
     "format": {
       "outputs": []
@@ -35,11 +53,14 @@
       "outputs": ["standalone/**"]
     }
   },
-  "globalEnv": ["NODE_ENV", "CI", "REDIS_URL", "API_PORT"],
+  "globalEnv": ["NODE_ENV", "CI", "REDIS_URL", "TURBO_ENV_MODE"],
   "globalPassThroughEnv": [
     "AWS_ACCESS_KEY_ID",
     "AWS_SECRET_ACCESS_KEY",
     "HF_TOKEN",
-    "OPENAI_API_KEY"
+    "OPENAI_API_KEY",
+    "CIVITAI_TOKEN",
+    "AZURE_*",
+    "CLOUD_*"
   ]
 }
