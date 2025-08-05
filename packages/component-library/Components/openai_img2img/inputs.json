@@ -1,10 +1,27 @@
 [
   {
-    "id": "image",
-    "pathJq": ".payload.images[0]"
+    "id": "image_1",
+    "pathJq": ".payload.images[0]",
+    "is_required": true
+  },
+  {
+    "id": "image_2",
+    "pathJq": ".payload.images[1]",
+    "is_required": false
+  },
+  {
+    "id": "image_3",
+    "pathJq": ".payload.images[2]",
+    "is_required": false
+  },
+  {
+    "id": "image_4",
+    "pathJq": ".payload.images[3]",
+    "is_required": false
   },
   {
     "id": "prompt",
-    "pathJq": ".payload.prompt"
+    "pathJq": ".payload.prompt",
+    "is_required": true
   }
 ]

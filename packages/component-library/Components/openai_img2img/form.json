@@ -7,10 +7,41 @@
   },
   "fields": [
     {
-      "id": "image",
-      "name": "Image",
+      "id": "image_1",
+      "name": "Image #1",
       "type": "image_loader",
       "display": true,
+      "required": true,
+      "group": [
+        "main"
+      ]
+    },
+    {
+      "id": "image_2",
+      "name": "Image #2",
+      "type": "image_loader",
+      "display": true,
+      "required": false,
+      "group": [
+        "main"
+      ]
+    },
+    {
+      "id": "image_3",
+      "name": "Image #3",
+      "type": "image_loader",
+      "display": true,
+      "required": false,
+      "group": [
+        "main"
+      ]
+    },
+    {
+      "id": "image_4",
+      "name": "Image #4",
+      "type": "image_loader",
+      "display": true,
+      "required": false,
       "group": [
         "main"
       ]
