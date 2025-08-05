@@ -15,6 +15,8 @@ export const MachineEnvInterface = {
 
     "UNIFIED_MACHINE_STATUS":"WORKER_UNIFIED_MACHINE_STATUS",
 
+    "OPENAI_DEBUG":"OPENAI_DEBUG",
+
   },
   
   optional: {

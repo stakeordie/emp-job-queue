@@ -27,33 +27,40 @@ export class AssetSaver {
       // Use provided format or derive from MIME type
       const actualFormat = format || fileExtension;
 
-      // Get cloud storage configuration from environment and job data
-      const provider = process.env.CLOUD_STORAGE_PROVIDER?.toLowerCase();
-      // Use bucket from payload if provided, otherwise fall back to environment variable
-      const bucket = jobData.payload?.bucket || process.env.CLOUD_STORAGE_CONTAINER;
-      const prefix = jobData.payload?.ctx?.prefix;
+      // Get cloud storage configuration from job data (environment agnostic)
+      // Storage configuration should be provided in job payload ctx
+      const ctx = jobData.payload?.ctx || {};
+      const storageConfig = ctx.storage || {};
+      
+      // Storage configuration MUST come from job payload - no environment variable fallbacks
+      const provider = storageConfig.provider || ctx.provider;
+      const bucket = storageConfig.bucket || ctx.bucket;
+      const prefix = ctx.prefix || storageConfig.prefix;
+      const cdnUrl = storageConfig.cdnUrl || ctx.cdnUrl;
 
       if (!provider) {
-        throw new Error('CLOUD_STORAGE_PROVIDER environment variable is required');
+        throw new Error(
+          'Storage provider is required. Job payload must include either "ctx.provider" or "ctx.storage.provider".'
+        );
       }
 
       if (!bucket) {
         throw new Error(
-          'Bucket is required. Please provide "bucket" in job payload or set CLOUD_STORAGE_CONTAINER environment variable.'
+          'Storage bucket is required. Job payload must include either "ctx.bucket" or "ctx.storage.bucket".'
         );
       }
 
       if (!prefix) {
         throw new Error(
-          'Cloud storage prefix is required. Job should include "ctx.prefix" in payload.'
+          'Storage prefix is required. Job payload must include "ctx.prefix".'
         );
       }
 
       // Use provided filename or generate unique filename with timestamp and hash
       let fileName: string;
-      if (jobData.payload?.ctx?.filename) {
+      if (ctx.filename) {
         // Use provided filename, but ensure extension matches actual format
-        const providedName = jobData.payload.ctx.filename;
+        const providedName = ctx.filename;
         const hasExtension = providedName.includes('.');
 
         if (hasExtension) {
@@ -88,12 +95,14 @@ export class AssetSaver {
         bucket,
         storageKey,
         contentType,
-        provider
+        provider,
+        storageConfig,
+        ctx
       );
 
       // Verify upload success
       if (uploadSuccess && provider === 'azure') {
-        const verified = await AssetSaver.verifyAzureUpload(bucket, storageKey);
+        const verified = await AssetSaver.verifyAzureUpload(bucket, storageKey, storageConfig, ctx);
         if (!verified) {
           throw new Error('Azure upload verification failed');
         }
@@ -105,18 +114,20 @@ export class AssetSaver {
 
       // For Azure, wait for CDN to be available before returning
       let fileUrl: string;
-      if (provider === 'azure' && process.env.CLOUD_CDN_URL) {
-        const cdnUrl = `https://${process.env.CLOUD_CDN_URL}/${storageKey}`;
-        logger.info(`🌐 Waiting for CDN availability: ${cdnUrl}`);
+      if (provider === 'azure' && cdnUrl) {
+        // Handle cdnUrl that may or may not include protocol
+        const normalizedCdnUrl = cdnUrl.startsWith('http') ? cdnUrl : `https://${cdnUrl}`;
+        const fullCdnUrl = `${normalizedCdnUrl}/${storageKey}`;
+        logger.info(`🌐 Waiting for CDN availability: ${fullCdnUrl}`);
 
         // Poll CDN until it's available (required before job completion)
-        const cdnAvailable = await AssetSaver.waitForCDNAvailability(cdnUrl);
+        const cdnAvailable = await AssetSaver.waitForCDNAvailability(fullCdnUrl);
         if (!cdnAvailable) {
           throw new Error(`CDN failed to propagate after maximum attempts`);
         }
 
-        fileUrl = cdnUrl;
-        logger.info(`✅ CDN URL confirmed available: ${cdnUrl}`);
+        fileUrl = fullCdnUrl;
+        logger.info(`✅ CDN URL confirmed available: ${fullCdnUrl}`);
       } else {
         fileUrl = `https://${bucket}.blob.core.windows.net/${storageKey}`;
       }
@@ -203,11 +214,13 @@ export class AssetSaver {
     bucket: string,
     storageKey: string,
     contentType: string,
-    provider: string
+    provider: string,
+    storageConfig?: Record<string, any>,
+    ctx?: Record<string, any>
   ): Promise<boolean> {
     try {
       if (provider === 'azure') {
-        return await AssetSaver.uploadToAzure(buffer, bucket, storageKey, contentType);
+        return await AssetSaver.uploadToAzure(buffer, bucket, storageKey, contentType, storageConfig, ctx);
       } else if (provider === 'aws') {
         throw new Error('AWS S3 upload not implemented yet - install @aws-sdk/client-s3');
       } else if (provider === 'google') {
@@ -230,17 +243,20 @@ export class AssetSaver {
     buffer: Buffer,
     containerName: string,
     blobName: string,
-    contentType: string
+    contentType: string,
+    storageConfig?: Record<string, any>,
+    ctx?: Record<string, any>
   ): Promise<boolean> {
     try {
       const { BlobServiceClient, StorageSharedKeyCredential } = await import('@azure/storage-blob');
 
+      // Get credentials from environment variables (Azure creds are provided to all machines)
       const accountName = process.env.AZURE_STORAGE_ACCOUNT;
       const accountKey = process.env.AZURE_STORAGE_KEY;
 
       if (!accountName || !accountKey) {
         throw new Error(
-          'AZURE_STORAGE_ACCOUNT and AZURE_STORAGE_KEY environment variables are required'
+          'Azure storage credentials are required. Job payload must include "ctx.storage.accountName" and "ctx.storage.accountKey" (or "ctx.storage.storageAccount" and "ctx.storage.storageKey").'
         );
       }
 
@@ -278,11 +294,14 @@ export class AssetSaver {
   private static async verifyAzureUpload(
     containerName: string,
     blobName: string,
+    storageConfig?: Record<string, any>,
+    ctx?: Record<string, any>,
     maxAttempts: number = 5
   ): Promise<boolean> {
     try {
       const { BlobServiceClient, StorageSharedKeyCredential } = await import('@azure/storage-blob');
 
+      // Get credentials from environment variables (Azure creds are provided to all machines)
       const accountName = process.env.AZURE_STORAGE_ACCOUNT;
       const accountKey = process.env.AZURE_STORAGE_KEY;
 
