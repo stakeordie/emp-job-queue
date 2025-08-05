@@ -1,11 +1,11 @@
 {
   "service_required": "openai_image",
+  "model": "gpt-4.1",
+  "quality": "{{quality}}",
+  "n": 1,
+  "size": "1024x1024",
   "payload": {
-    "prompt": "{{prompt}}",
-    "model": "gpt-4.1",
-    "size": "{{size}}",
-    "quality": "{{quality}}",
-    "n": 1
+    "prompt": "{{prompt}}"
   },
   "response_type": "file",
   "output_field": "result.data.image_url"

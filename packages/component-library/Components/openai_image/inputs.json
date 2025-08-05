@@ -5,18 +5,18 @@
   },
   {
     "id": "max_tokens",
-    "pathJq": ".payload.max_tokens"
+    "pathJq": ".max_tokens"
   },
   {
     "id": "temperature",
-    "pathJq": ".payload.temperature"
+    "pathJq": ".temperature"
   },
   {
     "id": "size",
-    "pathJq": ".payload.size"
+    "pathJq": ".size"
   },
   {
     "id": "quality",
-    "pathJq": ".payload.quality"
+    "pathJq": ".quality"
   }
 ]
