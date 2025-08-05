@@ -230,16 +230,6 @@ services:
           memory: ${MEMORY_RESERVATION:-2G}
     ports:
       - ${EXPOSE_PORTS:-9090}:9090
-      - '3188:8188'
-      - '3189:8189'
-      - '3190:8190'
-      - '3191:8191'
-      - '3192:8192'
-      - '3193:8193'
-      - '3194:8194'
-      - '3195:8195'
-      - '3196:8196'
-      - '3197:8197'
   comfyui-remote-local:
     build:
       context: .
@@ -352,6 +342,9 @@ services:
     ports:
       - ${EXPOSE_PORTS:-9090}:9090
   openai-production:
+    <<: *base-machine
+    profiles:
+      - openai-production
     build:
       context: .
       dockerfile: Dockerfile
@@ -364,12 +357,27 @@ services:
         OPENAI_API_KEY: ${OPENAI_API_KEY}
         OPENAI_IMAGE_MODEL: ${OPENAI_IMAGE_MODEL}
         CLOUD_STORAGE_PROVIDER: ${CLOUD_STORAGE_PROVIDER}
-    image: emprops/machine:openai-production
-    platform: linux/amd64
     container_name: openai-production
     hostname: openai-production
+    ports:
+      - ${EXPOSE_PORTS:-9090}:9090
+    image: emprops/machine:openai-production
+  sim-local-dev:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: simulation
+      args:
+        WORKER_SPEC: simulation:10
+        WORKERS: simulation:10
+        MACHINE_ID: sim-local-dev
+        CACHE_BUST: ${CACHE_BUST:-1}
+    image: emprops/machine:sim-local-dev
+    platform: linux/amd64
+    container_name: sim-local-dev
+    hostname: sim-local-dev
     profiles:
-      - openai-production
+      - sim-local-dev
     restart: 'no'
     stop_grace_period: 2s
     stop_signal: SIGTERM
@@ -387,24 +395,6 @@ services:
           memory: ${MEMORY_LIMIT:-8G}
         reservations:
           memory: ${MEMORY_RESERVATION:-2G}
-    ports:
-      - ${EXPOSE_PORTS:-9090}:9090
-  sim-local-dev:
-    <<: *base-machine
-    profiles:
-      - sim-local-dev
-    build:
-      context: .
-      dockerfile: Dockerfile
-      target: simulation
-      args:
-        WORKER_SPEC: simulation:10
-        WORKERS: simulation:10
-        MACHINE_ID: sim-local-dev
-        CACHE_BUST: ${CACHE_BUST:-1}
-    container_name: sim-local-dev
-    hostname: sim-local-dev
-    image: emprops/machine:sim-local-dev
 networks:
   default:
     name: emp-job-queue

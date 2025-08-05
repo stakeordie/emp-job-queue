@@ -20,12 +20,16 @@ import path from 'path';
 import { fileURLToPath } from 'url';
 import chalk from 'chalk';
 import * as yaml from 'js-yaml';
+import { config } from 'dotenv';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const PROJECT_ROOT = path.resolve(__dirname, '../..');
 const COMPOSE_FILE = path.join(PROJECT_ROOT, 'apps/machine/docker-compose.yml');
 const SERVICE_MAPPING_FILE = path.join(PROJECT_ROOT, 'apps/machine/src/config/service-mapping.json');
+
+// Load environment variables from apps/machine/.env
+config({ path: path.join(PROJECT_ROOT, 'apps/machine/.env') });
 
 class ComposeBuilder {
   constructor() {
@@ -276,6 +280,7 @@ class ComposeBuilder {
       baseConfig.ports = ports;
     }
 
+
     // Add image tag if specified
     if (tag) {
       baseConfig.image = tag;
@@ -292,10 +297,10 @@ class ComposeBuilder {
     if (process.env.DISABLE_PORTS === 'true') {
       return []; // No ports when DISABLE_PORTS=true
     }
-    
+        
     const ports = [];
     
-    // Include health monitoring port
+    // Always include health monitoring port
     ports.push('${EXPOSE_PORTS:-9090}:9090');
     
     // Only add ComfyUI ports if COMFYUI_EXPOSE_PORTS is true
@@ -356,7 +361,7 @@ class ComposeBuilder {
     let yamlContent = yaml.dump(compose, {
       indent: 2,
       lineWidth: 120,
-      noRefs: true
+      noRefs: false
     });
 
     // Ensure base-machine has the anchor

@@ -17,6 +17,8 @@ export const MachineEnvInterface = {
 
     "OPENAI_DEBUG":"OPENAI_DEBUG",
 
+    "DISABLE_PORTS": "MACHINE_DISABLE_PORTS",
+
   },
   
   optional: {

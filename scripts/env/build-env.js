@@ -3,6 +3,12 @@
 import { EnvironmentBuilder } from '../../packages/env-management/dist/src/index.js';
 import { DockerComposeManager } from './docker-compose-manager.js';
 import chalk from 'chalk';
+import fs from 'fs/promises';
+import path from 'path';
+import * as yaml from 'js-yaml';
+
+const PROJECT_ROOT = process.cwd();
+const COMPOSE_FILE = path.join(PROJECT_ROOT, 'apps/machine/docker-compose.yml');
 
 const args = process.argv.slice(2);
 const configDir = process.cwd();
@@ -32,8 +38,52 @@ const monitor = getArgValue('monitor');
 const comfy = getArgValue('comfy');
 const output = getArgValue('output') || '.env.local';
 
+/**
+ * Flatten all YAML inheritance before environment changes
+ * This converts <<: *base-machine references to full config definitions
+ */
+async function flattenComposeInheritance() {
+  try {
+    const content = await fs.readFile(COMPOSE_FILE, 'utf8');
+    
+    // If no inheritance exists, skip
+    if (!content.includes('<<: *base-machine')) {
+      console.log('ℹ️  No inheritance found, skipping flatten');
+      return;
+    }
+    
+    // Parse YAML with references intact
+    const compose = yaml.load(content);
+    
+    // Dump with noRefs: true to flatten all inheritance
+    const flattenedYaml = yaml.dump(compose, {
+      indent: 2,
+      lineWidth: 120,
+      noRefs: true  // This expands all <<: *base-machine into full configs
+    });
+    
+    // Write flattened version
+    await fs.writeFile(COMPOSE_FILE, flattenedYaml, 'utf8');
+    
+    const inheritedCount = (content.match(/<<: \*base-machine/g) || []).length;
+    console.log(`📋 Flattened ${inheritedCount} inherited services`);
+    
+  } catch (error) {
+    if (error.code === 'ENOENT') {
+      console.log('ℹ️  No docker-compose.yml found, skipping flatten');
+      return;
+    }
+    throw error;
+  }
+}
+
 async function buildEnvironment() {
   try {
+    // Flatten inheritance before environment change (converts <<: *base-machine to full configs)
+    console.log(chalk.blue('🔧 Flattening compose inheritance before env change...'));
+    await flattenComposeInheritance();
+    console.log(chalk.green('✅ Inheritance flattened\n'));
+
     let result;
 
     if (profile) {

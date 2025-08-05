@@ -478,7 +478,10 @@ export class EnvironmentBuilder {
   /**
    * Split environment variables into public (.env) and secret (.env.secret) based on service interfaces
    */
-  private splitVariablesByInterface(serviceName: string, vars: { [key: string]: string }): {
+  private splitVariablesByInterface(
+    serviceName: string,
+    vars: { [key: string]: string }
+  ): {
     publicVars: { [key: string]: string };
     secretVars: { [key: string]: string };
   } {
@@ -487,7 +490,6 @@ export class EnvironmentBuilder {
 
     // Get secret variable names only from the specific service interface
     const secretVariableNames = new Set<string>();
-    
     // Get the specific service interface
     const serviceInterface = this.serviceInterfaces.getInterfaces().get(serviceName);
     if (serviceInterface?.secret) {

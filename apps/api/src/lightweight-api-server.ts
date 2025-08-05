@@ -194,7 +194,7 @@ export class LightweightAPIServer {
         );
         res.setHeader('Access-Control-Allow-Credentials', 'true');
         res.setHeader('Access-Control-Max-Age', '86400');
-        
+
         if (req.method === 'OPTIONS') {
           res.sendStatus(200);
           return;
@@ -224,7 +224,7 @@ export class LightweightAPIServer {
         );
         res.setHeader('Access-Control-Allow-Credentials', 'true');
         res.setHeader('Access-Control-Max-Age', '86400');
-        
+
         if (req.method === 'OPTIONS') {
           res.sendStatus(200);
           return;
@@ -1256,78 +1256,85 @@ export class LightweightAPIServer {
       case 'delegated_job_result':
         try {
           const jobId = message.job_id as string;
-          const resultData = message.result as any; // Cast to any for property access
-          
+          const resultData = message.result as Record<string, unknown>; // Cast for property access
+
           if (!jobId || !resultData) {
             throw new Error('Missing required fields: job_id and result');
           }
-          
+
           // Get job details to check for workflow metadata
           const jobDetails = await this.redisService.getJob(jobId);
-          
+
           // Only log workflow jobs
           if (jobDetails?.workflow_id) {
-            logger.info(`🎯 API-SERVER: Completing delegated workflow job ${jobId} (workflow: ${jobDetails.workflow_id}, step: ${jobDetails.step_number}/${jobDetails.total_steps})`);
+            logger.info(
+              `🎯 API-SERVER: Completing delegated workflow job ${jobId} (workflow: ${jobDetails.workflow_id}, step: ${jobDetails.step_number}/${jobDetails.total_steps})`
+            );
           } else {
             logger.info(`🎯 API-SERVER: Completing delegated job ${jobId} (no workflow)`);
           }
-          
+
           // Handle different result types
           if (resultData.data === 'retry') {
             // Retry case - just acknowledge, keep job pending
-            ws.send(JSON.stringify({
-              type: 'delegated_job_acknowledged',
-              action: 'retry_acknowledged',
-              job_id: jobId,
-              message_id: message.id,
-              timestamp: new Date().toISOString(),
-            }));
+            ws.send(
+              JSON.stringify({
+                type: 'delegated_job_acknowledged',
+                action: 'retry_acknowledged',
+                job_id: jobId,
+                message_id: message.id,
+                timestamp: new Date().toISOString(),
+              })
+            );
             logger.info(`Delegated job ${jobId} marked for retry`);
             break; // Exit without completing the job
           }
-          logger.info("THIS MUST SHOW=2")
+          logger.info('THIS MUST SHOW=2');
           // Success or failed case - complete the job
           const success = resultData.success === true || resultData.data === 'completed';
           const jobResult = {
             success,
             data: resultData.data,
-            error: resultData.error,
+            error: typeof resultData.error === 'string' ? resultData.error : JSON.stringify(resultData.error || 'Unknown error'),
             metadata: {
               completed_by: 'delegated_service',
-              client_id: clientId
-            }
+              client_id: clientId,
+            },
           };
-          
+
           // Assign a dummy worker_id to delegated jobs so completeJob() doesn't reject them
           const dummyWorkerId = `delegated_client_${clientId}`;
 
-
           await this.redis.hset(`job:${jobId}`, 'worker_id', dummyWorkerId);
-          
+
           // Use the Redis service to complete the job
-          logger.info(`JobID: ${jobId}`)
-          logger.info(`JobResult: ${jobResult}`)
+          logger.info(`JobID: ${jobId}`);
+          logger.info(`JobResult: ${jobResult}`);
           await this.redisService.completeJob(jobId, jobResult);
-          
-          ws.send(JSON.stringify({
-            type: 'delegated_job_acknowledged',
-            action: success ? 'completed' : 'failed',
-            job_id: jobId,
-            message_id: message.id,
-            timestamp: new Date().toISOString(),
-          }));
-          
+
+          ws.send(
+            JSON.stringify({
+              type: 'delegated_job_acknowledged',
+              action: success ? 'completed' : 'failed',
+              job_id: jobId,
+              message_id: message.id,
+              timestamp: new Date().toISOString(),
+            })
+          );
+
           if (jobDetails?.workflow_id) {
-            logger.info(`✅ API-SERVER: Delegated workflow job ${jobId} ${success ? 'completed' : 'failed'}`);
+            logger.info(
+              `✅ API-SERVER: Delegated workflow job ${jobId} ${success ? 'completed' : 'failed'}`
+            );
           }
-          
         } catch (error) {
           logger.error(`Failed to handle delegated job result from client ${clientId}:`, error);
           ws.send(
             JSON.stringify({
               type: 'error',
               message_id: message.id,
-              error: error instanceof Error ? error.message : 'Failed to process delegated job result',
+              error:
+                error instanceof Error ? error.message : 'Failed to process delegated job result',
               timestamp: new Date().toISOString(),
             })
           );
@@ -1917,9 +1924,7 @@ export class LightweightAPIServer {
             logger.info(
               `📢 Broadcasted job completion event to clients and monitors: ${completionData.job_id}`
             );
-            logger.info(
-              `📢 COMPLETION DATA: ${completionData}`
-            );
+            logger.info(`📢 COMPLETION DATA: ${completionData}`);
             logger.info(
               `[JOB COMPLETE] After broadcasting completion - Monitor still connected: ${this.eventBroadcaster.getMonitorCount()} monitors`
             );
@@ -2401,15 +2406,15 @@ export class LightweightAPIServer {
     logger.info(
       `[JOB SUBMIT START] Job ${jobId} - Monitor still connected: ${this.eventBroadcaster.getMonitorCount()} monitors`
     );
-    
+
     // DEBUG: Log the incoming jobData to see what we're receiving
-    console.log(`🔍 API SUBMIT DEBUG Job ${jobId}:`, {
+    logger.debug(`🔍 API SUBMIT DEBUG Job ${jobId}:`, {
       total_steps: jobData.total_steps,
       total_steps_type: typeof jobData.total_steps,
       step_number: jobData.step_number,
       step_number_type: typeof jobData.step_number,
       workflow_id: jobData.workflow_id,
-      full_jobData_keys: Object.keys(jobData)
+      full_jobData_keys: Object.keys(jobData),
     });
     const now = new Date().toISOString();
 
@@ -2568,10 +2573,17 @@ export class LightweightAPIServer {
       estimated_completion: jobData.estimated_completion || undefined,
       // Workflow fields
       workflow_id: jobData.workflow_id || undefined,
-      workflow_priority: jobData.workflow_priority ? parseInt(jobData.workflow_priority) : undefined,
-      workflow_datetime: jobData.workflow_datetime ? parseInt(jobData.workflow_datetime) : undefined,
+      workflow_priority: jobData.workflow_priority
+        ? parseInt(jobData.workflow_priority)
+        : undefined,
+      workflow_datetime: jobData.workflow_datetime
+        ? parseInt(jobData.workflow_datetime)
+        : undefined,
       step_number: jobData.step_number ? parseInt(jobData.step_number) : undefined,
-      total_steps: jobData.total_steps && jobData.total_steps !== '' ? parseInt(jobData.total_steps) : undefined,
+      total_steps:
+        jobData.total_steps && jobData.total_steps !== ''
+          ? parseInt(jobData.total_steps)
+          : undefined,
     };
   }
 
@@ -2715,7 +2727,6 @@ export class LightweightAPIServer {
   private parseJobData(jobData: Record<string, string>): Job | null {
     if (!jobData.id) return null;
 
-
     return {
       id: jobData.id,
       service_required: jobData.service_required,
@@ -2737,10 +2748,17 @@ export class LightweightAPIServer {
       estimated_completion: jobData.estimated_completion || undefined,
       // Workflow fields
       workflow_id: jobData.workflow_id || undefined,
-      workflow_priority: jobData.workflow_priority ? parseInt(jobData.workflow_priority) : undefined,
-      workflow_datetime: jobData.workflow_datetime ? parseInt(jobData.workflow_datetime) : undefined,
+      workflow_priority: jobData.workflow_priority
+        ? parseInt(jobData.workflow_priority)
+        : undefined,
+      workflow_datetime: jobData.workflow_datetime
+        ? parseInt(jobData.workflow_datetime)
+        : undefined,
       step_number: jobData.step_number ? parseInt(jobData.step_number) : undefined,
-      total_steps: jobData.total_steps && jobData.total_steps !== '' ? parseInt(jobData.total_steps) : undefined,
+      total_steps:
+        jobData.total_steps && jobData.total_steps !== ''
+          ? parseInt(jobData.total_steps)
+          : undefined,
     };
   }
 
