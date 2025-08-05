@@ -5,24 +5,20 @@ import OpenAI from 'openai';
 import * as fs from 'fs';
 import * as path from 'path';
 import * as crypto from 'crypto';
-import { BaseConnector } from './base-connector.js';
+import { OpenAIBaseConnector } from './openai-base-connector.js';
 import { AssetSaver } from './asset-saver.js';
 import {
   JobData,
   JobResult,
   ServiceInfo,
-  HealthCheckClass,
   ProgressCallback,
   logger,
 } from '@emp/core';
 
-export class OpenAIImageConnector extends BaseConnector {
+export class OpenAIImageConnector extends OpenAIBaseConnector {
   service_type = 'image_generation' as const;
   version = '1.0.0';
 
-  private client: OpenAI | null = null;
-  private apiKey: string;
-  private baseURL: string;
   private defaultModel: string;
   private defaultSize: string;
   private defaultQuality: string;
@@ -33,22 +29,11 @@ export class OpenAIImageConnector extends BaseConnector {
   static getRequiredEnvVars(): Record<string, string> {
     return {
       ...super.getRequiredEnvVars(), // Include base connector env vars
-      OPENAI_API_KEY: '${OPENAI_API_KEY:-}',
-      OPENAI_BASE_URL: '${OPENAI_BASE_URL:-https://api.openai.com/v1}',
+      ...OpenAIBaseConnector.getBaseOpenAIEnvVars(), // Include shared OpenAI env vars
       OPENAI_IMAGE_MODEL: '${OPENAI_IMAGE_MODEL:-gpt-4.1}',
       OPENAI_IMAGE_SIZE: '${OPENAI_IMAGE_SIZE:-1024x1024}',
       OPENAI_IMAGE_QUALITY: '${OPENAI_IMAGE_QUALITY:-standard}',
-      OPENAI_TIMEOUT_SECONDS: '${OPENAI_TIMEOUT_SECONDS:-120}',
-      OPENAI_RETRY_ATTEMPTS: '${OPENAI_RETRY_ATTEMPTS:-3}',
-      OPENAI_RETRY_DELAY_SECONDS: '${OPENAI_RETRY_DELAY_SECONDS:-5}',
-      OPENAI_HEALTH_CHECK_INTERVAL: '${OPENAI_HEALTH_CHECK_INTERVAL:-120}',
       OPENAI_IMAGE_MAX_CONCURRENT_JOBS: '${OPENAI_IMAGE_MAX_CONCURRENT_JOBS:-3}',
-      // Cloud storage configuration (uses storage-provider.env variables)
-      CLOUD_STORAGE_PROVIDER: '${CLOUD_STORAGE_PROVIDER:-}',
-      CLOUD_STORAGE_CONTAINER: '${CLOUD_STORAGE_CONTAINER:-}',
-      CLOUD_CDN_URL: '${CLOUD_CDN_URL:-}',
-      AZURE_STORAGE_ACCOUNT: '${AZURE_STORAGE_ACCOUNT:-}',
-      AZURE_STORAGE_KEY: '${AZURE_STORAGE_KEY:-}',
     };
   }
 
@@ -66,16 +51,10 @@ export class OpenAIImageConnector extends BaseConnector {
 
     super(connectorId, config);
 
-    // OpenAI-specific configuration
-    this.apiKey = process.env.OPENAI_API_KEY || '';
-    this.baseURL = config.base_url;
-    this.defaultModel = 'gpt-4.1'; // Using gpt-4.1 for streaming image generation
+    // Image-specific configuration
+    this.defaultModel = process.env.OPENAI_IMAGE_MODEL || 'gpt-4.1';
     this.defaultSize = process.env.OPENAI_IMAGE_SIZE || '1024x1024';
     this.defaultQuality = process.env.OPENAI_IMAGE_QUALITY || 'standard';
-
-    if (!this.apiKey) {
-      throw new Error('OpenAI Image connector requires OPENAI_API_KEY environment variable');
-    }
 
     logger.info(
       `OpenAI Image connector ${connectorId} initialized with model ${this.defaultModel}`
@@ -472,14 +451,11 @@ export class OpenAIImageConnector extends BaseConnector {
     }
   }
 
+
   async initializeService(): Promise<void> {
     try {
-      this.client = new OpenAI({
-        apiKey: this.apiKey,
-        baseURL: this.baseURL,
-        timeout: this.config.timeout_seconds * 1000,
-        maxRetries: this.config.retry_attempts,
-      });
+      // Use base class OpenAI client initialization
+      await this.initializeOpenAIClient();
 
       // Test the connection
       await this.checkHealth();
@@ -492,20 +468,6 @@ export class OpenAIImageConnector extends BaseConnector {
     }
   }
 
-  async checkHealth(): Promise<boolean> {
-    try {
-      if (!this.client) {
-        return false;
-      }
-
-      // Simple health check - list models to verify API connectivity
-      const models = await this.client.models.list();
-      return models.data.length > 0;
-    } catch (error) {
-      logger.warn(`OpenAI Image connector health check failed: ${error.message}`);
-      return false;
-    }
-  }
 
   async getAvailableModels(): Promise<string[]> {
     try {
@@ -521,10 +483,6 @@ export class OpenAIImageConnector extends BaseConnector {
     }
   }
 
-  protected getRequiredHealthCheckClass() {
-    // API-only services use MINIMAL health checking (no job status query required)
-    return HealthCheckClass.MINIMAL;
-  }
 
   async getServiceInfo(): Promise<ServiceInfo> {
     const models = await this.getAvailableModels();
@@ -552,6 +510,8 @@ export class OpenAIImageConnector extends BaseConnector {
           'cloud_storage',
           'asset_saving',
           'custom_prefix',
+          'background_polling',
+          'job_tracking',
         ],
         concurrent_jobs: this.config.max_concurrent_jobs,
       },
@@ -578,165 +538,197 @@ export class OpenAIImageConnector extends BaseConnector {
   }
 
   async processJobImpl(jobData: JobData, progressCallback?: ProgressCallback): Promise<JobResult> {
+    // Enhanced debugging context
+    const debugContext = {
+      jobId: jobData.id,
+      environment: process.env.CURRENT_ENV || process.env.NODE_ENV || 'unknown',
+      apiKey: this.apiKey ? `${this.apiKey.slice(0, 8)}...${this.apiKey.slice(-4)}` : 'MISSING',
+      baseURL: this.baseURL,
+      defaultModel: this.defaultModel,
+      payload: JSON.stringify(jobData.payload, null, 2),
+      cloudProvider: process.env.CLOUD_STORAGE_PROVIDER,
+      cloudContainer: process.env.CLOUD_STORAGE_CONTAINER,
+      cloudCdnUrl: process.env.CLOUD_CDN_URL,
+      azureAccount: process.env.AZURE_STORAGE_ACCOUNT,
+      azureKeySet: !!process.env.AZURE_STORAGE_KEY,
+      timestamp: new Date().toISOString()
+    };
+
+    logger.info(`🔍 OpenAI Image Job Debug Context:\n${JSON.stringify(debugContext, null, 2)}`);
+
     if (!this.client) {
-      throw new Error('OpenAI client not initialized');
+      const error = new Error(`OpenAI client not initialized. API Key: ${debugContext.apiKey}, Base URL: ${debugContext.baseURL}`);
+      logger.error(`❌ Client initialization failed: ${error.message}`);
+      throw error;
     }
 
-    // Use background + streaming as the primary approach (reliable + trackable)
+    const errors: Array<{method: string, error: string, stack?: string}> = [];
+
+    // Use background + polling as the primary approach (reliable + trackable)
     try {
-      return await this.processWithBackgroundStreaming(jobData, progressCallback);
+      logger.info(`🚀 Attempting background polling for job ${jobData.id}`);
+      return await this.processWithBackgroundPolling(jobData, progressCallback);
     } catch (backgroundError) {
-      logger.warn(
-        `Background streaming failed for job ${jobData.id}: ${backgroundError.message}. Falling back to traditional streaming.`
-      );
+      const errorDetails = {
+        method: 'background_polling',
+        error: backgroundError.message,
+        stack: backgroundError.stack,
+        name: backgroundError.name,
+        cause: backgroundError.cause
+      };
+      errors.push(errorDetails);
+      
+      logger.warn(`⚠️  Background polling failed for job ${jobData.id}:\n${JSON.stringify(errorDetails, null, 2)}`);
+      
       try {
+        logger.info(`🔄 Falling back to traditional streaming for job ${jobData.id}`);
         return await this.processWithStreaming(jobData, progressCallback);
       } catch (streamingError) {
-        logger.warn(
-          `Traditional streaming failed for job ${jobData.id}: ${streamingError.message}. Falling back to non-streaming.`
-        );
+        const streamingErrorDetails = {
+          method: 'traditional_streaming',
+          error: streamingError.message,
+          stack: streamingError.stack,
+          name: streamingError.name,
+          cause: streamingError.cause
+        };
+        errors.push(streamingErrorDetails);
+        
+        logger.warn(`⚠️  Traditional streaming failed for job ${jobData.id}:\n${JSON.stringify(streamingErrorDetails, null, 2)}`);
+        
         try {
+          logger.info(`🔄 Falling back to non-streaming for job ${jobData.id}`);
           return await this.processWithoutStreaming(jobData, progressCallback);
         } catch (fallbackError) {
-          logger.error(`All three approaches failed for job ${jobData.id}`);
-          throw new Error(`OpenAI Image generation failed: ${fallbackError.message}`);
+          const fallbackErrorDetails = {
+            method: 'non_streaming',
+            error: fallbackError.message,
+            stack: fallbackError.stack,
+            name: fallbackError.name,
+            cause: fallbackError.cause
+          };
+          errors.push(fallbackErrorDetails);
+          
+          // Comprehensive failure report
+          const failureReport = {
+            jobId: jobData.id,
+            environment: debugContext.environment,
+            debugContext,
+            allErrors: errors,
+            timestamp: new Date().toISOString()
+          };
+          
+          logger.error(`❌ ALL THREE APPROACHES FAILED for job ${jobData.id}:\n${JSON.stringify(failureReport, null, 2)}`);
+          
+          const comprehensiveError = new Error(
+            `OpenAI Image generation failed completely. Environment: ${debugContext.environment}. ` +
+            `Errors: Background Polling (${backgroundError.message}), Streaming (${streamingError.message}), ` +
+            `Fallback (${fallbackError.message}). See logs for full debug context.`
+          );
+          comprehensiveError.name = 'OpenAIComprehensiveFailure';
+          (comprehensiveError as any).debugContext = debugContext;
+          (comprehensiveError as any).allErrors = errors;
+          
+          throw comprehensiveError;
         }
       }
     }
   }
 
-  private async processWithBackgroundStreaming(jobData: JobData, progressCallback?: ProgressCallback): Promise<JobResult> {
+  private async processWithBackgroundPolling(jobData: JobData, progressCallback?: ProgressCallback): Promise<JobResult> {
     const payload = jobData.payload as any;
     const model = payload.model || this.defaultModel;
     const size = payload.size || this.defaultSize;
     const quality = payload.quality || this.defaultQuality;
 
-    // Get the prompt from either prompt or description field
+    // Enhanced validation and debugging
     const prompt = payload.prompt || payload.description;
     if (!prompt) {
-      throw new Error('Job must contain either "prompt" or "description" field');
+      const validationError = new Error('Job must contain either "prompt" or "description" field');
+      logger.error(`❌ Background polling validation failed for job ${jobData.id}: ${validationError.message}`);
+      logger.error(`📋 Payload received: ${JSON.stringify(payload, null, 2)}`);
+      throw validationError;
     }
 
-    logger.info(`Processing image generation job with model ${model}, size ${size} with background streaming`);
+    const requestConfig = {
+      model,
+      input: prompt,
+      background: true,
+      stream: false, // Changed: No streaming, use polling instead
+      tools: [{ type: 'image_generation' as const }],
+    };
+
+    logger.info(`🎨 Processing image generation job ${jobData.id} with background polling:`);
+    logger.info(`   Model: ${model}`);
+    logger.info(`   Size: ${size}`);
+    logger.info(`   Quality: ${quality}`);
+    logger.info(`   Prompt: "${prompt.substring(0, 100)}${prompt.length > 100 ? '...' : ''}"`);
+    logger.info(`   Config: ${JSON.stringify(requestConfig, null, 2)}`);
 
     // Report initial progress
     if (progressCallback) {
       await progressCallback({
         job_id: jobData.id,
         progress: 5,
-        message: `Starting image generation with ${model} (background streaming)`,
+        message: `Starting image generation with ${model} (background polling)`,
         current_step: 'initializing',
       });
     }
 
-    // Use background + streaming approach for reliable job tracking
-    const stream = await this.client!.responses.create({
-      model,
-      input: prompt,
-      background: true,
-      stream: true,
-      tools: [{ type: 'image_generation' as const, partial_images: 2 }],
-    });
-
-    let openaiJobId: string | null = null;
-    let partialCount = 0;
-    const partialImages: string[] = [];
-    let cursor: number | null = null;
-
-    // Process background streaming response
+    // Create background job without streaming
+    let response;
     try {
-      for await (const event of stream) {
-        cursor = event.sequence_number;
-
-        // Capture OpenAI job ID for tracking
-        if (event.type === 'response.created' && event.response?.id) {
-          openaiJobId = event.response.id;
-          logger.info(`OpenAI background job started: ${openaiJobId} for job ${jobData.id}`);
-          
-          if (progressCallback) {
-            await progressCallback({
-              job_id: jobData.id,
-              progress: 15,
-              message: `OpenAI job ${openaiJobId} started`,
-              current_step: 'processing',
-              metadata: {
-                openai_job_id: openaiJobId,
-                sequence_number: cursor,
-              },
-            });
-          }
-        }
-
-        if (event.type === 'response.image_generation_call.partial_image') {
-          partialCount++;
-          const progress = Math.min(85, 15 + partialCount * 35); // Progress from 15% to 85%
-
-          // Convert base64 to data URL for immediate use
-          const partialImageDataUrl = `data:image/png;base64,${event.partial_image_b64}`;
-          partialImages.push(partialImageDataUrl);
-
-          if (progressCallback) {
-            await progressCallback({
-              job_id: jobData.id,
-              progress,
-              message: `Partial image ${partialCount} received`,
-              current_step: 'generating',
-              metadata: {
-                openai_job_id: openaiJobId,
-                partial_image_index: event.partial_image_index,
-                partial_count: partialCount,
-                sequence_number: cursor,
-              },
-            });
-          }
-
-          logger.info(
-            `Received partial image ${partialCount} (index ${event.partial_image_index}) for OpenAI job ${openaiJobId} -> job ${jobData.id}`
-          );
-        } else if (event.type.includes('done')) {
-          // Stream is complete
-          if (progressCallback) {
-            await progressCallback({
-              job_id: jobData.id,
-              progress: 95,
-              message: 'Finalizing image...',
-              current_step: 'finalizing',
-              metadata: {
-                openai_job_id: openaiJobId,
-                sequence_number: cursor,
-              },
-            });
-          }
-        }
-      }
-    } catch (streamError) {
-      // If we have an OpenAI job ID, we can potentially recover by polling
-      if (openaiJobId) {
-        logger.warn(
-          `Background streaming failed for OpenAI job ${openaiJobId}, but we have job ID for potential recovery: ${streamError.message}`
-        );
-        throw new Error(`Background streaming interrupted for trackable job ${openaiJobId}: ${streamError.message}`);
-      } else {
-        throw new Error(`Background streaming failed before job ID was obtained: ${streamError.message}`);
-      }
+      logger.info(`🚀 Creating OpenAI background request for job ${jobData.id}`);
+      response = await this.client!.responses.create(requestConfig);
+      logger.info(`✅ OpenAI background job created successfully for job ${jobData.id}`);
+    } catch (createError) {
+      const detailedError = new Error(
+        `Failed to create OpenAI background polling request: ${createError.message}. ` +
+        `Config: ${JSON.stringify(requestConfig, null, 2)}`
+      );
+      detailedError.name = 'OpenAIBackgroundCreationError';
+      (detailedError as any).originalError = createError;
+      (detailedError as any).requestConfig = requestConfig;
+      logger.error(`❌ Background job creation failed for job ${jobData.id}: ${detailedError.message}`);
+      throw detailedError;
     }
 
-    // Check if we received any partial images
-    if (partialImages.length === 0) {
-      const errorMsg = openaiJobId 
-        ? `No partial images received from OpenAI background job ${openaiJobId}`
-        : 'No partial images received from OpenAI background streaming response';
-      throw new Error(errorMsg);
+    // Extract OpenAI job ID from response
+    const openaiJobId = response.id;
+    if (!openaiJobId) {
+      throw new Error(`No OpenAI job ID returned from background request for job ${jobData.id}`);
     }
 
-    logger.info(`Background streaming successful for OpenAI job ${openaiJobId} -> job ${jobData.id}`);
+    logger.info(`✅ OpenAI background job created: ${openaiJobId} for job ${jobData.id}`);
+
+    if (progressCallback) {
+      await progressCallback({
+        job_id: jobData.id,
+        progress: 15,
+        message: `OpenAI job ${openaiJobId} started, polling for completion`,
+        current_step: 'processing',
+        metadata: {
+          openai_job_id: openaiJobId,
+          approach: 'background_polling'
+        },
+      });
+    }
+
+    // Poll for job completion
+    const pollResult = await this.pollForJobCompletion(openaiJobId, jobData.id, progressCallback);
     
-    return await this.finalizeImageProcessing(jobData, partialImages, partialCount, progressCallback, {
+    logger.info(`Background polling successful for OpenAI job ${openaiJobId} -> job ${jobData.id}`);
+    
+    // Convert base64 to data URLs for consistency with existing processing
+    const dataUrls = pollResult.images.map(base64 => `data:image/png;base64,${base64}`);
+    
+    return await this.finalizeImageProcessing(jobData, dataUrls, dataUrls.length, progressCallback, {
       openai_job_id: openaiJobId,
-      sequence_number: cursor,
-      approach: 'background_streaming'
+      approach: 'background_polling',
+      poll_attempts: pollResult.pollAttempts,
+      total_poll_time_ms: pollResult.totalPollTimeMs
     });
   }
+
 
   private async processWithStreaming(jobData: JobData, progressCallback?: ProgressCallback): Promise<JobResult> {
     const payload = jobData.payload as any;
@@ -844,7 +836,9 @@ export class OpenAIImageConnector extends BaseConnector {
       throw new Error('No partial images received from OpenAI streaming response');
     }
 
-    return await this.finalizeImageProcessing(jobData, partialImages, partialCount, progressCallback);
+    return await this.finalizeImageProcessing(jobData, partialImages, partialCount, progressCallback, {
+      approach: 'traditional_streaming'
+    });
   }
 
   private async processWithoutStreaming(jobData: JobData, progressCallback?: ProgressCallback): Promise<JobResult> {
@@ -902,7 +896,9 @@ export class OpenAIImageConnector extends BaseConnector {
 
       logger.info(`Non-streaming fallback successful for job ${jobData.id}`);
 
-      return await this.finalizeImageProcessing(jobData, partialImages, 1, progressCallback);
+      return await this.finalizeImageProcessing(jobData, partialImages, 1, progressCallback, {
+        approach: 'non_streaming_fallback'
+      });
     } catch (error) {
       logger.error(`Non-streaming fallback also failed: ${error.message}`);
       throw new Error(`Both streaming and non-streaming approaches failed: ${error.message}`);
@@ -918,6 +914,8 @@ export class OpenAIImageConnector extends BaseConnector {
       openai_job_id?: string | null;
       sequence_number?: number | null;
       approach?: string;
+      poll_attempts?: number;
+      total_poll_time_ms?: number;
     }
   ): Promise<JobResult> {
     const payload = jobData.payload as any;
@@ -936,17 +934,78 @@ export class OpenAIImageConnector extends BaseConnector {
       const saveAssets = payload.save_assets !== false; // Default to true unless explicitly false
 
       if (saveAssets) {
-        // Extract MIME type and base64 data from data URL
-        const mimeMatch = finalImageDataUrl.match(/^data:([^;]+);base64,/);
-        const mimeType = mimeMatch ? mimeMatch[1] : 'image/png';
-        const base64Data = finalImageDataUrl.replace(/^data:[^;]+;base64,/, '');
-        savedAsset = await AssetSaver.saveAssetToCloud(base64Data, jobData.id, jobData, mimeType);
-
-        finalImageUrl = savedAsset.fileUrl; // Use cloud storage URL as primary result
-        logger.info(`Image saved and verified in cloud storage: ${savedAsset.fileName}`);
+        try {
+          logger.info(`💾 Starting asset saving for job ${jobData.id}`);
+          
+          // Extract MIME type and base64 data from data URL
+          const mimeMatch = finalImageDataUrl.match(/^data:([^;]+);base64,/);
+          const mimeType = mimeMatch ? mimeMatch[1] : 'image/png';
+          const base64Data = finalImageDataUrl.replace(/^data:[^;]+;base64,/, '');
+          
+          const payload = jobData.payload as any;
+          const assetSaveDebug = {
+            jobId: jobData.id,
+            mimeType,
+            base64Length: base64Data.length,
+            hasCtx: !!payload?.ctx,
+            ctxPrefix: payload?.ctx?.prefix,
+            ctxFilename: payload?.ctx?.filename,
+            cloudProvider: process.env.CLOUD_STORAGE_PROVIDER,
+            cloudContainer: process.env.CLOUD_STORAGE_CONTAINER,
+            cloudCdnUrl: process.env.CLOUD_CDN_URL,
+            environment: process.env.CURRENT_ENV || process.env.NODE_ENV
+          };
+          
+          logger.info(`🔍 Asset save debug context:\n${JSON.stringify(assetSaveDebug, null, 2)}`);
+          
+          // Validate required data
+          if (!base64Data || base64Data.length === 0) {
+            throw new Error(`Invalid base64 data for job ${jobData.id}: empty or missing`);
+          }
+          
+          if (base64Data.length < 100) {
+            throw new Error(`Suspiciously short base64 data for job ${jobData.id}: ${base64Data.length} characters`);
+          }
+          
+          logger.info(`💾 Calling AssetSaver.saveAssetToCloud for job ${jobData.id}`);
+          savedAsset = await AssetSaver.saveAssetToCloud(base64Data, jobData.id, jobData, mimeType);
+          
+          if (!savedAsset || !savedAsset.fileUrl) {
+            throw new Error(`AssetSaver returned invalid result for job ${jobData.id}: ${JSON.stringify(savedAsset)}`);
+          }
+          
+          finalImageUrl = savedAsset.fileUrl; // Use cloud storage URL as primary result
+          logger.info(`✅ Image saved and verified in cloud storage: ${savedAsset.fileName} -> ${savedAsset.fileUrl}`);
+          
+        } catch (assetError) {
+          const assetErrorDetails = {
+            error: assetError.message,
+            name: assetError.name,
+            stack: assetError.stack,
+            jobId: jobData.id,
+            environment: process.env.CURRENT_ENV || process.env.NODE_ENV,
+            cloudProvider: process.env.CLOUD_STORAGE_PROVIDER,
+            cloudContainer: process.env.CLOUD_STORAGE_CONTAINER,
+            cloudCdnUrl: process.env.CLOUD_CDN_URL,
+            azureAccount: process.env.AZURE_STORAGE_ACCOUNT,
+            azureKeySet: !!process.env.AZURE_STORAGE_KEY,
+            payload: JSON.stringify(payload, null, 2)
+          };
+          
+          logger.error(`❌ Asset saving failed for job ${jobData.id}:\n${JSON.stringify(assetErrorDetails, null, 2)}`);
+          
+          const detailedAssetError = new Error(
+            `Asset saving failed for job ${jobData.id} in environment ${assetErrorDetails.environment}: ${assetError.message}. ` +
+            `Provider: ${assetErrorDetails.cloudProvider}, Container: ${assetErrorDetails.cloudContainer}. ` +
+            `See logs for complete debug context.`
+          );
+          detailedAssetError.name = 'AssetSavingFailure';
+          (detailedAssetError as any).assetErrorDetails = assetErrorDetails;
+          throw detailedAssetError;
+        }
       } else {
         finalImageUrl = finalImageDataUrl; // Use data URL directly
-        logger.info(`Image returned as data URL (save_assets=false)`);
+        logger.info(`📄 Image returned as data URL (save_assets=false)`);
       }
 
       if (progressCallback) {
@@ -987,24 +1046,6 @@ export class OpenAIImageConnector extends BaseConnector {
     };
   }
 
-  async cleanupService(): Promise<void> {
-    this.client = null;
-    this.currentStatus = 'offline';
-    logger.info(`OpenAI Image connector ${this.connector_id} cleaned up`);
-  }
-
-  async cancelJob(jobId: string): Promise<void> {
-    // OpenAI doesn't support job cancellation
-    // For image generation, jobs are typically short-lived
-    logger.info(
-      `Job cancellation requested for ${jobId} (OpenAI image jobs cannot be cancelled once started)`
-    );
-  }
-
-  async updateConfiguration(config: any): Promise<void> {
-    // Update configuration if needed
-    logger.info(`Configuration update requested for OpenAI Image connector ${this.connector_id}`);
-  }
 
   getConfiguration(): any {
     return {

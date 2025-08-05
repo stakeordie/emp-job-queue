@@ -3,24 +3,20 @@
 
 import OpenAI from 'openai';
 import * as crypto from 'crypto';
-import { BaseConnector } from './base-connector.js';
+import { OpenAIBaseConnector } from './openai-base-connector.js';
 import { AssetSaver } from './asset-saver.js';
 import {
   JobData,
   JobResult,
   ServiceInfo,
-  HealthCheckClass,
   ProgressCallback,
   logger,
 } from '@emp/core';
 
-export class OpenAIImg2ImgConnector extends BaseConnector {
+export class OpenAIImg2ImgConnector extends OpenAIBaseConnector {
   service_type = 'image_generation' as const;
   version = '1.0.0';
 
-  private client: OpenAI | null = null;
-  private apiKey: string;
-  private baseURL: string;
   private defaultModel: string;
 
   /**
@@ -29,20 +25,9 @@ export class OpenAIImg2ImgConnector extends BaseConnector {
   static getRequiredEnvVars(): Record<string, string> {
     return {
       ...super.getRequiredEnvVars(), // Include base connector env vars
-      OPENAI_API_KEY: '${OPENAI_API_KEY:-}',
-      OPENAI_BASE_URL: '${OPENAI_BASE_URL:-https://api.openai.com/v1}',
+      ...OpenAIBaseConnector.getBaseOpenAIEnvVars(), // Include shared OpenAI env vars
       OPENAI_IMG2IMG_MODEL: '${OPENAI_IMG2IMG_MODEL:-gpt-4.1}',
-      OPENAI_TIMEOUT_SECONDS: '${OPENAI_TIMEOUT_SECONDS:-120}',
-      OPENAI_RETRY_ATTEMPTS: '${OPENAI_RETRY_ATTEMPTS:-3}',
-      OPENAI_RETRY_DELAY_SECONDS: '${OPENAI_RETRY_DELAY_SECONDS:-5}',
-      OPENAI_HEALTH_CHECK_INTERVAL: '${OPENAI_HEALTH_CHECK_INTERVAL:-120}',
       OPENAI_IMG2IMG_MAX_CONCURRENT_JOBS: '${OPENAI_IMG2IMG_MAX_CONCURRENT_JOBS:-2}',
-      // Cloud storage configuration (uses storage-provider.env variables)
-      CLOUD_STORAGE_PROVIDER: '${CLOUD_STORAGE_PROVIDER:-}',
-      CLOUD_STORAGE_CONTAINER: '${CLOUD_STORAGE_CONTAINER:-}',
-      CLOUD_CDN_URL: '${CLOUD_CDN_URL:-}',
-      AZURE_STORAGE_ACCOUNT: '${AZURE_STORAGE_ACCOUNT:-}',
-      AZURE_STORAGE_KEY: '${AZURE_STORAGE_KEY:-}',
     };
   }
 
@@ -60,14 +45,8 @@ export class OpenAIImg2ImgConnector extends BaseConnector {
 
     super(connectorId, config);
 
-    // OpenAI-specific configuration
-    this.apiKey = process.env.OPENAI_API_KEY || '';
-    this.baseURL = config.base_url;
+    // Img2Img-specific configuration
     this.defaultModel = process.env.OPENAI_IMG2IMG_MODEL || 'gpt-4.1';
-
-    if (!this.apiKey) {
-      throw new Error('OpenAI Img2Img connector requires OPENAI_API_KEY environment variable');
-    }
 
     logger.info(`OpenAI Img2Img connector ${connectorId} initialized with model ${this.defaultModel}`);
   }
@@ -151,12 +130,8 @@ export class OpenAIImg2ImgConnector extends BaseConnector {
 
   async initializeService(): Promise<void> {
     try {
-      this.client = new OpenAI({
-        apiKey: this.apiKey,
-        baseURL: this.baseURL,
-        timeout: this.config.timeout_seconds * 1000,
-        maxRetries: this.config.retry_attempts,
-      });
+      // Use base class OpenAI client initialization
+      await this.initializeOpenAIClient();
 
       // Test the connection
       await this.checkHealth();
@@ -168,19 +143,6 @@ export class OpenAIImg2ImgConnector extends BaseConnector {
     }
   }
 
-  async checkHealth(): Promise<boolean> {
-    try {
-      if (!this.client) {
-        return false;
-      }
-      // Simple health check - list models to verify API connectivity
-      const models = await this.client.models.list();
-      return models.data.length > 0;
-    } catch (error) {
-      logger.warn(`OpenAI Img2Img connector health check failed: ${error.message}`);
-      return false;
-    }
-  }
 
   async getAvailableModels(): Promise<string[]> {
     try {
@@ -195,10 +157,6 @@ export class OpenAIImg2ImgConnector extends BaseConnector {
     }
   }
 
-  getRequiredHealthCheckClass(): HealthCheckClass {
-    // API-only services use MINIMAL health checking (no job status query required)
-    return HealthCheckClass.MINIMAL;
-  }
 
   async getServiceInfo(): Promise<ServiceInfo> {
     const models = await this.getAvailableModels();
@@ -255,6 +213,7 @@ export class OpenAIImg2ImgConnector extends BaseConnector {
 
     return true;
   }
+
 
   async processJobImpl(jobData: JobData, progressCallback?: ProgressCallback): Promise<JobResult> {
     if (!this.client) {
@@ -330,23 +289,45 @@ export class OpenAIImg2ImgConnector extends BaseConnector {
         });
       }
 
-      // Use responses API (non-streaming for simplicity, matching your working example)
-      const response = await this.client.responses.create({
+      // Use background polling approach for reliability and status tracking
+      const requestConfig = {
         model,
         input,
+        background: true,
+        stream: false, // Use polling instead of streaming
         tools: [{ type: 'image_generation' as const }],
-      });
+      };
 
-      // Extract image data from response
-      const imageData = response.output
-        .filter((output: any) => output.type === 'image_generation_call')
-        .map((output: any) => output.result);
+      logger.info(`🚀 Creating OpenAI background img2img request for job ${jobData.id}`);
+      const response = await this.client.responses.create(requestConfig);
 
-      if (!imageData || imageData.length === 0) {
-        throw new Error('No image generated from OpenAI img2img response');
+      // Extract OpenAI job ID from response (handle type properly)
+      const openaiJobId = (response as any).id;
+      if (!openaiJobId) {
+        throw new Error(`No OpenAI job ID returned from background img2img request for job ${jobData.id}`);
       }
 
-      const imageBase64 = imageData[0];
+      logger.info(`✅ OpenAI background img2img job created: ${openaiJobId} for job ${jobData.id}`);
+
+      if (progressCallback) {
+        await progressCallback({
+          job_id: jobData.id,
+          progress: 50,
+          message: `OpenAI img2img job ${openaiJobId} started, polling for completion`,
+          current_step: 'processing',
+          metadata: {
+            openai_job_id: openaiJobId,
+            approach: 'background_polling'
+          },
+        });
+      }
+
+      // Poll for job completion (use base class method with custom progress range)
+      const pollResult = await this.pollForJobCompletion(openaiJobId, jobData.id, progressCallback, 50, 80);
+      
+      logger.info(`Background polling successful for OpenAI img2img job ${openaiJobId} -> job ${jobData.id}`);
+      
+      const imageBase64 = pollResult.images[0];
 
       if (progressCallback) {
         await progressCallback({
@@ -354,6 +335,11 @@ export class OpenAIImg2ImgConnector extends BaseConnector {
           progress: 80,
           message: 'Image generated successfully',
           current_step: 'processing',
+          metadata: {
+            openai_job_id: openaiJobId,
+            poll_attempts: pollResult.pollAttempts,
+            total_poll_time_ms: pollResult.totalPollTimeMs
+          },
         });
       }
 
@@ -364,9 +350,27 @@ export class OpenAIImg2ImgConnector extends BaseConnector {
       const saveAssets = payload.save_assets !== false; // Default to true unless explicitly false
 
       if (saveAssets && imageBase64) {
-        // Save the base64 image data to cloud storage
-        savedAsset = await AssetSaver.saveAssetToCloud(imageBase64, jobData.id, jobData, 'image/png');
-        logger.info(`Image saved and verified in cloud storage: ${savedAsset.fileName}`);
+        try {
+          // Save the base64 image data to cloud storage
+          logger.info(`💾 Attempting to save image asset for job ${jobData.id}`);
+          savedAsset = await AssetSaver.saveAssetToCloud(imageBase64, jobData.id, jobData, 'image/png');
+          logger.info(`✅ Image saved and verified in cloud storage: ${savedAsset.fileName}`);
+        } catch (assetError) {
+          logger.error(`❌ AssetSaver failed for job ${jobData.id}: ${assetError.message}`);
+          const ctx = (jobData.payload as any)?.ctx;
+          logger.error(`   Job payload structure: ${JSON.stringify({
+            hasCtx: !!ctx,
+            ctxKeys: ctx ? Object.keys(ctx) : [],
+            hasStorage: !!(ctx as any)?.storage,
+            storageKeys: (ctx as any)?.storage ? Object.keys((ctx as any).storage) : []
+          }, null, 2)}`);
+          
+          // Re-throw with more context
+          throw new Error(
+            `Image generation succeeded but asset saving failed: ${assetError.message}. ` +
+            `Job ID: ${jobData.id}. Check that job payload includes proper storage configuration in ctx.`
+          );
+        }
       }
 
       // Use the appropriate URL
@@ -391,12 +395,16 @@ export class OpenAIImg2ImgConnector extends BaseConnector {
             saved_asset: savedAsset,
             save_assets: saveAssets,
             model_used: model,
+            openai_job_id: openaiJobId,
+            poll_attempts: pollResult.pollAttempts,
+            total_poll_time_ms: pollResult.totalPollTimeMs,
+            approach: 'background_polling'
           },
         });
       }
 
       logger.info(
-        `img2img generation completed for job ${jobData.id} using ${model} with ${images.length} reference images (saved: ${saveAssets})`
+        `img2img generation completed for job ${jobData.id} using ${model} with ${images.length} reference images (saved: ${saveAssets}) via ${openaiJobId}`
       );
 
       // Return minimal response like other connectors
@@ -406,6 +414,10 @@ export class OpenAIImg2ImgConnector extends BaseConnector {
           model_used: model,
           reference_images_count: images.length,
           original_prompt: prompt,
+          openai_job_id: openaiJobId,
+          poll_attempts: pollResult.pollAttempts,
+          total_poll_time_ms: pollResult.totalPollTimeMs,
+          approach: 'background_polling'
         },
         processing_time_ms: 0, // Will be calculated by base class
       };
@@ -415,24 +427,6 @@ export class OpenAIImg2ImgConnector extends BaseConnector {
     }
   }
 
-  async cleanupService(): Promise<void> {
-    this.client = null;
-    this.currentStatus = 'offline';
-    logger.info(`OpenAI Img2Img connector ${this.connector_id} cleaned up`);
-  }
-
-  async cancelJob(jobId: string): Promise<void> {
-    // OpenAI doesn't support job cancellation
-    // For image generation, jobs are typically short-lived
-    logger.info(
-      `Job cancellation requested for ${jobId} (OpenAI img2img jobs cannot be cancelled once started)`
-    );
-  }
-
-  async updateConfiguration(config: any): Promise<void> {
-    // Update configuration if needed
-    logger.info(`Configuration update requested for OpenAI Img2Img connector ${this.connector_id}`);
-  }
 
   getConfiguration(): any {
     return {

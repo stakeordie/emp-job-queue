@@ -7,6 +7,7 @@ export * from './base-connector.js';
 export * from './comfyui-connector.js';
 export * from './comfyui-remote-connector.js';
 export * from './comfyui-websocket-connector.js';
+export * from './openai-base-connector.js';
 export * from './openai-image-connector.js';
 export * from './openai-img2img-connector.js';
 export * from './openai-text-connector.js';
