@@ -45,6 +45,10 @@
     "openai": [
       "default",
       "production"
+    ],
+    "telemetry": [
+      "default",
+      "development"
     ]
   },
   "services": {}

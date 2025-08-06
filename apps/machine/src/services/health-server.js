@@ -33,6 +33,11 @@ export default class HealthServer extends BaseService {
     this.app.get('/services/:serviceName/health', this.handleServiceHealth.bind(this));
     this.app.get('/services/:serviceName/logs', this.handleServiceLogs.bind(this));
     
+    // Logs endpoints for Monitor integration
+    this.app.get('/logs', this.handleAllLogs.bind(this));
+    this.app.get('/pm2/logs', this.handlePM2Logs.bind(this));
+    this.app.get('/comfyui/logs', this.handleComfyUILogs.bind(this));
+    
     this.server = this.app.listen(this.port, () => {
       logger.info(`Health server listening on port ${this.port}`);
     });
@@ -484,6 +489,139 @@ export default class HealthServer extends BaseService {
       });
     } catch (error) {
       logger.error('Version endpoint failed:', error);
+      res.status(500).json({
+        error: error.message,
+        timestamp: new Date().toISOString()
+      });
+    }
+  }
+
+  async handleAllLogs(req, res) {
+    try {
+      const limit = parseInt(req.query.limit) || 100;
+      const allLogs = [];
+      
+      // Get logs from all services
+      const services = this.orchestrator.services;
+      for (const [serviceName, service] of services) {
+        if (serviceName === 'health-server') continue; // Skip self
+        
+        try {
+          if (service.getLogs) {
+            const serviceLogs = service.getLogs(limit);
+            serviceLogs.forEach(log => {
+              allLogs.push({
+                service: serviceName,
+                timestamp: log.timestamp || new Date().toISOString(),
+                level: log.level || 'info',
+                message: log.message || log,
+                ...log
+              });
+            });
+          }
+        } catch (error) {
+          // Add error as a log entry
+          allLogs.push({
+            service: serviceName,
+            timestamp: new Date().toISOString(),
+            level: 'error',
+            message: `Failed to get logs: ${error.message}`
+          });
+        }
+      }
+      
+      // Sort by timestamp (newest first)
+      allLogs.sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
+      
+      // Apply limit to combined logs
+      const limitedLogs = allLogs.slice(0, limit);
+      
+      res.json({
+        logs: limitedLogs,
+        services: Array.from(services.keys()).filter(name => name !== 'health-server'),
+        count: limitedLogs.length,
+        total_available: allLogs.length,
+        limit: limit,
+        timestamp: new Date().toISOString()
+      });
+    } catch (error) {
+      logger.error('All logs endpoint failed:', error);
+      res.status(500).json({
+        error: error.message,
+        timestamp: new Date().toISOString()
+      });
+    }
+  }
+
+  async handlePM2Logs(req, res) {
+    try {
+      const serviceName = req.query.service;
+      const lines = parseInt(req.query.lines) || 100;
+      const stream = req.query.stream === 'true';
+      
+      if (!serviceName) {
+        return res.status(400).json({
+          error: 'service parameter is required',
+          timestamp: new Date().toISOString()
+        });
+      }
+
+      const service = this.orchestrator.services.get(serviceName);
+      if (!service) {
+        return res.status(404).json({
+          error: `Service ${serviceName} not found`,
+          timestamp: new Date().toISOString()
+        });
+      }
+
+      const logs = service.getLogs ? service.getLogs(lines) : [];
+      
+      res.json({
+        service: serviceName,
+        logs: logs,
+        count: logs.length,
+        limit: lines,
+        stream: stream,
+        timestamp: new Date().toISOString()
+      });
+    } catch (error) {
+      logger.error('PM2 logs endpoint failed:', error);
+      res.status(500).json({
+        error: error.message,
+        timestamp: new Date().toISOString()
+      });
+    }
+  }
+
+  async handleComfyUILogs(req, res) {
+    try {
+      const gpu = req.query.gpu || '0';
+      const type = req.query.type || 'server';
+      const lines = parseInt(req.query.lines) || 1000;
+      
+      const serviceName = `comfyui-gpu${gpu}`;
+      const service = this.orchestrator.services.get(serviceName);
+      
+      if (!service) {
+        return res.status(404).json({
+          error: `ComfyUI service for GPU ${gpu} not found`,
+          timestamp: new Date().toISOString()
+        });
+      }
+
+      const logs = service.getLogs ? service.getLogs(lines) : [];
+      
+      res.json({
+        service: serviceName,
+        gpu: gpu,
+        type: type,
+        logs: logs,
+        count: logs.length,
+        limit: lines,
+        timestamp: new Date().toISOString()
+      });
+    } catch (error) {
+      logger.error('ComfyUI logs endpoint failed:', error);
       res.status(500).json({
         error: error.message,
         timestamp: new Date().toISOString()

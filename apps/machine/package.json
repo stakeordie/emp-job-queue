@@ -24,8 +24,11 @@
   },
   "dependencies": {
     "@azure/storage-blob": "^12.27.0",
-    "@emp/service-config": "workspace:*",
     "@emp/custom-nodes": "workspace:*",
+    "@emp/service-config": "workspace:*",
+    "@opentelemetry/api": "^1.9.0",
+    "@opentelemetry/exporter-metrics-otlp-http": "^0.203.0",
+    "@opentelemetry/sdk-metrics": "^2.0.1",
     "axios": "^1.6.8",
     "dotenv": "^16.4.5",
     "execa": "^8.0.1",
@@ -43,10 +46,10 @@
   },
   "devDependencies": {
     "@types/node": "^20.12.7",
+    "@vitest/ui": "^3.2.4",
     "eslint": "^8.57.0",
     "nodemon": "^3.1.0",
-    "vitest": "^3.2.4",
-    "@vitest/ui": "^3.2.4"
+    "vitest": "^3.2.4"
   },
   "engines": {
     "node": ">=18.0.0"

@@ -46,6 +46,10 @@
     "openai": [
       "default",
       "local"
+    ],
+    "telemetry": [
+      "default",
+      "development"
     ]
   },
   "services": {}

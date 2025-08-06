@@ -342,9 +342,6 @@ services:
     ports:
       - ${EXPOSE_PORTS:-9090}:9090
   openai-production:
-    <<: *base-machine
-    profiles:
-      - openai-production
     build:
       context: .
       dockerfile: Dockerfile
@@ -357,11 +354,31 @@ services:
         OPENAI_API_KEY: ${OPENAI_API_KEY}
         OPENAI_IMAGE_MODEL: ${OPENAI_IMAGE_MODEL}
         CLOUD_STORAGE_PROVIDER: ${CLOUD_STORAGE_PROVIDER}
+    image: emprops/machine:openai-production
+    platform: linux/amd64
     container_name: openai-production
     hostname: openai-production
+    profiles:
+      - openai-production
+    restart: 'no'
+    stop_grace_period: 2s
+    stop_signal: SIGTERM
+    env_file:
+      - .env.secret
+    environment:
+      NODE_ENV: production
+      ENV: ${CURRENT_ENV}
+      NVIDIA_VISIBLE_DEVICES: all
+      NVIDIA_DRIVER_CAPABILITIES: compute,utility
+    working_dir: /workspace
+    deploy:
+      resources:
+        limits:
+          memory: ${MEMORY_LIMIT:-8G}
+        reservations:
+          memory: ${MEMORY_RESERVATION:-2G}
     ports:
       - ${EXPOSE_PORTS:-9090}:9090
-    image: emprops/machine:openai-production
   sim-local-dev:
     build:
       context: .
@@ -395,6 +412,65 @@ services:
           memory: ${MEMORY_LIMIT:-8G}
         reservations:
           memory: ${MEMORY_RESERVATION:-2G}
+  openai-local-dev:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: base
+      args:
+        WORKER_SPEC: openai:1
+        WORKERS: openai:1
+        MACHINE_ID: openai-local-dev
+        CACHE_BUST: ${CACHE_BUST:-1}
+        OPENAI_API_KEY: ${OPENAI_API_KEY}
+        OPENAI_IMAGE_MODEL: ${OPENAI_IMAGE_MODEL}
+        CLOUD_STORAGE_PROVIDER: ${CLOUD_STORAGE_PROVIDER}
+    image: emprops/machine:openai-local-dev
+    platform: linux/amd64
+    container_name: openai-local-dev
+    hostname: openai-local-dev
+    profiles:
+      - openai-local-dev
+    restart: 'no'
+    stop_grace_period: 2s
+    stop_signal: SIGTERM
+    env_file:
+      - .env.secret
+    environment:
+      NODE_ENV: production
+      ENV: ${CURRENT_ENV}
+      NVIDIA_VISIBLE_DEVICES: all
+      NVIDIA_DRIVER_CAPABILITIES: compute,utility
+    working_dir: /workspace
+    deploy:
+      resources:
+        limits:
+          memory: ${MEMORY_LIMIT:-8G}
+        reservations:
+          memory: ${MEMORY_RESERVATION:-2G}
+    ports:
+      - ${EXPOSE_PORTS:-9090}:9090
+  production:
+    <<: *base-machine
+    profiles:
+      - production
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: base
+      args:
+        WORKER_SPEC: openai:1
+        WORKERS: openai:1
+        MACHINE_ID: production
+        CACHE_BUST: ${CACHE_BUST:-1}
+        OPENAI_API_KEY: ${OPENAI_API_KEY}
+        OPENAI_IMAGE_MODEL: ${OPENAI_IMAGE_MODEL}
+        CLOUD_STORAGE_PROVIDER: ${CLOUD_STORAGE_PROVIDER}
+    container_name: production
+    hostname: production
+    ports:
+      - ${EXPOSE_PORTS:-9090}:9090
+    image: emprops/machine:production
 networks:
   default:
     name: emp-job-queue

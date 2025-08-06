@@ -1,0 +1,64 @@
+receivers:
+  otlp:
+    protocols:
+      grpc:
+        endpoint: 0.0.0.0:4317
+      http:
+        endpoint: 0.0.0.0:4318
+
+processors:
+  batch:
+    timeout: 1s
+  
+  # Add service information
+  resource:
+    attributes:
+      - key: service.name
+        value: "emp-machine-status"
+        action: insert
+      - key: service.version
+        value: "1.0.0"
+        action: insert
+      - key: deployment.environment
+        value: "development"
+        action: insert
+
+exporters:
+  # Dash0 OTLP gRPC exporter
+  otlp/dash0:
+    endpoint: "ingress.us-west-2.aws.dash0.com:4317"
+    headers:
+      Authorization: "Bearer auth_w8VowQspnZ8whZHWp1pe6azIIehBAAvL"
+      Dash0-Dataset: "default"
+    tls:
+      insecure: false
+  
+  # Keep local debugging
+  debug:
+    verbosity: detailed
+    sampling_initial: 5
+    sampling_thereafter: 20
+
+  # Keep local Prometheus for comparison
+  prometheus:
+    endpoint: "0.0.0.0:8889"
+
+extensions:
+  health_check:
+    endpoint: 0.0.0.0:13133
+
+service:
+  extensions: [health_check]
+  pipelines:
+    traces:
+      receivers: [otlp]
+      processors: [batch, resource]
+      exporters: [otlp/dash0, debug]
+    metrics:
+      receivers: [otlp]
+      processors: [batch, resource] 
+      exporters: [otlp/dash0, prometheus, debug]
+    logs:
+      receivers: [otlp]
+      processors: [batch, resource]
+      exporters: [otlp/dash0, debug]

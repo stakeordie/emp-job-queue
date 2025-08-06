@@ -538,6 +538,18 @@ export class OpenAIImageConnector extends OpenAIBaseConnector {
   }
 
   async processJobImpl(jobData: JobData, progressCallback?: ProgressCallback): Promise<JobResult> {
+    // Initialize intelligent logging for this job
+    if (progressCallback) {
+      this.initializeIntelligentLogging(jobData.id, progressCallback);
+    }
+
+    // Report job start with intelligent interpretation
+    await this.reportIntelligentLog(
+      `Starting OpenAI image generation job ${jobData.id} with model ${this.defaultModel}`,
+      'info',
+      'openai_job_start'
+    );
+
     // Enhanced debugging context
     const debugContext = {
       jobId: jobData.id,
@@ -558,6 +570,14 @@ export class OpenAIImageConnector extends OpenAIBaseConnector {
 
     if (!this.client) {
       const error = new Error(`OpenAI client not initialized. API Key: ${debugContext.apiKey}, Base URL: ${debugContext.baseURL}`);
+      
+      // Report initialization failure with intelligent interpretation
+      await this.reportIntelligentLog(
+        `OpenAI client initialization failed: ${error.message}`,
+        'error',
+        'openai_initialization_failed'
+      );
+      
       logger.error(`❌ Client initialization failed: ${error.message}`);
       throw error;
     }
@@ -566,7 +586,12 @@ export class OpenAIImageConnector extends OpenAIBaseConnector {
 
     // Use background + polling as the primary approach (reliable + trackable)
     try {
-      logger.info(`🚀 Attempting background polling for job ${jobData.id}`);
+      await this.reportIntelligentLog(
+        `Attempting background polling for OpenAI image job ${jobData.id}`,
+        'info',
+        'openai_background_polling_start'
+      );
+      
       return await this.processWithBackgroundPolling(jobData, progressCallback);
     } catch (backgroundError) {
       const errorDetails = {
@@ -644,10 +669,21 @@ export class OpenAIImageConnector extends OpenAIBaseConnector {
     const prompt = payload.prompt || payload.description;
     if (!prompt) {
       const validationError = new Error('Job must contain either "prompt" or "description" field');
+      
+      // Report validation error with intelligent interpretation
+      await this.reportIntelligentLog(
+        `OpenAI image job validation failed: ${validationError.message}`,
+        'error',
+        'openai_validation_failed'
+      );
+      
       logger.error(`❌ Background polling validation failed for job ${jobData.id}: ${validationError.message}`);
       logger.error(`📋 Payload received: ${JSON.stringify(payload, null, 2)}`);
       throw validationError;
     }
+
+    // Use enhanced progress callback with intelligent logging
+    const enhancedCallback = this.getEnhancedProgressCallback() || progressCallback;
 
     const requestConfig = {
       model,
@@ -713,8 +749,8 @@ export class OpenAIImageConnector extends OpenAIBaseConnector {
       });
     }
 
-    // Poll for job completion
-    const pollResult = await this.pollForJobCompletion(openaiJobId, jobData.id, progressCallback);
+    // Poll for job completion using enhanced callback
+    const pollResult = await this.pollForJobCompletion(openaiJobId, jobData.id, enhancedCallback);
     
     logger.info(`Background polling successful for OpenAI job ${openaiJobId} -> job ${jobData.id}`);
     

@@ -175,6 +175,65 @@ async function fetchDeleteFormConfig(config, id) {
   }
 }
 
+// Custom Nodes API functions
+async function fetchGetCustomNodes(config, options = {}) {
+  try {
+    const searchParams = new URLSearchParams();
+    if (options.category) searchParams.set('category', options.category);
+    if (options.search) searchParams.set('search', options.search);
+    
+    const url = `${config.apiUrl}/custom-nodes${searchParams.toString() ? '?' + searchParams.toString() : ''}`;
+    const response = await fetch(url);
+    if (!response.ok) {
+      throw new Error(`HTTP error! status: ${response.status}`);
+    }
+    return response.json();
+  } catch (error) {
+    return {
+      data: null,
+      error: `Failed to fetch custom nodes: ${error.message}`,
+    };
+  }
+}
+
+async function fetchGetCustomNodeByName(config, name) {
+  try {
+    const url = `${config.apiUrl}/custom-nodes/name/${encodeURIComponent(name)}`;
+    const response = await fetch(url);
+    if (!response.ok) {
+      throw new Error(`HTTP error! status: ${response.status}`);
+    }
+    return response.json();
+  } catch (error) {
+    return {
+      data: null,
+      error: `Failed to fetch custom node ${name}: ${error.message}`,
+    };
+  }
+}
+
+async function fetchCreateCustomNode(config, customNodeData) {
+  try {
+    const url = `${config.apiUrl}/custom-nodes`;
+    const response = await fetch(url, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify(customNodeData),
+    });
+    if (!response.ok) {
+      throw new Error(`HTTP error! status: ${response.status}`);
+    }
+    return response.json();
+  } catch (error) {
+    return {
+      data: null,
+      error: `Failed to create custom node: ${error.message}`,
+    };
+  }
+}
+
 // Model API functions
 async function fetchGetModels(config, options = {}) {
   try {
@@ -274,6 +333,74 @@ function extractModelsFromWorkflow(workflow) {
   });
   
   return Array.from(models);
+}
+
+// Helper function to extract custom nodes from workflow
+function extractCustomNodesFromWorkflow(workflow) {
+  const customNodes = new Set();
+  
+  if (!workflow || !workflow.nodes) {
+    return [];
+  }
+  
+  // Look for non-standard ComfyUI nodes (custom nodes)
+  const standardNodes = new Set([
+    'KSampler', 'CLIPTextEncode', 'CheckpointLoaderSimple', 'VAEDecode', 
+    'EmptyLatentImage', 'LoadImage', 'SaveImage', 'LatentUpscale',
+    'ControlNetLoader', 'ControlNetApply', 'VAELoader', 'LoraLoader',
+    'EmProps_Asset_Downloader' // Our custom asset downloader
+  ]);
+  
+  workflow.nodes.forEach(node => {
+    if (node.type && !standardNodes.has(node.type)) {
+      // This is likely a custom node
+      customNodes.add(node.type);
+    }
+  });
+  
+  return Array.from(customNodes);
+}
+
+// Helper function to prompt user to select custom nodes
+async function promptForCustomNodeSelection(config, currentCustomNodes = []) {
+  const { data: availableCustomNodes, error } = await fetchGetCustomNodes(config);
+  
+  if (error) {
+    console.error(chalk.red(`Error fetching custom nodes: ${error}`));
+    return [];
+  }
+  
+  if (!availableCustomNodes || availableCustomNodes.length === 0) {
+    console.log(chalk.yellow("No custom nodes available in the system"));
+    return [];
+  }
+  
+  console.log(chalk.blue("\nSelect custom nodes this component will use:"));
+  if (currentCustomNodes.length > 0) {
+    console.log(chalk.gray(`Currently selected: ${currentCustomNodes.join(', ')}`));
+  }
+  console.log(chalk.gray("Use ↑↓ to navigate, Space to select/deselect, Enter to confirm"));
+  
+  const customNodeChoices = availableCustomNodes.map(customNode => ({
+    name: `${customNode.name} (${customNode.category || 'uncategorized'})`,
+    value: customNode.name,
+    checked: currentCustomNodes.includes(customNode.name),
+    description: customNode.description || 'No description'
+  }));
+  
+  const selectedCustomNodes = await checkbox({
+    message: "Choose custom nodes:",
+    choices: customNodeChoices,
+    instructions: false,
+  });
+  
+  if (selectedCustomNodes.length > 0) {
+    console.log(chalk.blue(`\nSelected custom nodes: ${selectedCustomNodes.join(', ')}`));
+  } else {
+    console.log(chalk.gray("No custom nodes selected"));
+  }
+  
+  return selectedCustomNodes;
 }
 
 // Helper function to prompt user to select models
@@ -610,11 +737,15 @@ async function newComponent() {
         display: false,
       };
       
-      // Add model selection for workflow components
+      // Add model and custom node selection for workflow components
       if (componentData.type === "comfy_workflow") {
         console.log(chalk.blue("\nModel Selection for Component:"));
         const selectedModels = await promptForModelSelection(config);
         componentData.models = selectedModels;
+        
+        console.log(chalk.blue("\nCustom Node Selection for Component:"));
+        const selectedCustomNodes = await promptForCustomNodeSelection(config);
+        componentData.custom_nodes = selectedCustomNodes;
       }
       
     } catch (error) {
