@@ -2,6 +2,30 @@
 
 ## [Unreleased] - Current Session
 
+### 🎯 **OpenAI Image Generation Polling Enhancements**
+
+#### **Dynamic Polling with Indefinite Queued/In-Progress Support**
+- **Problem**: OpenAI image generation jobs timing out after 60 polls (120 seconds) even when actively processing
+- **Root Cause**: Fixed polling limits didn't account for variable OpenAI queue times and processing durations
+- **Solution**:
+  - ✅ Implemented indefinite polling for active job statuses (`queued`, `in_progress`, `processing`, `running`, `pending`, `submitted`)
+  - ✅ Dynamic polling frequency: 3s for waiting states (`queued`, `pending`, `submitted`), 1s for active processing states
+  - ✅ Case-insensitive status matching for flexibility with OpenAI API variations
+  - ✅ Enhanced intelligent logging with detailed progress tracking and elapsed time reporting
+- **Impact**: OpenAI image jobs no longer timeout prematurely, supporting jobs that take minutes or hours to complete
+- **Files**: `apps/worker/src/connectors/openai-base-connector.ts:378-640`
+
+#### **Immediate Failure for Non-Image Results**  
+- **Problem**: Jobs completing without images provided unclear error messaging
+- **Solution**:
+  - ✅ Immediate failure detection when OpenAI job completes but returns no image data
+  - ✅ Clear user-facing error message: "No image was generated - check that the prompt is asking for an image"
+  - ✅ Enhanced debugging output showing response structure for troubleshooting
+- **Impact**: Users get immediate, actionable feedback when prompts don't generate images
+- **Files**: `apps/worker/src/connectors/openai-base-connector.ts:523-550`
+
+**Advances North Star**: Improved reliability of AI service connectors supports stable specialized machine pools and reduces job failure rates across distributed infrastructure.
+
 ### 🔧 **Container Environment Variable Baking**
 
 #### **Environment Variables Built Into Container Images**

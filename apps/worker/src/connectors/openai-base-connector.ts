@@ -8,12 +8,15 @@ import {
   HealthCheckClass,
   ProgressCallback,
   logger,
+  createEnhancedProgressReporter,
+  EnhancedProgressReporter,
 } from '@emp/core';
 
 export abstract class OpenAIBaseConnector extends BaseConnector {
   protected client: OpenAI | null = null;
   protected apiKey: string;
   protected baseURL: string;
+  protected logReporter?: EnhancedProgressReporter;
 
   /**
    * Get base OpenAI environment variables that all OpenAI connectors need
@@ -81,6 +84,172 @@ export abstract class OpenAIBaseConnector extends BaseConnector {
       logger.info(`🔍 OpenAI Debug Mode ENABLED for connector ${this.connector_id}`);
       this.enableDebugLogging();
     }
+  }
+
+  /**
+   * Initialize intelligent logging for a job
+   */
+  protected initializeIntelligentLogging(jobId: string, progressCallback: ProgressCallback): void {
+    this.logReporter = createEnhancedProgressReporter(
+      'openai',
+      this.connector_id,
+      progressCallback,
+      jobId
+    );
+  }
+
+  /**
+   * Get enhanced progress callback with intelligent interpretation
+   */
+  protected getEnhancedProgressCallback(): ProgressCallback {
+    return this.logReporter?.createEnhancedCallback() || ((progress) => Promise.resolve());
+  }
+
+  /**
+   * Report intelligent log with pattern matching
+   */
+  protected async reportIntelligentLog(
+    message: string,
+    level: 'debug' | 'info' | 'warn' | 'error' | 'fatal' = 'info',
+    source?: string
+  ): Promise<void> {
+    if (this.logReporter) {
+      await this.logReporter.interpretAndReportLog(message, level, source);
+    }
+  }
+
+  /**
+   * Log detailed OpenAI request with intelligent analysis
+   */
+  protected async logOpenAIRequest(
+    method: string,
+    url: string,
+    requestData: any,
+    description: string = 'OpenAI API Request'
+  ): Promise<void> {
+    const sanitizedData = this.sanitizeRequestData(requestData);
+    
+    logger.info(`🚀 ${description}:`);
+    logger.info(`   ${method} ${url}`);
+    logger.info(`   Request: ${JSON.stringify(sanitizedData, null, 2)}`);
+
+    // Report through intelligent logging
+    await this.reportIntelligentLog(
+      `${description}: ${method} ${url}`,
+      'info',
+      'openai_request'
+    );
+  }
+
+  /**
+   * Log detailed OpenAI response with intelligent analysis
+   */
+  protected async logOpenAIResponse(
+    statusCode: number,
+    responseData: any,
+    duration: number,
+    description: string = 'OpenAI API Response'
+  ): Promise<void> {
+    const sanitizedData = this.sanitizeResponseData(responseData);
+    
+    logger.info(`📥 ${description} (${duration}ms):`);
+    logger.info(`   Status: ${statusCode}`);
+    logger.info(`   Response: ${JSON.stringify(sanitizedData, null, 2)}`);
+
+    // Intelligent interpretation of response
+    if (statusCode >= 400) {
+      await this.reportIntelligentLog(
+        `OpenAI API error ${statusCode}: ${responseData?.error?.message || 'Unknown error'}`,
+        'error',
+        'openai_response'
+      );
+    } else if (responseData?.status) {
+      await this.reportIntelligentLog(
+        `OpenAI job status: ${responseData.status}`,
+        'info',
+        'openai_response'
+      );
+    }
+  }
+
+  /**
+   * Sanitize request data for logging (truncate base64, hide sensitive data)
+   */
+  private sanitizeRequestData(data: any): any {
+    if (!data) return data;
+
+    const sanitized = JSON.parse(JSON.stringify(data));
+
+    // Recursively sanitize nested objects
+    const sanitizeObject = (obj: any): any => {
+      if (Array.isArray(obj)) {
+        return obj.map(item => sanitizeObject(item));
+      }
+      
+      if (typeof obj === 'object' && obj !== null) {
+        const result: any = {};
+        for (const [key, value] of Object.entries(obj)) {
+          if (typeof value === 'string') {
+            // Truncate base64 data URLs
+            if (value.startsWith('data:image/') && value.includes('base64,')) {
+              const base64Part = value.split('base64,')[1];
+              result[key] = `data:image/...;base64,${this.truncateBase64(base64Part)}`;
+            }
+            // Truncate long base64 strings
+            else if (value.length > 100 && /^[A-Za-z0-9+/]*={0,2}$/.test(value)) {
+              result[key] = this.truncateBase64(value);
+            }
+            // Hide API keys
+            else if (key.toLowerCase().includes('key') || key.toLowerCase().includes('token')) {
+              result[key] = '***HIDDEN***';
+            }
+            else {
+              result[key] = value;
+            }
+          } else {
+            result[key] = sanitizeObject(value);
+          }
+        }
+        return result;
+      }
+      
+      return obj;
+    };
+
+    return sanitizeObject(sanitized);
+  }
+
+  /**
+   * Sanitize response data for logging
+   */
+  private sanitizeResponseData(data: any): any {
+    if (!data) return data;
+
+    const sanitized = JSON.parse(JSON.stringify(data));
+
+    // Recursively sanitize response data
+    const sanitizeObject = (obj: any): any => {
+      if (Array.isArray(obj)) {
+        return obj.map(item => sanitizeObject(item));
+      }
+      
+      if (typeof obj === 'object' && obj !== null) {
+        const result: any = {};
+        for (const [key, value] of Object.entries(obj)) {
+          if (typeof value === 'string' && value.length > 100 && /^[A-Za-z0-9+/]*={0,2}$/.test(value)) {
+            // Truncate base64 results
+            result[key] = this.truncateBase64(value);
+          } else {
+            result[key] = sanitizeObject(value);
+          }
+        }
+        return result;
+      }
+      
+      return obj;
+    };
+
+    return sanitizeObject(sanitized);
   }
 
   /**
@@ -205,6 +374,7 @@ export abstract class OpenAIBaseConnector extends BaseConnector {
   /**
    * Poll OpenAI job status until completion
    * Shared polling logic for all OpenAI background jobs
+   * Updated: Dynamic polling intervals and indefinite polling for queued/in-progress jobs
    */
   protected async pollForJobCompletion(
     openaiJobId: string, 
@@ -218,25 +388,37 @@ export abstract class OpenAIBaseConnector extends BaseConnector {
     totalPollTimeMs: number;
   }> {
     const startTime = Date.now();
-    const maxPollingTimeMs = 120000; // 2 minutes max
-    const pollIntervalMs = 2000; // Poll every 2 seconds
-    const maxAttempts = Math.floor(maxPollingTimeMs / pollIntervalMs);
+    const maxInitialPollingTimeMs = 300000; // 5 minutes max for non-queued/in-progress states
     
     let pollAttempts = 0;
     let lastStatus = 'unknown';
+    let totalElapsedTime = 0;
 
-    logger.info(`🔄 Starting polling for OpenAI job ${openaiJobId} (max ${maxAttempts} attempts, ${maxPollingTimeMs}ms total)`);
+    // Report polling start with intelligent interpretation
+    await this.reportIntelligentLog(
+      `Starting dynamic polling for OpenAI job ${openaiJobId} (indefinite for queued/in-progress)`,
+      'info',
+      'openai_polling'
+    );
 
-    while (pollAttempts < maxAttempts) {
+    // Dynamic polling loop - continues indefinitely for queued/in-progress jobs
+    while (true) {
       pollAttempts++;
       const pollStartTime = Date.now();
+      totalElapsedTime = pollStartTime - startTime;
 
       try {
         // Get job status from OpenAI
         const statusResponse = await this.client!.responses.retrieve(openaiJobId);
         const currentStatus = statusResponse.status;
         
-        logger.info(`📊 Poll attempt ${pollAttempts}/${maxAttempts} for OpenAI job ${openaiJobId}: status=${currentStatus}`);
+        // Log polling attempt with detailed response analysis
+        await this.logOpenAIResponse(
+          200,
+          statusResponse,
+          Date.now() - pollStartTime,
+          `Poll attempt ${pollAttempts} for OpenAI job ${openaiJobId} (${Math.round(totalElapsedTime / 1000)}s elapsed)`
+        );
         
         // Debug: Show what's in each poll response
         if (process.env.OPENAI_DEBUG === 'true') {
@@ -266,19 +448,29 @@ export abstract class OpenAIBaseConnector extends BaseConnector {
         // Update progress if status changed
         if (currentStatus !== lastStatus) {
           lastStatus = currentStatus;
-          const progressPercent = Math.min(progressEndPercent, progressStartPercent + (pollAttempts / maxAttempts) * (progressEndPercent - progressStartPercent));
+          // Dynamic progress calculation without max attempts limitation
+          const progressPercent = Math.min(progressEndPercent, 
+            progressStartPercent + Math.min(50, (totalElapsedTime / 60000) * 30) // Gradual increase over time
+          );
+          
+          // Report status change with intelligent interpretation
+          await this.reportIntelligentLog(
+            `OpenAI job status changed to: ${currentStatus}`,
+            'info',
+            'openai_status_change'
+          );
           
           if (progressCallback) {
             await progressCallback({
               job_id: jobId,
               progress: progressPercent,
-              message: `OpenAI job ${currentStatus} (poll ${pollAttempts}/${maxAttempts})`,
+              message: `OpenAI job ${currentStatus} (poll ${pollAttempts}, ${Math.round(totalElapsedTime / 1000)}s elapsed)`,
               current_step: 'processing',
               metadata: {
                 openai_job_id: openaiJobId,
                 openai_status: currentStatus,
                 poll_attempts: pollAttempts,
-                elapsed_time_ms: Date.now() - startTime
+                elapsed_time_ms: totalElapsedTime
               },
             });
           }
@@ -286,7 +478,11 @@ export abstract class OpenAIBaseConnector extends BaseConnector {
 
         // Check if job is complete
         if (currentStatus === 'completed') {
-          logger.info(`✅ OpenAI job ${openaiJobId} completed after ${pollAttempts} polls (${Date.now() - startTime}ms)`);
+          await this.reportIntelligentLog(
+            `OpenAI job ${openaiJobId} completed after ${pollAttempts} polls (${totalElapsedTime}ms)`,
+            'info',
+            'openai_completion'
+          );
           
           // Debug: Log the entire response to understand what OpenAI returned
           if (process.env.OPENAI_DEBUG === 'true') {
@@ -325,7 +521,18 @@ export abstract class OpenAIBaseConnector extends BaseConnector {
           }
 
           if (images.length === 0) {
-            logger.error(`❌ No images found in OpenAI response for job ${openaiJobId}`);
+            // IMMEDIATE FAILURE: Job completed but no images generated
+            const noImagesMessage = `No image was generated - check that the prompt is asking for an image`;
+            
+            // Report with intelligent interpretation - this is a critical pattern for OpenAI
+            await this.reportIntelligentLog(
+              `OpenAI job ${openaiJobId} completed but no images found in output - likely prompt issue`,
+              'error',
+              'openai_no_images'
+            );
+            
+            logger.error(`❌ ${noImagesMessage}`);
+            logger.error(`   OpenAI job ${openaiJobId} completed but returned no images`);
             logger.error(`   Response has output: ${!!statusResponse.output}`);
             logger.error(`   Response output type: ${Array.isArray(statusResponse.output) ? 'array' : typeof statusResponse.output}`);
             // Sanitize output for error logging
@@ -338,13 +545,21 @@ export abstract class OpenAIBaseConnector extends BaseConnector {
                 })
               : statusResponse.output;
             logger.error(`   Response output structure: ${JSON.stringify(sanitizedOutput, null, 2)}`);
-            throw new Error(`OpenAI job ${openaiJobId} completed but no images found in output. Check logs for response details.`);
+            
+            throw new Error(noImagesMessage);
           }
+
+          // Report successful image extraction
+          await this.reportIntelligentLog(
+            `Successfully extracted ${images.length} image(s) from OpenAI job ${openaiJobId}`,
+            'info',
+            'openai_image_extraction'
+          );
 
           return {
             images,
             pollAttempts,
-            totalPollTimeMs: Date.now() - startTime
+            totalPollTimeMs: totalElapsedTime
           };
         }
 
@@ -352,41 +567,83 @@ export abstract class OpenAIBaseConnector extends BaseConnector {
         if (currentStatus === 'failed' || currentStatus === 'cancelled') {
           const rawErrorMessage = statusResponse.error?.message || `Job ${currentStatus}`;
           const errorMessage = this.formatMessage(rawErrorMessage);
+          
+          // Report failure with intelligent interpretation
+          await this.reportIntelligentLog(
+            `OpenAI job ${openaiJobId} ${currentStatus}: ${errorMessage}`,
+            'error',
+            'openai_job_failure'
+          );
+          
           throw new Error(`OpenAI job ${openaiJobId} ${currentStatus}: ${errorMessage}`);
         }
 
-        // Continue polling if job is still in progress
-        if (currentStatus === 'in_progress' || currentStatus === 'queued') {
-          const remainingTime = maxPollingTimeMs - (Date.now() - startTime);
-          logger.info(`⏳ OpenAI job ${openaiJobId} still ${currentStatus}, continuing to poll (${remainingTime}ms remaining)`);
+        // DYNAMIC POLLING: Continue indefinitely for active job statuses
+        // Common OpenAI status values: 'queued', 'in_progress', 'processing', 'running', 'pending', 'submitted'
+        const activeStatuses = ['in_progress', 'queued', 'processing', 'running', 'pending', 'submitted'];
+        const slowPollStatuses = ['queued', 'pending', 'submitted']; // Poll less frequently for waiting states
+        
+        if (activeStatuses.includes(currentStatus.toLowerCase())) {
+          await this.reportIntelligentLog(
+            `OpenAI job ${openaiJobId} still ${currentStatus}, continuing to poll (${Math.round(totalElapsedTime / 1000)}s elapsed)`,
+            'info',
+            'openai_polling_continue'
+          );
+          
+          // Dynamic wait time based on status
+          const isSlowPollStatus = slowPollStatuses.includes(currentStatus.toLowerCase());
+          const waitTime = isSlowPollStatus ? 3000 : 1000; // 3s for queued/waiting states, 1s for active processing
+          const pollDuration = Date.now() - pollStartTime;
+          const actualWaitTime = Math.max(0, waitTime - pollDuration);
+          
+          logger.info(`🔄 OpenAI job ${openaiJobId} status: ${currentStatus} (polling again in ${waitTime}ms)`);
+          
+          if (actualWaitTime > 0) {
+            await new Promise(resolve => setTimeout(resolve, actualWaitTime));
+          }
+          
+          continue; // Continue polling indefinitely for active statuses
+        }
+
+        // For other unknown statuses, apply the original timeout logic
+        if (totalElapsedTime > maxInitialPollingTimeMs) {
+          const timeoutMessage = `OpenAI job ${openaiJobId} polling timeout after ${pollAttempts} attempts (${totalElapsedTime}ms). Status: ${currentStatus}`;
+          
+          // Report timeout with intelligent interpretation
+          await this.reportIntelligentLog(timeoutMessage, 'error', 'openai_polling_timeout');
+          
+          throw new Error(timeoutMessage);
         }
 
       } catch (pollError) {
-        logger.warn(`⚠️  Poll attempt ${pollAttempts} failed for OpenAI job ${openaiJobId}: ${this.formatMessage(pollError.message)}`);
+        const errorMessage = this.formatMessage(pollError.message);
         
-        // If this is the last attempt, throw the error
-        if (pollAttempts >= maxAttempts) {
-          throw new Error(`Polling failed after ${maxAttempts} attempts: ${this.formatMessage(pollError.message)}`);
-        }
-      }
-
-      // Wait before next poll (unless this was the last attempt)
-      if (pollAttempts < maxAttempts) {
-        const pollDuration = Date.now() - pollStartTime;
-        const waitTime = Math.max(0, pollIntervalMs - pollDuration);
+        // Report polling error with intelligent interpretation
+        await this.reportIntelligentLog(
+          `Poll attempt ${pollAttempts} failed for OpenAI job ${openaiJobId}: ${errorMessage}`,
+          'warn',
+          'openai_poll_error'
+        );
         
-        if (waitTime > 0) {
-          await new Promise(resolve => setTimeout(resolve, waitTime));
+        // Only fail immediately for API errors, not for transient network issues
+        if (pollError.status && pollError.status >= 400 && pollError.status < 500) {
+          // Client error - don't retry
+          const finalError = `OpenAI API error: ${errorMessage}`;
+          await this.reportIntelligentLog(finalError, 'error', 'openai_api_error');
+          throw new Error(finalError);
         }
+        
+        // For network errors, continue polling but apply timeout for unknown statuses
+        if (totalElapsedTime > maxInitialPollingTimeMs && lastStatus !== 'queued' && lastStatus !== 'in_progress') {
+          const finalError = `Polling failed after ${pollAttempts} attempts and ${totalElapsedTime}ms: ${errorMessage}`;
+          await this.reportIntelligentLog(finalError, 'error', 'openai_polling_failed');
+          throw new Error(finalError);
+        }
+        
+        // Wait before retrying
+        await new Promise(resolve => setTimeout(resolve, 2000));
       }
     }
-
-    // Polling timeout
-    const totalTime = Date.now() - startTime;
-    throw new Error(
-      `OpenAI job ${openaiJobId} polling timeout after ${pollAttempts} attempts (${totalTime}ms). ` +
-      `Last status: ${lastStatus}`
-    );
   }
 
   /**
