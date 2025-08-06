@@ -2,6 +2,7 @@ import Redis from 'ioredis';
 import { exec } from 'child_process';
 import { promisify } from 'util';
 import { createLogger } from '../utils/logger.js';
+import { TelemetryBroadcasterDash0 } from './telemetry-broadcaster-dash0.js';
 
 const execAsync = promisify(exec);
 const logger = createLogger('machine-status-aggregator');
@@ -32,6 +33,9 @@ export class MachineStatusAggregator {
     // Structure will be built during connect()
     this.structure = null;
     this.currentStatus = null;
+    
+    // Initialize direct Dash0 telemetry broadcaster
+    this.telemetryBroadcaster = new TelemetryBroadcasterDash0(this.machineId);
     
     console.info(`[MachineStatusAggregator] Machine Status Aggregator initialized for ${this.machineId}`);
     console.info(`[MachineStatusAggregator] Update interval: ${this.updateIntervalSeconds}s`);
@@ -633,7 +637,8 @@ export class MachineStatusAggregator {
       timestamp: Date.now(),
       update_type: updateType,
       structure: this.structure,
-      status: this.currentStatus
+      status: this.currentStatus,
+      health_url: `http://localhost:${process.env.MACHINE_HEALTH_PORT || 9090}/health`
     };
 
     try {
@@ -641,6 +646,9 @@ export class MachineStatusAggregator {
       const message = JSON.stringify(statusMessage);
       
       const subscribers = await this.redis.publish(channel, message);
+      
+      // ALSO broadcast directly to Dash0 (alongside Redis, doesn't replace it)
+      this.telemetryBroadcaster.broadcastMachineStatus(statusMessage);
       
       logger.debug(`Published ${updateType} status to ${subscribers} subscribers`, {
         machine_id: this.machineId,
@@ -666,6 +674,9 @@ export class MachineStatusAggregator {
     // Send final status
     this.currentStatus.machine.phase = 'shutdown';
     await this.publishStatus('shutdown');
+    
+    // Shutdown telemetry broadcaster
+    await this.telemetryBroadcaster.shutdown();
     
     if (this.redis) {
       await this.redis.quit();

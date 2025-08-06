@@ -1,0 +1,102 @@
+# Local development Docker Compose for Fluentd service
+version: '3.8'
+
+services:
+  fluentd:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    ports:
+      - "24224:24224"  # Fluent Forward
+      - "24225:24225"  # Fluent Forward with TLS
+      - "8888:8888"    # HTTP input
+      - "24220:24220"  # Health/monitoring
+      - "9880:9880"    # Prometheus metrics
+    environment:
+      - NODE_ENV=development
+      - SERVICE_NAME=fluentd-aggregator
+      - DASH0_API_KEY=${DASH0_API_KEY:-test-key}
+      - DASH0_DATASET=development
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - REDIS_PASSWORD=${REDIS_PASSWORD:-}
+      - FLUENTD_SHARED_KEY=emp-log-aggregation-key
+      - LOG_LEVEL=info
+    volumes:
+      - ./logs:/fluentd/logs
+      - fluentd_buffer:/fluentd/buffer
+    depends_on:
+      - redis
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:24220/api/plugins.json"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+
+  # Companion Node.js service
+  fluentd-companion:
+    build:
+      context: .
+      dockerfile: Dockerfile.companion
+    ports:
+      - "3000:3000"
+    environment:
+      - NODE_ENV=development
+      - SERVICE_NAME=fluentd-companion
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - REDIS_PASSWORD=${REDIS_PASSWORD:-}
+      - LOG_LEVEL=info
+      - CORS_ORIGINS=http://localhost:3333
+    depends_on:
+      - fluentd
+      - redis
+    restart: unless-stopped
+
+  # Redis for buffering and failover
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+    command: redis-server --appendonly yes
+    volumes:
+      - redis_data:/data
+    restart: unless-stopped
+
+  # Test log generator for development
+  log-generator:
+    image: alpine:latest
+    command: >
+      sh -c "
+        apk add --no-cache curl &&
+        while true; do
+          curl -X POST http://fluentd:8888/test.log \
+            -H 'Content-Type: application/json' \
+            -d '{
+              \"timestamp\": \"$(date -Iseconds)\",
+              \"level\": \"info\",
+              \"message\": \"Test log message $(date)\",
+              \"trace_id\": \"abc123def456\",
+              \"job_id\": \"job-test-123\",
+              \"machine_id\": \"test-machine\",
+              \"source\": \"log-generator\"
+            }' || true;
+          sleep 5;
+        done
+      "
+    depends_on:
+      - fluentd
+    restart: unless-stopped
+    profiles:
+      - testing
+
+volumes:
+  fluentd_buffer:
+  redis_data:
+
+# Usage:
+# Development: docker-compose up fluentd redis
+# With companion: docker-compose up  
+# With test logs: docker-compose --profile testing up

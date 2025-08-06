@@ -34,6 +34,9 @@ features:
   - title: 8. EmProps Open API
     details: REST API documentation, architecture, and implementation guides
     link: /08-emprops-open-api/
+  - title: 9. Observability
+    details: Comprehensive monitoring, logging, tracing, and debugging across distributed systems
+    link: /09-observability/
 ---
 
 ## Welcome to EmProps Job Queue Documentation
@@ -48,8 +51,10 @@ The documentation follows a narrative flow:
 2. **How It Works** → Technical mechanisms and data flow
 3. **Implementation** → Deep dive into code and architecture
 4. **Production** → Operating and troubleshooting
-5. **Development** → How we build and evolve
-6. **Future** → Where we're heading
+5. **Development** → Team processes and system evolution
+6. **Future Vision** → Strategic roadmap and north star architecture
+7. **Observability** → Monitoring, logging, tracing, and debugging
+8. **Open API** → External API documentation and guides
 
 ### Legend
 

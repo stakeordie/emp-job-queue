@@ -29,6 +29,7 @@
     "dev:monitor": "turbo run dev --filter=monitor --ui=stream",
     "dev:webhook": "turbo run dev --filter=webhook-service --ui=stream",
     "dev:docs": "turbo run dev --filter=docs",
+    "dev:fluentd": "turbo run dev --filter=@emp/fluentd",
     "dev:local-redis": "./scripts/dev-local-redis.sh",
     "dev:local-redis:stop": "brew services stop redis",
     "shutdown": "./scripts/shutdown-all.sh",
@@ -47,7 +48,8 @@
     "machine:logs": "node scripts/env/machine-compose.js logs",
     "machine:status": "curl -s http://localhost:9092/health | jq || echo '❌ Health check failed'",
     "worker:bundle": "./scripts/bundle-worker.sh",
-    "compose:profile": "node scripts/env/compose-build.js"
+    "compose:profile": "node scripts/env/compose-build.js",
+    "dash:dev": "./scripts/terminal/dashboard-dev.sh"
   },
   "devDependencies": {
     "@typescript-eslint/eslint-plugin": "^6.21.0",

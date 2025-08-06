@@ -74,7 +74,8 @@ const config = defineConfig({
       { text: 'Production', link: '/04-running-in-production/' },
       { text: 'Development', link: '/05-development/' },
       { text: 'Future', link: '/06-future-vision/' },
-      { text: 'Open API', link: '/08-emprops-open-api/' }
+      { text: 'Open API', link: '/08-emprops-open-api/' },
+      { text: 'Observability', link: '/09-observability/' }
     ],
 
     sidebar: {
@@ -225,6 +226,22 @@ const config = defineConfig({
             { text: 'Basic Collection 📝', link: '/08-emprops-open-api/examples/basic-collection' },
             { text: 'Advanced Workflows 📝', link: '/08-emprops-open-api/examples/advanced-workflows' },
             { text: 'Progress Tracking 📝', link: '/08-emprops-open-api/examples/progress-tracking' }
+          ]
+        }
+      ],
+      '/09-observability/': [
+        {
+          text: '9. Observability',
+          items: [
+            { text: 'Overview', link: '/09-observability/' },
+            { text: 'Information Flow', link: '/09-observability/information-flow' },
+            { text: 'Architecture 📝', link: '/09-observability/architecture' },
+            { text: 'Adding Telemetry 📝', link: '/09-observability/adding-telemetry' },
+            { text: 'Debugging Guide 📝', link: '/09-observability/debugging-guide' },
+            { text: 'Query Cookbook 📝', link: '/09-observability/query-cookbook' },
+            { text: 'Monitoring Setup 📝', link: '/09-observability/monitoring-setup' },
+            { text: 'Alert Configuration 📝', link: '/09-observability/alert-configuration' },
+            { text: 'Performance Tuning 📝', link: '/09-observability/performance-tuning' }
           ]
         }
       ]
