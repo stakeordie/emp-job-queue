@@ -448,10 +448,10 @@ async function promptForModelSelection(config, currentModels = []) {
 async function initConfig() {
   try {
     const defaultConfig = {
-      currentEnv: "dev",
+      currentEnv: "local",
       environments: {
-        dev: {
-          apiUrl: "https://cycle-16-dev-api-openstudio.emprops.ai",
+        local: {
+          apiUrl: "http://localhost:3331",
         },
       },
     };
@@ -1796,6 +1796,100 @@ async function migrateWorkflows(options) {
   }
 }
 
+async function listCustomNodes(options) {
+  try {
+    const config = await getCurrentEnvironment();
+    const { data: customNodes, error } = await fetchGetCustomNodes(config, { 
+      category: options.category,
+      search: options.search
+    });
+    
+    if (error) {
+      console.error(chalk.red(`Error fetching custom nodes: ${error}`));
+      return;
+    }
+    
+    if (!customNodes || customNodes.length === 0) {
+      console.log(chalk.yellow("No custom nodes found"));
+      return;
+    }
+    
+    console.log(chalk.blue("\nCustom Node Registry (from API):"));
+    console.log(chalk.blue(`Found ${customNodes.length} custom nodes:\n`));
+    
+    customNodes.forEach((customNode) => {
+      console.log(`${chalk.white(customNode.name)}`);
+      console.log(`  ID: ${customNode.id}`);
+      console.log(`  Category: ${customNode.category || 'Uncategorized'}`);
+      console.log(`  Status: ${customNode.status}`);
+      console.log(`  Description: ${customNode.description || 'No description'}`);
+      console.log(`  Repository: ${customNode.repositoryUrl || 'Not specified'}`);
+      console.log();
+    });
+  } catch (error) {
+    console.error(chalk.red(`Error listing custom nodes: ${error.message}`));
+  }
+}
+
+async function addCustomNode(name) {
+  try {
+    const config = await getCurrentEnvironment();
+    
+    // Check if custom node already exists
+    const { data: existingCustomNode } = await fetchGetCustomNodeByName(config, name);
+    if (existingCustomNode) {
+      console.error(chalk.red(`Custom node "${name}" already exists`));
+      return;
+    }
+
+    console.log(chalk.blue(`Adding new custom node: ${name}`));
+
+    const repositoryUrl = await input({ message: "Enter the repository URL:", required: true });
+    const category = await select({
+      message: "Select category:",
+      choices: [
+        { name: "Image Processing", value: "image_processing" },
+        { name: "Text Processing", value: "text_processing" },
+        { name: "Model Loading", value: "model_loading" },
+        { name: "Conditioning", value: "conditioning" },
+        { name: "Sampling", value: "sampling" },
+        { name: "Utility", value: "utility" },
+        { name: "Custom", value: "custom" }
+      ]
+    });
+    const description = await input({ message: "Enter description:", required: true });
+    const installCommand = await input({ 
+      message: "Enter install command (optional, default: git clone):",
+      default: `git clone ${repositoryUrl}`
+    });
+    const dependencies = await input({ message: "Enter dependencies (comma-separated, optional):" });
+    const version = await input({ message: "Enter version (optional):" });
+
+    const customNodeData = {
+      name,
+      repositoryUrl,
+      category,
+      description,
+      installCommand,
+      dependencies: dependencies ? dependencies.split(',').map(d => d.trim()) : [],
+      version: version || undefined
+    };
+
+    const { data: newCustomNode, error } = await fetchCreateCustomNode(config, customNodeData);
+    
+    if (error) {
+      console.error(chalk.red(`Error creating custom node: ${error}`));
+      return;
+    }
+
+    console.log(chalk.green(`✓ Custom node "${name}" added successfully!`));
+    console.log(chalk.gray(`  ID: ${newCustomNode.id}`));
+    console.log(chalk.gray(`  Status: ${newCustomNode.status}`));
+  } catch (error) {
+    console.error(chalk.red(`Error adding custom node: ${error.message}`));
+  }
+}
+
 async function listComponents(showAll = false) {
   try {
     const config = await getCurrentEnvironment();
@@ -1998,5 +2092,21 @@ modelCommand
   .description("Migrate existing workflows to use authenticated models")
   .option("--dry-run", "Show what would be migrated without making changes")
   .action(migrateWorkflows);
+
+const customNodeCommand = program
+  .command("custom-node")
+  .description("Manage custom nodes");
+
+customNodeCommand
+  .command("list")
+  .description("List all custom nodes")
+  .option("--category <category>", "Filter by category")
+  .option("--search <search>", "Search custom nodes")
+  .action(listCustomNodes);
+
+customNodeCommand
+  .command("add <name>")
+  .description("Add a new custom node to the registry")
+  .action(addCustomNode);
 
 program.parse(process.argv);

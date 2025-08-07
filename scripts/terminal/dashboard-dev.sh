@@ -1,15 +1,16 @@
 #!/bin/bash
 
+# Shutdown any existing services
 pnpm shutdown
 
-
+# Start docs in background
 nohup pnpm dev:docs &
 
-#!/bin/bash
-
+# Dashboard setup
 PROFILE=${1:-dev}
 PROJECT_ROOT="$HOME/code/emprops/ai_infra/emp-job-queue"
 ENV_FILE="$PROJECT_ROOT/.env.$PROFILE"
+KDL_FILE="$PROJECT_ROOT/scripts/terminal/dashboard-$PROFILE.kdl"
 
 if [[ -f "$ENV_FILE" ]]; then
     echo "Loading profile: $PROFILE"
@@ -24,7 +25,18 @@ else
     export DB_SERVICE="postgres"
 fi
 
-osascript << 'EOF'
+echo "Starting dashboard with profile: $PROFILE"
+echo "Using KDL file: $KDL_FILE"
+
+# Check if KDL file exists
+if [[ ! -f "$KDL_FILE" ]]; then
+    echo "Warning: KDL file $KDL_FILE not found"
+    echo "Available KDL files:"
+    ls -la "$PROJECT_ROOT/scripts/terminal/"*.kdl 2>/dev/null || echo "No KDL files found"
+fi
+
+# Launch iTerm with Zellij layout
+osascript << EOF
 tell application "iTerm"
     create window with default profile
     
@@ -33,7 +45,9 @@ tell application "iTerm"
 
     delay 1.5
     tell current session of current window
-        write text "zellij --layout $HOME/code/emprops/ai_infra/emp-job-queue/scripts/terminal/dashboard-dev.kdl"
+        write text "zellij --layout '$KDL_FILE'"
     end tell
 end tell
 EOF
+
+echo "Dashboard launched with profile: $PROFILE"
