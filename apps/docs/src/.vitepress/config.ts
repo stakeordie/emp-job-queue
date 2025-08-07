@@ -75,7 +75,8 @@ const config = defineConfig({
       { text: 'Development', link: '/05-development/' },
       { text: 'Future', link: '/06-future-vision/' },
       { text: 'Open API', link: '/08-emprops-open-api/' },
-      { text: 'Observability', link: '/09-observability/' }
+      { text: 'Observability', link: '/09-observability/' },
+      { text: 'Site Map', link: '/sitemap' }
     ],
 
     sidebar: {
