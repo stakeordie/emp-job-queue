@@ -58,7 +58,7 @@ const zoom = ref(1)
 /**
  * Handles interactive pan and zoom functionality for the expanded diagram.
  * Uses panzoom library to provide smooth zooming and bounded panning.
- * - Zoom range: 50% to 300%
+ * - Zoom range: 50% to 1000%
  * - Bounds: diagram can't be panned outside visible area
  * - Smooth transitions for zoom operations
  */
@@ -102,7 +102,7 @@ const toggleExpand = () => {
           bounds: true,
           boundsPadding: 0.1,
           minZoom: 0.05,
-          maxZoom: 3
+          maxZoom: 10
         })
         
         // Update zoom level when panning/zooming
@@ -124,12 +124,12 @@ const toggleExpand = () => {
 /**
  * Smoothly zooms in the diagram by 10%
  * Uses panzoom's smoothZoom for fluid animation
- * Respects maxZoom boundary of 300%
+ * Respects maxZoom boundary of 1000%
  */
 const zoomIn = () => {
   if (panzoomInstance.value) {
     const currentZoom = panzoomInstance.value.getTransform().scale
-    if (currentZoom < 3) {
+    if (currentZoom < 10) {
       panzoomInstance.value.smoothZoom(0, 0, 1.1)
     }
   }

@@ -1,0 +1,702 @@
+/**
+ * WebSocketConnector - Abstract base class for all WebSocket-based connectors
+ * 
+ * Provides unified WebSocket connection management, authentication, reconnection logic,
+ * message routing, job correlation, and real-time progress tracking.
+ * 
+ * Services like ComfyUI, A1111 WebSocket, and custom real-time APIs extend this class
+ * and implement service-specific message handling and job processing.
+ */
+
+import { WebSocket } from 'ws';
+import { BaseConnector, ConnectorConfig } from '../base-connector.js';
+import { JobData, JobResult, ProgressCallback, ServiceInfo, logger } from '@emp/core';
+
+// WebSocket-specific configuration extending base connector config
+export interface WebSocketConnectorConfig extends ConnectorConfig {
+  // WebSocket connection configuration
+  websocket_url?: string; // If different from base_url
+  protocols?: string[];
+  
+  // Authentication configuration
+  auth?: {
+    type: 'none' | 'basic' | 'bearer' | 'query_param' | 'header';
+    username?: string;
+    password?: string;
+    bearer_token?: string;
+    query_param_name?: string;
+    query_param_value?: string;
+    header_name?: string;
+    header_value?: string;
+  };
+
+  // Connection lifecycle
+  connect_timeout_ms?: number;
+  heartbeat_interval_ms?: number;
+  heartbeat_message?: string | object;
+  reconnect_delay_ms?: number;
+  max_reconnect_attempts?: number;
+  
+  // Message handling
+  message_timeout_ms?: number;
+  max_message_size_bytes?: number;
+  message_queue_size?: number;
+  
+  // Job correlation
+  job_correlation_field?: string; // Field name for correlating messages to jobs
+  progress_message_type?: string; // Message type that indicates progress updates
+}
+
+// WebSocket connection states
+export enum WebSocketState {
+  DISCONNECTED = 'disconnected',
+  CONNECTING = 'connecting',
+  CONNECTED = 'connected',
+  RECONNECTING = 'reconnecting',
+  FAILED = 'failed'
+}
+
+// Standard message categories for consistent message handling
+export enum MessageType {
+  JOB_SUBMIT = 'job_submit',
+  JOB_PROGRESS = 'job_progress',
+  JOB_COMPLETE = 'job_complete',
+  JOB_ERROR = 'job_error',
+  HEARTBEAT = 'heartbeat',
+  CONNECTION = 'connection',
+  UNKNOWN = 'unknown'
+}
+
+export interface WebSocketMessage {
+  type: MessageType;
+  jobId?: string;
+  data: any;
+  timestamp: number;
+}
+
+// Active job tracking for message correlation
+interface ActiveJob {
+  jobData: JobData;
+  progressCallback?: ProgressCallback;
+  resolve: (result: JobResult) => void;
+  reject: (error: Error) => void;
+  timeout?: NodeJS.Timeout;
+  startTime: number;
+}
+
+/**
+ * Abstract WebSocketConnector class - handles all WebSocket communication patterns
+ * Services implement the abstract methods for their specific message formats and job logic
+ */
+export abstract class WebSocketConnector extends BaseConnector {
+  protected websocket: WebSocket | null = null;
+  protected connectionState: WebSocketState = WebSocketState.DISCONNECTED;
+  protected reconnectAttempts: number = 0;
+  protected readonly wsConfig: WebSocketConnectorConfig;
+  
+  // Job and message management
+  protected activeJobs = new Map<string, ActiveJob>();
+  protected messageQueue: WebSocketMessage[] = [];
+  private heartbeatInterval: NodeJS.Timeout | null = null;
+  
+  constructor(connectorId: string, config: WebSocketConnectorConfig) {
+    super(connectorId, config);
+    this.wsConfig = {
+      // Default WebSocket configuration
+      connect_timeout_ms: 10000,
+      heartbeat_interval_ms: 30000,
+      heartbeat_message: { type: 'ping' },
+      reconnect_delay_ms: 5000,
+      max_reconnect_attempts: 5,
+      message_timeout_ms: 60000,
+      max_message_size_bytes: 10 * 1024 * 1024, // 10MB
+      message_queue_size: 1000,
+      job_correlation_field: 'jobId',
+      progress_message_type: 'progress',
+      ...config
+    };
+  }
+
+  // ========================================
+  // CONNECTION MANAGEMENT
+  // ========================================
+
+  /**
+   * Establish WebSocket connection with authentication and error handling
+   */
+  protected async connect(): Promise<void> {
+    if (this.connectionState === WebSocketState.CONNECTING || 
+        this.connectionState === WebSocketState.CONNECTED) {
+      return;
+    }
+
+    this.connectionState = WebSocketState.CONNECTING;
+    
+    try {
+      const wsUrl = this.buildWebSocketURL();
+      const wsOptions = this.buildConnectionOptions();
+      
+      logger.debug(`Connecting to WebSocket`, {
+        connector: this.connector_id,
+        url: wsUrl,
+        attempt: this.reconnectAttempts + 1
+      });
+
+      this.websocket = new WebSocket(wsUrl, wsOptions);
+      
+      // Setup connection timeout
+      const connectTimeout = setTimeout(() => {
+        if (this.connectionState === WebSocketState.CONNECTING) {
+          this.websocket?.terminate();
+          this.handleConnectionError(new Error('Connection timeout'));
+        }
+      }, this.wsConfig.connect_timeout_ms);
+
+      // Setup event handlers
+      this.websocket.on('open', () => {
+        clearTimeout(connectTimeout);
+        this.handleConnectionOpen();
+      });
+
+      this.websocket.on('message', (data) => {
+        this.handleIncomingMessage(data);
+      });
+
+      this.websocket.on('error', (error) => {
+        clearTimeout(connectTimeout);
+        this.handleConnectionError(error);
+      });
+
+      this.websocket.on('close', (code, reason) => {
+        clearTimeout(connectTimeout);
+        this.handleConnectionClose(code, reason);
+      });
+
+    } catch (error) {
+      this.handleConnectionError(error as Error);
+    }
+  }
+
+  /**
+   * Build WebSocket URL with authentication if configured
+   */
+  private buildWebSocketURL(): string {
+    let wsUrl = this.wsConfig.websocket_url || this.config.base_url;
+    
+    // Convert HTTP(S) URLs to WS(S)
+    wsUrl = wsUrl.replace(/^http/, 'ws');
+    
+    // Add query parameter authentication
+    if (this.wsConfig.auth?.type === 'query_param') {
+      const separator = wsUrl.includes('?') ? '&' : '?';
+      const paramName = this.wsConfig.auth.query_param_name || 'token';
+      const paramValue = encodeURIComponent(this.wsConfig.auth.query_param_value || '');
+      wsUrl += `${separator}${paramName}=${paramValue}`;
+    }
+
+    // Add basic auth to URL if configured
+    if (this.wsConfig.auth?.type === 'basic' && 
+        this.wsConfig.auth.username && 
+        this.wsConfig.auth.password) {
+      const url = new URL(wsUrl);
+      url.username = this.wsConfig.auth.username;
+      url.password = this.wsConfig.auth.password;
+      wsUrl = url.toString();
+    }
+
+    return wsUrl;
+  }
+
+  /**
+   * Build WebSocket connection options including headers
+   */
+  private buildConnectionOptions(): any {
+    const options: any = {
+      protocols: this.wsConfig.protocols,
+      timeout: this.wsConfig.connect_timeout_ms
+    };
+
+    // Add header-based authentication
+    if (this.wsConfig.auth?.type === 'bearer') {
+      options.headers = {
+        'Authorization': `Bearer ${this.wsConfig.auth.bearer_token}`,
+        ...options.headers
+      };
+    } else if (this.wsConfig.auth?.type === 'header') {
+      const headerName = this.wsConfig.auth.header_name || 'X-API-Key';
+      options.headers = {
+        [headerName]: this.wsConfig.auth.header_value,
+        ...options.headers
+      };
+    }
+
+    return options;
+  }
+
+  /**
+   * Handle successful WebSocket connection
+   */
+  private handleConnectionOpen(): void {
+    this.connectionState = WebSocketState.CONNECTED;
+    this.reconnectAttempts = 0;
+    
+    logger.info(`WebSocket connected successfully`, {
+      connector: this.connector_id,
+      url: this.wsConfig.websocket_url || this.config.base_url
+    });
+
+    // Start heartbeat if configured
+    this.startHeartbeat();
+    
+    // Call service-specific connection handler
+    this.onConnectionEstablished();
+  }
+
+  /**
+   * Handle WebSocket connection errors
+   */
+  private handleConnectionError(error: Error): void {
+    this.connectionState = WebSocketState.FAILED;
+    
+    logger.error(`WebSocket connection error`, {
+      connector: this.connector_id,
+      error: error.message,
+      attempt: this.reconnectAttempts + 1
+    });
+
+    // Attempt reconnection if configured
+    this.attemptReconnection();
+  }
+
+  /**
+   * Handle WebSocket connection close
+   */
+  private handleConnectionClose(code: number, reason: Buffer): void {
+    this.connectionState = WebSocketState.DISCONNECTED;
+    this.stopHeartbeat();
+    
+    logger.warn(`WebSocket connection closed`, {
+      connector: this.connector_id,
+      code,
+      reason: reason.toString(),
+      wasConnected: this.reconnectAttempts === 0
+    });
+
+    // Attempt reconnection unless it was a clean close
+    if (code !== 1000) { // 1000 = normal closure
+      this.attemptReconnection();
+    }
+  }
+
+  /**
+   * Attempt to reconnect with exponential backoff
+   */
+  private async attemptReconnection(): Promise<void> {
+    if (this.reconnectAttempts >= this.wsConfig.max_reconnect_attempts!) {
+      logger.error(`Max reconnection attempts reached`, {
+        connector: this.connector_id,
+        attempts: this.reconnectAttempts
+      });
+      
+      this.connectionState = WebSocketState.FAILED;
+      this.failAllActiveJobs('WebSocket connection failed');
+      return;
+    }
+
+    this.connectionState = WebSocketState.RECONNECTING;
+    this.reconnectAttempts++;
+    
+    const delay = this.calculateReconnectDelay();
+    
+    logger.info(`Attempting WebSocket reconnection`, {
+      connector: this.connector_id,
+      attempt: this.reconnectAttempts,
+      delayMs: delay
+    });
+
+    setTimeout(() => {
+      this.connect();
+    }, delay);
+  }
+
+  /**
+   * Calculate reconnection delay with exponential backoff
+   */
+  private calculateReconnectDelay(): number {
+    const baseDelay = this.wsConfig.reconnect_delay_ms!;
+    const exponentialDelay = baseDelay * Math.pow(2, this.reconnectAttempts - 1);
+    const jitter = Math.random() * 1000; // Add up to 1s jitter
+    
+    return Math.min(exponentialDelay + jitter, 30000); // Cap at 30s
+  }
+
+  /**
+   * Disconnect WebSocket cleanly
+   */
+  protected async disconnect(): Promise<void> {
+    this.stopHeartbeat();
+    
+    if (this.websocket && this.connectionState === WebSocketState.CONNECTED) {
+      this.websocket.close(1000, 'Normal closure');
+    }
+    
+    this.websocket = null;
+    this.connectionState = WebSocketState.DISCONNECTED;
+  }
+
+  // ========================================
+  // HEARTBEAT MANAGEMENT
+  // ========================================
+
+  /**
+   * Start heartbeat to keep connection alive
+   */
+  private startHeartbeat(): void {
+    if (this.wsConfig.heartbeat_interval_ms! <= 0) {
+      return; // Heartbeat disabled
+    }
+
+    this.heartbeatInterval = setInterval(() => {
+      this.sendHeartbeat();
+    }, this.wsConfig.heartbeat_interval_ms);
+  }
+
+  /**
+   * Stop heartbeat
+   */
+  private stopHeartbeat(): void {
+    if (this.heartbeatInterval) {
+      clearInterval(this.heartbeatInterval);
+      this.heartbeatInterval = null;
+    }
+  }
+
+  /**
+   * Send heartbeat message
+   */
+  private sendHeartbeat(): void {
+    if (this.connectionState === WebSocketState.CONNECTED && this.websocket) {
+      const heartbeatMessage = this.buildHeartbeatMessage();
+      this.sendMessage(heartbeatMessage);
+    }
+  }
+
+  /**
+   * Build heartbeat message (can be overridden by services)
+   */
+  protected buildHeartbeatMessage(): any {
+    return this.wsConfig.heartbeat_message;
+  }
+
+  // ========================================
+  // MESSAGE HANDLING
+  // ========================================
+
+  /**
+   * Handle incoming WebSocket messages
+   */
+  private handleIncomingMessage(data: any): void {
+    try {
+      // Parse message data
+      const rawMessage = data instanceof Buffer ? data.toString() : data;
+      const messageData = typeof rawMessage === 'string' ? JSON.parse(rawMessage) : rawMessage;
+      
+      // Classify and route message
+      const message: WebSocketMessage = {
+        type: this.classifyMessage(messageData),
+        jobId: this.extractJobId(messageData),
+        data: messageData,
+        timestamp: Date.now()
+      };
+
+      // Route message to appropriate handler
+      this.routeMessage(message);
+
+    } catch (error) {
+      logger.error(`Failed to parse WebSocket message`, {
+        connector: this.connector_id,
+        error: error.message,
+        data: data.toString().substring(0, 200) // First 200 chars for debugging
+      });
+    }
+  }
+
+  /**
+   * Route message to appropriate handler based on type
+   */
+  private routeMessage(message: WebSocketMessage): void {
+    switch (message.type) {
+      case MessageType.JOB_PROGRESS:
+        this.handleJobProgressMessage(message);
+        break;
+        
+      case MessageType.JOB_COMPLETE:
+        this.handleJobCompleteMessage(message);
+        break;
+        
+      case MessageType.JOB_ERROR:
+        this.handleJobErrorMessage(message);
+        break;
+        
+      case MessageType.HEARTBEAT:
+        this.handleHeartbeatMessage(message);
+        break;
+        
+      case MessageType.CONNECTION:
+        this.handleConnectionMessage(message);
+        break;
+        
+      default:
+        // Let service-specific handler process unknown messages
+        this.onMessage(message);
+    }
+  }
+
+  /**
+   * Handle job progress messages
+   */
+  private handleJobProgressMessage(message: WebSocketMessage): void {
+    if (!message.jobId) return;
+    
+    const activeJob = this.activeJobs.get(message.jobId);
+    if (activeJob && activeJob.progressCallback) {
+      const progress = this.extractProgress(message.data);
+      activeJob.progressCallback(progress);
+    }
+  }
+
+  /**
+   * Handle job completion messages
+   */
+  private handleJobCompleteMessage(message: WebSocketMessage): void {
+    if (!message.jobId) return;
+    
+    const activeJob = this.activeJobs.get(message.jobId);
+    if (activeJob) {
+      try {
+        const result = this.parseJobResult(message.data, activeJob.jobData);
+        this.completeJob(message.jobId, result);
+      } catch (error) {
+        this.failJob(message.jobId, error as Error);
+      }
+    }
+  }
+
+  /**
+   * Handle job error messages
+   */
+  private handleJobErrorMessage(message: WebSocketMessage): void {
+    if (!message.jobId) return;
+    
+    const activeJob = this.activeJobs.get(message.jobId);
+    if (activeJob) {
+      const error = new Error(this.extractErrorMessage(message.data));
+      this.failJob(message.jobId, error);
+    }
+  }
+
+  /**
+   * Handle heartbeat response messages
+   */
+  private handleHeartbeatMessage(message: WebSocketMessage): void {
+    // Service can override if needed
+    logger.debug(`Heartbeat received`, {
+      connector: this.connector_id
+    });
+  }
+
+  /**
+   * Handle connection-related messages
+   */
+  private handleConnectionMessage(message: WebSocketMessage): void {
+    // Service can override for connection-specific messages
+    this.onConnectionMessage(message);
+  }
+
+  /**
+   * Send message through WebSocket
+   */
+  protected sendMessage(message: any): void {
+    if (this.connectionState !== WebSocketState.CONNECTED || !this.websocket) {
+      throw new Error('WebSocket not connected');
+    }
+
+    const messageString = typeof message === 'string' ? message : JSON.stringify(message);
+    this.websocket.send(messageString);
+  }
+
+  // ========================================
+  // JOB MANAGEMENT
+  // ========================================
+
+  /**
+   * Complete a job successfully
+   */
+  private completeJob(jobId: string, result: JobResult): void {
+    const activeJob = this.activeJobs.get(jobId);
+    if (activeJob) {
+      if (activeJob.timeout) {
+        clearTimeout(activeJob.timeout);
+      }
+      
+      this.activeJobs.delete(jobId);
+      activeJob.resolve(result);
+      
+      logger.debug(`WebSocket job completed`, {
+        connector: this.connector_id,
+        jobId,
+        duration: Date.now() - activeJob.startTime
+      });
+    }
+  }
+
+  /**
+   * Fail a job with an error
+   */
+  private failJob(jobId: string, error: Error): void {
+    const activeJob = this.activeJobs.get(jobId);
+    if (activeJob) {
+      if (activeJob.timeout) {
+        clearTimeout(activeJob.timeout);
+      }
+      
+      this.activeJobs.delete(jobId);
+      activeJob.reject(error);
+      
+      logger.error(`WebSocket job failed`, {
+        connector: this.connector_id,
+        jobId,
+        error: error.message,
+        duration: Date.now() - activeJob.startTime
+      });
+    }
+  }
+
+  /**
+   * Fail all active jobs (used during connection failures)
+   */
+  private failAllActiveJobs(reason: string): void {
+    const error = new Error(reason);
+    
+    for (const [jobId, activeJob] of this.activeJobs.entries()) {
+      if (activeJob.timeout) {
+        clearTimeout(activeJob.timeout);
+      }
+      activeJob.reject(error);
+    }
+    
+    this.activeJobs.clear();
+  }
+
+  // ========================================
+  // ABSTRACT METHODS - Service Implementation Required
+  // ========================================
+
+  /**
+   * Classify incoming message type for routing
+   */
+  protected abstract classifyMessage(messageData: any): MessageType;
+
+  /**
+   * Extract job ID from message for correlation
+   */
+  protected abstract extractJobId(messageData: any): string | undefined;
+
+  /**
+   * Extract progress information from progress messages
+   */
+  protected abstract extractProgress(messageData: any): number;
+
+  /**
+   * Parse job completion message into JobResult
+   */
+  protected abstract parseJobResult(messageData: any, originalJobData: JobData): JobResult;
+
+  /**
+   * Extract error message from error messages
+   */
+  protected abstract extractErrorMessage(messageData: any): string;
+
+  /**
+   * Build job submission message for the specific service
+   */
+  protected abstract buildJobMessage(jobData: JobData): any;
+
+  /**
+   * Handle service-specific messages not covered by standard types
+   */
+  protected abstract onMessage(message: WebSocketMessage): void;
+
+  /**
+   * Called when WebSocket connection is established
+   * Override for service-specific initialization
+   */
+  protected onConnectionEstablished(): void {
+    // Default implementation does nothing
+  }
+
+  /**
+   * Called when connection-specific messages are received
+   * Override for service-specific connection handling
+   */
+  protected onConnectionMessage(message: WebSocketMessage): void {
+    // Default implementation does nothing
+  }
+
+  // ========================================
+  // BaseConnector Implementation
+  // ========================================
+
+  async processJob(jobData: JobData, progressCallback?: ProgressCallback): Promise<JobResult> {
+    // Ensure connection is established
+    if (this.connectionState !== WebSocketState.CONNECTED) {
+      await this.connect();
+    }
+
+    return new Promise<JobResult>((resolve, reject) => {
+      // Setup job timeout
+      const timeout = setTimeout(() => {
+        this.failJob(jobData.id, new Error('Job timeout'));
+      }, this.wsConfig.message_timeout_ms);
+
+      // Track active job
+      const activeJob: ActiveJob = {
+        jobData,
+        progressCallback,
+        resolve,
+        reject,
+        timeout,
+        startTime: Date.now()
+      };
+
+      this.activeJobs.set(jobData.id, activeJob);
+
+      try {
+        // Build and send job message
+        const jobMessage = this.buildJobMessage(jobData);
+        this.sendMessage(jobMessage);
+
+        logger.debug(`WebSocket job submitted`, {
+          connector: this.connector_id,
+          jobId: jobData.id,
+          type: jobData.type
+        });
+
+      } catch (error) {
+        this.failJob(jobData.id, error as Error);
+      }
+    });
+  }
+
+  async checkHealth(): Promise<boolean> {
+    return this.connectionState === WebSocketState.CONNECTED;
+  }
+
+  protected async initializeService(): Promise<void> {
+    await this.connect();
+  }
+
+  protected async cleanupService(): Promise<void> {
+    await this.disconnect();
+  }
+}
