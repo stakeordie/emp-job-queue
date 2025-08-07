@@ -10,136 +10,151 @@ This document provides a comprehensive map of the entire documentation site stru
 <FullscreenDiagram>
 
 ```mermaid
-graph TB
-    subgraph "Main Navigation"
-        HOME[🏠 Home<br/>index.md ✅]
-        HOME --> UNDER[📋 1. Understanding]
-        HOME --> HOW[⚙️ 2. How It Works]
-        HOME --> IMPL[🛠️ 3. Implementation]
-        HOME --> PROD[🚀 4. Production]
-        HOME --> DEV[💻 5. Development]
-        HOME --> FUTURE[🔮 6. Future Vision]
-        HOME --> API[🌐 8. Open API]
-        HOME --> OBS[📊 9. Observability]
-    end
+graph TD
+    %% Main Navigation Hub
+    HOME[🏠 Home<br/>index.md ✅]
     
-    subgraph "1. Understanding the System"
-        UNDER --> U1[Overview<br/>index.md ✅]
-        UNDER --> U2[System Overview<br/>system-overview.md ✅]
-        UNDER --> U3[North Star Vision<br/>north-star-vision.md 🚧]
-        UNDER --> U4[Business Context<br/>business-context.md 📝]
-        UNDER --> U5[Capabilities & Limitations<br/>capabilities-limitations.md 📝]
-    end
+    %% Primary Sections - Vertical Layout
+    HOME --- UNDER[📋 1. Understanding]
+    HOME --- HOW[⚙️ 2. How It Works]
+    HOME --- IMPL[🛠️ 3. Implementation]
+    HOME --- PROD[🚀 4. Production]
     
-    subgraph "2. How It Works"
-        HOW --> H1[Overview<br/>index.md ✅]
-        HOW --> H2[Job Lifecycle<br/>job-lifecycle.md ✅]
-        HOW --> H3[Worker Selection<br/>worker-selection.md ✅]
-        HOW --> H4[Redis Architecture<br/>redis-architecture.md 📝]
-        HOW --> H5[Machine Communication<br/>machine-communication.md 📝]
-        HOW --> H6[Scaling Mechanisms<br/>scaling-mechanisms.md 🚧]
-    end
+    %% Secondary Sections  
+    HOME --- DEV[💻 5. Development]
+    HOME --- FUTURE[🔮 6. Future Vision]
+    HOME --- API[🌐 8. Open API]
+    HOME --- OBS[📊 9. Observability]
     
-    subgraph "3. Implementation Details"
-        IMPL --> I1[Overview<br/>index.md ✅]
-        IMPL --> I2[Unified Machine Architecture<br/>unified-machine-architecture.md ✅]
-        IMPL --> I3[Technical Implementation<br/>technical-implementation.md ✅]
-        IMPL --> I4[WebSocket API<br/>websocket-api.md ✅]
-        IMPL --> I5[Machine Bootstrap & Lifecycle<br/>machine-bootstrap-lifecycle.md ✅]
-        IMPL --> I6[Webhook Notification System<br/>webhook-notification-system.md ✅]
-        IMPL --> I7[Connector Architecture ✨<br/>connector-architecture.md ✅]
-        IMPL --> I8[Redis Data Structures<br/>redis-data-structures.md 📝]
-        IMPL --> I9[Service Communication<br/>service-communication.md 📝]
-        IMPL --> I10[API Connectors<br/>api-connectors.md 🚧]
-    end
+    %% Understanding System - Compact Vertical
+    UNDER --- U1[Overview ✅]
+    UNDER --- U2[System Overview ✅]
+    UNDER --- U3[North Star Vision 🚧]
+    UNDER --- U4[Business Context 📝]
+    UNDER --- U5[Capabilities & Limitations 📝]
     
-    subgraph "4. Running in Production"
-        PROD --> P1[Overview<br/>index.md ✅]
-        PROD --> P2[Failure Handling<br/>failure-handling.md ✅]
-        PROD --> P3[Machine Logs Analysis<br/>machine-logs-analysis.md ✅]
-        PROD --> P4[Deployment Strategies<br/>deployment-strategies.md 📝]
-        PROD --> P5[Monitoring & Alerting<br/>monitoring-alerting.md 📝]
-        PROD --> P6[Performance Tuning<br/>performance-tuning.md 🚧]
-        PROD --> P7[Capacity Planning<br/>capacity-planning.md 📝]
-    end
+    %% How It Works - Compact Vertical
+    HOW --- H1[Overview ✅]
+    HOW --- H2[Job Lifecycle ✅]
+    HOW --- H3[Worker Selection ✅]
+    HOW --- H4[Redis Architecture 📝]
+    HOW --- H5[Machine Communication 📝]
+    HOW --- H6[Scaling Mechanisms 🚧]
     
-    subgraph "5. Development"
-        DEV --> D1[Overview<br/>index.md ✅]
-        DEV --> D2[Development Changelog<br/>changelog.md ✅]
-        DEV --> D3[Monorepo Migration<br/>monorepo-migration.md ✅]
-        DEV --> D4[Local Development Setup<br/>local-development.md 📝]
-        DEV --> D5[Testing Procedures<br/>testing-procedures.md 🚧]
-        DEV --> D6[Contributing Guidelines<br/>contributing.md 📝]
-        DEV --> D7[Architecture Decisions<br/>architecture-decisions.md 📝]
-    end
+    %% Implementation Details - Two Columns
+    IMPL --- I1[Overview ✅]
+    IMPL --- I2[Unified Machine Architecture ✅]
+    IMPL --- I3[Technical Implementation ✅]
+    IMPL --- I4[WebSocket API ✅]
+    IMPL --- I5[Machine Bootstrap & Lifecycle ✅]
     
-    subgraph "6. Future Vision"
-        FUTURE --> F1[Overview<br/>index.md ✅]
-        FUTURE --> F2[North Star Architecture<br/>north-star-architecture.md 🚧]
-        FUTURE --> F3[Predictive Model Management<br/>predictive-model-management.md 🚧]
-        FUTURE --> F4[Pool-Based Routing<br/>pool-based-routing.md 📝]
-        FUTURE --> F5[Technical Roadmap<br/>technical-roadmap.md 📝]
-        FUTURE --> F6[Customer Documentation Plans<br/>customer-docs-planning.md 📝]
-    end
+    I1 --- I6[Webhook Notification System ✅]
+    I2 --- I7[Connector Architecture ✨ ✅]
+    I3 --- I8[Redis Data Structures 📝]
+    I4 --- I9[Service Communication 📝]
+    I5 --- I10[API Connectors 🚧]
     
-    subgraph "8. EmProps Open API"
-        API --> A1[Overview<br/>index.md ✅]
-        API --> ARCH[Architecture Section]
-        API --> REF[API Reference Section]
-        API --> GUIDE[Implementation Guides]
-        API --> EX[Examples Section]
-        
-        ARCH --> A2[Architecture Overview<br/>architecture/index.md ✅]
-        ARCH --> A3[Collection System<br/>architecture/collection-system.md ✅]
-        ARCH --> A4[Frontend Collection Flow ✨<br/>architecture/frontend-collection-flow.md ✅]
-        ARCH --> A5[Database Schema<br/>architecture/database-schema.md 📝]
-        
-        REF --> R1[API Reference Overview<br/>api-reference/index.md ✅]
-        REF --> R2[Collections<br/>api-reference/collections.md 📝]
-        REF --> R3[Workflows<br/>api-reference/workflows.md 📝]
-        REF --> R4[Models<br/>api-reference/models.md 📝]
-        REF --> R5[Generation<br/>api-reference/generation.md 📝]
-        
-        GUIDE --> G1[Implementation Overview<br/>implementation-guides/index.md ✅]
-        GUIDE --> G2[Collection Creation API ✨<br/>implementation-guides/collection-generation-api.md ✅]
-        GUIDE --> G3[Social Collection API ✨<br/>implementation-guides/social-collection-api.md ✅]
-        GUIDE --> G4[Workflow Integration<br/>implementation-guides/workflow-integration.md 📝]
-        GUIDE --> G5[Authentication Setup<br/>implementation-guides/authentication-setup.md 📝]
-        
-        EX --> E1[Examples Overview<br/>examples/index.md ✅]
-        EX --> E2[Basic Collection<br/>examples/basic-collection.md 📝]
-        EX --> E3[Advanced Workflows<br/>examples/advanced-workflows.md 📝]
-        EX --> E4[Progress Tracking<br/>examples/progress-tracking.md 📝]
-    end
+    %% Production - Two Columns
+    PROD --- P1[Overview ✅]
+    PROD --- P2[Failure Handling ✅]
+    PROD --- P3[Machine Logs Analysis ✅]
+    PROD --- P4[Deployment Strategies 📝]
     
-    subgraph "9. Observability"
-        OBS --> O1[Overview<br/>index.md ✅]
-        OBS --> O2[Information Flow<br/>information-flow.md ✅]
-        OBS --> O3[Architecture ✨<br/>architecture.md ✅]
-        OBS --> O4[Progress Status ✅<br/>progress-status.md ✅]
-        OBS --> O5[Information Flow Detailed ✨<br/>information-flow-detailed.md ✅]
-        OBS --> O6[Adding Telemetry<br/>adding-telemetry.md 📝]
-        OBS --> O7[Debugging Guide<br/>debugging-guide.md 📝]
-        OBS --> O8[Query Cookbook<br/>query-cookbook.md 📝]
-        OBS --> O9[Monitoring Setup<br/>monitoring-setup.md 📝]
-        OBS --> O10[Alert Configuration<br/>alert-configuration.md 📝]
-        OBS --> O11[Performance Tuning<br/>performance-tuning.md 📝]
-    end
+    P1 --- P5[Monitoring & Alerting 📝]
+    P2 --- P6[Performance Tuning 🚧]
+    P3 --- P7[Capacity Planning 📝]
     
-    subgraph "Meta & Utility Pages"
-        META[📋 Site Map<br/>sitemap.md ✅]
-        EXAMPLES[📚 Examples Section<br/>examples/ ✅]
-        UTIL1[Health Check Sequence<br/>health-check-sequence-diagram.md ✅]
-        UTIL2[WebSocket Connection Issue<br/>websocket-connection-issue.md ✅]
-        UTIL3[Base vs Basic Comparison<br/>base_vs_basic_comparison.md ✅]
-    end
+    %% Development - Compact
+    DEV --- D1[Overview ✅]
+    DEV --- D2[Development Changelog ✅]
+    DEV --- D3[Monorepo Migration ✅]
+    DEV --- D4[Local Development Setup 📝]
     
-    subgraph "Legend"
+    D1 --- D5[Testing Procedures 🚧]
+    D2 --- D6[Contributing Guidelines 📝]
+    D3 --- D7[Architecture Decisions 📝]
+    
+    %% Future Vision - Compact
+    FUTURE --- F1[Overview ✅]
+    FUTURE --- F2[North Star Architecture 🚧]
+    FUTURE --- F3[Predictive Model Management 🚧]
+    
+    F1 --- F4[Pool-Based Routing 📝]
+    F2 --- F5[Technical Roadmap 📝]
+    F3 --- F6[Customer Documentation Plans 📝]
+    
+    %% Open API - Hierarchical Sections
+    API --- A1[Overview ✅]
+    API --- ARCH[🏗️ Architecture]
+    API --- REF[📚 API Reference]
+    API --- GUIDE[📖 Implementation Guides]
+    API --- EX[💡 Examples]
+    
+    %% Architecture Subsection
+    ARCH --- A2[Architecture Overview ✅]
+    ARCH --- A3[Collection System ✅]
+    A2 --- A4[Frontend Collection Flow ✨ ✅]
+    A3 --- A5[Database Schema 📝]
+    
+    %% API Reference Subsection  
+    REF --- R1[API Reference Overview ✅]
+    REF --- R2[Collections 📝]
+    R1 --- R3[Workflows 📝]
+    R2 --- R4[Models 📝]
+    R3 --- R5[Generation 📝]
+    
+    %% Implementation Guides
+    GUIDE --- G1[Implementation Overview ✅]
+    GUIDE --- G2[Collection Creation API ✨ ✅]
+    G1 --- G3[Social Collection API ✨ ✅]
+    G2 --- G4[Workflow Integration 📝]
+    G3 --- G5[Authentication Setup 📝]
+    
+    %% Examples
+    EX --- E1[Examples Overview ✅]
+    EX --- E2[Basic Collection 📝]
+    E1 --- E3[Advanced Workflows 📝]
+    E2 --- E4[Progress Tracking 📝]
+    
+    %% Observability - Two Column Layout
+    OBS --- O1[Overview ✅]
+    OBS --- O2[Information Flow ✅]
+    OBS --- O3[Architecture ✨ ✅]
+    OBS --- O4[Progress Status ✅ ✅]
+    OBS --- O5[Information Flow Detailed ✨ ✅]
+    
+    O1 --- O6[Adding Telemetry 📝]
+    O2 --- O7[Debugging Guide 📝]
+    O3 --- O8[Query Cookbook 📝]
+    O4 --- O9[Monitoring Setup 📝]
+    O5 --- O10[Alert Configuration 📝]
+    O6 --- O11[Performance Tuning 📝]
+    
+    %% Meta Pages - Separate Cluster
+    META[📋 Site Map ✅]
+    EXAMPLES_SECTION[📚 Examples Section ✅]
+    UTIL1[Health Check Sequence ✅]
+    UTIL2[WebSocket Connection Issue ✅]
+    UTIL3[Base vs Basic Comparison ✅]
+    
+    %% Legend - Bottom Right
+    subgraph "Status Legend"
         L1[✅ Completed & Published]
-        L2[✨ Recently Added]
+        L2[✨ Recently Added] 
         L3[🚧 Work in Progress]
         L4[📝 Planned]
     end
+    
+    %% Styling for better readability
+    classDef completed fill:#d4edda,stroke:#28a745,stroke-width:2px
+    classDef recent fill:#fff3cd,stroke:#ffc107,stroke-width:2px
+    classDef wip fill:#cce5ff,stroke:#007bff,stroke-width:2px
+    classDef planned fill:#f8d7da,stroke:#dc3545,stroke-width:2px
+    
+    class HOME,U1,U2,H1,H2,H3,I1,I2,I3,I4,I5,I6,P1,P2,P3,D1,D2,D3,F1,A1,A2,A3,ARCH,REF,GUIDE,EX,G1,G2,G3,R1,E1,O1,O2,META,EXAMPLES_SECTION,UTIL1,UTIL2,UTIL3 completed
+    class I7,A4,O3,O4,O5 recent
+    class U3,H6,I10,P6,D5,F2,F3 wip
+    class U4,U5,H4,H5,I8,I9,P4,P5,P7,D4,D6,D7,F4,F5,F6,A5,R2,R3,R4,R5,G4,G5,E2,E3,E4,O6,O7,O8,O9,O10,O11 planned
 ```
 
 </FullscreenDiagram>
