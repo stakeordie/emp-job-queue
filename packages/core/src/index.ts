@@ -25,3 +25,8 @@ export * from './services/webhook-redis-storage.js';
 
 // Log Interpretation
 export * from './log-interpretation/index.js';
+
+// Telemetry and Observability
+export * from './telemetry/fluent-bit-transport-fixed.js';
+export * from './telemetry/connector-logger.js';
+export * from './telemetry/connector-log-schemas.js';
