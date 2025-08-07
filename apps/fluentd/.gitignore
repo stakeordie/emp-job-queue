@@ -1,0 +1,19 @@
+# Environment files with secrets
+.env
+.env.local
+.env.production
+
+# Logs
+logs/
+*.log
+
+# Fluent Bit buffer files
+buffer/
+*.pos
+
+# Docker volumes
+data/
+
+# Temporary files
+tmp/
+temp/
