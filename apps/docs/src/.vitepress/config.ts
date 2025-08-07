@@ -114,6 +114,7 @@ const config = defineConfig({
             { text: 'WebSocket API', link: '/03-implementation-details/websocket-api' },
             { text: 'Machine Bootstrap & Lifecycle', link: '/03-implementation-details/machine-bootstrap-lifecycle' },
             { text: 'Webhook Notification System', link: '/03-implementation-details/webhook-notification-system' },
+            { text: 'Connector Architecture ✨', link: '/03-implementation-details/connector-architecture' },
             { text: 'Redis Data Structures 📝', link: '/03-implementation-details/redis-data-structures' },
             { text: 'Service Communication 📝', link: '/03-implementation-details/service-communication' },
             { text: 'API Connectors 🚧', link: '/03-implementation-details/api-connectors' }
@@ -235,7 +236,9 @@ const config = defineConfig({
           items: [
             { text: 'Overview', link: '/09-observability/' },
             { text: 'Information Flow', link: '/09-observability/information-flow' },
-            { text: 'Architecture 📝', link: '/09-observability/architecture' },
+            { text: 'Architecture ✨', link: '/09-observability/architecture' },
+            { text: 'Progress Status ✅', link: '/09-observability/progress-status' },
+            { text: 'Information Flow (Detailed) ✨', link: '/09-observability/information-flow-detailed' },
             { text: 'Adding Telemetry 📝', link: '/09-observability/adding-telemetry' },
             { text: 'Debugging Guide 📝', link: '/09-observability/debugging-guide' },
             { text: 'Query Cookbook 📝', link: '/09-observability/query-cookbook' },
