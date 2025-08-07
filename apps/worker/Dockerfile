@@ -39,6 +39,14 @@ FROM node:20-alpine AS runner
 
 WORKDIR /app
 
+# Install Fluent Bit for log forwarding
+RUN apk add --no-cache curl && \
+    curl -L https://github.com/fluent/fluent-bit/releases/download/v3.2.2/fluent-bit-3.2.2-linux-x86_64.tar.gz | tar -xz -C /opt && \
+    ln -sf /opt/fluent-bit-3.2.2-linux-x86_64/bin/fluent-bit /usr/local/bin/fluent-bit
+
+# Create directories for Fluent Bit
+RUN mkdir -p /etc/fluent-bit /var/log/fluent-bit
+
 # Create non-root user
 RUN addgroup -g 1001 -S nodejs
 RUN adduser -S nodejs -u 1001

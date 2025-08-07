@@ -1,39 +1,38 @@
-# Fluentd Log Aggregation Service
-# Receives logs from Fluent Bit instances and forwards to Dash0
+# Calyptia Fluentd Installation - Working Version
+FROM ubuntu:20.04
 
-FROM fluent/fluentd:v1.16-debian
+# Prevent interactive prompts during installation
+ENV DEBIAN_FRONTEND=noninteractive
 
-# Switch to root to install packages
-USER root
+# Install required packages for Calyptia Fluentd
+RUN apt-get update && \
+    apt-get install -y \
+    curl \
+    sudo \
+    gnupg \
+    lsb-release \
+    apt-transport-https \
+    ca-certificates \
+    && rm -rf /var/lib/apt/lists/*
 
-# Install additional gems
-RUN gem install fluent-plugin-redis \
-                fluent-plugin-elasticsearch \
-                fluent-plugin-prometheus \
-                fluent-plugin-multi-format-parser \
-                fluent-plugin-rewrite-tag-filter \
-                fluent-plugin-record-modifier
+# Create directories 
+RUN mkdir -p /var/log/calyptia-fluentd
 
-# Create directories
-RUN mkdir -p /fluentd/etc /fluentd/plugins
+# Install Calyptia Fluentd first (without our config file present)
+RUN curl -fsSL https://calyptia-fluentd.s3.us-east-2.amazonaws.com/calyptia-fluentd-1-ubuntu-focal.sh | sh
 
-# Copy configuration
-COPY fluentd.conf /fluentd/etc/fluent.conf
-COPY plugins/ /fluentd/plugins/
+# Environment-specific configuration
+ARG ENV=dev
+COPY calyptia-fluentd.${ENV}.conf /etc/calyptia-fluentd/calyptia-fluentd.conf
 
-# Switch back to fluent user
-USER fluent
-
-# Health check
-HEALTHCHECK --interval=30s --timeout=10s --start-period=60s --retries=3 \
-  CMD curl -f http://localhost:24220/api/plugins.json || exit 1
+# Copy and setup entrypoint script
+COPY entrypoint.sh /entrypoint.sh
+RUN chmod +x /entrypoint.sh
 
 # Expose ports
-# 24224: Fluent forward protocol (TCP)
-# 24225: Fluent forward protocol with TLS (TCP) 
-# 24220: HTTP monitoring interface
-# 9880: Prometheus metrics
-EXPOSE 24224 24225 24220 9880
+# 8888 - HTTP input 
+# 24220 - Monitoring
+EXPOSE 8888 24220
 
-# Start Fluentd
-CMD ["fluentd", "-c", "/fluentd/etc/fluent.conf", "-v"]
+# Use entrypoint script
+ENTRYPOINT ["/entrypoint.sh"]
