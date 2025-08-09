@@ -43,13 +43,28 @@ async function runStandaloneService() {
     // Import service class
     const { default: ServiceClass } = await import(modulePath);
 
-    // Parse options from environment
+    // Parse options from environment and command line arguments
     const options = {};
     
-    // Add GPU if specified
-    if (process.env.GPU_ID !== undefined) {
+    // Parse command line arguments for --gpu and --index
+    const argOptions = args.slice(1); // Skip service name
+    for (const arg of argOptions) {
+      if (arg.startsWith('--gpu=')) {
+        const gpuId = parseInt(arg.split('=')[1]);
+        options.gpu = isNaN(gpuId) ? 0 : gpuId;
+        logger.info(`Parsed GPU ID from arguments: ${options.gpu}`);
+      } else if (arg.startsWith('--index=')) {
+        const index = parseInt(arg.split('=')[1]);
+        options.index = isNaN(index) ? 0 : index;
+        logger.info(`Parsed index from arguments: ${options.index}`);
+      }
+    }
+    
+    // Add GPU if specified in environment (fallback)
+    if (process.env.GPU_ID !== undefined && options.gpu === undefined) {
       const gpuId = parseInt(process.env.GPU_ID);
       options.gpu = isNaN(gpuId) ? 0 : gpuId;
+      logger.info(`Using GPU ID from environment: ${options.gpu}`);
     }
 
     // Create config object with all required fields
