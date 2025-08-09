@@ -14,7 +14,7 @@ layout {
             pane split_direction="vertical" {
                 pane name="JOB QUEUE API" {
                     command "bash"
-                    args "-c" "cd ~/code/emprops/ai_infra/emp-job-queue && pnpm dev:local-redis"
+                    args "-c" "cd ~/code/emprops/ai_infra/emp-job-queue && LOG_LEVEL=info pnpm dev:local-redis"
                     start_suspended false
                 }
                 pane name="WEBHOOK SERVICE" {

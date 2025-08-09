@@ -38,6 +38,11 @@ fi
 # Launch iTerm with Zellij layout
 osascript << EOF
 tell application "iTerm"
+    repeat with theWindow in windows
+        close theWindow
+        exit repeat
+    end repeat
+
     create window with default profile
     
     -- Set window size (columns, rows)
