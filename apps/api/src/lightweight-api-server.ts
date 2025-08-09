@@ -179,11 +179,11 @@ export class LightweightAPIServer {
       const allowedOrigins = this.config.corsOrigins || ['*'];
       const origin = req.headers.origin;
 
-      logger.info('API CORS check for origin:', origin, 'allowed origins:', allowedOrigins);
+      logger.debug('API CORS check for origin:', origin, 'allowed origins:', allowedOrigins);
 
       // Allow requests with no origin (like mobile apps or curl requests)
       if (!origin) {
-        logger.info('API CORS: Allowing request with no origin');
+        logger.debug('API CORS: Allowing request with no origin');
         if (allowedOrigins.includes('*')) {
           res.setHeader('Access-Control-Allow-Origin', '*');
         }
@@ -204,14 +204,14 @@ export class LightweightAPIServer {
 
       // Check if origin is explicitly allowed
       if (allowedOrigins.includes('*')) {
-        logger.info('API CORS: Allowing all origins (*)');
+        logger.debug('API CORS: Allowing all origins (*)');
         res.setHeader('Access-Control-Allow-Origin', '*');
       } else if (allowedOrigins.includes(origin)) {
-        logger.info('API CORS: Allowing explicitly listed origin:', origin);
+        logger.debug('API CORS: Allowing explicitly listed origin:', origin);
         res.setHeader('Access-Control-Allow-Origin', origin);
       } else if (origin.includes('localhost') || origin.includes('127.0.0.1')) {
         // Special case: allow localhost variants for development
-        logger.info('API CORS: Allowing localhost origin for development:', origin);
+        logger.debug('API CORS: Allowing localhost origin for development:', origin);
         res.setHeader('Access-Control-Allow-Origin', origin);
       } else {
         // Block the origin
@@ -265,9 +265,7 @@ export class LightweightAPIServer {
         },
         connections: {
           monitors: this.eventBroadcaster.getMonitorCount(),
-          workers: Array.from(
-            (this.eventBroadcaster as unknown as { workers: Map<string, unknown> }).workers.keys()
-          ).length,
+          workers: this.getActiveWorkerCount(),
         },
       };
 
@@ -588,11 +586,9 @@ export class LightweightAPIServer {
             timestamp: Date.now(),
           })
         );
-        logger.info(
-          `[DEBUG] Sent test message to monitor ${monitorId}, ws.readyState: ${ws.readyState}`
-        );
+        logger.debug(`Sent test message to monitor ${monitorId}, ws.readyState: ${ws.readyState}`);
       } catch (error) {
-        logger.error(`[DEBUG] Failed to send test message to monitor ${monitorId}:`, error);
+        logger.debug(`Failed to send test message to monitor ${monitorId}:`, error);
       }
     }, 1000);
 
@@ -804,11 +800,9 @@ export class LightweightAPIServer {
             timestamp: Date.now(),
           })
         );
-        logger.info(
-          `[DEBUG] Sent test message to client ${clientId}, ws.readyState: ${ws.readyState}`
-        );
+        logger.debug(`Sent test message to client ${clientId}, ws.readyState: ${ws.readyState}`);
       } catch (error) {
-        logger.error(`[DEBUG] Failed to send test message to client ${clientId}:`, error);
+        logger.debug(`Failed to send test message to client ${clientId}:`, error);
       }
     }, 1000);
 
@@ -1119,6 +1113,7 @@ export class LightweightAPIServer {
             `Full state snapshot for ${monitorId} completed in ${Date.now() - beforeSnapshot}ms (${Date.now() - connectTime}ms since connect)`
           );
         }
+
         break;
 
       case 'subscribe':
@@ -1152,6 +1147,7 @@ export class LightweightAPIServer {
             pageSize: 20,
           },
         });
+
         break;
 
       // 'heartbeat' case removed - now using WebSocket ping/pong frames
@@ -1295,7 +1291,10 @@ export class LightweightAPIServer {
           const jobResult = {
             success,
             data: resultData.data,
-            error: typeof resultData.error === 'string' ? resultData.error : JSON.stringify(resultData.error || 'Unknown error'),
+            error:
+              typeof resultData.error === 'string'
+                ? resultData.error
+                : JSON.stringify(resultData.error || 'Unknown error'),
             metadata: {
               completed_by: 'delegated_service',
               client_id: clientId,
@@ -1364,155 +1363,58 @@ export class LightweightAPIServer {
     try {
       const startTime = Date.now();
 
-      // Get current workers using SCAN for heartbeat keys
-      const workerKeys: string[] = [];
-      let cursor = '0';
-      do {
-        const [newCursor, keys] = await this.redis.scan(
-          cursor,
-          'MATCH',
-          'worker:*:heartbeat',
-          'COUNT',
-          100
-        );
-        cursor = newCursor;
-        workerKeys.push(...keys);
-      } while (cursor !== '0');
-
-      logger.debug(
-        `SCAN found ${workerKeys.length} worker heartbeat keys in ${Date.now() - startTime}ms`
-      );
-
+      // Get workers from machine structure data (unified machine status)
       const workers = [];
+      
+      logger.debug(`Building workers from ${this.unifiedMachineStatus.size} machine(s) in ${Date.now() - startTime}ms`);
 
-      if (workerKeys.length > 0) {
-        // Extract worker IDs and prepare pipeline
-        const workerIds = workerKeys.map(key => key.split(':')[1]);
-        const pipeline = this.redis.pipeline();
-
-        // Batch fetch worker data and TTLs
-        for (const workerId of workerIds) {
-          pipeline.hgetall(`worker:${workerId}`);
-        }
-        for (const key of workerKeys) {
-          pipeline.ttl(key);
-        }
-
-        const pipelineStart = Date.now();
-        const results = await pipeline.exec();
-        logger.debug(
-          `Pipeline fetched ${workerIds.length} workers data in ${Date.now() - pipelineStart}ms`
-        );
-
-        if (results) {
-          const workerDataResults = results.slice(0, workerIds.length);
-          const ttlResults = results.slice(workerIds.length);
-
-          for (let i = 0; i < workerIds.length; i++) {
-            const [workerErr, workerData] = workerDataResults[i];
-            const [ttlErr, ttl] = ttlResults[i];
-
-            if (
-              !workerErr &&
-              workerData &&
-              Object.keys(workerData as Record<string, unknown>).length > 0
-            ) {
-              const workerId = workerIds[i];
-              const data = workerData as Record<string, string>;
-
-              // Parse capabilities JSON from Redis
-              let capabilities: Record<string, unknown>;
-              try {
-                capabilities = JSON.parse(data.capabilities || '{}');
-              } catch {
-                capabilities = {};
-              }
-
-              // Transform Redis worker data to monitor format
-              interface CapabilitiesData {
-                hardware?: {
-                  gpu_count?: number;
-                  gpu_memory_gb?: number;
-                  gpu_model?: string;
-                  cpu_cores?: number;
-                  ram_gb?: number;
-                };
-                services?: string[];
-                models?: Record<string, unknown>;
-                customer_access?: {
-                  isolation?: string;
-                };
-                performance?: {
-                  concurrent_jobs?: number;
-                };
-              }
-
-              const caps = capabilities as CapabilitiesData;
-
-              // Parse connector statuses if available
-              interface ConnectorStatusObj {
-                status: string;
-                timestamp: number;
-                error_message?: string;
-                [key: string]: unknown;
-              }
-
-              let connectorStatuses: Record<string, unknown> = {};
-              try {
-                if (data.connector_statuses) {
-                  connectorStatuses = JSON.parse(data.connector_statuses as string);
-
-                  // Validate timestamps and mark stale statuses
-                  for (const [serviceType, status] of Object.entries(connectorStatuses)) {
-                    if (status && typeof status === 'object' && 'timestamp' in status) {
-                      const statusObj = status as ConnectorStatusObj;
-                      const ageSeconds = (Date.now() - statusObj.timestamp) / 1000;
-
-                      if (ageSeconds > 90) {
-                        // Stale if older than 90 seconds (15s interval + buffer)
-                        logger.warn(
-                          `Stale connector status for ${workerId}:${serviceType}, age: ${Math.round(ageSeconds)}s`
-                        );
-                        statusObj.status = 'unknown';
-                        statusObj.error_message = `Status stale (${Math.round(ageSeconds)}s old)`;
-                        statusObj.timestamp = Date.now(); // Update timestamp to prevent repeated warnings
-                      }
-                    }
-                  }
-                }
-              } catch (error) {
-                logger.debug(`Failed to parse connector statuses for worker ${workerId}:`, error);
-              }
-
-              const worker = {
-                id: workerId,
-                machine_id: data.machine_id || this.extractMachineIdFromWorkerId(workerId), // Add machine_id field
-                status: (data.status as 'idle' | 'busy' | 'offline' | 'error') || 'idle',
-                capabilities: {
-                  gpu_count: caps?.hardware?.gpu_count || 0,
-                  gpu_memory_gb: caps?.hardware?.gpu_memory_gb || 0,
-                  gpu_model: caps?.hardware?.gpu_model || 'Unknown',
-                  cpu_cores: caps?.hardware?.cpu_cores || 1,
-                  ram_gb: caps?.hardware?.ram_gb || 1,
-                  services: caps?.services || [],
-                  models: Object.keys(caps?.models || {}),
-                  customer_access: caps?.customer_access?.isolation || 'none',
-                  max_concurrent_jobs: caps?.performance?.concurrent_jobs || 1,
-                },
-                connector_statuses: connectorStatuses,
-                current_job_id: data.current_job_id,
-                connected_at: data.connected_at || new Date().toISOString(),
-                last_activity: data.last_heartbeat || new Date().toISOString(),
-                jobs_completed: parseInt(data.total_jobs_completed || '0'),
-                jobs_failed: parseInt(data.total_jobs_failed || '0'),
-                total_processing_time: 0, // Could be calculated from job history
-                last_heartbeat: !ttlErr ? (ttl as number) : -1,
-              };
-              workers.push(worker);
-            }
-          }
+      // Extract workers from machine structures
+      for (const machineData of this.unifiedMachineStatus.values()) {
+        const machine = machineData as any;
+        const machineId = machine.machine_id;
+        const structure = machine.structure || {};
+        const statusData = machine.status_data || {};
+        
+        // Get workers from this machine's structure
+        for (const [workerId, workerStructure] of Object.entries(structure.workers || {})) {
+          const workerStruct = workerStructure as any;
+          const workerStatus = statusData.workers?.[workerId] || {};
+          
+          // Build worker in monitor format
+          const worker = {
+            id: workerId,
+            machine_id: machineId,
+            status: workerStatus.status || 'unknown',
+            last_activity: workerStatus.last_activity ? new Date(workerStatus.last_activity).toISOString() : null,
+            current_job_id: workerStatus.current_job_id || null,
+            total_jobs_completed: parseInt(workerStatus.total_jobs_completed || '0'),
+            total_jobs_failed: parseInt(workerStatus.total_jobs_failed || '0'),
+            capabilities: {
+              gpu_count: 1,
+              gpu_memory_gb: 8,
+              gpu_model: 'Mock GPU', 
+              cpu_cores: 4,
+              ram_gb: 8,
+              services: workerStruct.services || [],
+              models: [],
+              customer_access: 'none',
+              max_concurrent_jobs: 1,
+            },
+            connections: (workerStruct.services || []).map((service: string) => ({
+              service_type: service,
+              status: 'active',
+              last_activity: workerStatus.last_activity,
+              error_message: null,
+            })),
+            is_stale: false,
+            heartbeat_ttl: null,
+          };
+          
+          workers.push(worker);
         }
       }
+      
+      // Old worker scanning code disabled - now using unified machine status
 
       // Get current jobs and organize by status
       const jobsStart = Date.now();
@@ -1643,18 +1545,32 @@ export class LightweightAPIServer {
     logger.info(`🏭 Processing unified machine status for: ${machineId} (${updateType})`);
 
     try {
-      // Store the unified machine status in memory for snapshot access
-      this.unifiedMachineStatus.set(machineId, statusData);
+      // Separate structure from status_data
+      const structure = statusData.structure || {};
+      const status_data = {
+        machine: statusData.status?.machine || {},
+        workers: statusData.status?.workers || {},
+        services: statusData.status?.services || {}
+      };
+
+      // Store the separated data in memory for snapshot access
+      const separatedData = {
+        machine_id: machineId,
+        update_type: updateType,
+        structure: structure,
+        status_data: status_data
+      };
+      this.unifiedMachineStatus.set(machineId, separatedData);
 
       // Also store basic machine info for backward compatibility
       const machineInfo = {
         machine_id: machineId,
-        status: statusData.status?.machine?.phase || 'unknown',
+        status: status_data.machine?.phase || 'unknown',
         last_activity: new Date().toISOString(),
-        gpu_count: statusData.structure?.gpu_count || 0,
-        capabilities: JSON.stringify(statusData.structure?.capabilities || []),
-        structure: JSON.stringify(statusData.structure || {}),
-        uptime_ms: statusData.status?.machine?.uptime_ms || 0,
+        gpu_count: structure?.gpu_count || 0,
+        capabilities: JSON.stringify(structure?.capabilities || []),
+        structure: JSON.stringify(structure || {}),
+        uptime_ms: status_data.machine?.uptime_ms || 0,
       };
 
       await this.redis.hset(`machine:${machineId}:info`, machineInfo);
@@ -1662,9 +1578,9 @@ export class LightweightAPIServer {
       await this.redis.expire(`machine:${machineId}:info`, 120);
 
       // Store/update worker data for each worker in the machine
-      if (statusData.structure?.workers && statusData.status?.workers) {
-        for (const [workerId, workerInfo] of Object.entries(statusData.structure.workers)) {
-          const workerStatus = statusData.status.workers[workerId];
+      if (structure?.workers && status_data?.workers) {
+        for (const [workerId, workerInfo] of Object.entries(structure.workers)) {
+          const workerStatus = status_data.workers[workerId];
 
           if (workerStatus) {
             const workerData = {
@@ -1678,7 +1594,7 @@ export class LightweightAPIServer {
                 gpu_id: (workerInfo as Record<string, unknown>).gpu_id,
                 services: (workerInfo as Record<string, unknown>).services,
               }),
-              connector_statuses: JSON.stringify(statusData.status?.services || {}),
+              connector_statuses: JSON.stringify(status_data?.services || {}),
             };
 
             await this.redis.hset(`worker:${workerId}`, workerData);
@@ -1692,25 +1608,15 @@ export class LightweightAPIServer {
       if (updateType === 'initial' || updateType === 'periodic') {
         // Broadcast machine update for periodic refreshes
         // Broadcast to WebSocket monitors
-        this.eventBroadcaster.broadcast({
-          type: 'machine_update',
-          machine_id: machineId,
-          status_data: statusData,
-          timestamp: Date.now(),
-        });
+        this.eventBroadcaster.broadcastMachineUpdate(machineId, structure, status_data);
       } else if (updateType === 'event_driven') {
         // Broadcast specific status changes for immediate updates
         // Broadcast to WebSocket monitors
-        this.eventBroadcaster.broadcast({
-          type: 'machine_status_change',
-          machine_id: machineId,
-          status_data: statusData,
-          timestamp: Date.now(),
-        });
+        this.eventBroadcaster.broadcastMachineStatusChange(machineId, structure, status_data);
       }
 
       logger.debug(
-        `✅ Processed unified status for ${machineId}: ${Object.keys(statusData.structure?.workers || {}).length} workers, ${Object.keys(statusData.status?.services || {}).length} services`
+        `✅ Processed unified status for ${machineId}: ${Object.keys(structure?.workers || {}).length} workers, ${Object.keys(status_data?.services || {}).length} services`
       );
     } catch (error) {
       logger.error(`❌ Error processing unified machine status for ${machineId}:`, error);
@@ -2270,6 +2176,8 @@ export class LightweightAPIServer {
         job_id: jobId,
         worker_id: progressData.worker_id,
         progress: parseInt(progressData.progress) || 0,
+        status: progressData.status,
+        message: progressData.message,
         timestamp: Date.now(),
       };
 
@@ -3306,5 +3214,19 @@ export class LightweightAPIServer {
       client_websocket_connections: this.wsConnections.size,
       total_connections: this.monitorConnections.size + this.wsConnections.size,
     };
+  }
+
+  getActiveWorkerCount(): number {
+    let totalWorkers = 0;
+    
+    // Count workers from all machines in unified status
+    for (const machineData of this.unifiedMachineStatus.values()) {
+      const machine = machineData as any;
+      if (machine.structure?.workers) {
+        totalWorkers += Object.keys(machine.structure.workers).length;
+      }
+    }
+    
+    return totalWorkers;
   }
 }

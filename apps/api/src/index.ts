@@ -21,10 +21,10 @@ async function main() {
       const corsEnv = process.env.CORS_ORIGINS;
       if (corsEnv) {
         const origins = corsEnv.split(',').map(origin => origin.trim());
-        logger.info('API CORS Origins configured:', origins);
+        logger.debug('API CORS Origins configured:', origins);
         return origins;
       }
-      logger.info('API CORS Origins defaulting to wildcard');
+      logger.debug('API CORS Origins defaulting to wildcard');
       return ['*'];
     })(),
   };
