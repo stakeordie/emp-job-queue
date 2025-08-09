@@ -61,6 +61,9 @@ async function main() {
     // Start health check server
     await startHealthServer();
     
+    // Signal to status aggregator that machine is fully ready
+    await statusAggregator.machineReady();
+    
     // Machine is now ready - status aggregator will handle all reporting
     const startupTime = Date.now() - startTime;
     logger.info(`Basic Machine ready in PM2 mode (${startupTime}ms)`);
@@ -171,20 +174,36 @@ async function startPM2Services() {
       logger.info(`ComfyUI services not needed. WORKERS: ${workerConnectors}`);
     }
     
-    // Start simulation service BEFORE workers (so workers can connect to it)
+    // Start simulation services BEFORE workers (so workers can connect to them)
     const enableSimulation = workerConnectors.includes('simulation:');
     
     if (enableSimulation) {
-      logger.info(`Simulation service needed based on WORKERS: ${workerConnectors}`);
+      logger.info(`Simulation services needed based on WORKERS: ${workerConnectors}`);
       
-      await pm2Manager.pm2Exec('start /workspace/pm2-ecosystem.config.cjs --only simulation');
-      logger.info('Simulation service started');
+      // Determine number of simulation instances to start  
+      let simulationCount = 0;
+      const workerMatch = workerConnectors.match(/simulation:(\d+)/);
+      if (workerMatch) {
+        simulationCount = parseInt(workerMatch[1]);
+      }
       
-      // Wait for simulation service to be ready
-      logger.info('Waiting for simulation service to initialize...');
-      await new Promise(resolve => setTimeout(resolve, 3000));
+      // Build list of simulation service names (simulation-gpu0, simulation-gpu1, etc.)
+      const simulationServices = [];
+      for (let gpu = 0; gpu < simulationCount; gpu++) {
+        simulationServices.push(`simulation-gpu${gpu}`);
+      }
+      
+      if (simulationServices.length > 0) {
+        logger.info(`Starting ${simulationServices.length} simulation services: ${simulationServices.join(', ')}`);
+        await pm2Manager.pm2Exec(`start /workspace/pm2-ecosystem.config.cjs --only ${simulationServices.join(',')}`);
+        logger.info('Simulation services started');
+        
+        // Wait for simulation services to be ready
+        logger.info('Waiting for simulation services to initialize...');
+        await new Promise(resolve => setTimeout(resolve, 3000));
+      }
     } else {
-      logger.info(`Simulation service not needed. WORKERS: ${workerConnectors}`);
+      logger.info(`Simulation services not needed. WORKERS: ${workerConnectors}`);
     }
     
     // Worker-driven mode: Start all worker processes from the ecosystem config

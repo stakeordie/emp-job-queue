@@ -288,7 +288,7 @@ export class EnhancedPM2EcosystemGenerator {
     const env = {
       NODE_ENV: 'production',
       LOG_LEVEL: 'info',
-      WORKER_ID: isGpuBound ? `${workerType}-gpu${index}` : `${workerType}-${index}`,
+      WORKER_ID: `${process.env.MACHINE_ID || 'unknown-machine'}-worker-${index}`,
       HUB_REDIS_URL: process.env.HUB_REDIS_URL || 'redis://localhost:6379',
       MACHINE_ID: process.env.MACHINE_ID || 'unknown',
       WORKER_ID_PREFIX: workerType,
@@ -333,13 +333,27 @@ export class EnhancedPM2EcosystemGenerator {
   /**
    * Generate service-specific PM2 apps (e.g., ComfyUI)
    */
-  async generateServiceApps(workerType, instanceCount, _workerConfig) {
+  async generateServiceApps(workerType, instanceCount, workerConfig) {
     const apps = [];
     
-    // Only generate for ComfyUI for now
+    // Generate service apps based on worker type
     if (workerType === 'comfyui') {
       for (let i = 0; i < instanceCount; i++) {
         apps.push(this.createComfyUIApp(i));
+      }
+    } else if (workerType === 'simulation') {
+      // Check if we're in mock_gpu mode to decide instance count
+      const resourceBinding = workerConfig.resource_binding || 'shared';
+      const isMockGpu = resourceBinding === 'mock_gpu';
+      
+      if (isMockGpu) {
+        // Create per-GPU simulation instances (like ComfyUI)
+        for (let i = 0; i < instanceCount; i++) {
+          apps.push(this.createSimulationApp(i));
+        }
+      } else {
+        // Single simulation service for the machine
+        apps.push(this.createSimulationApp());
       }
     }
     
@@ -372,6 +386,42 @@ export class EnhancedPM2EcosystemGenerator {
         CUDA_VISIBLE_DEVICES: gpuIndex.toString(),
         COMFYUI_PORT: (8188 + gpuIndex).toString(),
         COMFYUI_CPU_MODE: process.env.COMFYUI_CPU_MODE || 'false'
+      }
+    };
+  }
+
+  /**
+   * Create Simulation service PM2 app
+   */
+  createSimulationApp(gpuIndex = null) {
+    const isPerGpu = gpuIndex !== null;
+    const name = isPerGpu ? `simulation-gpu${gpuIndex}` : 'simulation-service';
+    const port = isPerGpu ? (8299 + gpuIndex) : 8299;
+    
+    return {
+      name,
+      script: 'src/services/standalone-wrapper.js',
+      args: isPerGpu ? ['simulation', `--gpu=${gpuIndex}`] : ['simulation'],
+      cwd: '/service-manager',
+      instances: 1,
+      autorestart: true,
+      max_restarts: 10,
+      min_uptime: '5s',
+      max_memory_restart: '512M',
+      restart_delay: 2000,
+      error_file: `/workspace/logs/${name}-error.log`,
+      out_file: `/workspace/logs/${name}-out.log`,
+      log_file: `/workspace/logs/${name}-combined.log`,
+      merge_logs: true,
+      env: {
+        NODE_ENV: 'production',
+        LOG_LEVEL: 'info',
+        SIMULATION_PORT: port.toString(),
+        SIMULATION_HOST: '0.0.0.0',
+        ...(isPerGpu && {
+          GPU_INDEX: gpuIndex.toString(),
+          CUDA_VISIBLE_DEVICES: gpuIndex.toString()
+        })
       }
     };
   }

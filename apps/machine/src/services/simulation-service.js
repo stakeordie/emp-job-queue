@@ -1,8 +1,8 @@
-// Simulation Service - PM2 compatible wrapper for SimulationServer
+// Simulation Service - PM2 compatible wrapper for SimulationHttpService
 // Manages ComfyUI-compatible simulation server as a PM2 service
 
 import { BaseService } from './base-service.js';
-import { SimulationServer } from './simulation-server.js';
+import { SimulationHttpService } from './simulation-http-service.js';
 
 export default class SimulationService extends BaseService {
   constructor(options = {}, config) {
@@ -18,7 +18,7 @@ export default class SimulationService extends BaseService {
     
     try {
       // Create simulation server instance
-      this.server = new SimulationServer({
+      this.server = new SimulationHttpService({
         port: this.port,
         host: this.host
       });

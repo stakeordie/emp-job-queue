@@ -8,7 +8,7 @@
       "path": "./redis-direct-worker.js", 
       "description": "Remote ComfyUI WebSocket connector - connects to external ComfyUI instance"
     },
-    "SimulationConnector": {
+    "SimulationHttpConnector": {
       "path": "./redis-direct-worker.js",
       "description": "Simulation processing connector for testing and development"
     },
@@ -96,7 +96,7 @@
       "service": [
         {
           "capability": "simulation",
-          "connector": "SimulationConnector",
+          "connector": "SimulationHttpConnector",
           "type": "internal"
         }
       ],
@@ -104,7 +104,7 @@
       "resource_binding": "mock_gpu",
       "build_stage": "simulation",
       "service_instances_per_machine": "${SIMULATION_INSTANCES_PER_MACHINE:-10}",
-      "ports": ["${SIMULATION_BASE_PORT:-9091}"],
+      "ports": ["${SIMULATION_BASE_PORT:-8299}"],
       "port_increment": "${SIMULATION_PORT_INCREMENT:-0}",
       "description": "Simulation service for testing and development",
       "installer_config": {

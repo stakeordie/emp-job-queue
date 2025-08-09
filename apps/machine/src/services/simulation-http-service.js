@@ -12,7 +12,7 @@ import { BlobServiceClient } from '@azure/storage-blob';
 
 const logger = createLogger('simulation-server');
 
-export class SimulationServer {
+export class SimulationHttpService {
   constructor(options = {}) {
     this.port = options.port || 8188;
     this.host = options.host || 'localhost';
@@ -21,9 +21,8 @@ export class SimulationServer {
     this.wss = new WebSocketServer({ server: this.server });
     
     // Simulation configuration
-    this.processingTimeMs = parseInt(process.env.SIMULATION_PROCESSING_TIME || '5') * 1000;
+    this.processingTimeMs = parseInt(process.env.SIMULATION_PROCESSING_TIME || '15') * 1000;
     this.steps = parseInt(process.env.SIMULATION_STEPS || '10');
-    this.failureRate = parseFloat(process.env.SIMULATION_FAILURE_RATE || '0.1');
     this.progressIntervalMs = parseInt(process.env.SIMULATION_PROGRESS_INTERVAL_MS || '500');
     
     // Job tracking
@@ -72,7 +71,33 @@ export class SimulationServer {
   }
 
   setupRoutes() {
-    // Health check endpoint
+    // Root health check endpoint (for simple GET requests)
+    this.app.get('/', (req, res) => {
+      res.json({
+        status: 'ok',
+        service: 'simulation-server',
+        port: this.port,
+        active_jobs: this.activeJobs.size,
+        uptime: process.uptime(),
+        timestamp: Date.now()
+      });
+    });
+
+    // Dedicated health check endpoint
+    this.app.get('/health', (req, res) => {
+      res.json({
+        status: 'healthy',
+        service: 'simulation-server',
+        port: this.port,
+        active_jobs: this.activeJobs.size,
+        total_jobs_processed: this.jobHistory.size,
+        uptime: process.uptime(),
+        memory_usage: process.memoryUsage(),
+        timestamp: Date.now()
+      });
+    });
+
+    // System stats endpoint (ComfyUI compatibility)
     this.app.get('/system_stats', (req, res) => {
       res.json({
         system: {
@@ -255,6 +280,61 @@ ${this.azureEnabled ? 'Azure storage is enabled.' : 'Azure storage is not config
       }
       res.json({ message: 'All jobs interrupted' });
     });
+
+    // HTTP Connector compatible endpoint (for refactored simulation connector)
+    this.app.post('/process', async (req, res) => {
+      try {
+        const { job_id, job_type, payload, simulation_config } = req.body;
+        
+        if (!job_id) {
+          return res.status(400).json({ error: 'No job_id provided' });
+        }
+
+        // Convert to ComfyUI-style prompt
+        const prompt = {
+          simulation_job: {
+            job_id,
+            job_type,
+            payload,
+            config: simulation_config || {}
+          }
+        };
+
+        const prompt_id = job_id; // Use job_id as prompt_id for traceability
+        const client_id = 'http-connector';
+        
+        const job = {
+          prompt_id,
+          client_id,
+          workflow: prompt,
+          number: this.activeJobs.size + 1,
+          status: 'queued',
+          created_at: Date.now(),
+          outputs: {},
+          error: null,
+          http_request: true // Mark as HTTP request for synchronous response
+        };
+
+        this.activeJobs.set(prompt_id, job);
+        
+        // Send queue update to WebSocket clients
+        this.broadcastQueueUpdate();
+        
+        // Start processing job asynchronously (don't wait!)
+        this.processJob(job);
+        
+        // Return immediately with job ID for polling
+        res.json({
+          simulation_id: prompt_id,
+          status: 'processing',
+          message: 'Job submitted for processing'
+        });
+        
+      } catch (error) {
+        logger.error('Error processing HTTP job:', error);
+        res.status(500).json({ error: error.message });
+      }
+    });
   }
 
   setupWebSocket() {
@@ -277,6 +357,12 @@ ${this.azureEnabled ? 'Azure storage is enabled.' : 'Azure storage is not config
     });
   }
 
+  // Synchronous version for HTTP requests
+  async processJobSync(job) {
+    await this.processJob(job);
+    return job;
+  }
+
   async processJob(job) {
     const startTime = Date.now();
     
@@ -291,11 +377,6 @@ ${this.azureEnabled ? 'Azure storage is enabled.' : 'Azure storage is not config
           timestamp: Date.now()
         }
       });
-      
-      // Simulate random failure
-      if (Math.random() < this.failureRate) {
-        throw new Error(`Simulated failure for job ${job.prompt_id}`);
-      }
       
       // Simulate processing with progress updates
       const stepDuration = this.processingTimeMs / this.steps;
