@@ -81,8 +81,8 @@ export class EventStreamService {
     const monitorUrl = `${wsProtocol}://${baseHost}/ws/monitor/${this.monitorId}${authQuery}`;
     const clientUrl = `${wsProtocol}://${baseHost}/ws/client/${clientId}${authQuery}`;
     
-    console.log('[WebSocket] Connecting monitor to:', monitorUrl);
-    console.log('[WebSocket] Connecting client to:', clientUrl);
+    console.log(`[WebSocket ${new Date().toISOString()}] Connecting monitor to:`, monitorUrl);
+    console.log(`[WebSocket ${new Date().toISOString()}] Connecting client to:`, clientUrl);
     
     try {
       // Connect monitor WebSocket first
@@ -101,7 +101,7 @@ export class EventStreamService {
 
   private setupMonitorWebSocketHandlers(ws: WebSocket) {
     ws.onopen = () => {
-      console.log('[WebSocket] Monitor connected successfully');
+      console.log(`[WebSocket ${new Date().toISOString()}] Monitor connected successfully`);
       
       // Send subscription message to receive all monitor events
       this.subscriptions = ['workers', 'machines', 'jobs', 'system_stats', 'heartbeat'];
@@ -122,18 +122,18 @@ export class EventStreamService {
         
         // Debug logging for machine events
         if (data.type && data.type.startsWith('machine_')) {
-          console.log('[WebSocket] Machine event received:', data.type, data);
+          console.log(`[WebSocket ${new Date().toISOString()}] Machine event received:`, data.type, data);
         }
         
         // Handle monitor events from the event broadcaster
         if (this.isMonitorEvent(data)) {
           // Log full_state_snapshot data for debugging
           if (data.type === 'full_state_snapshot') {
-            console.log('[WebSocket] Processing monitor event:', data.type);
-            console.log('[WebSocket] Full state snapshot data:', JSON.stringify(data, null, 2));
+            console.log(`[WebSocket ${new Date().toISOString()}] Processing monitor event:`, data.type);
+            console.log(`[WebSocket ${new Date().toISOString()}] Full state snapshot data:`, JSON.stringify(data, null, 2));
             
           } else {
-            console.log('[WebSocket] Processing monitor event:', data.type);
+            console.log(`[WebSocket ${new Date().toISOString()}] Processing monitor event:`, data.type);
           }
           this.handleMonitorEvent(data as MonitorEvent);
         }
@@ -163,7 +163,7 @@ export class EventStreamService {
 
   private setupClientWebSocketHandlers(ws: WebSocket) {
     ws.onopen = () => {
-      console.log('[WebSocket] Client connected successfully');
+      console.log(`[WebSocket ${new Date().toISOString()}] Client connected successfully`);
       
       // Check if both connections are ready
       this.checkBothConnectionsReady();
@@ -175,7 +175,7 @@ export class EventStreamService {
         
         // Ping/pong now handled by WebSocket frames, not JSON messages
         
-        console.log('[WebSocket] Client message received:', data.type);
+        console.log(`[WebSocket ${new Date().toISOString()}] Client message received:`, data.type);
         
         // Handle client messages (job responses, etc.)
         this.onMessageCallbacks.forEach(callback => callback(data as BaseMessage));
@@ -210,7 +210,7 @@ export class EventStreamService {
       this.isConnecting = false;
       this.reconnectAttempts = 0; // Reset on successful connection
       
-      console.log('[WebSocket] Both connections ready - fully connected');
+      console.log(`[WebSocket ${new Date().toISOString()}] Both connections ready - fully connected`);
       
       // Notify UI we're fully connected
       this.onConnectCallbacks.forEach(callback => callback());
@@ -349,7 +349,7 @@ export class EventStreamService {
         timestamp: Date.now()
       };
       this.monitorWs.send(JSON.stringify(subscriptionMessage));
-      console.log('[WebSocket] Sent subscription:', this.subscriptions);
+      console.log(`[WebSocket ${new Date().toISOString()}] Sent subscription:`, this.subscriptions);
     }
   }
 
@@ -362,7 +362,7 @@ export class EventStreamService {
         ...options
       };
       this.monitorWs.send(JSON.stringify(syncRequest));
-      console.log('[WebSocket] Requested full state sync', options);
+      console.log(`[WebSocket ${new Date().toISOString()}] Requested full state sync`, options);
     }
   }
 

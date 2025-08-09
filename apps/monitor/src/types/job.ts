@@ -1,11 +1,13 @@
 export type JobStatus = 
   | 'pending' 
+  | 'queued'
   | 'assigned' 
-  | 'active' 
-  | 'processing'
+  | 'accepted'
+  | 'in_progress'
   | 'completed' 
   | 'failed' 
   | 'cancelled' 
+  | 'timeout'
   | 'unworkable';
 
 export interface JobRequirements {

@@ -13,17 +13,17 @@ interface UnifiedMachineStatus {
   timestamp: number;
   update_type: string;
   structure: {
-    gpu_count: number;
-    capabilities: string[];
-    workers: Record<string, unknown>;
+    gpu_count?: number;
+    capabilities?: string[];
+    workers?: Record<string, unknown>;
   };
   status: {
-    machine: {
-      phase: string;
-      uptime_ms: number;
+    machine?: {
+      phase?: string;
+      uptime_ms?: number;
     };
-    workers: Record<string, unknown>;
-    services: Record<string, unknown>;
+    workers?: Record<string, unknown>;
+    services?: Record<string, unknown>;
   };
 }
 
@@ -32,11 +32,11 @@ const processUnifiedMachineStatus = (unifiedStatus: UnifiedMachineStatus): Omit<
   // Extract data from unified machine status structure
   const machineData = unifiedStatus.status?.machine;
   const machinePhase = machineData?.phase || 'offline';
-  const workersData = unifiedStatus.status?.workers || {};
   const servicesData = unifiedStatus.status?.services || {};
   
-  // Convert workers object to array of worker IDs
-  const workerIds = Object.keys(workersData);
+  // Get worker IDs from structure (immutable machine definition - what workers SHOULD exist)
+  // Structure defines "does it exist", status defines "what's the current state"
+  const workerIds = Object.keys(unifiedStatus.structure?.workers || {});
   
   return {
     machine_id: unifiedStatus.machine_id,
@@ -45,7 +45,9 @@ const processUnifiedMachineStatus = (unifiedStatus: UnifiedMachineStatus): Omit<
     services: servicesData as { [serviceName: string]: { status: string; health: string; pm2_status: string; } },
     host_info: {
       gpu_count: unifiedStatus.structure?.gpu_count
-    }
+    },
+    // Include structure data for creating worker skeletons
+    structure: unifiedStatus.structure
   };
 };
 
@@ -72,6 +74,9 @@ interface MonitorStore {
   // UI state
   ui: UIState;
   
+  // Worker animation state
+  blinkingWorkers: Set<string>;
+  
   // Simulation workflow tracking (local orchestration)
   simulationWorkflows: Map<string, {
     workflow_id: string;
@@ -95,6 +100,8 @@ interface MonitorStore {
   addWorker: (worker: Worker) => void;
   updateWorker: (workerId: string, updates: Partial<Worker>) => void;
   removeWorker: (workerId: string) => void;
+  triggerWorkerBlink: (workerId: string) => void;
+  clearWorkerBlink: (workerId: string) => void;
   addMachine: (machine: Machine) => void;
   updateMachine: (machineId: string, updates: Partial<Machine>) => void;
   removeMachine: (machineId: string) => void;
@@ -170,6 +177,8 @@ export const useMonitorStore = create<MonitorStore>()(
       theme: 'system',
     },
     
+    blinkingWorkers: new Set(),
+    
     simulationWorkflows: new Map(),
     
     // Connection actions
@@ -190,6 +199,15 @@ export const useMonitorStore = create<MonitorStore>()(
           updatedJobs[existingJobIndex] = { ...updatedJobs[existingJobIndex], ...job };
           return { jobs: updatedJobs };
         } else {
+          // Debug: Log what's creating jobs
+          console.log(`[Store ${new Date().toISOString()}] Adding job:`, {
+            job_id: job.id,
+            job_type: job.job_type,
+            status: job.status,
+            worker_id: job.worker_id,
+            stack_trace: new Error().stack?.split('\n')[2]?.trim()
+          });
+          
           // Add new job
           return { jobs: [job, ...state.jobs].slice(0, 1000) }; // Keep last 1000 jobs
         }
@@ -280,7 +298,33 @@ export const useMonitorStore = create<MonitorStore>()(
     removeWorker: (workerId) =>
       set((state) => ({
         workers: state.workers.filter((worker) => worker.worker_id !== workerId),
+        blinkingWorkers: new Set([...state.blinkingWorkers].filter(id => id !== workerId)),
       })),
+    
+    // Worker animation actions
+    triggerWorkerBlink: (workerId) =>
+      set((state) => {
+        console.log(`✨ triggerWorkerBlink called for: ${workerId}`);
+        console.log(`📋 Current blinking workers:`, Array.from(state.blinkingWorkers));
+        const newBlinking = new Set(state.blinkingWorkers);
+        newBlinking.add(workerId);
+        console.log(`📋 Updated blinking workers:`, Array.from(newBlinking));
+        
+        // Blink will continue until worker status changes to idle
+        // No auto-clear timeout - let status changes control the blink
+        
+        return { blinkingWorkers: newBlinking };
+      }),
+    
+    clearWorkerBlink: (workerId) =>
+      set((state) => {
+        console.log(`🧹 clearWorkerBlink called for: ${workerId}`);
+        console.log(`📋 Blinking workers before clear:`, Array.from(state.blinkingWorkers));
+        const newBlinking = new Set(state.blinkingWorkers);
+        newBlinking.delete(workerId);
+        console.log(`📋 Blinking workers after clear:`, Array.from(newBlinking));
+        return { blinkingWorkers: newBlinking };
+      }),
     
     // Machine actions
     addMachine: (machine) =>
@@ -457,10 +501,22 @@ export const useMonitorStore = create<MonitorStore>()(
       }
       
       // Process machines using unified machine status format
+      const timestamp = new Date().toISOString();
+      console.log(`[Store ${timestamp}] Full state machines data:`, {
+        has_machines: !!stateData.machines,
+        is_array: Array.isArray(stateData.machines),
+        machines_length: Array.isArray(stateData.machines) ? stateData.machines.length : 'not array',
+        machines_data: stateData.machines
+      });
+      
       if (stateData.machines && Array.isArray(stateData.machines)) {
-        stateData.machines.forEach((machineData: unknown) => {
+        stateData.machines.forEach((machineData: unknown, index: number) => {
+          const machineTimestamp = new Date().toISOString();
+          console.log(`[Store ${machineTimestamp}] Processing machine ${index}:`, machineData);
           const unifiedStatus = machineData as UnifiedMachineStatus;
+          console.log(`[Store ${machineTimestamp}] UnifiedStatus structure workers:`, Object.keys(unifiedStatus.structure?.workers || {}));
           const processedMachine = processUnifiedMachineStatus(unifiedStatus);
+          console.log(`[Store ${machineTimestamp}] ProcessedMachine workers:`, processedMachine.workers);
           
           addMachine({
             ...processedMachine,
@@ -521,10 +577,10 @@ export const useMonitorStore = create<MonitorStore>()(
       // Update pagination information
       if (stateData.pagination?.finishedJobs) {
         const { setFinishedJobsPagination } = get();
-        console.log('[Store] Updating pagination:', stateData.pagination.finishedJobs);
+        console.log(`[Store ${new Date().toISOString()}] Updating pagination:`, stateData.pagination.finishedJobs);
         setFinishedJobsPagination(stateData.pagination.finishedJobs);
       } else {
-        console.log('[Store] No pagination data found in state:', stateData.pagination);
+        console.log(`[Store ${new Date().toISOString()}] No pagination data found in state:`, stateData.pagination);
       }
       
       // Note: Connector status reconciliation disabled for now - relies on real-time events
@@ -535,7 +591,7 @@ export const useMonitorStore = create<MonitorStore>()(
       
       // Debug logging for machine events
       if (event.type && event.type.startsWith('machine_')) {
-        console.log('[Store] Processing machine event:', event.type, event);
+        console.log(`[Store ${new Date().toISOString()}] Processing machine event:`, event.type, event);
       }
       
       // Only log important events, skip progress spam  
@@ -730,48 +786,41 @@ export const useMonitorStore = create<MonitorStore>()(
           const updateEvent = event as {
             type: 'machine_update';
             machine_id: string;
+            structure: {
+              gpu_count?: number;
+              capabilities?: string[];
+              workers?: Record<string, unknown>;
+            };
             status_data: {
-              machine_id: string;
-              status: {
-                machine?: {
-                  machine_id: string;
-                  status: string;
-                  host_info?: {
-                    hostname: string;
-                    ip_address?: string;
-                    os: string;
-                    cpu_cores: number;
-                    total_ram_gb: number;
-                    gpu_count: number;
-                    gpu_models?: string[];
-                  };
-                };
-                workers?: string[];
-                services?: Record<string, unknown>;
+              machine?: {
+                phase?: string;
+                uptime_ms?: number;
               };
-              [key: string]: unknown;
+              workers?: Record<string, unknown>;
+              services?: Record<string, unknown>;
             };
             timestamp: number;
           };
           
-          console.log('[Store] Processing machine_update event:', updateEvent);
+          console.log(`[Store ${new Date().toISOString()}] Processing machine_update event:`, updateEvent);
           
           // Defensive checks to prevent errors
-          if (!updateEvent.machine_id || !updateEvent.status_data) {
+          if (!updateEvent.machine_id || !updateEvent.structure || !updateEvent.status_data) {
             console.error('[Store] Invalid machine_update event - missing required fields (would have caused error):', {
               machine_id: updateEvent.machine_id,
+              structure: updateEvent.structure,
               status_data: updateEvent.status_data,
               full_event: updateEvent
             });
             break;
           }
           
-          // Extract machine data from actual structure
-          const machineData = updateEvent.status_data.status?.machine;
-          const machineStatus = (machineData as { phase?: string })?.phase || 'offline'; // phase is the actual field
-          const workerIds = Object.keys(updateEvent.status_data.status?.workers || {}); // workers is an object, not array
-          const hostInfo = updateEvent.status_data.structure; // structure contains host info like gpu_count
-          const servicesData = updateEvent.status_data.status?.services || {}; // services data
+          // Extract machine data from separated structure and status_data
+          const machineData = updateEvent.status_data.machine;
+          const machineStatus = machineData?.phase || 'offline'; // phase is the actual field
+          const workerIds = Object.keys(updateEvent.structure?.workers || {}); // workers definition is in structure
+          const hostInfo = updateEvent.structure; // structure contains host info like gpu_count
+          const servicesData = updateEvent.status_data?.services || {}; // services data
           
           const existingMachine = get().machines.find(m => m.machine_id === updateEvent.machine_id);
           
@@ -805,11 +854,11 @@ export const useMonitorStore = create<MonitorStore>()(
           }
           
           // Update workers' connector_statuses based on services data
-          if (servicesData && updateEvent.status_data.status?.workers) {
+          if (servicesData && updateEvent.status_data?.workers) {
             const { updateWorker } = get();
             
             // Iterate through each worker in the status
-            Object.entries(updateEvent.status_data.status.workers).forEach(([workerId]) => {
+            Object.entries(updateEvent.status_data.workers).forEach(([workerId]) => {
               const connectorStatuses: Record<string, { connector_id: string; status: 'active' | 'inactive' | 'error' | 'waiting_for_service' | 'connecting'; error_message?: string }> = {};
               
               // Find all services for this worker
@@ -842,11 +891,11 @@ export const useMonitorStore = create<MonitorStore>()(
             });
           }
           
-          // Create/update workers using structure for basic info and status for version
-          const structureData = updateEvent.status_data.structure as { workers?: Record<string, unknown> };
-          const statusData = updateEvent.status_data.status as { workers?: Record<string, unknown> };
+          // Create/update workers using separated structure and status_data
+          const structureData = updateEvent.structure; // Now directly from structure
+          const statusData = updateEvent.status_data; // Now directly from status_data
           
-          console.log('[Store] Processing workers from machine_update:', {
+          console.log(`[Store ${new Date().toISOString()}] Processing workers from machine_update:`, {
             hasStructureWorkers: !!structureData?.workers,
             hasStatusWorkers: !!statusData?.workers,
             structureWorkerIds: structureData?.workers ? Object.keys(structureData.workers) : [],
@@ -874,11 +923,13 @@ export const useMonitorStore = create<MonitorStore>()(
               const statusInfo = statusWorkers[workerId];
               const existingWorker = get().workers.find(w => w.worker_id === workerId);
               
-              console.log(`[Store] Processing worker ${workerId}:`, {
+              console.log(`[Store ${new Date().toISOString()}] Processing worker ${workerId}:`, {
                 statusVersion: statusInfo?.version,
                 existingWorker: !!existingWorker,
                 structureInfo: structureInfo,
-                statusInfo: statusInfo
+                statusInfo: statusInfo,
+                current_job_id: statusInfo?.current_job_id,
+                worker_status: statusInfo?.status
               });
               
               // Create capabilities object with version from status (not structure)
@@ -920,7 +971,7 @@ export const useMonitorStore = create<MonitorStore>()(
                   average_processing_time: 0, // Required fields
                   uptime: 0
                 };
-                console.log(`[Store] Creating new worker ${workerId} with version:`, {
+                console.log(`[Store ${new Date().toISOString()}] Creating new worker ${workerId} with version:`, {
                   version: newWorker.capabilities.metadata?.version,
                   fullCapabilities: newWorker.capabilities
                 });
@@ -949,7 +1000,7 @@ export const useMonitorStore = create<MonitorStore>()(
             
             // Log current worker state after processing
             const currentWorkers = get().workers;
-            console.log('[Store] Current workers after machine_update processing:', 
+            console.log(`[Store ${new Date().toISOString()}] Current workers after machine_update processing:`, 
               currentWorkers.map(w => ({
                 worker_id: w.worker_id,
                 status: w.status,
@@ -966,30 +1017,49 @@ export const useMonitorStore = create<MonitorStore>()(
           const statusEvent = event as {
             type: 'machine_status_change';
             machine_id: string;
-            status_data: unknown;
+            structure: {
+              gpu_count?: number;
+              capabilities?: string[];
+              workers?: Record<string, unknown>;
+            };
+            status_data: {
+              machine?: {
+                phase?: string;
+                uptime_ms?: number;
+              };
+              workers?: Record<string, unknown>;
+              services?: Record<string, unknown>;
+            };
             timestamp: number;
           };
           
-          // Cast to unified format after validation
-          const unifiedStatus = statusEvent.status_data as UnifiedMachineStatus;
+          // Create unified status format for backward compatibility
+          const unifiedStatus: UnifiedMachineStatus = {
+            machine_id: statusEvent.machine_id,
+            timestamp: statusEvent.timestamp,
+            update_type: 'event_driven',
+            structure: statusEvent.structure || {},
+            status: statusEvent.status_data || {}
+          };
           
           console.log('[Store] Processing machine_status_change event:', statusEvent);
           
           // Defensive checks to prevent corrupted data
-          if (!statusEvent.machine_id || !statusEvent.status_data) {
+          if (!statusEvent.machine_id || !statusEvent.structure || !statusEvent.status_data) {
             console.error('[Store] Invalid machine_status_change event - missing required fields:', {
               machine_id: statusEvent.machine_id,
+              structure: statusEvent.structure,
               status_data: statusEvent.status_data,
               full_event: statusEvent
             });
             break;
           }
           
-          // Validate status_data structure
-          if (typeof statusEvent.status_data !== 'object') {
-            console.error('[Store] Invalid machine_status_change event - status_data is not an object:', {
+          // Validate data structures
+          if (typeof statusEvent.structure !== 'object' || typeof statusEvent.status_data !== 'object') {
+            console.error('[Store] Invalid machine_status_change event - structure/status_data is not an object:', {
+              structure_type: typeof statusEvent.structure,
               status_data_type: typeof statusEvent.status_data,
-              status_data_value: statusEvent.status_data,
               full_event: statusEvent
             });
             break;
@@ -1285,6 +1355,16 @@ export const useMonitorStore = create<MonitorStore>()(
               current_jobs: workerEvent.current_job_id ? [workerEvent.current_job_id] : [],
               last_heartbeat: new Date().toISOString()
             });
+            
+            // Trigger blink animation when worker status changes to busy, stop when idle
+            console.log(`🔍 Worker ${workerEvent.worker_id} status change: ${status}`);
+            if (status === 'busy') {
+              console.log(`⚡ Triggering blink for worker: ${workerEvent.worker_id}`);
+              get().triggerWorkerBlink(workerEvent.worker_id);
+            } else if (status === 'idle') {
+              console.log(`🛑 Stopping blink for worker: ${workerEvent.worker_id}`);
+              get().clearWorkerBlink(workerEvent.worker_id);
+            }
           }
           break;
         }

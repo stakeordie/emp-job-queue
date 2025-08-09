@@ -87,7 +87,7 @@ function Home({ isJobPanelOpen }: HomeProps) {
   // Memoize job counts to avoid recalculating on every render
   const jobCounts = useMemo(() => {
     const counts = {
-      active: jobs.filter(job => job.status === 'active' || job.status === 'processing').length,
+      active: jobs.filter(job => job.status === 'in_progress' || job.status === 'assigned' || job.status === 'accepted').length,
       pending: jobs.filter(job => job.status === 'pending').length,
       completed: finishedJobsPagination.totalCount || jobs.filter(job => job.status === 'completed').length,
       failed: jobs.filter(job => job.status === 'failed').length,
@@ -97,7 +97,7 @@ function Home({ isJobPanelOpen }: HomeProps) {
 
   // Memoize filtered and sorted job lists
   const activeJobsList = useMemo(() => 
-    jobs.filter(job => job.status === 'active' || job.status === 'processing'),
+    jobs.filter(job => job.status === 'in_progress' || job.status === 'assigned' || job.status === 'accepted'),
     [jobs]
   );
 
@@ -228,9 +228,41 @@ function Home({ isJobPanelOpen }: HomeProps) {
                 return null;
               }
               
-              const machineWorkers = workers.filter(w => 
-                machine.workers && machine.workers.includes(w.worker_id)
-              );
+              // Create worker skeletons from structure, then look up their status
+              const machineWorkers = (machine.workers || []).map(workerId => {
+                // Look up actual worker status from global workers array
+                const workerStatus = workers.find(w => w.worker_id === workerId);
+                
+                if (workerStatus) {
+                  return workerStatus;
+                }
+                
+                // Get worker info from machine structure
+                const structureWorker = machine.structure?.workers?.[workerId];
+                const services = structureWorker?.services || [];
+                
+                // Return worker skeleton from structure with actual capabilities
+                return {
+                  worker_id: workerId,
+                  machine_id: machine.machine_id,
+                  status: 'unknown',
+                  capabilities: { 
+                    services: services, 
+                    models: [], // Models will be populated when worker connects
+                    metadata: {
+                      gpu_id: structureWorker?.gpu_id
+                    },
+                    performance: { concurrent_jobs: 1, quality_levels: ['balanced'] }
+                  },
+                  current_job_id: null,
+                  current_jobs: [],
+                  last_activity: null,
+                  total_jobs_completed: 0,
+                  total_jobs_failed: 0,
+                  average_processing_time: 0,
+                  uptime: 0
+                };
+              });
               return (
                 <MachineCard 
                   key={machine.machine_id} 
@@ -290,7 +322,7 @@ function Home({ isJobPanelOpen }: HomeProps) {
                       <div className="flex items-center gap-3 flex-1">
                         <span className="text-lg font-bold text-muted-foreground w-8">{index + 1}</span>
                         <Badge variant={
-                          job.status === 'processing' || job.status === 'active' ? 'secondary' : 'outline'
+                          job.status === 'in_progress' || job.status === 'assigned' || job.status === 'accepted' ? 'secondary' : 'outline'
                         }>
                           {job.status}
                         </Badge>

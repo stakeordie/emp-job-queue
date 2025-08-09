@@ -345,6 +345,7 @@ const jobSubmissionSchema = z.object({
   step_number: z.coerce.number().min(0).optional().or(z.literal('')),
   requirements: z.string().optional().or(z.literal('')),
   batch_number: z.coerce.number().min(1).max(100),
+  is_workflow: z.boolean().default(false),
 });
 
 type JobSubmissionData = z.infer<typeof jobSubmissionSchema>;
@@ -374,6 +375,7 @@ export function JobSubmissionForm() {
       payload: JSON.stringify(DEFAULT_PAYLOADS.simulation, null, 2),
       batch_number: 1,
       requirements: '',
+      is_workflow: false,
     },
   });
 
@@ -517,31 +519,35 @@ export function JobSubmissionForm() {
 
       // Create multiple workflows (batch)
       for(let workflowIndex = 1; workflowIndex <= batchSize; workflowIndex++){
-        // Generate a unique workflow ID for this batch item
-        const baseWorkflowId = data.workflow_id && data.workflow_id.trim() ? data.workflow_id : `workflow-${Date.now()}`;
-        const currentWorkflowId = batchSize > 1 ? `${baseWorkflowId}-${workflowIndex}` : baseWorkflowId;
-
         // For each workflow, only submit the FIRST step (step 1)
         // The UI will automatically submit subsequent steps when previous steps complete
         const freshPayload = generateFreshPayload(serviceType, useCpuMode);
         
-        const jobData = {
+        // Base job data that all jobs have
+        const jobData: any = {
           job_type: serviceType,
           service_required: serviceType,
           priority: data.priority,
           payload: freshPayload,
           customer_id: data.customer_id && data.customer_id.trim() ? data.customer_id : undefined,
           requirements: parsedRequirements || { service_type: serviceType },
-          workflow_id: currentWorkflowId,
-          workflow_priority: data.workflow_priority !== '' ? data.workflow_priority : undefined,
-          workflow_datetime: data.workflow_datetime !== '' ? data.workflow_datetime : undefined,
-          step_number: 1, // Always start with step 1
-          total_steps: stepsPerWorkflow, // Tell the system how many total steps this workflow has
         };
+
+        // Only include workflow fields if this is marked as a workflow
+        if (data.is_workflow) {
+          const baseWorkflowId = data.workflow_id && data.workflow_id.trim() ? data.workflow_id : `workflow-${Date.now()}`;
+          const currentWorkflowId = batchSize > 1 ? `${baseWorkflowId}-${workflowIndex}` : baseWorkflowId;
+          
+          jobData.workflow_id = currentWorkflowId;
+          jobData.workflow_priority = data.workflow_priority !== '' ? data.workflow_priority : undefined;
+          jobData.workflow_datetime = data.workflow_datetime !== '' ? data.workflow_datetime : undefined;
+          jobData.step_number = 1; // Always start with step 1
+          jobData.total_steps = stepsPerWorkflow; // Tell the system how many total steps this workflow has
+        }
         
         // For simulation jobs with multiple steps, register the workflow for auto-progression
-        if (serviceType === 'simulation' && stepsPerWorkflow > 1) {
-          trackSimulationWorkflow(currentWorkflowId, {
+        if (data.is_workflow && serviceType === 'simulation' && stepsPerWorkflow > 1) {
+          trackSimulationWorkflow(jobData.workflow_id, {
             total_steps: stepsPerWorkflow,
             job_type: serviceType,
             priority: data.priority,
@@ -633,6 +639,17 @@ export function JobSubmissionForm() {
               </Label>
             </div>
           )}
+
+          {/* Is workflow checkbox */}
+          <div className="flex items-center space-x-2">
+            <Checkbox 
+              id="is_workflow" 
+              {...register('is_workflow')}
+            />
+            <Label htmlFor="is_workflow" className="text-xs cursor-pointer">
+              This is a workflow job
+            </Label>
+          </div>
 
           <div className="space-y-1">
             <Label htmlFor="payload" className="text-xs">Payload</Label>
@@ -881,10 +898,6 @@ export function DelegatedJobCompletion() {
     job.status === 'pending'
   );
 
-  // Debug logging
-  console.log('All jobs:', jobs.length);
-  console.log('Jobs with job_type:', jobs.map(j => ({ id: j.id, job_type: j.job_type, status: j.status })));
-  console.log('Delegated jobs found:', delegatedJobs.length);
 
   const completeDelegatedJob = async () => {
     console.log('completeDelegatedJob called', { selectedJobId, isConnected: connection.isConnected });

@@ -21,6 +21,16 @@ export interface Machine {
       pm2_status: string;
     };
   };
+  structure?: {
+    gpu_count: number;
+    capabilities: string[];
+    workers: Record<string, {
+      worker_id: string;
+      gpu_id: number;
+      services: string[];
+      [key: string]: unknown;
+    }>;
+  };
 }
 
 export interface MachineLog {
