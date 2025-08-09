@@ -2,6 +2,23 @@
 
 ## [Unreleased] - Current Session
 
+### 🚨 **Known Issue: Delegated Workflow Jobs Visibility**
+
+#### **Monitor Cannot See Delegated Jobs Despite Redis State**
+- **Problem**: Workflow-created delegated jobs exist in Redis state but don't appear in monitor UI
+- **Root Cause**: Event-driven architecture requires `job_submitted` events for monitor visibility, but delegated jobs bypass API submission flow
+- **Current Behavior**:
+  - ✅ Delegated jobs exist in Redis with correct status (`pending`, `service_required: p5`)
+  - ✅ Jobs complete successfully and persist in Redis (not auto-deleted)
+  - ❌ Jobs never appear in monitor because no `job_submitted` event published
+  - ❌ Redis HGETALL scans show jobs exist but they're architecturally invisible to event-driven monitor
+- **Immediate Impact**: Workflow progress tracking incomplete, user cannot see all active jobs
+- **Required Fix**: Move to state-driven monitor that displays Redis state directly, not just events
+- **Files**: Monitor visibility logic, API event publication flow
+- **Priority**: High - affects workflow transparency and debugging
+
+**Architectural Insight**: This reveals fundamental fragility in event-driven architecture where jobs can exist in state but be invisible due to missing events. Validates need for state-driven approach.
+
 ### 🎯 **OpenAI Image Generation Polling Enhancements**
 
 #### **Dynamic Polling with Indefinite Queued/In-Progress Support**

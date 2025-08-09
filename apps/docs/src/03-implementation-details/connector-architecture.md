@@ -15,54 +15,54 @@ The connector architecture provides a unified interface for integrating diverse 
 graph TB
     %% Base Infrastructure Layer
     subgraph "Foundation Layer"
-        CI[ConnectorInterface<br/>📋 Contract Definition]
-        BC[BaseConnector<br/>🏗️ Shared Functionality<br/>Redis, Health, Status]
+        CI["ConnectorInterface\n📋 Contract Definition"]
+        BC["BaseConnector\n🏗️ Shared Functionality\nRedis, Health, Status"]
         
         CI --> BC
     end
     
     %% NEW Protocol Layer - The Key Innovation!
     subgraph "🔌 Protocol Layer - ELIMINATES DUPLICATION"
-        BC --> HTTP[HTTPConnector<br/>🌐 REST APIs<br/>Auth, Retry, Error Handling]
-        BC --> WS[WebSocketConnector<br/>⚡ Real-time Communication<br/>Connection Management, Message Routing]
-        BC --> GRPC[gRPCConnector<br/>🚀 High Performance RPC<br/>Streaming, Load Balancing]
-        BC --> STREAM[StreamConnector<br/>🌊 Server-Sent Events<br/>Long-polling, Event Streams]
+        BC --> HTTP["HTTPConnector\n🌐 REST APIs\nAuth, Retry, Error Handling"]
+        BC --> WS["WebSocketConnector\n⚡ Real-time Communication\nConnection Management, Message Routing"]
+        BC --> GRPC["gRPCConnector\n🚀 High Performance RPC\nStreaming, Load Balancing"]
+        BC --> STREAM["StreamConnector\n🌊 Server-Sent Events\nLong-polling, Event Streams"]
     end
     
     %% Service-Specific Layer - Now Super Clean!
     subgraph "Service Implementations - 85% Less Code!"
         %% HTTP-based Services
-        HTTP --> OPENAI_TEXT[OpenAITextConnector<br/>📝 GPT Text Generation<br/>3 methods vs 15+]
-        HTTP --> OPENAI_IMAGE[OpenAIImageConnector<br/>🎯 DALL-E Integration<br/>Pure business logic]
-        HTTP --> OPENAI_VISION[OpenAIVisionConnector<br/>👁️ GPT-4 Vision<br/>No HTTP boilerplate]
-        HTTP --> SIM[SimulationConnector<br/>⚙️ Testing & Development<br/>40% code reduction]
-        HTTP --> A1111_REST[A1111RestConnector<br/>🖼️ Stable Diffusion API<br/>Focus on image logic]
-        HTTP --> REST_SYNC[RestSyncConnector<br/>⚡ Generic REST APIs<br/>Minimal implementation]
+        HTTP --> OPENAI_TEXT["OpenAITextConnector\n📝 GPT Text Generation\n3 methods vs 15+"]
+        HTTP --> OPENAI_IMAGE["OpenAIImageConnector\n🎯 DALL-E Integration\nPure business logic"]
+        HTTP --> OPENAI_VISION["OpenAIVisionConnector\n👁️ GPT-4 Vision\nNo HTTP boilerplate"]
+        HTTP --> SIM["SimulationConnector\n⚙️ Testing & Development\n40% code reduction"]
+        HTTP --> A1111_REST["A1111RestConnector\n🖼️ Stable Diffusion API\nFocus on image logic"]
+        HTTP --> REST_SYNC["RestSyncConnector\n⚡ Generic REST APIs\nMinimal implementation"]
         
         %% WebSocket-based Services  
-        WS --> COMFY_WS[ComfyUIWebSocketConnector<br/>🎨 Real-time Image Generation<br/>No connection management]
-        WS --> A1111_WS[A1111WebSocketConnector<br/>🖼️ Real-time SD Updates<br/>Pure message handling]
-        WS --> CUSTOM_WS[CustomWebSocketConnector<br/>🔧 Custom Real-time APIs<br/>Plug-and-play]
+        WS --> COMFY_WS["ComfyUIWebSocketConnector\n🎨 Real-time Image Generation\nNo connection management"]
+        WS --> A1111_WS["A1111WebSocketConnector\n🖼️ Real-time SD Updates\nPure message handling"]
+        WS --> CUSTOM_WS["CustomWebSocketConnector\n🔧 Custom Real-time APIs\nPlug-and-play"]
         
         %% Future Protocol Extensions
-        GRPC --> AI_GRPC[AIServiceConnector<br/>🤖 High-perf AI APIs<br/>Streaming inference]
-        STREAM --> SSE_CONN[SSEConnector<br/>📡 Event-driven APIs<br/>Real-time updates]
+        GRPC --> AI_GRPC["AIServiceConnector\n🤖 High-perf AI APIs\nStreaming inference"]
+        STREAM --> SSE_CONN["SSEConnector\n📡 Event-driven APIs\nReal-time updates"]
     end
     
     %% Specialized Service Variants
     subgraph "Service Variants - Inherit Protocol Benefits"
-        OPENAI_TEXT --> OPENAI_CHAT[OpenAIChatConnector<br/>💬 Conversational AI]
-        OPENAI_IMAGE --> OPENAI_IMG2IMG[OpenAIImg2ImgConnector<br/>🔄 Image Transformation]
+        OPENAI_TEXT --> OPENAI_CHAT["OpenAIChatConnector\n💬 Conversational AI"]
+        OPENAI_IMAGE --> OPENAI_IMG2IMG["OpenAIImg2ImgConnector\n🔄 Image Transformation"]
         
-        COMFY_WS --> COMFY_BATCH[ComfyUIBatchConnector<br/>📦 Batch Processing]
-        COMFY_WS --> COMFY_ADVANCED[ComfyUIAdvancedConnector<br/>🔬 Complex Workflows]
+        COMFY_WS --> COMFY_BATCH["ComfyUIBatchConnector\n📦 Batch Processing"]
+        COMFY_WS --> COMFY_ADVANCED["ComfyUIAdvancedConnector\n🔬 Complex Workflows"]
         
-        A1111_REST --> A1111_BATCH[A1111BatchConnector<br/>🏭 High-volume Generation]
+        A1111_REST --> A1111_BATCH["A1111BatchConnector\n🏭 High-volume Generation"]
     end
     
     %% Observability Integration - Now at Protocol Level!
     subgraph "📊 Protocol-Level Observability"
-        CL[ConnectorLogger<br/>📊 Structured Logging<br/>Job Lifecycle Events]
+        CL["ConnectorLogger\n📊 Structured Logging\nJob Lifecycle Events"]
         
         %% All specialized connectors get logging via protocol inheritance
         OPENAI_TEXT -.-> CL
@@ -71,14 +71,14 @@ graph TB
         A1111_REST -.-> CL
         AI_GRPC -.-> CL
         
-        CL --> FB[Fluent Bit<br/>📡 Log Collection<br/>Protocol-aware schemas]
+        CL --> FB["Fluent Bit\n📡 Log Collection\nProtocol-aware schemas"]
     end
     
     %% Machine Pool Integration - Protocol-aware routing
     subgraph "🎯 Protocol-Aware Machine Pools"
-        FAST[Fast Lane Pool<br/>🚀 HTTP-optimized<br/>High concurrency REST APIs]
-        STANDARD[Standard Pool<br/>⚖️ WebSocket-optimized<br/>Real-time processing]
-        HEAVY[Heavy Pool<br/>💪 gRPC-optimized<br/>High-throughput streaming]
+        FAST["Fast Lane Pool\n🚀 HTTP-optimized\nHigh concurrency REST APIs"]
+        STANDARD["Standard Pool\n⚖️ WebSocket-optimized\nReal-time processing"]
+        HEAVY["Heavy Pool\n💪 gRPC-optimized\nHigh-throughput streaming"]
         
         %% Protocol layer enables intelligent pool routing
         HTTP -.-> FAST
@@ -88,11 +88,11 @@ graph TB
     
     %% Benefits Callouts
     subgraph "💡 Protocol Layer Benefits"
-        B1[✅ 40-85% Code Reduction<br/>Focus on Business Logic]
-        B2[✅ Consistent Behavior<br/>All HTTP connectors identical]
-        B3[✅ Centralized Bug Fixes<br/>Fix once, benefit everywhere]
-        B4[✅ Easy Testing<br/>Mock protocol, not internals]
-        B5[✅ Unified Concurrency<br/>Handle at protocol level]
+        B1["✅ 40-85% Code Reduction\nFocus on Business Logic"]
+        B2["✅ Consistent Behavior\nAll HTTP connectors identical"]
+        B3["✅ Centralized Bug Fixes\nFix once, benefit everywhere"]
+        B4["✅ Easy Testing\nMock protocol, not internals"]
+        B5["✅ Unified Concurrency\nHandle at protocol level"]
     end
     
     %% Styling for clarity
@@ -104,8 +104,11 @@ graph TB
     
     class CI,BC foundation
     class HTTP,WS,GRPC,STREAM protocol
-    class OPENAI_TEXT,COMFY_WS,SIM,A1111_REST,AI_GRPC service
-    class CL,FB observability  
+    class OPENAI_TEXT,OPENAI_IMAGE,OPENAI_VISION,SIM,A1111_REST,REST_SYNC service
+    class COMFY_WS,A1111_WS,CUSTOM_WS,AI_GRPC,SSE_CONN service
+    class OPENAI_CHAT,OPENAI_IMG2IMG,COMFY_BATCH,COMFY_ADVANCED,A1111_BATCH service
+    class CL,FB observability
+    class FAST,STANDARD,HEAVY protocol
     class B1,B2,B3,B4,B5 benefits
 ```
 

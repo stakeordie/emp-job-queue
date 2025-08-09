@@ -76,6 +76,8 @@ const config = defineConfig({
       { text: 'Future', link: '/06-future-vision/' },
       { text: 'Open API', link: '/08-emprops-open-api/' },
       { text: 'Observability', link: '/09-observability/' },
+      { text: 'Notes', link: '/10-development-notes/' },
+      { text: 'Prompts', link: '/prompts/' },
       { text: 'Site Map', link: '/sitemap' }
     ],
 
@@ -246,6 +248,29 @@ const config = defineConfig({
             { text: 'Monitoring Setup 📝', link: '/09-observability/monitoring-setup' },
             { text: 'Alert Configuration 📝', link: '/09-observability/alert-configuration' },
             { text: 'Performance Tuning 📝', link: '/09-observability/performance-tuning' }
+          ]
+        }
+      ],
+      '/10-development-notes/': [
+        {
+          text: '10. Development Notes',
+          items: [
+            { text: 'Overview', link: '/10-development-notes/' },
+            { text: '[2025-01-08] Architecture Audit & Refactoring Plan', link: '/10-development-notes/2025-01-08-architecture-audit' },
+            { text: '[2025-01-08] Error Handling Architecture Analysis', link: '/10-development-notes/2025-01-08-error-handling-architecture-analysis' },
+            { text: '[2025-01-08] Active Jobs Display Bug Fix', link: '/10-development-notes/2025-01-08-active-jobs-display-bug-fix' }
+          ]
+        }
+      ],
+      '/prompts/': [
+        {
+          text: 'Prompt Library',
+          items: [
+            { text: 'Overview', link: '/prompts/' },
+            { text: '[2025-01-08] Architecture Audit Request', link: '/prompts/2025-01-08-architecture-audit-request' },
+            { text: 'Prompt Engineering Tips', link: '/prompts/prompt-engineering-tips' },
+            { text: 'Architecture Audits', link: '/prompts/architecture-audits' },
+            { text: 'Bug Investigations', link: '/prompts/bug-investigations' }
           ]
         }
       ]
