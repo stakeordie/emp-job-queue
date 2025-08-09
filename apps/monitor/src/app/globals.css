@@ -120,3 +120,26 @@
     @apply bg-background text-foreground m-0;
   }
 }
+
+@layer components {
+  .worker-busy-outline {
+    border: 2px solid #3b82f6;
+    box-shadow: 0 0 0 1px rgba(59, 130, 246, 0.3);
+  }
+  
+  .worker-processing-pulse {
+    animation: workerProcessingPulse 1.5s ease-in-out infinite;
+  }
+  
+  @keyframes workerProcessingPulse {
+    0% { 
+      background-color: rgba(251, 191, 36, 0.05);
+    }
+    50% { 
+      background-color: rgba(251, 191, 36, 0.15);
+    }
+    100% { 
+      background-color: rgba(251, 191, 36, 0.05);
+    }
+  }
+}

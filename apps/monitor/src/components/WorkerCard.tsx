@@ -1,12 +1,15 @@
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Worker } from "@/types/worker";
+import { useMonitorStore } from "@/store";
 
 interface WorkerCardProps {
   worker: Worker;
 }
 
 export function WorkerCard({ worker }: WorkerCardProps) {
+  const { blinkingWorkers } = useMonitorStore();
+  const isBlinking = blinkingWorkers.has(worker.worker_id);
   const getStatusColor = (status: Worker['status']) => {
     switch (status) {
       case 'idle':
@@ -41,7 +44,7 @@ export function WorkerCard({ worker }: WorkerCardProps) {
   return (
     <Card 
 key={worker.worker_id} 
-      className="p-2 border-l-4 h-fit" 
+      className={`p-2 border-l-4 h-fit ${isBlinking ? 'worker-status-blink' : ''}`} 
       style={{
         borderLeftColor: getStatusColor(worker.status)
       }}

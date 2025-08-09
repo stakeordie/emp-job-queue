@@ -11,7 +11,7 @@ import {
 } from "@/components/ui/dialog";
 import { SimpleWorkerCard } from "@/components/SimpleWorkerCard";
 import { Machine, Worker } from "@/types";
-import { useState, memo, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { Monitor, Server, Activity, AlertTriangle, X, RefreshCw, RotateCcw } from "lucide-react";
 import { LazyLog, ScrollFollow } from "@melloware/react-logviewer";
 
@@ -21,7 +21,7 @@ interface MachineCardProps {
   onDelete?: (machineId: string) => void;
 }
 
-export const MachineCard = memo(function MachineCard({ machine, workers, onDelete }: MachineCardProps) {
+export function MachineCard({ machine, workers, onDelete }: MachineCardProps) {
   const [showLogs, setShowLogs] = useState(false);
   const [activeTab, setActiveTab] = useState("overview");
 
@@ -238,9 +238,18 @@ export const MachineCard = memo(function MachineCard({ machine, workers, onDelet
                     <div
                       key={worker.worker_id}
                       className={`w-2 h-2 rounded-full ${
-                        worker.status === 'busy' ? 'bg-blue-500 animate-pulse' :
-                        worker.status === 'idle' ? 'bg-green-500' :
+                        // Processing: has active job OR explicitly busy status
+                        (worker.current_job_id !== null && worker.current_job_id !== undefined) || 
+                        worker.current_jobs?.length > 0 || 
+                        worker.status === 'busy'
+                          ? 'bg-blue-500 animate-pulse' :
+                        // Error states  
                         worker.status === 'error' ? 'bg-red-500' :
+                        // Idle: explicitly idle OR (no active jobs AND connected)
+                        worker.status === 'idle' || 
+                        (worker.current_job_id === null && worker.is_connected)
+                          ? 'bg-green-500' :
+                        // Default for disconnected/unknown states
                         'bg-gray-400'
                       }`}
                     />
@@ -531,4 +540,4 @@ export const MachineCard = memo(function MachineCard({ machine, workers, onDelet
       </Dialog>
     </>
   );
-});
+}

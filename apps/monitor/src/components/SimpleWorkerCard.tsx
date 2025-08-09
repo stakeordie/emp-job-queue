@@ -1,7 +1,8 @@
 "use client";
 
 import { Worker } from "@/types/worker";
-import { useState, memo } from "react";
+import { useState } from "react";
+import { useMonitorStore } from "@/store";
 import {
   Dialog,
   DialogContent,
@@ -14,10 +15,27 @@ interface SimpleWorkerCardProps {
   worker: Worker;
 }
 
-export const SimpleWorkerCard = memo(function SimpleWorkerCard({ worker }: SimpleWorkerCardProps) {
+export function SimpleWorkerCard({ worker }: SimpleWorkerCardProps) {
   const [showDetails, setShowDetails] = useState(false);
+  const { blinkingWorkers, jobs } = useMonitorStore();
 
-  const isProcessing = worker.status === 'busy';
+  // Determine if worker is busy (has claimed a job)
+  const isBusy = worker.status === 'busy' || worker.current_jobs?.length > 0;
+  
+  // Determine if worker is actively processing (has a job that's in_progress)
+  const activeJobs = worker.current_jobs?.map(jobId => 
+    jobs.find(job => job.id === jobId && job.status === 'in_progress')
+  ).filter(Boolean) || [];
+  const isActivelyProcessing = activeJobs.length > 0;
+  
+  const isBlinking = blinkingWorkers.has(worker.worker_id);
+  
+  // Debug logging for state changes
+  console.log(`🔍 SimpleWorkerCard render - Worker: ${worker.worker_id}, Status: ${worker.status}, IsBusy: ${isBusy}, IsActivelyProcessing: ${isActivelyProcessing}, IsBlinking: ${isBlinking}`);
+  
+  if (isActivelyProcessing) {
+    console.log(`🎯 Worker ${worker.worker_id} is actively processing job(s):`, activeJobs.map(j => j?.id));
+  }
   
   return (
     <>
@@ -26,10 +44,9 @@ export const SimpleWorkerCard = memo(function SimpleWorkerCard({ worker }: Simpl
         className={`
           w-full px-3 py-2 rounded border cursor-pointer
           transition-all duration-300 ease-in-out
-          ${isProcessing 
-            ? 'bg-blue-500 text-white border-blue-600 animate-pulse' 
-            : 'bg-white hover:bg-gray-50 border-gray-200'
-          }
+          bg-white hover:bg-gray-50 border-gray-200
+          ${isBusy ? 'worker-busy-outline' : ''}
+          ${isActivelyProcessing ? 'worker-processing-pulse' : ''}
         `}
       >
         <div className="flex flex-col gap-2">
@@ -44,11 +61,15 @@ export const SimpleWorkerCard = memo(function SimpleWorkerCard({ worker }: Simpl
                 </span>
               ) : null}
             </div>
-            {isProcessing && (
-              <Badge variant="secondary" className="text-xs">
+            {isActivelyProcessing ? (
+              <Badge variant="default" className="text-xs bg-yellow-500">
                 Processing
               </Badge>
-            )}
+            ) : isBusy ? (
+              <Badge variant="secondary" className="text-xs bg-blue-500">
+                Busy
+              </Badge>
+            ) : null}
           </div>
           <div className="flex flex-wrap gap-1">
             {worker.capabilities?.services?.map((service: string) => {
@@ -193,4 +214,4 @@ export const SimpleWorkerCard = memo(function SimpleWorkerCard({ worker }: Simpl
       </Dialog>
     </>
   );
-});
+}
