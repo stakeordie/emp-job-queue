@@ -71,12 +71,14 @@ export interface MachineShutdownEvent extends BaseMonitorEvent {
 export interface MachineUpdateEvent extends BaseMonitorEvent {
   type: 'machine_update';
   machine_id: string;
+  structure: Record<string, unknown>;
   status_data: Record<string, unknown>;
 }
 
 export interface MachineStatusChangeEvent extends BaseMonitorEvent {
   type: 'machine_status_change';
   machine_id: string;
+  structure: Record<string, unknown>;
   status_data: Record<string, unknown>;
 }
 
@@ -185,6 +187,8 @@ export interface JobProgressEvent extends BaseMonitorEvent {
   job_id: string;
   worker_id: string;
   progress: number;
+  status?: string;
+  message?: string;
 }
 
 export interface JobCompletedEvent extends BaseMonitorEvent {
