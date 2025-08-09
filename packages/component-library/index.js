@@ -39,18 +39,6 @@ async function fetchGetComponent(config, name) {
   }
 }
 
-async function fetchGetServers(config) {
-  try {
-    const url = `${config.apiUrl}/servers`;
-    const response = await fetch(url);
-    if (!response.ok) {
-      throw new Error(`HTTP error! status: ${response.status}`);
-    }
-    return response.json(); // API already returns { data, error } structure
-  } catch (error) {
-    return { data: null, error: `Failed to fetch servers: ${error.message}` };
-  }
-}
 
 async function fetchCreateComponent(config, data) {
   try {
@@ -179,7 +167,6 @@ async function fetchDeleteFormConfig(config, id) {
 async function fetchGetCustomNodes(config, options = {}) {
   try {
     const searchParams = new URLSearchParams();
-    if (options.category) searchParams.set('category', options.category);
     if (options.search) searchParams.set('search', options.search);
     
     const url = `${config.apiUrl}/custom-nodes${searchParams.toString() ? '?' + searchParams.toString() : ''}`;
@@ -382,7 +369,7 @@ async function promptForCustomNodeSelection(config, currentCustomNodes = []) {
   console.log(chalk.gray("Use ↑↓ to navigate, Space to select/deselect, Enter to confirm"));
   
   const customNodeChoices = availableCustomNodes.map(customNode => ({
-    name: `${customNode.name} (${customNode.category || 'uncategorized'})`,
+    name: customNode.name,
     value: customNode.name,
     checked: currentCustomNodes.includes(customNode.name),
     description: customNode.description || 'No description'
@@ -597,20 +584,6 @@ async function addComponent(componentName) {
     
     console.log(chalk.blue(`Detected component type: ${detectedType}`));
     
-    // Get servers for selection
-    const { data: servers, error: fetchServersError } = await fetchGetServers(config);
-    if (fetchServersError) {
-      console.error(chalk.red(fetchServersError));
-      return;
-    }
-    
-    const serverChoices = servers
-      .map((server) => ({
-        name: server.name,
-        value: server.id,
-      }))
-      .concat({ name: "None", value: undefined });
-    
     // Gather component metadata
     let componentData;
     try {
@@ -624,10 +597,6 @@ async function addComponent(componentName) {
         description: await input({
           message: "Enter the description of the component",
           required: true,
-        }),
-        server_id: await select({
-          message: "Select the server",
-          choices: serverChoices,
         }),
         output_mime_type: await input({
           message: "Enter the output mime type",
@@ -684,20 +653,6 @@ async function newComponent() {
   try {
     const config = await getCurrentEnvironment();
 
-    const { data: servers, error: fetchServersError } =
-      await fetchGetServers(config);
-    if (fetchServersError) {
-      console.error(chalk.red(fetchServersError));
-      return;
-    }
-
-    const serverChoices = servers
-      .map((server) => ({
-        name: server.name,
-        value: server.id,
-      }))
-      .concat({ name: "None", value: undefined });
-
     let componentData;
     try {
       componentData = {
@@ -712,10 +667,6 @@ async function newComponent() {
         description: await input({
           message: "Enter the description of the component",
           required: true,
-        }),
-        server_id: await select({
-          message: "Select the server",
-          choices: serverChoices,
         }),
         output_mime_type: await input({
           message: "Enter the output mime type",
@@ -1341,20 +1292,6 @@ async function updateComponent(componentName) {
       return;
     }
 
-    const { data: servers, error: fetchServersError } =
-      await fetchGetServers(config);
-    if (fetchServersError) {
-      console.error(chalk.red(fetchServersError));
-      return;
-    }
-
-    const serverChoices = servers
-      .map((server) => ({
-        name: server.name,
-        value: server.id,
-      }))
-      .concat({ name: "None", value: undefined });
-
     let updatedData;
     try {
       updatedData = {
@@ -1372,11 +1309,6 @@ async function updateComponent(componentName) {
           message: "Enter the new description of the component",
           default: component.description,
           required: true,
-        }),
-        server_id: await select({
-          message: "Select the new server",
-          choices: serverChoices,
-          default: component.server_id,
         }),
         output_mime_type: await input({
           message: "Enter the new output mime type",
@@ -1400,10 +1332,72 @@ async function updateComponent(componentName) {
       
       // Add model selection for workflow components
       if (updatedData.type === "comfy_workflow") {
-        console.log(chalk.blue("\nModel Selection for Component:"));
+        console.log(chalk.blue("\n🔗 Update Linked Models for Component:"));
+        console.log(chalk.gray("ComfyUI workflow components can specify which models they require"));
+        
         const currentModels = component.models || []; // Get existing models
-        const selectedModels = await promptForModelSelection(config, currentModels);
-        updatedData.models = selectedModels;
+        if (currentModels.length > 0) {
+          console.log(chalk.gray(`Currently linked models: ${currentModels.join(', ')}`));
+        } else {
+          console.log(chalk.gray("No models currently linked to this component"));
+        }
+        
+        const shouldUpdateModels = await expand({
+          message: "Do you want to update the linked models?",
+          default: "y",
+          choices: [
+            { key: "y", name: "Yes, update model links", value: "yes" },
+            { key: "n", name: "No, keep current models", value: "no" },
+          ],
+        });
+        
+        if (shouldUpdateModels === "yes") {
+          const selectedModels = await promptForModelSelection(config, currentModels);
+          updatedData.models = selectedModels;
+          
+          if (selectedModels.length > 0) {
+            console.log(chalk.green(`✓ Updated linked models: ${selectedModels.join(', ')}`));
+          } else {
+            console.log(chalk.yellow("⚠ No models selected - component will have no model links"));
+          }
+        } else {
+          console.log(chalk.gray("Keeping current model links unchanged"));
+          updatedData.models = currentModels; // Keep existing models
+        }
+        
+        // Add custom node selection for workflow components
+        console.log(chalk.blue("\n🔧 Update Linked Custom Nodes for Component:"));
+        console.log(chalk.gray("ComfyUI workflow components can specify which custom nodes they require"));
+        
+        const currentCustomNodes = component.custom_nodes || []; // Get existing custom nodes
+        if (currentCustomNodes.length > 0) {
+          console.log(chalk.gray(`Currently linked custom nodes: ${currentCustomNodes.join(', ')}`));
+        } else {
+          console.log(chalk.gray("No custom nodes currently linked to this component"));
+        }
+        
+        const shouldUpdateCustomNodes = await expand({
+          message: "Do you want to update the linked custom nodes?",
+          default: "y",
+          choices: [
+            { key: "y", name: "Yes, update custom node links", value: "yes" },
+            { key: "n", name: "No, keep current custom nodes", value: "no" },
+          ],
+        });
+        
+        if (shouldUpdateCustomNodes === "yes") {
+          const selectedCustomNodes = await promptForCustomNodeSelection(config, currentCustomNodes);
+          updatedData.custom_nodes = selectedCustomNodes;
+          
+          if (selectedCustomNodes.length > 0) {
+            console.log(chalk.green(`✓ Updated linked custom nodes: ${selectedCustomNodes.join(', ')}`));
+          } else {
+            console.log(chalk.yellow("⚠ No custom nodes selected - component will have no custom node links"));
+          }
+        } else {
+          console.log(chalk.gray("Keeping current custom node links unchanged"));
+          updatedData.custom_nodes = currentCustomNodes; // Keep existing custom nodes
+        }
       }
       
     } catch (error) {
@@ -1800,7 +1794,6 @@ async function listCustomNodes(options) {
   try {
     const config = await getCurrentEnvironment();
     const { data: customNodes, error } = await fetchGetCustomNodes(config, { 
-      category: options.category,
       search: options.search
     });
     
@@ -1820,7 +1813,6 @@ async function listCustomNodes(options) {
     customNodes.forEach((customNode) => {
       console.log(`${chalk.white(customNode.name)}`);
       console.log(`  ID: ${customNode.id}`);
-      console.log(`  Category: ${customNode.category || 'Uncategorized'}`);
       console.log(`  Status: ${customNode.status}`);
       console.log(`  Description: ${customNode.description || 'No description'}`);
       console.log(`  Repository: ${customNode.repositoryUrl || 'Not specified'}`);
@@ -1845,18 +1837,6 @@ async function addCustomNode(name) {
     console.log(chalk.blue(`Adding new custom node: ${name}`));
 
     const repositoryUrl = await input({ message: "Enter the repository URL:", required: true });
-    const category = await select({
-      message: "Select category:",
-      choices: [
-        { name: "Image Processing", value: "image_processing" },
-        { name: "Text Processing", value: "text_processing" },
-        { name: "Model Loading", value: "model_loading" },
-        { name: "Conditioning", value: "conditioning" },
-        { name: "Sampling", value: "sampling" },
-        { name: "Utility", value: "utility" },
-        { name: "Custom", value: "custom" }
-      ]
-    });
     const description = await input({ message: "Enter description:", required: true });
     const installCommand = await input({ 
       message: "Enter install command (optional, default: git clone):",
@@ -1868,7 +1848,6 @@ async function addCustomNode(name) {
     const customNodeData = {
       name,
       repositoryUrl,
-      category,
       description,
       installCommand,
       dependencies: dependencies ? dependencies.split(',').map(d => d.trim()) : [],
@@ -1990,7 +1969,8 @@ componentsCommand
 
 componentsCommand
   .command("update <componentName>")
-  .description("Update component details (name, label, description, etc.)")
+  .alias("edit")
+  .description("Update component details (name, label, description, models, custom nodes, etc.)")
   .action(updateComponent);
 
 componentsCommand
@@ -2100,7 +2080,6 @@ const customNodeCommand = program
 customNodeCommand
   .command("list")
   .description("List all custom nodes")
-  .option("--category <category>", "Filter by category")
   .option("--search <search>", "Search custom nodes")
   .action(listCustomNodes);
 
