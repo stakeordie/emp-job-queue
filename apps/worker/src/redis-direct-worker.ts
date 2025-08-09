@@ -13,7 +13,16 @@ export * from './connectors/index.js';
 // Worker configuration from environment
 // Use provided WORKER_ID directly (set by PM2 ecosystem generator)
 // PM2 creates unique IDs like: simulation-0, simulation-1, comfyui-gpu0, comfyui-gpu1
+logger.info(`🔧 [DEBUG] Reading WORKER_ID from process.env.WORKER_ID: ${process.env.WORKER_ID}`);
 const WORKER_ID = process.env.WORKER_ID;
+logger.info(`🔧 [DEBUG] WORKER_ID constant set to: ${WORKER_ID}`);
+
+logger.info(`🔍 WORKER_ID from environment: ${WORKER_ID}`);
+logger.info(`🔍 All environment variables: ${JSON.stringify({
+  WORKER_ID: process.env.WORKER_ID,
+  MACHINE_ID: process.env.MACHINE_ID,
+  HUB_REDIS_URL: process.env.HUB_REDIS_URL
+})}`);
 
 if (!WORKER_ID) {
   logger.error('WORKER_ID environment variable is required');
@@ -28,23 +37,23 @@ const MACHINE_ID = process.env.MACHINE_ID || os.hostname();
  */
 function logEnvironmentVariables() {
   logger.info('🔍 Environment Variable Resolution Report:');
-  
+
   // Core worker variables
   const coreVars = {
-    'WORKER_ID': process.env.WORKER_ID,
-    'MACHINE_ID': process.env.MACHINE_ID,
-    'HUB_REDIS_URL': process.env.HUB_REDIS_URL,
-    'NODE_ENV': process.env.NODE_ENV,
-    'ENV': process.env.ENV,
-    'CURRENT_ENV': process.env.CURRENT_ENV
+    WORKER_ID: process.env.WORKER_ID,
+    MACHINE_ID: process.env.MACHINE_ID,
+    HUB_REDIS_URL: process.env.HUB_REDIS_URL,
+    NODE_ENV: process.env.NODE_ENV,
+    ENV: process.env.ENV,
+    CURRENT_ENV: process.env.CURRENT_ENV,
   };
-  
+
   logger.info('📋 Core Variables:');
   Object.entries(coreVars).forEach(([key, value]) => {
     if (value !== undefined) {
       // Mask sensitive URLs
-      const displayValue = key.includes('URL') && value ? 
-        value.replace(/\/\/[^:]*:[^@]*@/, '//***:***@') : value;
+      const displayValue =
+        key.includes('URL') && value ? value.replace(/\/\/[^:]*:[^@]*@/, '//***:***@') : value;
       logger.info(`   ${key}=${displayValue}`);
     } else {
       logger.warn(`   ${key}=<NOT SET>`);
@@ -54,28 +63,29 @@ function logEnvironmentVariables() {
   // Machine Interface Variables - from machine.interface.ts
   const machineInterfaceVars = {
     // Required
-    'HUB_REDIS_URL': process.env.HUB_REDIS_URL,
-    'WORKER_BUNDLE_MODE': process.env.WORKER_BUNDLE_MODE,
-    'UNIFIED_MACHINE_STATUS': process.env.UNIFIED_MACHINE_STATUS,
-    
+    HUB_REDIS_URL: process.env.HUB_REDIS_URL,
+    WORKER_BUNDLE_MODE: process.env.WORKER_BUNDLE_MODE,
+    UNIFIED_MACHINE_STATUS: process.env.UNIFIED_MACHINE_STATUS,
+
     // Optional
-    'MACHINE_HEALTH_PORT': process.env.MACHINE_HEALTH_PORT,
-    'MACHINE_LOG_LEVEL': process.env.MACHINE_LOG_LEVEL,
-    'EXPOSE_PORTS': process.env.EXPOSE_PORTS,
-    'WORKER_WEBSOCKET_AUTH_TOKEN': process.env.WORKER_WEBSOCKET_AUTH_TOKEN,
-    'WORKER_COMFYUI_REMOTE_TIMEOUT_SECONDS': process.env.WORKER_COMFYUI_REMOTE_TIMEOUT_SECONDS,
-    'WORKER_COMFYUI_REMOTE_MAX_CONCURRENT_JOBS': process.env.WORKER_COMFYUI_REMOTE_MAX_CONCURRENT_JOBS,
-    'STATIC_MODELS': process.env.STATIC_MODELS,
-    'COMFYUI_EXPOSE_PORTS': process.env.COMFYUI_EXPOSE_PORTS,
-    'COMFYUI_EXPOSED_HOST_PORT_BASE': process.env.COMFYUI_EXPOSED_HOST_PORT_BASE,
-    'COMFYUI_EXPOSED_CONTAINER_PORT_BASE': process.env.COMFYUI_EXPOSED_CONTAINER_PORT_BASE,
-    'COMFYUI_RESOURCE_BINDING': process.env.COMFYUI_RESOURCE_BINDING,
-    'OPENAI_IMAGE_MODEL': process.env.OPENAI_IMAGE_MODEL,
-    'OPENAI_DEBUG': process.env.OPENAI_DEBUG,
-    
+    MACHINE_HEALTH_PORT: process.env.MACHINE_HEALTH_PORT,
+    MACHINE_LOG_LEVEL: process.env.MACHINE_LOG_LEVEL,
+    EXPOSE_PORTS: process.env.EXPOSE_PORTS,
+    WORKER_WEBSOCKET_AUTH_TOKEN: process.env.WORKER_WEBSOCKET_AUTH_TOKEN,
+    WORKER_COMFYUI_REMOTE_TIMEOUT_SECONDS: process.env.WORKER_COMFYUI_REMOTE_TIMEOUT_SECONDS,
+    WORKER_COMFYUI_REMOTE_MAX_CONCURRENT_JOBS:
+      process.env.WORKER_COMFYUI_REMOTE_MAX_CONCURRENT_JOBS,
+    STATIC_MODELS: process.env.STATIC_MODELS,
+    COMFYUI_EXPOSE_PORTS: process.env.COMFYUI_EXPOSE_PORTS,
+    COMFYUI_EXPOSED_HOST_PORT_BASE: process.env.COMFYUI_EXPOSED_HOST_PORT_BASE,
+    COMFYUI_EXPOSED_CONTAINER_PORT_BASE: process.env.COMFYUI_EXPOSED_CONTAINER_PORT_BASE,
+    COMFYUI_RESOURCE_BINDING: process.env.COMFYUI_RESOURCE_BINDING,
+    OPENAI_IMAGE_MODEL: process.env.OPENAI_IMAGE_MODEL,
+    OPENAI_DEBUG: process.env.OPENAI_DEBUG,
+
     // Defaults
-    'WORKER_MAX_CONCURRENT_JOBS': process.env.WORKER_MAX_CONCURRENT_JOBS,
-    'WORKER_HEALTH_CHECK_INTERVAL': process.env.WORKER_HEALTH_CHECK_INTERVAL
+    WORKER_MAX_CONCURRENT_JOBS: process.env.WORKER_MAX_CONCURRENT_JOBS,
+    WORKER_HEALTH_CHECK_INTERVAL: process.env.WORKER_HEALTH_CHECK_INTERVAL,
   };
 
   logger.info('📋 Machine Interface Variables:');
@@ -89,36 +99,35 @@ function logEnvironmentVariables() {
 
   // Secret Variables (masked values)
   const secretVars = {
-    'AWS_ACCESS_KEY_ID': process.env.AWS_ACCESS_KEY_ID,
-    'AWS_SECRET_ACCESS_KEY_ENCODED': process.env.AWS_SECRET_ACCESS_KEY_ENCODED,
-    'AWS_DEFAULT_REGION': process.env.AWS_DEFAULT_REGION,
-    'AZURE_STORAGE_ACCOUNT': process.env.AZURE_STORAGE_ACCOUNT,
-    'AZURE_STORAGE_KEY': process.env.AZURE_STORAGE_KEY,
-    'CLOUD_PROVIDER': process.env.CLOUD_PROVIDER,
-    'CLOUD_STORAGE_PROVIDER': process.env.CLOUD_STORAGE_PROVIDER,
-    'CLOUD_STORAGE_CONTAINER': process.env.CLOUD_STORAGE_CONTAINER,
-    'CLOUD_CDN_URL': process.env.CLOUD_CDN_URL,
-    'HF_TOKEN': process.env.HF_TOKEN,
-    'CIVITAI_TOKEN': process.env.CIVITAI_TOKEN,
-    'OPENAI_API_KEY': process.env.OPENAI_API_KEY,
-    'OLLAMA_HOST': process.env.OLLAMA_HOST,
-    'OLLAMA_PORT': process.env.OLLAMA_PORT,
-    'OLLAMA_DEFAULT_MODEL': process.env.OLLAMA_DEFAULT_MODEL,
-    'EMPROPS_DEBUG_LOGGING': process.env.EMPROPS_DEBUG_LOGGING,
-    'WORKER_COMFYUI_REMOTE_HOST': process.env.WORKER_COMFYUI_REMOTE_HOST,
-    'WORKER_COMFYUI_REMOTE_PORT': process.env.WORKER_COMFYUI_REMOTE_PORT,
-    'WORKER_COMFYUI_REMOTE_USERNAME': process.env.WORKER_COMFYUI_REMOTE_USERNAME,
-    'WORKER_COMFYUI_REMOTE_PASSWORD': process.env.WORKER_COMFYUI_REMOTE_PASSWORD,
-    'AUTH_TOKEN': process.env.AUTH_TOKEN
+    AWS_ACCESS_KEY_ID: process.env.AWS_ACCESS_KEY_ID,
+    AWS_SECRET_ACCESS_KEY_ENCODED: process.env.AWS_SECRET_ACCESS_KEY_ENCODED,
+    AWS_DEFAULT_REGION: process.env.AWS_DEFAULT_REGION,
+    AZURE_STORAGE_ACCOUNT: process.env.AZURE_STORAGE_ACCOUNT,
+    AZURE_STORAGE_KEY: process.env.AZURE_STORAGE_KEY,
+    CLOUD_PROVIDER: process.env.CLOUD_PROVIDER,
+    CLOUD_STORAGE_PROVIDER: process.env.CLOUD_STORAGE_PROVIDER,
+    CLOUD_STORAGE_CONTAINER: process.env.CLOUD_STORAGE_CONTAINER,
+    CLOUD_CDN_URL: process.env.CLOUD_CDN_URL,
+    HF_TOKEN: process.env.HF_TOKEN,
+    CIVITAI_TOKEN: process.env.CIVITAI_TOKEN,
+    OPENAI_API_KEY: process.env.OPENAI_API_KEY,
+    OLLAMA_HOST: process.env.OLLAMA_HOST,
+    OLLAMA_PORT: process.env.OLLAMA_PORT,
+    OLLAMA_DEFAULT_MODEL: process.env.OLLAMA_DEFAULT_MODEL,
+    EMPROPS_DEBUG_LOGGING: process.env.EMPROPS_DEBUG_LOGGING,
+    WORKER_COMFYUI_REMOTE_HOST: process.env.WORKER_COMFYUI_REMOTE_HOST,
+    WORKER_COMFYUI_REMOTE_PORT: process.env.WORKER_COMFYUI_REMOTE_PORT,
+    WORKER_COMFYUI_REMOTE_USERNAME: process.env.WORKER_COMFYUI_REMOTE_USERNAME,
+    WORKER_COMFYUI_REMOTE_PASSWORD: process.env.WORKER_COMFYUI_REMOTE_PASSWORD,
+    AUTH_TOKEN: process.env.AUTH_TOKEN,
   };
 
   logger.info('🔐 Secret Variables (masked):');
   Object.entries(secretVars).forEach(([key, value]) => {
     if (value !== undefined) {
       // Mask secret values - show first/last few chars for verification
-      const maskedValue = value.length > 8 ? 
-        `${value.slice(0, 4)}***${value.slice(-4)}` : 
-        '***MASKED***';
+      const maskedValue =
+        value.length > 8 ? `${value.slice(0, 4)}***${value.slice(-4)}` : '***MASKED***';
       logger.info(`   ${key}=${maskedValue}`);
     } else {
       logger.warn(`   ${key}=<NOT SET>`);
@@ -127,14 +136,15 @@ function logEnvironmentVariables() {
 
   // Service-specific variables (OpenAI, ComfyUI, etc.)
   const serviceVars = Object.keys(process.env)
-    .filter(key => 
-      key.startsWith('OPENAI_') ||
-      key.startsWith('COMFYUI_') ||
-      key.startsWith('SIMULATION_') ||
-      key.startsWith('A1111_') ||
-      key.startsWith('REPLICATE_') ||
-      key.startsWith('OLLAMA_') ||
-      key.startsWith('LOG_')
+    .filter(
+      key =>
+        key.startsWith('OPENAI_') ||
+        key.startsWith('COMFYUI_') ||
+        key.startsWith('SIMULATION_') ||
+        key.startsWith('A1111_') ||
+        key.startsWith('REPLICATE_') ||
+        key.startsWith('OLLAMA_') ||
+        key.startsWith('LOG_')
     )
     .filter(key => !machineInterfaceVars.hasOwnProperty(key) && !secretVars.hasOwnProperty(key));
 
@@ -143,22 +153,32 @@ function logEnvironmentVariables() {
     serviceVars.forEach(key => {
       const value = process.env[key];
       // Mask potentially sensitive values
-      const displayValue = (key.includes('TOKEN') || key.includes('KEY') || key.includes('SECRET')) && value ?
-        (value.length > 8 ? `${value.slice(0, 4)}***${value.slice(-4)}` : '***MASKED***') :
-        value;
+      const displayValue =
+        (key.includes('TOKEN') || key.includes('KEY') || key.includes('SECRET')) && value
+          ? value.length > 8
+            ? `${value.slice(0, 4)}***${value.slice(-4)}`
+            : '***MASKED***'
+          : value;
       logger.info(`   ${key}=${displayValue}`);
     });
   }
 
   // Summary
-  const totalResolved = Object.values({...coreVars, ...machineInterfaceVars, ...secretVars})
-    .filter(v => v !== undefined).length;
-  const totalExpected = Object.keys({...coreVars, ...machineInterfaceVars, ...secretVars}).length;
-  
-  logger.info(`📊 Environment Summary: ${totalResolved}/${totalExpected} expected variables resolved`);
-  
+  const totalResolved = Object.values({
+    ...coreVars,
+    ...machineInterfaceVars,
+    ...secretVars,
+  }).filter(v => v !== undefined).length;
+  const totalExpected = Object.keys({ ...coreVars, ...machineInterfaceVars, ...secretVars }).length;
+
+  logger.info(
+    `📊 Environment Summary: ${totalResolved}/${totalExpected} expected variables resolved`
+  );
+
   if (totalResolved < totalExpected) {
-    logger.warn('⚠️  Some expected environment variables are not set - this may cause configuration issues');
+    logger.warn(
+      '⚠️  Some expected environment variables are not set - this may cause configuration issues'
+    );
   } else {
     logger.info('✅ All expected environment variables are resolved');
   }
@@ -176,6 +196,7 @@ async function main() {
   const connectorManager = new ConnectorManager();
 
   // Create Redis-direct worker
+  logger.info(`🔧 [DEBUG] Calling RedisDirectBaseWorker constructor with WORKER_ID: ${WORKER_ID}`);
   const worker = new RedisDirectBaseWorker(WORKER_ID, MACHINE_ID, connectorManager, HUB_REDIS_URL);
 
   // Graceful shutdown handling

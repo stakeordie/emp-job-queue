@@ -22,6 +22,7 @@ import {
   PerformanceConfig,
   Job,
   JobProgress,
+  JobStatus,
   ConnectorStatus,
   logger,
 } from '@emp/core';
@@ -96,9 +97,11 @@ export class RedisDirectBaseWorker {
     connectorManager: ConnectorManager,
     hubRedisUrl: string
   ) {
+    logger.info(`🔧 [DEBUG] RedisDirectBaseWorker constructor called with workerId: ${workerId}`);
     this.workerId = workerId;
     this.machineId = machineId;
     this.connectorManager = connectorManager;
+    logger.info(`🔧 [DEBUG] Creating RedisDirectWorkerClient with workerId: ${workerId}`);
     this.redisClient = new RedisDirectWorkerClient(hubRedisUrl, workerId);
 
     // Initialize job health monitor
@@ -421,7 +424,7 @@ export class RedisDirectBaseWorker {
       this.status = WorkerStatus.IDLE;
       this.running = true;
 
-      // Send worker connected event with version info
+      // Send worker connected event with version info and capabilities
       await this.sendMachineEvent('worker_status_changed', {
         status: 'idle',
         is_connected: true,
@@ -430,6 +433,7 @@ export class RedisDirectBaseWorker {
         version: getWorkerVersion(), // Use actual Git release version
         build_timestamp: Date.now(), // Timestamp for build verification
         build_info: 'status-events-v2',
+        capabilities: this.capabilities.services || [], // Include worker capabilities
       });
 
       // Start job polling
@@ -617,9 +621,13 @@ export class RedisDirectBaseWorker {
     // Update connector to 'active' when job starts
     await this.updateConnectorStatus(job.service_required, 'active');
 
-    // Set up progress callback
+    // Set up progress callback - ensure all progress updates have status field
     const onProgress = async (progress: JobProgress) => {
-      await this.redisClient.sendJobProgress(job.id, progress);
+      const progressWithStatus: JobProgress = {
+        ...progress,
+        status: progress.status || JobStatus.IN_PROGRESS // Ensure status is always present
+      };
+      await this.redisClient.sendJobProgress(job.id, progressWithStatus);
     };
 
     // Transform payload for simulation mode when needed
@@ -733,12 +741,8 @@ export class RedisDirectBaseWorker {
       });
     }
 
-    // Ensure Redis status is updated when worker becomes idle
-    if (this.status === WorkerStatus.IDLE) {
-      this.redisClient.updateWorkerStatus('idle').catch(error => {
-        logger.error(`Failed to update worker status to idle: ${error}`);
-      });
-    }
+    // Worker status is updated to idle by WorkerClient in completeJob/failJob
+    // No need to duplicate the status update here
   }
 
   private handleJobTimeout(jobId: string): void {

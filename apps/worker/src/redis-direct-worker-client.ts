@@ -21,10 +21,13 @@ export class RedisDirectWorkerClient {
   private heartbeatIntervalMs: number;
   private pollTimeout?: NodeJS.Timeout;
   private heartbeatTimeout?: NodeJS.Timeout;
+  private currentStatus: 'idle' | 'busy' = 'idle';
 
   constructor(hubRedisUrl: string, workerId: string) {
+    logger.info(`🔧 [DEBUG] RedisDirectWorkerClient constructor called with workerId: ${workerId}`);
     this.hubRedisUrl = hubRedisUrl;
     this.workerId = workerId;
+    logger.info(`🔧 [DEBUG] this.workerId set to: ${this.workerId}`);
 
     // Configuration from environment
     this.pollIntervalMs = parseInt(process.env.WORKER_POLL_INTERVAL_MS || '1000');
@@ -69,18 +72,21 @@ export class RedisDirectWorkerClient {
       logger.info(
         `🔄 Worker ${this.workerId} attempting connection to Redis: ${this.maskRedisUrl(this.hubRedisUrl)}`
       );
+      logger.info(`🔄 Worker ${this.workerId} - initial currentStatus: ${this.currentStatus}`);
 
       await this.redis.ping();
       logger.info(`✅ Worker ${this.workerId} Redis connection successful`);
 
       // Register worker capabilities in Redis
+      logger.info(`📝 Worker ${this.workerId} - registering worker capabilities`);
       await this.registerWorker(capabilities);
 
       // Start heartbeat
+      logger.info(`💓 Worker ${this.workerId} - starting heartbeat`);
       this.startHeartbeat();
 
       this.isConnectedFlag = true;
-      logger.info(`🚀 Worker ${this.workerId} connected and registered with Redis-direct mode`);
+      logger.info(`🚀 Worker ${this.workerId} connected and registered with Redis-direct mode (currentStatus: ${this.currentStatus})`);
     } catch (error) {
       logger.error(
         `❌ Failed to connect worker ${this.workerId} to Redis [${this.maskRedisUrl(this.hubRedisUrl)}]:`,
@@ -134,14 +140,20 @@ export class RedisDirectWorkerClient {
   }
 
   /**
+   * Check if worker is currently processing a job (in-memory flag)
+   */
+
+  /**
    * Register worker capabilities directly in Redis
    * DISABLED when using unified machine status reporting
    */
   private async registerWorker(capabilities: WorkerCapabilities): Promise<void> {
+    logger.info(`📝 Worker ${this.workerId} - registerWorker called (UNIFIED_MACHINE_STATUS: ${process.env.UNIFIED_MACHINE_STATUS})`);
+    
     // Skip individual worker registration if unified machine status is enabled
     if (process.env.UNIFIED_MACHINE_STATUS === 'true') {
       logger.info(
-        `Skipping individual worker registration for ${this.workerId} - using unified machine status`
+        `⏭️ Skipping individual worker registration for ${this.workerId} - using unified machine status`
       );
       return;
     }
@@ -243,27 +255,26 @@ export class RedisDirectWorkerClient {
         }
       }
 
-      if (!capabilities) {
-        logger.warn(
-          `Cannot publish worker status for ${this.workerId} - no capabilities available`
-        );
-        return;
-      }
+      // Use minimal capabilities if none provided - worker can still advertise services
+      const safeCapabilities: WorkerCapabilities = capabilities || {
+        worker_id: this.workerId,
+        services: [] // No services if not specified
+      };
 
       const workerStatusReport = {
         worker_id: this.workerId,
-        machine_id: capabilities.machine_id || 'unknown',
+        machine_id: safeCapabilities.machine_id || 'unknown',
         status: status,
         capabilities: {
-          services: capabilities.services || [],
-          hardware: capabilities.hardware || {},
-          performance: capabilities.performance || {},
-          customer_access: capabilities.customer_access || {},
-          models: capabilities.models || {},
+          services: safeCapabilities.services || [],
+          hardware: safeCapabilities.hardware || {},
+          performance: safeCapabilities.performance || {},
+          customer_access: safeCapabilities.customer_access || {},
+          models: safeCapabilities.models || {},
         },
         timestamp: new Date().toISOString(),
         last_heartbeat: Date.now(),
-        connected_at: capabilities.connected_at || new Date().toISOString(),
+        connected_at: safeCapabilities.connected_at || new Date().toISOString(),
       };
 
       // Publish to worker_status channel for API discovery
@@ -325,6 +336,8 @@ export class RedisDirectWorkerClient {
    */
   async updateWorkerStatus(status: 'idle' | 'busy', currentJobId?: string): Promise<void> {
     try {
+      const oldStatus = this.currentStatus;
+      
       const updates: Record<string, string> = {
         status,
         last_status_change: new Date().toISOString(),
@@ -341,19 +354,19 @@ export class RedisDirectWorkerClient {
       // Also publish worker status change to Redis pub/sub for real-time updates
       const statusEvent = {
         worker_id: this.workerId,
-        old_status: 'unknown', // We don't track previous status in this client
+        old_status: oldStatus,
         new_status: status,
         current_job_id: currentJobId || '',
         timestamp: Date.now(),
       };
 
       await this.redis.publish('worker_status', JSON.stringify(statusEvent));
-
-      // Also publish full worker status for API discovery
-      await this.publishWorkerStatus(status);
+      
+      // Update tracked status
+      this.currentStatus = status;
 
       logger.info(
-        `🔄 Worker ${this.workerId} status changed to: ${status}${currentJobId ? ` (job: ${currentJobId})` : ''}`
+        `🔄 Worker ${this.workerId} status changed: ${oldStatus} -> ${status}${currentJobId ? ` (job: ${currentJobId})` : ''}`
       );
       logger.info(`📢 Worker ${this.workerId} published status change event`);
     } catch (error) {
@@ -434,11 +447,7 @@ export class RedisDirectWorkerClient {
    */
   async requestJob(capabilities: WorkerCapabilities): Promise<Job | null> {
     try {
-      // Phase 4: Use Redis Function for intelligent job matching
-      // logger.info(
-      //   `🔍 [DEBUG] Worker ${this.workerId} requesting job with services: ${capabilities.services?.join(', ') || 'none'}`
-      // );
-      // logger.debug(`Worker ${this.workerId} requesting job with capabilities:`, capabilities);
+      logger.info(`🔍 Worker ${this.workerId} - calling Redis function to request job`);
 
       // Ensure worker_id is included in capabilities
       const capabilitiesWithId: WorkerCapabilities = {
@@ -446,7 +455,14 @@ export class RedisDirectWorkerClient {
         worker_id: this.workerId,
       };
 
+      logger.debug(`Worker ${this.workerId} - capabilities: ${JSON.stringify(capabilitiesWithId)}`);
+
       const matchResult = await this.callFindMatchingJob(capabilitiesWithId, 100);
+      
+      logger.info(`🎯 Worker ${this.workerId} - Redis function result: ${matchResult ? 'GOT JOB' : 'NO JOB'}`);
+      if (matchResult) {
+        logger.info(`🎯 Worker ${this.workerId} - claimed job ID: ${matchResult.jobId}`);
+      }
 
       if (!matchResult) {
         logger.debug(`Worker ${this.workerId} - No matching jobs available`);
@@ -459,11 +475,15 @@ export class RedisDirectWorkerClient {
       // Worker status already updated by Redis Function, just publish the event
       const statusEvent = {
         worker_id: this.workerId,
-        old_status: 'idle',
+        old_status: this.currentStatus,
         new_status: 'busy',
         current_job_id: job.id,
         timestamp: Date.now(),
       };
+      
+      // Update tracked status
+      logger.info(`🔄 Worker ${this.workerId} - status change: ${this.currentStatus} → busy (job: ${job.id})`);
+      this.currentStatus = 'busy';
       await this.redis.publish('worker_status', JSON.stringify(statusEvent));
 
       logger.info(`Worker ${this.workerId} claimed job ${job.id} via Redis Function orchestration`);
@@ -687,9 +707,7 @@ export class RedisDirectWorkerClient {
     try {
       logger.info(`🚀 Worker ${this.workerId} starting job processing for ${jobId}`);
 
-      // Update worker status to busy (when starting job processing)
-      await this.updateWorkerStatus('busy', jobId);
-
+      // Worker status already set to busy by Redis Function when job was claimed
       // Update job status to IN_PROGRESS when processing begins
       await this.redis.hmset(`job:${jobId}`, {
         status: JobStatus.IN_PROGRESS,
@@ -811,9 +829,12 @@ export class RedisDirectWorkerClient {
       // Update worker status back to idle
       await this.updateWorkerStatus('idle');
 
-      logger.info(`Worker ${this.workerId} completed job ${jobId} via Redis-direct`);
+      // CRITICAL FIX: Clear processing flag to allow new jobs
+
+      logger.info(`Worker ${this.workerId} completed job ${jobId} via Redis-direct and cleared processing flag`);
     } catch (error) {
       logger.error(`Worker ${this.workerId} failed to complete job ${jobId}:`, error);
+      // Clear processing flag even on error to prevent worker from being stuck
       throw error;
     }
   }
@@ -928,8 +949,11 @@ export class RedisDirectWorkerClient {
 
       // Update worker status back to idle
       await this.updateWorkerStatus('idle');
+
+      // CRITICAL FIX: Clear processing flag to allow new jobs
     } catch (err) {
       logger.error(`Worker ${this.workerId} failed to fail job ${jobId}:`, err);
+      // Clear processing flag even on error to prevent worker from being stuck
       throw err;
     }
   }
@@ -941,21 +965,24 @@ export class RedisDirectWorkerClient {
     const poll = async () => {
       try {
         if (!this.isConnected()) {
+          logger.debug(`🔍 Worker ${this.workerId} - not connected, skipping poll`);
           return;
         }
 
-        // Skip job request if worker is already busy (processing a job)
-        const workerStatus = await this.getWorkerStatus();
-        if (workerStatus === 'busy') {
-          logger.debug(`Worker ${this.workerId} is ${workerStatus}, skipping job request`);
-          // Schedule next poll - will try again when current job completes
-          this.pollTimeout = setTimeout(poll, this.pollIntervalMs);
-          return;
-        }
+        logger.debug(`🔍 Worker ${this.workerId} - polling (currentStatus: ${this.currentStatus})`);
 
-        const job = await this.requestJob(capabilities);
-        if (job) {
-          onJobReceived(job);
+        // Only poll for new jobs if we're not already busy (avoid wasteful Redis calls)
+        if (this.currentStatus === 'idle') {
+          logger.info(`🔄 Worker ${this.workerId} - requesting job (status: idle)`);
+          const job = await this.requestJob(capabilities);
+          if (job) {
+            logger.info(`✅ Worker ${this.workerId} - received job: ${job.id}`);
+            onJobReceived(job);
+          } else {
+            logger.debug(`❌ Worker ${this.workerId} - no job received`);
+          }
+        } else {
+          logger.debug(`⏸️ Worker ${this.workerId} - skipping poll (status: ${this.currentStatus})`);
         }
       } catch (error) {
         logger.error(`Worker ${this.workerId} polling error:`, error);
@@ -967,7 +994,7 @@ export class RedisDirectWorkerClient {
 
     // Start polling
     logger.info(
-      `Worker ${this.workerId} starting Redis-direct job polling (${this.pollIntervalMs}ms interval)`
+      `Worker ${this.workerId} starting Redis-direct job polling (${this.pollIntervalMs}ms interval, currentStatus: ${this.currentStatus})`
     );
     poll();
   }
