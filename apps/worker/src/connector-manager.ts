@@ -403,23 +403,25 @@ export class ConnectorManager implements ConnectorRegistry, ConnectorFactory {
   }
 
   private async loadConnectorFallback(connectorId: string): Promise<any> {
-    // Fallback for when service-mapping.json is not available
-    const id = connectorId.toLowerCase();
+    // Use barrel file for all connector imports - no more manual imports!
+    const connectorClassName = this.connectorIdToClassName(connectorId);
 
-    switch (id) {
-      case 'simulation':
-        const { SimulationConnector } = await import('./connectors/simulation-connector.js');
-        return SimulationConnector;
-      case 'comfyui':
-        const { ComfyUIWebSocketConnector } = await import(
-          './connectors/comfyui-websocket-connector.js'
+    try {
+      const connectorModule = await import('./connectors/index.js');
+      const ConnectorClass = connectorModule[connectorClassName];
+
+      if (!ConnectorClass) {
+        throw new Error(
+          `Connector class ${connectorClassName} not found in connectors barrel file`
         );
-        return ComfyUIWebSocketConnector;
-      case 'comfyui-remote':
-        const { ComfyUIRemoteConnector } = await import('./connectors/comfyui-remote-connector.js');
-        return ComfyUIRemoteConnector;
-      default:
-        throw new Error(`Unknown connector type: ${connectorId} and no service mapping available`);
+      }
+
+      return ConnectorClass;
+    } catch (error) {
+      throw new Error(
+        `Failed to load connector ${connectorId}: ${error.message}. ` +
+          `Make sure ${connectorClassName} is exported from ./connectors/index.ts`
+      );
     }
   }
 

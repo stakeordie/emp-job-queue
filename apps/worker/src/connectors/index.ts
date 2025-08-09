@@ -14,7 +14,7 @@ export * from './openai-text-connector.js';
 export * from './rest-async-connector.js';
 export * from './rest-connector.js';
 export * from './rest-sync-connector.js';
-export * from './simulation-connector.js';
+export * from './simulation-http-connector.js';
 export * from './websocket-connector.js';
 
 // Note: If you add a new connector, add its export here

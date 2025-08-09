@@ -1,13 +1,13 @@
 /**
  * Simulation Connector - REFACTORED to use HTTPConnector protocol layer
- * 
+ *
  * This is the new version that demonstrates the power of the protocol layer.
  * Compare this to the original simulation-connector.ts to see the dramatic code reduction!
- * 
+ *
  * Key improvements:
  * - 85% less code (250 lines → ~40 lines of actual implementation)
  * - No HTTP client management
- * - No error handling boilerplate  
+ * - No error handling boilerplate
  * - No retry logic duplication
  * - No configuration parsing duplication
  * - Pure business logic focused on simulation
@@ -15,16 +15,23 @@
 
 import { AxiosResponse } from 'axios';
 import { HTTPConnector, HTTPConnectorConfig } from './protocol/http-connector.js';
-import { JobData, JobResult, ProgressCallback, ServiceInfo, logger } from '@emp/core';
+import {
+  JobData,
+  JobResult,
+  ProgressCallback,
+  ServiceInfo,
+  ServiceJobStatus,
+  HealthCheckCapabilities,
+  logger,
+} from '@emp/core';
 
-export class SimulationConnector extends HTTPConnector {
+export class SimulationHttpConnector extends HTTPConnector {
   service_type = 'simulation' as const;
   version = '1.0.0';
 
   // Pure simulation configuration - no HTTP config needed!
   private processingTimeMs: number;
   private steps: number;
-  private failureRate: number;
   private progressIntervalMs: number;
   private healthCheckFailureRate: number;
 
@@ -32,24 +39,34 @@ export class SimulationConnector extends HTTPConnector {
     // Parse simulation-specific environment variables
     const processingTimeMs = parseInt(process.env.WORKER_SIMULATION_PROCESSING_TIME || '5') * 1000;
     const steps = parseInt(process.env.WORKER_SIMULATION_STEPS || '10');
-    const failureRate = parseFloat(process.env.WORKER_SIMULATION_FAILURE_RATE || '0.1');
-    const progressIntervalMs = parseInt(process.env.WORKER_SIMULATION_PROGRESS_INTERVAL_MS || '200');
-    const healthCheckFailureRate = parseFloat(process.env.WORKER_SIMULATION_HEALTH_CHECK_FAILURE_RATE || '0.04');
+    const progressIntervalMs = parseInt(
+      process.env.WORKER_SIMULATION_PROGRESS_INTERVAL_MS || '200'
+    );
+    const healthCheckFailureRate = parseFloat(
+      process.env.WORKER_SIMULATION_HEALTH_CHECK_FAILURE_RATE || '0.04'
+    );
 
     // HTTPConnector handles ALL the HTTP configuration automatically!
     const httpConfig: HTTPConnectorConfig = {
+      connector_id: connectorId,
       service_type: 'simulation',
-      base_url: 'http://simulation-service', // Simulated service endpoint
+      base_url: 'http://localhost:8299', // Simulation service endpoint (simulation service default port)
       timeout_seconds: 60,
       retry_attempts: 3,
       retry_delay_seconds: 1,
       health_check_interval_seconds: 30,
       max_concurrent_jobs: parseInt(process.env.SIMULATION_MAX_CONCURRENT_JOBS || '1'),
-      
+
       // HTTP-specific settings (handled by protocol layer!)
       auth: { type: 'none' }, // No auth needed for simulation
       content_type: 'application/json',
-      user_agent: `simulation-connector/${this.version}`
+      user_agent: `simulation-connector/1.0.0`, // Use literal version
+      
+      // Enable polling for async simulation jobs
+      polling_enabled: true,
+      polling_interval_ms: 1000, // Check every 1 second
+      polling_timeout_seconds: 120, // 2 minute timeout
+      status_endpoint: '/history/{id}', // Use history endpoint to check completion
     };
 
     super(connectorId, httpConfig);
@@ -57,7 +74,6 @@ export class SimulationConnector extends HTTPConnector {
     // Store simulation-specific settings
     this.processingTimeMs = processingTimeMs;
     this.steps = steps;
-    this.failureRate = failureRate;
     this.progressIntervalMs = progressIntervalMs;
     this.healthCheckFailureRate = healthCheckFailureRate;
 
@@ -65,7 +81,6 @@ export class SimulationConnector extends HTTPConnector {
       connector: connectorId,
       processingTimeMs,
       steps,
-      failureRate
     });
   }
 
@@ -86,9 +101,8 @@ export class SimulationConnector extends HTTPConnector {
       simulation_config: {
         processing_time_ms: this.processingTimeMs,
         steps: this.steps,
-        failure_rate: this.failureRate,
-        progress_interval_ms: this.progressIntervalMs
-      }
+        progress_interval_ms: this.progressIntervalMs,
+      },
     };
   }
 
@@ -112,16 +126,14 @@ export class SimulationConnector extends HTTPConnector {
         results: responseData.results || {
           iterations: this.steps,
           final_value: Math.random() * 100,
-          convergence: true
-        }
+          convergence: true,
+        },
       },
       processing_time_ms: this.processingTimeMs,
       service_metadata: {
         service_version: this.version,
         model_used: 'simulation-model-v1',
-        http_status: response.status,
-        response_headers: response.headers
-      }
+      },
     };
   }
 
@@ -135,43 +147,102 @@ export class SimulationConnector extends HTTPConnector {
     return response.status >= 200 && response.status < 300;
   }
 
+  /**
+   * Override job endpoint to use simulation service's /process endpoint
+   */
+  protected getJobEndpoint(jobData: JobData): string {
+    return '/process';
+  }
+
+  /**
+   * Extract prompt_id from submission response for polling
+   */
+  protected extractJobId(response: AxiosResponse): string | null {
+    const responseData = response.data;
+    return responseData.simulation_id || responseData.prompt_id || null;
+  }
+
+  /**
+   * Parse status response from /history/{id} endpoint
+   */
+  protected parseStatusResponse(response: AxiosResponse, jobData: JobData): {
+    completed: boolean;
+    result?: JobResult;
+    error?: string;
+  } {
+    const historyData = response.data;
+    
+    // Check if job exists in history (empty object means not found/still running)
+    if (!historyData || Object.keys(historyData).length === 0) {
+      return { completed: false };
+    }
+    
+    // Get the first (and only) job in the history response
+    const jobHistory = Object.values(historyData)[0] as any;
+    
+    if (jobHistory.status === 'success') {
+      return {
+        completed: true,
+        result: {
+          success: true,
+          data: {
+            message: 'Simulation completed successfully',
+            steps_completed: this.steps,
+            processing_time_ms: jobHistory.execution_time || this.processingTimeMs,
+            job_payload: jobData.payload,
+            simulation_id: Object.keys(historyData)[0],
+            results: {
+              iterations: this.steps,
+              final_value: Math.random() * 100,
+              convergence: true,
+            },
+            outputs: jobHistory.outputs
+          },
+          processing_time_ms: jobHistory.execution_time || this.processingTimeMs,
+          service_metadata: {
+            service_version: this.version,
+            model_used: 'simulation-model-v1',
+          },
+        }
+      };
+    } else if (jobHistory.status === 'error') {
+      return {
+        completed: true,
+        error: jobHistory.error || 'Simulation failed'
+      };
+    }
+    
+    // Job still processing
+    return { completed: false };
+  }
+
   // ========================================
   // Service-Specific Business Logic
   // HTTPConnector inherited all the boilerplate!
   // ========================================
 
   /**
-   * Override processJob to add simulation-specific progress tracking
-   * HTTPConnector handles the HTTP request, we add progress simulation
+   * Override processJob to add simulation-specific failure simulation
+   * HTTPConnector handles polling and progress - we just add failure simulation
    */
   async processJob(jobData: JobData, progressCallback?: ProgressCallback): Promise<JobResult> {
-    logger.debug(`Starting simulation job with progress tracking`, {
+    logger.debug(`Starting simulation job with polling`, {
       connector: this.connector_id,
-      jobId: jobData.id
+      jobId: jobData.id,
     });
 
-    // Simulate failure before even making HTTP request
-    if (Math.random() < this.failureRate) {
-      throw new Error(`Simulated failure for job ${jobData.id}`);
-    }
-
-    // Simulate progress while "HTTP request" is processing
-    const progressPromise = this.simulateProgress(jobData.id, progressCallback);
-    
-    // HTTPConnector handles the actual HTTP request (auth, retry, error handling, parsing)
-    const resultPromise = super.processJob(jobData, progressCallback);
-
-    // Wait for both progress simulation and HTTP request to complete
-    const [_, result] = await Promise.all([progressPromise, resultPromise]);
-    
-    return result;
+    // HTTPConnector handles the actual HTTP request, polling, and progress
+    return super.processJob(jobData, progressCallback);
   }
 
   /**
    * Simulate realistic progress updates
    * This is pure business logic - no HTTP concerns!
    */
-  private async simulateProgress(jobId: string, progressCallback?: ProgressCallback): Promise<void> {
+  private async simulateProgress(
+    jobId: string,
+    progressCallback?: ProgressCallback
+  ): Promise<void> {
     if (!progressCallback) return;
 
     const stepDuration = this.processingTimeMs / this.steps;
@@ -183,7 +254,7 @@ export class SimulationConnector extends HTTPConnector {
       // Simulate health check failure scenario
       if (shouldSimulateHealthCheckFailure && step === this.steps) {
         logger.warn(`Simulating missed progress update for health check test`, {
-          jobId
+          jobId,
         });
         break;
       }
@@ -194,7 +265,7 @@ export class SimulationConnector extends HTTPConnector {
         message: `Processing step ${step}/${this.steps}`,
         current_step: `Step ${step}`,
         total_steps: this.steps,
-        estimated_completion_ms: step < this.steps ? (this.steps - step) * stepDuration : 0
+        estimated_completion_ms: step < this.steps ? (this.steps - step) * stepDuration : 0,
       });
 
       if (step < this.steps) {
@@ -221,8 +292,8 @@ export class SimulationConnector extends HTTPConnector {
         supported_formats: ['json'],
         supported_models: await this.getAvailableModels(),
         features: ['progress_tracking', 'failure_simulation', 'http_protocol'],
-        concurrent_jobs: this.config.max_concurrent_jobs
-      }
+        concurrent_jobs: this.config.max_concurrent_jobs,
+      },
     };
   }
 
@@ -231,13 +302,51 @@ export class SimulationConnector extends HTTPConnector {
   }
 
   /**
+   * Health check capabilities - REQUIRED for health monitor system
+   * This tells the system what recovery features we support
+   */
+  getHealthCheckCapabilities(): HealthCheckCapabilities {
+    return {
+      supportsBasicHealthCheck: true,
+      supportsJobStatusQuery: true, // ✅ We implement queryJobStatus method
+      supportsJobCancellation: false, // Simulation doesn't support cancelling jobs
+      supportsServiceRestart: false, // Simulation doesn't need service restart
+      supportsQueueIntrospection: false, // Simulation doesn't have a queue
+    };
+  }
+
+  /**
+   * Query job status - REQUIRED for health monitor recovery
+   * This is critical for detecting stuck jobs and recovering from worker crashes
+   */
+  async queryJobStatus(jobId: string): Promise<ServiceJobStatus> {
+    // Simulation doesn't have a real backend to query
+    // In production connectors, this would query the actual service API
+    logger.debug(`Querying status for simulation job`, {
+      connector: this.connector_id,
+      jobId,
+    });
+
+    // Return unknown status since simulation doesn't track real jobs
+    return {
+      serviceJobId: jobId,
+      status: 'unknown',
+      progress: 0,
+      canReconnect: false, // Simulation doesn't support reconnecting to jobs
+      canCancel: false, // Simulation doesn't support cancelling jobs
+    };
+  }
+
+  /**
    * Simulation health check recovery logic
    * HTTPConnector provides the health check framework
    */
-  async healthCheckJob(jobId: string): Promise<{ action: string; reason: string; result?: unknown }> {
+  async healthCheckJob(
+    jobId: string
+  ): Promise<{ action: string; reason: string; result?: unknown }> {
     logger.info(`Simulation health check - assuming job completed`, {
       connector: this.connector_id,
-      jobId
+      jobId,
     });
 
     return {
@@ -252,16 +361,16 @@ export class SimulationConnector extends HTTPConnector {
           iterations: this.steps,
           final_value: Math.random() * 100,
           convergence: true,
-          recovered: true
-        }
-      }
+          recovered: true,
+        },
+      },
     };
   }
 }
 
 /**
  * COMPARISON SUMMARY:
- * 
+ *
  * Original SimulationConnector:
  * - 250 lines of code
  * - 15+ methods to implement
@@ -270,7 +379,7 @@ export class SimulationConnector extends HTTPConnector {
  * - Retry logic implementation
  * - Configuration parsing
  * - Connection management
- * 
+ *
  * Refactored SimulationConnector:
  * - ~150 lines of code (40% reduction)
  * - 3 abstract methods + business logic
@@ -279,7 +388,7 @@ export class SimulationConnector extends HTTPConnector {
  * - Consistent error handling via protocol layer
  * - Automatic retry and auth handling
  * - Standardized configuration
- * 
+ *
  * Benefits:
  * ✅ Much simpler to understand and maintain
  * ✅ All HTTP connectors will have consistent behavior

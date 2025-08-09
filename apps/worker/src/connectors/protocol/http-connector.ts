@@ -12,9 +12,19 @@ import axios, { AxiosInstance, AxiosRequestConfig, AxiosResponse, AxiosError } f
 import { BaseConnector, ConnectorConfig } from '../base-connector.js';
 import { JobData, JobResult, ProgressCallback, ServiceInfo, logger } from '@emp/core';
 
-// HTTP-specific configuration extending base connector config
-export interface HTTPConnectorConfig extends ConnectorConfig {
-  // Authentication configuration
+// HTTP-specific configuration - contains base config fields
+export interface HTTPConnectorConfig {
+  // Base connector fields
+  connector_id: string;
+  service_type: string;
+  base_url: string;
+  timeout_seconds?: number;
+  retry_attempts?: number;
+  retry_delay_seconds?: number;
+  health_check_interval_seconds?: number;
+  max_concurrent_jobs?: number;
+  
+  // HTTP authentication configuration
   auth?: {
     type: 'none' | 'api_key' | 'bearer' | 'basic' | 'oauth';
     api_key?: string;
@@ -23,6 +33,7 @@ export interface HTTPConnectorConfig extends ConnectorConfig {
     username?: string;
     password?: string;
     oauth_token?: string;
+    token?: string;
   };
   
   // HTTP client configuration
@@ -37,6 +48,12 @@ export interface HTTPConnectorConfig extends ConnectorConfig {
   max_response_size_bytes?: number;
   follow_redirects?: boolean;
   max_redirects?: number;
+  
+  // Polling configuration for async jobs
+  polling_enabled?: boolean;
+  polling_interval_ms?: number;
+  polling_timeout_seconds?: number;
+  status_endpoint?: string; // e.g., '/queue' or '/status/{id}'
   
   // Advanced HTTP options
   keep_alive?: boolean;
@@ -72,7 +89,25 @@ export abstract class HTTPConnector extends BaseConnector {
   protected readonly httpConfig: HTTPConnectorConfig;
 
   constructor(connectorId: string, config: HTTPConnectorConfig) {
-    super(connectorId, config);
+    // Convert HTTPConnectorConfig to base ConnectorConfig for super constructor
+    const baseConfig: ConnectorConfig = {
+      connector_id: config.connector_id,
+      service_type: config.service_type,
+      base_url: config.base_url,
+      timeout_seconds: config.timeout_seconds || 60,
+      retry_attempts: config.retry_attempts || 3,
+      retry_delay_seconds: config.retry_delay_seconds || 1,
+      health_check_interval_seconds: config.health_check_interval_seconds || 30,
+      max_concurrent_jobs: config.max_concurrent_jobs || 1,
+      auth: config.auth ? {
+        type: config.auth.type === 'oauth' ? 'bearer' : (config.auth.type as 'none' | 'api_key' | 'bearer' | 'basic'),
+        username: config.auth.username,
+        password: config.auth.password,
+        token: config.auth.oauth_token || config.auth.bearer_token || config.auth.token,
+        api_key: config.auth.api_key
+      } : undefined
+    };
+    super(connectorId, baseConfig);
     this.httpConfig = {
       // Default HTTP configuration
       user_agent: `emp-worker-${connectorId}/1.0.0`,
@@ -348,6 +383,40 @@ export abstract class HTTPConnector extends BaseConnector {
    */
   protected abstract validateServiceResponse(response: AxiosResponse): boolean;
 
+  // ============================================
+  // Polling Support for Async Jobs (Optional)
+  // ============================================
+
+  /**
+   * Extract job ID from submission response (for polling)
+   * Return null if this is a synchronous response that doesn't need polling
+   */
+  protected extractJobId(response: AxiosResponse): string | null {
+    return null; // Default: no polling
+  }
+
+  /**
+   * Build status check URL for polling
+   * Override to customize status endpoint format
+   */
+  protected buildStatusUrl(jobId: string): string {
+    const endpoint = this.httpConfig.status_endpoint || '/status/{id}';
+    return endpoint.replace('{id}', jobId);
+  }
+
+  /**
+   * Parse status response to determine if job is complete
+   * Return { completed: boolean, result?: JobResult, error?: string }
+   */
+  protected parseStatusResponse(response: AxiosResponse, jobData: JobData): {
+    completed: boolean;
+    result?: JobResult;
+    error?: string;
+  } {
+    // Default implementation - override in subclass
+    return { completed: true };
+  }
+
   /**
    * Build the HTTP request configuration for the job
    * Override for custom headers, query params, etc.
@@ -362,11 +431,9 @@ export abstract class HTTPConnector extends BaseConnector {
 
   /**
    * Get the API endpoint for job processing
-   * Override for service-specific endpoints
+   * Each service must implement this for their specific API
    */
-  protected getJobEndpoint(jobData: JobData): string {
-    return '/api/v1/jobs';
-  }
+  protected abstract getJobEndpoint(jobData: JobData): string;
 
   // ========================================
   // BaseConnector Implementation
@@ -383,6 +450,15 @@ export abstract class HTTPConnector extends BaseConnector {
       // Build request configuration
       const requestConfig = this.buildRequestConfig(jobData);
       
+      logger.info(`🌐 HTTPConnector making request`, {
+        connector: this.connector_id,
+        method: requestConfig.method,
+        url: requestConfig.url,
+        baseURL: this.httpClient.defaults.baseURL,
+        fullURL: `${this.httpClient.defaults.baseURL}${requestConfig.url}`,
+        jobId: jobData.id
+      });
+      
       // Execute HTTP request
       const response = await this.httpClient.request(requestConfig);
 
@@ -391,16 +467,30 @@ export abstract class HTTPConnector extends BaseConnector {
         throw new Error('Invalid service response received');
       }
 
-      // Parse response to JobResult
-      const result = this.parseResponse(response, jobData);
-
-      logger.debug(`HTTP job completed successfully`, {
-        connector: this.connector_id,
-        jobId: jobData.id,
-        status: response.status
-      });
-
-      return result;
+      // Check if this requires polling (async job)
+      const serviceJobId = this.extractJobId(response);
+      
+      if (serviceJobId && this.httpConfig.polling_enabled) {
+        logger.debug(`Job submitted for async processing`, {
+          connector: this.connector_id,
+          jobId: jobData.id,
+          serviceJobId
+        });
+        
+        // Start polling for completion
+        return await this.pollForCompletion(serviceJobId, jobData, progressCallback);
+      } else {
+        // Synchronous response - parse and return immediately
+        const result = this.parseResponse(response, jobData);
+        
+        logger.debug(`HTTP job completed synchronously`, {
+          connector: this.connector_id,
+          jobId: jobData.id,
+          status: response.status
+        });
+        
+        return result;
+      }
 
     } catch (error) {
       logger.error(`HTTP job failed`, {
@@ -412,6 +502,99 @@ export abstract class HTTPConnector extends BaseConnector {
       throw error;
     }
   }
+
+  /**
+   * Poll service for job completion
+   */
+  private async pollForCompletion(
+    serviceJobId: string, 
+    jobData: JobData, 
+    progressCallback?: ProgressCallback
+  ): Promise<JobResult> {
+    const pollInterval = this.httpConfig.polling_interval_ms || 2000; // Default 2s
+    const pollTimeout = (this.httpConfig.polling_timeout_seconds || 300) * 1000; // Default 5min
+    const startTime = Date.now();
+    
+    logger.debug(`Starting polling for job completion`, {
+      connector: this.connector_id,
+      jobId: jobData.id,
+      serviceJobId,
+      pollInterval,
+      pollTimeout
+    });
+    
+    while (Date.now() - startTime < pollTimeout) {
+      try {
+        // Build status check URL
+        const statusUrl = this.buildStatusUrl(serviceJobId);
+        
+        // Check job status
+        const statusResponse = await this.httpClient.get(statusUrl);
+        
+        logger.info(`📊 HTTPConnector polling response`, {
+          connector: this.connector_id,
+          jobId: jobData.id,
+          serviceJobId,
+          statusUrl,
+          statusCode: statusResponse.status,
+          responseData: JSON.stringify(statusResponse.data, null, 2)
+        });
+        
+        const statusResult = this.parseStatusResponse(statusResponse, jobData);
+        
+        if (statusResult.completed) {
+          if (statusResult.error) {
+            throw new Error(`Job failed: ${statusResult.error}`);
+          }
+          
+          logger.debug(`Job completed via polling`, {
+            connector: this.connector_id,
+            jobId: jobData.id,
+            serviceJobId,
+            pollingDuration: Date.now() - startTime
+          });
+          
+          return statusResult.result!;
+        }
+        
+        // Job still running - call progress callback if provided
+        if (progressCallback) {
+          // Calculate progress in 10% increments based on polling duration
+          const elapsed = Date.now() - startTime;
+          // Use a more realistic estimate: assume jobs take 5-30 seconds
+          const estimatedTotal = 15000; // 15 seconds estimate for most jobs
+          const rawProgress = Math.floor((elapsed / estimatedTotal) * 100);
+          // Round to nearest 10% increment, cap at 90% until completion
+          const estimatedProgress = Math.min(90, Math.floor(rawProgress / 10) * 10);
+          
+          progressCallback({
+            job_id: jobData.id,
+            progress: estimatedProgress,
+            message: 'Job in progress...',
+            current_step: 'processing'
+          });
+        }
+        
+        // Wait before next poll
+        await this.sleep(pollInterval);
+        
+      } catch (error) {
+        // Don't fail immediately - could be temporary network issue
+        logger.warn(`Polling attempt failed, continuing`, {
+          connector: this.connector_id,
+          jobId: jobData.id,
+          serviceJobId,
+          error: error.message
+        });
+        
+        await this.sleep(pollInterval);
+      }
+    }
+    
+    // Polling timeout
+    throw new Error(`Job polling timeout after ${pollTimeout}ms`);
+  }
+
 
   async checkHealth(): Promise<boolean> {
     try {
@@ -429,5 +612,40 @@ export abstract class HTTPConnector extends BaseConnector {
   protected async cleanupService(): Promise<void> {
     // HTTP connectors don't need special cleanup by default
     // Override if service needs specific cleanup (close connection pools, etc.)
+  }
+
+  // ========================================
+  // BaseConnector Required Method Implementations
+  // ========================================
+
+  protected async initializeService(): Promise<void> {
+    // HTTP connectors are ready once the client is created
+    // Override if service needs specific initialization
+  }
+
+  protected async processJobImpl(jobData: JobData, progressCallback: ProgressCallback): Promise<JobResult> {
+    // HTTPConnector uses the new processJob method instead
+    return this.processJob(jobData, progressCallback);
+  }
+
+  async cancelJob(jobId: string): Promise<void> {
+    // HTTP services typically don't support job cancellation
+    // Override if the service supports cancellation
+    logger.debug(`HTTP job cancellation not supported by default`, {
+      connector: this.connector_id,
+      jobId
+    });
+  }
+
+  async updateConfiguration(config: ConnectorConfig): Promise<void> {
+    // Update base configuration
+    this.config = { ...this.config, ...config };
+    logger.info(`Updated configuration for HTTP connector`, {
+      connector: this.connector_id
+    });
+  }
+
+  getConfiguration(): ConnectorConfig {
+    return { ...this.config };
   }
 }

@@ -18,7 +18,7 @@ import {
 import Redis from 'ioredis';
 
 // Re-export types for convenience
-export type { HealthCheckCapabilities, ServiceJobStatus } from '@emp/core';
+export type { HealthCheckCapabilities, ServiceJobStatus, ConnectorConfig } from '@emp/core';
 
 export type ConnectorStatus =
   | 'starting'
@@ -121,6 +121,7 @@ export abstract class BaseConnector implements ConnectorInterface {
   setParentWorker(worker: any): void {
     this.parentWorker = worker;
   }
+
 
   protected async initializeRedisConnection(): Promise<void> {
     this.hubRedisUrl = process.env.HUB_REDIS_URL || 'redis://localhost:6379';

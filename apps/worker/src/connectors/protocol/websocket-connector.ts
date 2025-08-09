@@ -12,18 +12,30 @@ import { WebSocket } from 'ws';
 import { BaseConnector, ConnectorConfig } from '../base-connector.js';
 import { JobData, JobResult, ProgressCallback, ServiceInfo, logger } from '@emp/core';
 
-// WebSocket-specific configuration extending base connector config
-export interface WebSocketConnectorConfig extends ConnectorConfig {
+// WebSocket-specific configuration - contains base config fields
+export interface WebSocketConnectorConfig {
+  // Base connector fields
+  connector_id: string;
+  service_type: string;
+  base_url: string;
+  timeout_seconds?: number;
+  retry_attempts?: number;
+  retry_delay_seconds?: number;
+  health_check_interval_seconds?: number;
+  max_concurrent_jobs?: number;
+  
   // WebSocket connection configuration
   websocket_url?: string; // If different from base_url
   protocols?: string[];
   
-  // Authentication configuration
+  // WebSocket authentication configuration
   auth?: {
     type: 'none' | 'basic' | 'bearer' | 'query_param' | 'header';
     username?: string;
     password?: string;
     bearer_token?: string;
+    token?: string;
+    api_key?: string;
     query_param_name?: string;
     query_param_value?: string;
     header_name?: string;
@@ -100,7 +112,25 @@ export abstract class WebSocketConnector extends BaseConnector {
   private heartbeatInterval: NodeJS.Timeout | null = null;
   
   constructor(connectorId: string, config: WebSocketConnectorConfig) {
-    super(connectorId, config);
+    // Convert WebSocketConnectorConfig to base ConnectorConfig for super constructor
+    const baseConfig: ConnectorConfig = {
+      connector_id: config.connector_id,
+      service_type: config.service_type,
+      base_url: config.base_url,
+      timeout_seconds: config.timeout_seconds || 60,
+      retry_attempts: config.retry_attempts || 3,
+      retry_delay_seconds: config.retry_delay_seconds || 1,
+      health_check_interval_seconds: config.health_check_interval_seconds || 30,
+      max_concurrent_jobs: config.max_concurrent_jobs || 1,
+      auth: config.auth ? {
+        type: ['query_param', 'header'].includes(config.auth.type) ? 'api_key' : (config.auth.type as 'none' | 'basic' | 'bearer' | 'api_key'),
+        username: config.auth.username,
+        password: config.auth.password,
+        token: config.auth.bearer_token || config.auth.token,
+        api_key: config.auth.query_param_value || config.auth.header_value || config.auth.api_key
+      } : undefined
+    };
+    super(connectorId, baseConfig);
     this.wsConfig = {
       // Default WebSocket configuration
       connect_timeout_ms: 10000,
@@ -460,8 +490,17 @@ export abstract class WebSocketConnector extends BaseConnector {
     
     const activeJob = this.activeJobs.get(message.jobId);
     if (activeJob && activeJob.progressCallback) {
-      const progress = this.extractProgress(message.data);
-      activeJob.progressCallback(progress);
+      const progressValue = this.extractProgress(message.data);
+      // Create proper JobProgress object
+      const jobProgress = {
+        job_id: message.jobId,
+        worker_id: this.config.connector_id,
+        progress: progressValue,
+        status: 'processing' as const,
+        message: `Processing job ${message.jobId}`,
+        updated_at: new Date().toISOString()
+      };
+      activeJob.progressCallback(jobProgress);
     }
   }
 
@@ -698,5 +737,43 @@ export abstract class WebSocketConnector extends BaseConnector {
 
   protected async cleanupService(): Promise<void> {
     await this.disconnect();
+  }
+
+  // ========================================
+  // BaseConnector Required Method Implementations  
+  // ========================================
+
+  protected async processJobImpl(jobData: JobData, progressCallback: ProgressCallback): Promise<JobResult> {
+    // WebSocketConnector uses the new processJob method instead
+    return this.processJob(jobData, progressCallback);
+  }
+
+  async cancelJob(jobId: string): Promise<void> {
+    // Cancel active job and clean up
+    const activeJob = this.activeJobs.get(jobId);
+    if (activeJob) {
+      if (activeJob.timeout) {
+        clearTimeout(activeJob.timeout);
+      }
+      this.activeJobs.delete(jobId);
+      activeJob.reject(new Error('Job cancelled'));
+      
+      logger.info(`WebSocket job cancelled`, {
+        connector: this.connector_id,
+        jobId
+      });
+    }
+  }
+
+  async updateConfiguration(config: ConnectorConfig): Promise<void> {
+    // Update base configuration
+    this.config = { ...this.config, ...config };
+    logger.info(`Updated configuration for WebSocket connector`, {
+      connector: this.connector_id
+    });
+  }
+
+  getConfiguration(): ConnectorConfig {
+    return { ...this.config };
   }
 }
