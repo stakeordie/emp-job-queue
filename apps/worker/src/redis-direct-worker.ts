@@ -13,16 +13,14 @@ export * from './connectors/index.js';
 // Worker configuration from environment
 // Use provided WORKER_ID directly (set by PM2 ecosystem generator)
 // PM2 creates unique IDs like: simulation-0, simulation-1, comfyui-gpu0, comfyui-gpu1
-logger.info(`🔧 [DEBUG] Reading WORKER_ID from process.env.WORKER_ID: ${process.env.WORKER_ID}`);
 const WORKER_ID = process.env.WORKER_ID;
-logger.info(`🔧 [DEBUG] WORKER_ID constant set to: ${WORKER_ID}`);
 
-logger.info(`🔍 WORKER_ID from environment: ${WORKER_ID}`);
-logger.info(`🔍 All environment variables: ${JSON.stringify({
-  WORKER_ID: process.env.WORKER_ID,
-  MACHINE_ID: process.env.MACHINE_ID,
-  HUB_REDIS_URL: process.env.HUB_REDIS_URL
-})}`);
+// logger.info(`🔍 WORKER_ID from environment: ${WORKER_ID}`);
+// logger.info(`🔍 All environment variables: ${JSON.stringify({
+//   WORKER_ID: process.env.WORKER_ID,
+//   MACHINE_ID: process.env.MACHINE_ID,
+//   HUB_REDIS_URL: process.env.HUB_REDIS_URL
+// })}`);
 
 if (!WORKER_ID) {
   logger.error('WORKER_ID environment variable is required');
@@ -48,17 +46,17 @@ function logEnvironmentVariables() {
     CURRENT_ENV: process.env.CURRENT_ENV,
   };
 
-  logger.info('📋 Core Variables:');
-  Object.entries(coreVars).forEach(([key, value]) => {
-    if (value !== undefined) {
-      // Mask sensitive URLs
-      const displayValue =
-        key.includes('URL') && value ? value.replace(/\/\/[^:]*:[^@]*@/, '//***:***@') : value;
-      logger.info(`   ${key}=${displayValue}`);
-    } else {
-      logger.warn(`   ${key}=<NOT SET>`);
-    }
-  });
+  const coreDisplay = Object.fromEntries(
+    Object.entries(coreVars).map(([key, value]) => [
+      key,
+      value !== undefined
+        ? key.includes('URL') && value
+          ? value.replace(/\/\/[^:]*:[^@]*@/, '//***:***@')
+          : value
+        : '<NOT SET>',
+    ])
+  );
+  logger.info(`📋 Core Variables: ${JSON.stringify(coreDisplay)}`);
 
   // Machine Interface Variables - from machine.interface.ts
   const machineInterfaceVars = {
@@ -88,14 +86,17 @@ function logEnvironmentVariables() {
     WORKER_HEALTH_CHECK_INTERVAL: process.env.WORKER_HEALTH_CHECK_INTERVAL,
   };
 
-  logger.info('📋 Machine Interface Variables:');
-  Object.entries(machineInterfaceVars).forEach(([key, value]) => {
-    if (value !== undefined) {
-      logger.info(`   ${key}=${value}`);
-    } else {
-      logger.warn(`   ${key}=<NOT SET>`);
-    }
-  });
+  const machineDisplay = Object.fromEntries(
+    Object.entries(machineInterfaceVars).map(([key, value]) => [
+      key, 
+      value !== undefined 
+        ? (key.includes('URL') || key.includes('TOKEN') 
+           ? value.replace(/\/\/[^:]*:[^@]*@/, '//***:***@') 
+           : value)
+        : '<NOT SET>'
+    ])
+  );
+  logger.info(`📋 Machine Interface Variables: ${JSON.stringify(machineDisplay)}`);
 
   // Secret Variables (masked values)
   const secretVars = {
@@ -122,17 +123,15 @@ function logEnvironmentVariables() {
     AUTH_TOKEN: process.env.AUTH_TOKEN,
   };
 
-  logger.info('🔐 Secret Variables (masked):');
-  Object.entries(secretVars).forEach(([key, value]) => {
-    if (value !== undefined) {
-      // Mask secret values - show first/last few chars for verification
-      const maskedValue =
-        value.length > 8 ? `${value.slice(0, 4)}***${value.slice(-4)}` : '***MASKED***';
-      logger.info(`   ${key}=${maskedValue}`);
-    } else {
-      logger.warn(`   ${key}=<NOT SET>`);
-    }
-  });
+  const secretDisplay = Object.fromEntries(
+    Object.entries(secretVars).map(([key, value]) => [
+      key, 
+      value !== undefined 
+        ? (value.length > 8 ? `${value.slice(0, 4)}***${value.slice(-4)}` : '***MASKED***')
+        : '<NOT SET>'
+    ])
+  );
+  logger.info(`🔐 Secret Variables (masked): ${JSON.stringify(secretDisplay)}`);
 
   // Service-specific variables (OpenAI, ComfyUI, etc.)
   const serviceVars = Object.keys(process.env)
@@ -149,18 +148,19 @@ function logEnvironmentVariables() {
     .filter(key => !machineInterfaceVars.hasOwnProperty(key) && !secretVars.hasOwnProperty(key));
 
   if (serviceVars.length > 0) {
-    logger.info('🔧 Additional Service Variables:');
-    serviceVars.forEach(key => {
-      const value = process.env[key];
-      // Mask potentially sensitive values
-      const displayValue =
-        (key.includes('TOKEN') || key.includes('KEY') || key.includes('SECRET')) && value
-          ? value.length > 8
-            ? `${value.slice(0, 4)}***${value.slice(-4)}`
-            : '***MASKED***'
-          : value;
-      logger.info(`   ${key}=${displayValue}`);
-    });
+    const serviceDisplay = Object.fromEntries(
+      serviceVars.map(key => {
+        const value = process.env[key];
+        const displayValue =
+          (key.includes('TOKEN') || key.includes('KEY') || key.includes('SECRET')) && value
+            ? value.length > 8
+              ? `${value.slice(0, 4)}***${value.slice(-4)}`
+              : '***MASKED***'
+            : value;
+        return [key, displayValue];
+      })
+    );
+    logger.info(`🔧 Additional Service Variables: ${JSON.stringify(serviceDisplay)}`);
   }
 
   // Summary
@@ -185,7 +185,7 @@ function logEnvironmentVariables() {
 }
 
 async function main() {
-  logger.info(`Starting Redis-direct worker ${WORKER_ID} on machine ${MACHINE_ID}  ^^^^^^`);
+  logger.info(`Starting Redis-direct worker ${WORKER_ID} on machine ${MACHINE_ID}`);
 
   // Log comprehensive environment variable resolution
   logEnvironmentVariables();
@@ -196,7 +196,6 @@ async function main() {
   const connectorManager = new ConnectorManager();
 
   // Create Redis-direct worker
-  logger.info(`🔧 [DEBUG] Calling RedisDirectBaseWorker constructor with WORKER_ID: ${WORKER_ID}`);
   const worker = new RedisDirectBaseWorker(WORKER_ID, MACHINE_ID, connectorManager, HUB_REDIS_URL);
 
   // Graceful shutdown handling

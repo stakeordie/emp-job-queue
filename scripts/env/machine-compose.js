@@ -254,22 +254,37 @@ class MachineCompose {
   }
 
   /**
-   * Generate port configuration by calling the port generator
+   * Generate port configuration using the new port manager
    */
-  async generatePorts(portMappings) {
-    // Set environment variables for port generator
+  async generatePorts(portMappings, profile, isDebug) {
+    // Set environment variables for port manager
     const env = { ...process.env };
     
+    // Convert port mappings to the format expected by port manager
     if (portMappings.length > 0) {
       env.RUNTIME_PORTS = portMappings.join(',');
-      env.DISABLE_PORTS = 'true';
     } else {
-      env.DISABLE_PORTS = 'true';
+      // Don't set to 'none' in debug mode - let port manager handle defaults
+      if (isDebug) {
+        env.RUNTIME_PORTS = '';
+      } else {
+        env.RUNTIME_PORTS = 'none';
+      }
+    }
+    
+    // Set debug mode
+    if (isDebug) {
+      env.DEBUG_MODE = 'true';
+    }
+    
+    // Set profile
+    if (profile) {
+      env.DOCKER_COMPOSE_PROFILES = profile;
     }
     
     try {
       await new Promise((resolve, reject) => {
-        const process = spawn('node', ['scripts/generate-docker-compose-ports.js'], {
+        const process = spawn('node', ['scripts/port-manager.js', 'generate'], {
           stdio: 'inherit',
           cwd: MACHINE_DIR,
           env: env
@@ -279,7 +294,7 @@ class MachineCompose {
           if (code === 0) {
             resolve();
           } else {
-            reject(new Error(`Port generation failed with exit code ${code}`));
+            reject(new Error(`Port configuration failed with exit code ${code}`));
           }
         });
 
@@ -288,7 +303,7 @@ class MachineCompose {
         });
       });
     } catch (error) {
-      console.error(chalk.red('❌ Port generation failed:'), error.message);
+      console.error(chalk.red('❌ Port configuration failed:'), error.message);
       throw error;
     }
   }
@@ -309,10 +324,13 @@ class MachineCompose {
       
       this.displayInfo(command, profile, portMappings, flags);
       
+      // Check if debug mode is enabled
+      const isDebug = flags.includes('--debug') || process.env.DEBUG_MODE === 'true';
+      
       // Generate ports before running docker-compose (for 'up' commands)
       if (command === 'up') {
         console.log(chalk.blue('⚙️  Generating port configuration...'));
-        await this.generatePorts(portMappings);
+        await this.generatePorts(portMappings, profile, isDebug);
       }
       
       const cmd = this.buildDockerComposeCommand(command, profile, flags);

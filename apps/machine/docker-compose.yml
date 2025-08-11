@@ -133,35 +133,6 @@ services:
           memory: ${MEMORY_LIMIT:-8G}
         reservations:
           memory: ${MEMORY_RESERVATION:-2G}
-  sim:
-    build:
-      context: .
-      dockerfile: Dockerfile
-      target: simulation
-      args:
-        WORKER_SPEC: simulation:10
-        CACHE_BUST: ${CACHE_BUST:-1}
-    image: emprops/machine:sim
-    platform: linux/amd64
-    container_name: sim
-    hostname: sim
-    profiles:
-      - sim
-    restart: 'no'
-    stop_grace_period: 2s
-    stop_signal: SIGTERM
-    env_file:
-      - .env.secret
-    environment:
-      WORKERS: simulation:10
-      MACHINE_ID: sim
-    working_dir: /workspace
-    deploy:
-      resources:
-        limits:
-          memory: ${MEMORY_LIMIT:-8G}
-        reservations:
-          memory: ${MEMORY_RESERVATION:-2G}
   comfyui-remote-test:
     build:
       context: .
@@ -196,23 +167,58 @@ services:
         reservations:
           memory: ${MEMORY_RESERVATION:-2G}
   sim-local-dev:
-    <<: *base-machine
-    profiles:
-      - sim-local-dev
     build:
       context: .
       dockerfile: Dockerfile
-      target: simulation
+      target: base
       args:
-        WORKER_SPEC: simulation:5
-        WORKERS: simulation:5
+        WORKER_SPEC: simulation-http:10
+        WORKERS: simulation-http:10
         MACHINE_ID: sim-local-dev
         CACHE_BUST: ${CACHE_BUST:-1}
+    image: emprops/machine:sim-local-dev
+    platform: linux/amd64
     container_name: sim-local-dev
     hostname: sim-local-dev
+    profiles:
+      - sim-local-dev
+    restart: 'no'
+    stop_grace_period: 2s
+    stop_signal: SIGTERM
+    env_file:
+      - .env.secret
+    environment:
+      NODE_ENV: production
+      ENV: ${CURRENT_ENV}
+      NVIDIA_VISIBLE_DEVICES: all
+      NVIDIA_DRIVER_CAPABILITIES: compute,utility
+    working_dir: /workspace
+    deploy:
+      resources:
+        limits:
+          memory: ${MEMORY_LIMIT:-8G}
+        reservations:
+          memory: ${MEMORY_RESERVATION:-2G}
     ports:
       - ${EXPOSE_PORTS:-9090}:9090
-    image: emprops/machine:sim-local-dev
+  sim-local-dev-http:
+    <<: *base-machine
+    profiles:
+      - sim-local-dev-http
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: base
+      args:
+        WORKER_SPEC: simulation-http:10
+        WORKERS: simulation-http:10
+        MACHINE_ID: sim-local-dev-http
+        CACHE_BUST: ${CACHE_BUST:-1}
+    container_name: sim-local-dev-http
+    hostname: sim-local-dev-http
+    ports:
+      - ${EXPOSE_PORTS:-9090}:9090
+    image: emprops/machine:sim-local-dev-http
 networks:
   default:
     name: emp-job-queue

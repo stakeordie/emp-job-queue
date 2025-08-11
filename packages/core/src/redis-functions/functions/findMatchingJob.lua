@@ -256,21 +256,24 @@ local function matches_requirements(worker, job)
   end
   
   if job.service_required then
-    if not worker.services or type(worker.services) ~= 'table' then
+    if not worker.job_service_required_map or type(worker.job_service_required_map) ~= 'table' then
+      redis.log(redis.LOG_DEBUG, 'Worker has no job_service_required_map or it is not an array')
       return false
     end
     
-    local has_service = false
-    for _, service in ipairs(worker.services) do
-      if service == job.service_required then
-        has_service = true
+    local has_service_required = false
+    for _, accepted_service_required in ipairs(worker.job_service_required_map) do
+      redis.log(redis.LOG_DEBUG, 'Checking worker accepted service_required: "' .. tostring(accepted_service_required) .. '" against job requirement: "' .. tostring(job.service_required) .. '"')
+      if accepted_service_required == job.service_required then
+        has_service_required = true
+        redis.log(redis.LOG_DEBUG, 'MATCH FOUND: worker accepts service_required "' .. tostring(accepted_service_required) .. '" which matches job requirement')
         break
       end
     end
     
-    if not has_service then
-      local services_str = table.concat(worker.services or {}, ',')
-      redis.log(redis.LOG_DEBUG, 'Service mismatch: need ' .. job.service_required .. ', worker has ' .. services_str)
+    if not has_service_required then
+      local accepted_str = table.concat(worker.job_service_required_map or {}, ',')
+      redis.log(redis.LOG_DEBUG, 'Service requirement mismatch: job needs "' .. tostring(job.service_required) .. '", worker accepts [' .. accepted_str .. ']')
       return false
     end
   end

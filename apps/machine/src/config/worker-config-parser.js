@@ -86,14 +86,21 @@ export class WorkerConfigurationParser {
         throw new Error(`Unknown connector: "${connector}". Check service-mapping.json for supported connectors.`);
       }
       
-      // Handle environment variable expansion in resource_binding
-      let binding = mapping.resource_binding;
-      if (typeof binding === 'string' && binding.includes('${')) {
-        // Extract environment variable name and default value
-        const match = binding.match(/\$\{([^:}]+)(?::([^}]+))?\}/);
-        if (match) {
-          const [, envVar, defaultValue] = match;
-          binding = process.env[envVar] || defaultValue || 'shared';
+      // Get resource binding from the first service (they should all be consistent)
+      let binding = 'shared';
+      if (mapping.services && mapping.services.length > 0) {
+        const serviceMapping = this.getFullServiceMapping();
+        const firstService = serviceMapping.services?.[mapping.services[0]];
+        binding = firstService?.resource_binding || 'shared';
+        
+        // Handle environment variable expansion in resource_binding
+        if (typeof binding === 'string' && binding.includes('${')) {
+          // Extract environment variable name and default value
+          const match = binding.match(/\$\{([^:}]+)(?::([^}]+))?\}/);
+          if (match) {
+            const [, envVar, defaultValue] = match;
+            binding = process.env[envVar] || defaultValue || 'shared';
+          }
         }
       }
       
@@ -145,11 +152,17 @@ export class WorkerConfigurationParser {
    */
   getRequiredServices(workerSpecs) {
     const services = new Set();
+    const serviceMapping = this.getFullServiceMapping();
     
     workerSpecs.forEach(spec => {
       const mapping = this.getServiceMapping(spec.connector);
-      if (mapping && mapping.type === 'internal' && mapping.service) {
-        services.add(mapping.service);
+      if (mapping && mapping.services) {
+        mapping.services.forEach(serviceName => {
+          const serviceConfig = serviceMapping.services?.[serviceName];
+          if (serviceConfig && serviceConfig.type === 'internal') {
+            services.add(serviceName);
+          }
+        });
       }
     });
     
@@ -157,20 +170,26 @@ export class WorkerConfigurationParser {
   }
   
   /**
-   * Get service mapping for a connector from JSON file
+   * Get full service mapping from JSON file
    */
-  getServiceMapping(connector) {
-    // Load service mapping from JSON file
+  getFullServiceMapping() {
     const serviceMappingPath = path.join(path.dirname(import.meta.url.replace('file://', '')), 'service-mapping.json');
     
     try {
-      const serviceMapping = JSON.parse(fs.readFileSync(serviceMappingPath, 'utf8'));
-      // Look for the connector in the workers section
-      return serviceMapping.workers[connector];
+      return JSON.parse(fs.readFileSync(serviceMappingPath, 'utf8'));
     } catch (error) {
       this.logger.error(`Failed to load service mapping from ${serviceMappingPath}: ${error.message}`);
       throw new Error(`Service mapping file not found or invalid. Cannot proceed without connector definitions.`);
     }
+  }
+  
+  /**
+   * Get service mapping for a connector from JSON file
+   */
+  getServiceMapping(connector) {
+    const serviceMapping = this.getFullServiceMapping();
+    // Look for the connector in the workers section
+    return serviceMapping.workers[connector];
   }
   
   /**
@@ -206,18 +225,25 @@ export class WorkerConfigurationParser {
    */
   estimateMemoryUsage(config) {
     let totalMemoryGB = 0;
+    const serviceMapping = this.getFullServiceMapping();
     
     for (const workerSpec of config.workers) {
       const mapping = this.getServiceMapping(workerSpec.connector);
       
-      // Rough memory estimates per worker type
-      let memoryPerWorker = 0;
-      if (mapping?.service === 'comfyui') {
-        memoryPerWorker = 4; // ComfyUI ~4GB per instance
-      } else if (mapping?.service === 'playwright') {
-        memoryPerWorker = 1; // Playwright ~1GB
-      } else {
-        memoryPerWorker = 0.5; // External APIs ~0.5GB per worker
+      // Rough memory estimates per worker type based on services
+      let memoryPerWorker = 0.5; // Default for external APIs
+      
+      if (mapping?.services) {
+        for (const serviceName of mapping.services) {
+          const serviceConfig = serviceMapping.services?.[serviceName];
+          if (serviceConfig) {
+            if (serviceConfig.connector === 'ComfyUIConnector') {
+              memoryPerWorker = Math.max(memoryPerWorker, 4); // ComfyUI ~4GB per instance
+            } else if (serviceConfig.connector === 'PlaywrightConnector') {
+              memoryPerWorker = Math.max(memoryPerWorker, 1); // Playwright ~1GB
+            }
+          }
+        }
       }
       
       totalMemoryGB += workerSpec.count * memoryPerWorker;

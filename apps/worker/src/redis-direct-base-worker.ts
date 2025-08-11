@@ -11,7 +11,7 @@
 import { ConnectorManager } from './connector-manager.js';
 import { RedisDirectWorkerClient } from './redis-direct-worker-client.js';
 import { JobHealthMonitor, HealthCheckResult } from './job-health-monitor.js';
-import path from 'path';
+import * as path from 'path';
 import {
   WorkerCapabilities,
   WorkerStatus,
@@ -27,7 +27,7 @@ import {
   logger,
 } from '@emp/core';
 import { readFileSync } from 'fs';
-import os from 'os';
+import * as os from 'os';
 
 /**
  * Get worker version from git tag or bundled package.json
@@ -122,11 +122,6 @@ export class RedisDirectBaseWorker {
     // Build capabilities
     this.capabilities = this.buildCapabilities();
 
-    // DEBUG: Log built capabilities
-    logger.info(`🔧 Built capabilities for worker ${this.workerId}:`);
-    logger.info(`🔧   - services: ${JSON.stringify(this.capabilities.services)}`);
-    logger.info(`🔧   - machine_id: ${this.capabilities.machine_id}`);
-
     logger.info(
       `Redis-direct worker ${this.workerId} initialized with ${this.maxConcurrentJobs} max concurrent jobs`
     );
@@ -141,6 +136,10 @@ export class RedisDirectBaseWorker {
         .map(s => s.trim())
         .filter(s => s)
         .map(spec => spec.split(':')[0]); // Extract type from "type:count"
+
+      console.log('🚨🚨🚨 [TRACE] getServicesFromMapping START');
+      console.log('🚨🚨🚨 [TRACE] WORKERS env variable:', workersEnv);
+      console.log('🚨🚨🚨 [TRACE] Extracted workerSpecs:', workerSpecs);
 
       if (workerSpecs.length === 0) {
         throw new Error(
@@ -174,31 +173,37 @@ export class RedisDirectBaseWorker {
 
       const serviceMappingContent = fs.readFileSync(serviceMappingPath, 'utf8');
       const serviceMapping = JSON.parse(serviceMappingContent);
+      
+      console.log('🚨🚨🚨 [TRACE] Service mapping loaded from:', serviceMappingPath);
+      console.log('🚨🚨🚨 [TRACE] Available worker types in mapping:', Object.keys(serviceMapping.workers || {}));
 
       // Extract capabilities from all worker types
       const allCapabilities = new Set<string>();
 
       for (const workerType of workerSpecs) {
+        console.log(`🚨🚨🚨 [TRACE] Processing workerType: "${workerType}"`);
         const workerConfig = serviceMapping.workers?.[workerType];
-        if (workerConfig && workerConfig.service) {
-          for (const service of workerConfig.service) {
-            if (service.capability) {
-              if (Array.isArray(service.capability)) {
-                service.capability.forEach(cap => allCapabilities.add(cap));
-              } else {
-                allCapabilities.add(service.capability);
-              }
-            }
+        
+        if (workerConfig && workerConfig.services) {
+          console.log(`🚨🚨🚨 [TRACE] Found workerConfig for "${workerType}":`, JSON.stringify(workerConfig, null, 2));
+          console.log(`🚨🚨🚨 [TRACE] Services array for "${workerType}":`, workerConfig.services);
+          
+          // NEW structure: services is an array of service names
+          for (const serviceName of workerConfig.services) {
+            console.log(`🚨🚨🚨 [TRACE] Adding service: "${serviceName}"`);
+            allCapabilities.add(serviceName);
           }
         } else {
+          console.log(`🚨🚨🚨 [TRACE] ERROR: Worker type "${workerType}" not found or has no services!`);
           throw new Error(
-            `SYSTEM IS FUCKED: Worker type '${workerType}' not found in service mapping. Available worker types: ${Object.keys(serviceMapping.workers || {}).join(', ')}. Check your WORKERS environment variable.`
+            `SYSTEM IS FUCKED: Worker type '${workerType}' not found in service mapping or has no services array. Available worker types: ${Object.keys(serviceMapping.workers || {}).join(', ')}. Check your WORKERS environment variable.`
           );
         }
       }
 
       const capabilities = Array.from(allCapabilities);
-      logger.info(`Derived capabilities from service mapping: ${capabilities.join(', ')}`);
+      console.log('🚨🚨🚨 [TRACE] Final services array to return:', capabilities);
+      console.log('🚨🚨🚨 [TRACE] getServicesFromMapping END');
       return capabilities;
     } catch (error) {
       logger.error('Failed to load capabilities from service mapping:', error);
@@ -206,9 +211,74 @@ export class RedisDirectBaseWorker {
     }
   }
 
+  private getJobServiceRequiredFromMapping(): string[] {
+    try {
+      // Get worker types from WORKERS environment variable
+      const workersEnv = process.env.WORKERS || '';
+      const workerSpecs = workersEnv
+        .split(',')
+        .map(s => s.trim())
+        .filter(s => s)
+        .map(spec => spec.split(':')[0]); // Extract type from "type:count"
+
+      if (workerSpecs.length === 0) {
+        return [];
+      }
+
+      // Load service mapping
+      const fs = require('fs');
+      const possiblePaths = [
+        '/workspace/worker-bundled/src/config/service-mapping.json',
+        '/service-manager/worker-bundled/src/config/service-mapping.json',
+        '/workspace/src/config/service-mapping.json',
+        '/service-manager/src/config/service-mapping.json',
+        './src/config/service-mapping.json',
+      ];
+
+      let serviceMappingPath = null;
+      for (const p of possiblePaths) {
+        if (fs.existsSync(p)) {
+          serviceMappingPath = p;
+          break;
+        }
+      }
+
+      if (!serviceMappingPath) {
+        return [];
+      }
+
+      const serviceMappingContent = fs.readFileSync(serviceMappingPath, 'utf8');
+      const serviceMapping = JSON.parse(serviceMappingContent);
+
+      // Extract job service required values from all worker types
+      const jobServiceRequiredSet = new Set<string>();
+
+      for (const workerType of workerSpecs) {
+        const workerConfig = serviceMapping.workers?.[workerType];
+        if (workerConfig && workerConfig.job_service_required_map) {
+          for (const mapping of workerConfig.job_service_required_map) {
+            jobServiceRequiredSet.add(mapping.job_service_required);
+          }
+        }
+      }
+
+      return Array.from(jobServiceRequiredSet);
+    } catch (error) {
+      logger.error('Failed to load job service required map from service mapping:', error);
+      return [];
+    }
+  }
+
   private buildCapabilities(): WorkerCapabilities {
+    console.log('🚨🚨🚨 [TRACE] buildCapabilities START');
+    
     // Services this worker can handle - derive from service mapping
     const services = this.getServicesFromMapping();
+    console.log('🚨🚨🚨 [TRACE] buildCapabilities - services from getServicesFromMapping():', services);
+
+    // Job service requirements this worker accepts - for Redis function matching
+    const jobServiceRequiredMap = this.getJobServiceRequiredFromMapping();
+    console.log('🚨🚨🚨 [TRACE] buildCapabilities - jobServiceRequiredMap:', jobServiceRequiredMap);
 
     // Hardware specs - Each worker represents ONE GPU + supporting resources
     const hardware: HardwareSpecs = {
@@ -289,6 +359,7 @@ export class RedisDirectBaseWorker {
       worker_id: this.workerId,
       machine_id: this.machineId,
       services,
+      job_service_required_map: jobServiceRequiredMap,
       hardware,
       models: {}, // Will be populated by connectors
       customer_access: customerAccess,
@@ -382,16 +453,19 @@ export class RedisDirectBaseWorker {
     }
 
     try {
-      logger.info(`Starting Redis-direct worker ${this.workerId}...`);
+      //logger.info(`Starting Redis-direct worker ${this.workerId}...`);
 
       // Connect to Redis first to establish connection
+      console.log('🚨🚨🚨 [TRACE] About to connect to Redis with capabilities:');
+      console.log('🚨🚨🚨 [TRACE] this.capabilities.services:', this.capabilities.services);
+      console.log('🚨🚨🚨 [TRACE] Full capabilities object:', JSON.stringify(this.capabilities, null, 2));
       await this.redisClient.connect(this.capabilities);
 
       // Pass Redis connection to ConnectorManager
       const redis = this.redisClient.getRedisConnection();
       if (redis) {
         this.connectorManager.setRedisConnection(redis, this.workerId, this.machineId);
-        logger.info(`Injected Redis connection into ConnectorManager for worker ${this.workerId}`);
+        //logger.info(`Injected Redis connection into ConnectorManager for worker ${this.workerId}`);
       } else {
         logger.warn(
           `No Redis connection available for ConnectorManager in worker ${this.workerId}`
@@ -400,7 +474,7 @@ export class RedisDirectBaseWorker {
 
       // Set parent worker reference for immediate status updates
       this.connectorManager.setParentWorker(this);
-      logger.info(`Set parent worker reference in ConnectorManager for worker ${this.workerId}`);
+      //logger.info(`Set parent worker reference in ConnectorManager for worker ${this.workerId}`);
 
       // Load and initialize connectors AFTER Redis injection and parent worker setup
       await this.connectorManager.loadConnectors();
@@ -457,7 +531,7 @@ export class RedisDirectBaseWorker {
       //   await this.dashboard.start();
       // }
 
-      logger.info(`Redis-direct worker ${this.workerId} started successfully`);
+      //logger.info(`Redis-direct worker ${this.workerId} started successfully`);
     } catch (error) {
       logger.error(`Failed to start worker ${this.workerId}:`, error);
       await this.stop();
@@ -468,7 +542,7 @@ export class RedisDirectBaseWorker {
   async stop(): Promise<void> {
     if (!this.running) return;
 
-    logger.info(`Stopping Redis-direct worker ${this.workerId}...`);
+    //logger.info(`Stopping Redis-direct worker ${this.workerId}...`);
 
     this.running = false;
 
@@ -478,7 +552,7 @@ export class RedisDirectBaseWorker {
       const shutdownReason = process.env.SHUTDOWN_REASON || 'Worker shutdown';
       await this.sendMachineShutdownEvent(machineId, shutdownReason);
     } catch (error) {
-      logger.warn('Failed to send machine shutdown event:', error);
+      logger.error('Failed to send machine shutdown event:', error);
     }
 
     // Stop job polling
@@ -500,7 +574,7 @@ export class RedisDirectBaseWorker {
     this.jobHealthMonitor.stop();
 
     // Cancel any ongoing jobs
-    for (const [jobId, _job] of this.currentJobs) {
+    for (const [jobId, _job] of Array.from(this.currentJobs)) {
       await this.failJob(jobId, 'Worker shutdown', false);
     }
 
@@ -523,7 +597,7 @@ export class RedisDirectBaseWorker {
       last_activity: Date.now(),
     });
 
-    logger.info(`Redis-direct worker ${this.workerId} stopped`);
+    //logger.info(`Redis-direct worker ${this.workerId} stopped`);
   }
 
   private async sendMachineShutdownEvent(machineId: string, reason: string): Promise<void> {
@@ -552,14 +626,14 @@ export class RedisDirectBaseWorker {
 
   private async handleJobAssignment(job: Job): Promise<void> {
     if (this.currentJobs.size >= this.maxConcurrentJobs) {
-      logger.warn(`Worker ${this.workerId} at max capacity, cannot take job ${job.id}`);
+      //logger.warn(`Worker ${this.workerId} at max capacity, cannot take job ${job.id}`);
       // Job should be returned to queue, but Redis-direct client handles this
       return;
     }
 
     // CRITICAL FIX: Check if job is already being processed
     if (this.currentJobs.has(job.id)) {
-      logger.warn(`Job ${job.id} is already being processed by this worker, ignoring duplicate`);
+      //logger.warn(`Job ${job.id} is already being processed by this worker, ignoring duplicate`);
       return;
     }
 
@@ -588,10 +662,10 @@ export class RedisDirectBaseWorker {
     }, timeoutMs);
     this.jobTimeouts.set(job.id, timeout);
 
-    logger.info(`Worker ${this.workerId} starting job ${job.id} (${job.service_required})`);
+    //logger.info(`Worker ${this.workerId} starting job ${job.id} (${job.service_required})`);
 
     // Log the complete job structure for debugging - shows everything the worker has access to
-    logger.info(`📋 Complete Job Structure:`, job);
+    //logger.info(`📋 Complete Job Structure:`, job);
 
     try {
       await this.processJob(job);
@@ -625,7 +699,7 @@ export class RedisDirectBaseWorker {
     const onProgress = async (progress: JobProgress) => {
       const progressWithStatus: JobProgress = {
         ...progress,
-        status: progress.status || JobStatus.IN_PROGRESS // Ensure status is always present
+        status: progress.status || JobStatus.IN_PROGRESS, // Ensure status is always present
       };
       await this.redisClient.sendJobProgress(job.id, progressWithStatus);
     };
@@ -634,7 +708,7 @@ export class RedisDirectBaseWorker {
     let transformedPayload = job.payload;
     if (connector.service_type === 'simulation' && job.service_required !== 'simulation') {
       transformedPayload = this.transformPayloadForSimulation(job.service_required, job.payload);
-      logger.info(`Transformed ${job.service_required} payload for simulation mode`);
+      //logger.info(`Transformed ${job.service_required} payload for simulation mode`);
     }
 
     // Process the job (convert to connector interface)
@@ -674,7 +748,7 @@ export class RedisDirectBaseWorker {
         await this.updateConnectorStatus(job.service_required, 'idle');
       }
 
-      logger.info(`Worker ${this.workerId} completed job ${jobId}`);
+      //logger.info(`Worker ${this.workerId} completed job ${jobId}`);
     } catch (error) {
       logger.error(`Worker ${this.workerId} failed to complete job ${jobId}:`, error);
       await this.failJob(jobId, error instanceof Error ? error.message : 'Failed to complete job');
@@ -746,16 +820,16 @@ export class RedisDirectBaseWorker {
   }
 
   private handleJobTimeout(jobId: string): void {
-    logger.warn(
-      `Worker ${this.workerId} job ${jobId} timed out after ${this.jobTimeoutMinutes} minutes`
-    );
+    // logger.warn(
+    //   `Worker ${this.workerId} job ${jobId} timed out after ${this.jobTimeoutMinutes} minutes`
+    // );
     this.failJob(jobId, `Job timeout after ${this.jobTimeoutMinutes} minutes`, true);
   }
 
   private startJobTimeoutChecker(): void {
     this.jobTimeoutCheckInterval = setInterval(() => {
       const now = Date.now();
-      for (const [jobId, startTime] of this.jobStartTimes) {
+      for (const [jobId, startTime] of Array.from(this.jobStartTimes)) {
         const runtime = now - startTime;
         const timeoutMs = this.jobTimeoutMinutes * 60 * 1000;
 

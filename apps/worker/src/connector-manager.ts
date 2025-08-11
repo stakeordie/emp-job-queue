@@ -93,18 +93,23 @@ export class ConnectorManager implements ConnectorRegistry, ConnectorFactory {
       const serviceMappingContent = fs.readFileSync(serviceMappingPath, 'utf8');
       const serviceMapping = JSON.parse(serviceMappingContent);
 
-      // Extract connectors from worker specifications
+      // Extract connectors from worker specifications using NEW service mapping structure
       for (const workerType of workerSpecs) {
         const workerConfig = serviceMapping.workers?.[workerType];
-        if (workerConfig && workerConfig.service) {
-          for (const service of workerConfig.service) {
-            if (service.connector) {
-              connectorsToLoad.add(service.connector);
+        if (workerConfig && workerConfig.job_service_required_map) {
+          // NEW structure: get connectors from the worker_service field in job_service_required_map
+          for (const mapping of workerConfig.job_service_required_map) {
+            if (mapping.worker_service) {
+              // Map worker_service to connector name using service mapping
+              const serviceConfig = serviceMapping.services?.[mapping.worker_service];
+              if (serviceConfig && serviceConfig.connector) {
+                connectorsToLoad.add(serviceConfig.connector);
+              }
             }
           }
         } else {
           throw new Error(
-            `SYSTEM IS FUCKED: Worker type '${workerType}' not found in service mapping. Available worker types: ${Object.keys(serviceMapping.workers || {}).join(', ')}`
+            `SYSTEM IS FUCKED: Worker type '${workerType}' not found in service mapping or has no job_service_required_map. Available worker types: ${Object.keys(serviceMapping.workers || {}).join(', ')}`
           );
         }
       }
@@ -530,36 +535,34 @@ export class ConnectorManager implements ConnectorRegistry, ConnectorFactory {
       for (const [workerId, workerConfig] of Object.entries(serviceMapping.workers)) {
         const config = workerConfig as any;
 
-        if (config.service && Array.isArray(config.service)) {
-          // Check if any of this worker's service capabilities match the required service
-          for (const serviceCapability of config.service) {
-            let canHandle = false;
-
-            if (Array.isArray(serviceCapability.capability)) {
-              canHandle = serviceCapability.capability.includes(serviceRequired);
-            } else {
-              canHandle = serviceCapability.capability === serviceRequired;
-            }
-
-            if (canHandle) {
-              // Found a worker that can handle this service - get the connector name
-              const connectorName = serviceCapability.connector;
-              if (connectorName) {
-                const connector = this.getConnector(connectorName);
+        // 🚨 CRITICAL FIX: Use job_service_required_map to translate job service to worker service
+        if (config.job_service_required_map && Array.isArray(config.job_service_required_map)) {
+          for (const mapping of config.job_service_required_map) {
+            if (mapping.job_service_required === serviceRequired) {
+              // Found mapping: serviceRequired ("simulation") → worker_service ("http-sim") 
+              const workerServiceName = mapping.worker_service;
+              logger.info(`🔄 Job service mapping: "${serviceRequired}" → "${workerServiceName}" (worker: ${workerId})`);
+              
+              // Look up the service config to get the connector class name
+              const serviceConfig = serviceMapping.services?.[workerServiceName];
+              if (serviceConfig && serviceConfig.connector) {
+                const connectorClassName = serviceConfig.connector;
+                logger.info(`🔗 Service "${workerServiceName}" uses connector: ${connectorClassName}`);
+                
+                // Get connector by class name (connector ID)
+                const connector = this.connectors.get(connectorClassName);
                 if (connector) {
                   logger.info(
-                    `🔗 Found connector ${connectorName} for service ${serviceRequired} via service mapping`
+                    `✅ Found connector "${connectorClassName}" for job service "${serviceRequired}" via worker service "${workerServiceName}"`
                   );
                   return connector;
                 } else {
                   logger.warn(
-                    `Worker ${workerId} handles service ${serviceRequired} but connector ${connectorName} is not loaded`
+                    `❌ Connector "${connectorClassName}" not loaded. Available connectors: ${Array.from(this.connectors.keys()).join(', ')}`
                   );
                 }
               } else {
-                logger.warn(
-                  `Worker ${workerId} handles service ${serviceRequired} but no connector specified`
-                );
+                logger.warn(`❌ Service config for "${workerServiceName}" not found or has no connector`);
               }
             }
           }

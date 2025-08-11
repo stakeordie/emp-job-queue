@@ -203,10 +203,11 @@ export class EnhancedPM2EcosystemGenerator {
     }
     
     // Generate service-specific apps (ComfyUI, etc.) if needed
-    if (workerConfig.service) {
-      for (const service of workerConfig.service) {
-        if (service.type === 'internal') {
-          const serviceApps = await this.generateServiceApps(workerType, instanceCount, workerConfig);
+    if (workerConfig.services) {
+      for (const serviceName of workerConfig.services) {
+        const serviceConfig = this.serviceMapping.services[serviceName];
+        if (serviceConfig && serviceConfig.type === 'internal') {
+          const serviceApps = await this.generateServiceApps(workerType, instanceCount, workerConfig, serviceConfig, serviceName);
           apps.push(...serviceApps);
         }
       }
@@ -333,27 +334,32 @@ export class EnhancedPM2EcosystemGenerator {
   /**
    * Generate service-specific PM2 apps (e.g., ComfyUI)
    */
-  async generateServiceApps(workerType, instanceCount, workerConfig) {
+  async generateServiceApps(workerType, instanceCount, workerConfig, serviceConfig, actualServiceName) {
     const apps = [];
     
-    // Generate service apps based on worker type
-    if (workerType === 'comfyui') {
+    // Use the actual service name from service mapping instead of deriving from connector
+    const serviceName = actualServiceName;
+    
+    // Check connector type to determine service implementation  
+    const connectorType = serviceConfig.connector.replace('Connector', '').toLowerCase();
+    
+    if (connectorType === 'comfyui') {
       for (let i = 0; i < instanceCount; i++) {
-        apps.push(this.createComfyUIApp(i));
+        apps.push(this.createComfyUIApp(serviceName, i));
       }
-    } else if (workerType === 'simulation') {
+    } else if (connectorType === 'simulationhttp' || connectorType === 'simulation') {
       // Check if we're in mock_gpu mode to decide instance count
-      const resourceBinding = workerConfig.resource_binding || 'shared';
+      const resourceBinding = serviceConfig.resource_binding || 'shared';
       const isMockGpu = resourceBinding === 'mock_gpu';
       
       if (isMockGpu) {
         // Create per-GPU simulation instances (like ComfyUI)
         for (let i = 0; i < instanceCount; i++) {
-          apps.push(this.createSimulationApp(i));
+          apps.push(this.createSimulationApp(serviceName, i));
         }
       } else {
         // Single simulation service for the machine
-        apps.push(this.createSimulationApp());
+        apps.push(this.createSimulationApp(serviceName));
       }
     }
     
@@ -363,9 +369,9 @@ export class EnhancedPM2EcosystemGenerator {
   /**
    * Create ComfyUI service PM2 app
    */
-  createComfyUIApp(gpuIndex) {
+  createComfyUIApp(serviceName, gpuIndex) {
     return {
-      name: `comfyui-gpu${gpuIndex}`,
+      name: `${serviceName}-gpu${gpuIndex}`,
       script: 'src/services/standalone-wrapper.js',
       args: ['comfyui', `--gpu=${gpuIndex}`],
       cwd: '/service-manager',
@@ -375,9 +381,9 @@ export class EnhancedPM2EcosystemGenerator {
       min_uptime: '10s',
       max_memory_restart: '2G',
       restart_delay: 5000,
-      error_file: `/workspace/logs/comfyui-gpu${gpuIndex}-error.log`,
-      out_file: `/workspace/logs/comfyui-gpu${gpuIndex}-out.log`,
-      log_file: `/workspace/logs/comfyui-gpu${gpuIndex}-combined.log`,
+      error_file: `/workspace/logs/${serviceName}-gpu${gpuIndex}-error.log`,
+      out_file: `/workspace/logs/${serviceName}-gpu${gpuIndex}-out.log`,
+      log_file: `/workspace/logs/${serviceName}-gpu${gpuIndex}-combined.log`,
       merge_logs: true,
       env: {
         NODE_ENV: 'production',
@@ -393,9 +399,9 @@ export class EnhancedPM2EcosystemGenerator {
   /**
    * Create Simulation service PM2 app
    */
-  createSimulationApp(gpuIndex = null) {
+  createSimulationApp(serviceName, gpuIndex = null) {
     const isPerGpu = gpuIndex !== null;
-    const name = isPerGpu ? `simulation-gpu${gpuIndex}` : 'simulation-service';
+    const name = isPerGpu ? `${serviceName}-gpu${gpuIndex}` : `${serviceName}-service`;
     const port = isPerGpu ? (8299 + gpuIndex) : 8299;
     
     return {
@@ -464,12 +470,15 @@ export class EnhancedPM2EcosystemGenerator {
     const env = {};
     
     // Handle service-specific configuration
-    if (workerConfig.service) {
-      for (const service of workerConfig.service) {
-        const capability = Array.isArray(service.capability) ? service.capability[0] : service.capability;
-        const connectorName = service.connector;
+    if (workerConfig.services) {
+      for (const serviceName of workerConfig.services) {
+        const serviceConfig = this.serviceMapping.services[serviceName];
+        if (!serviceConfig) continue;
         
-        this.logger.log(`🔍 Getting list of env vars for connector: ${connectorName} (capability: ${capability})`);
+        const jobTypes = serviceConfig.job_types_accepted || [];
+        const connectorName = serviceConfig.connector;
+        
+        this.logger.log(`🔍 Getting list of env vars for connector: ${connectorName} (job types: ${jobTypes.join(', ')})`);
         
         // Try to get env vars from the connector class itself
         try {
@@ -491,19 +500,21 @@ export class EnhancedPM2EcosystemGenerator {
           this.logger.warn(`Could not load connector ${connectorName}: ${error.message}`);
         }
         
-        // Fallback: Use the service env mapping configuration file
-        if (this.serviceEnvMapping && this.serviceEnvMapping[capability]) {
-          const envMapping = this.serviceEnvMapping[capability];
-          
-          // Process each environment variable from the mapping
-          for (const [envKey, envValue] of Object.entries(envMapping)) {
-            const processedValue = this.processEnvValue(envValue, index);
-            env[envKey] = processedValue;
+        // Fallback: Use the service env mapping configuration file for each job type
+        for (const jobType of jobTypes) {
+          if (this.serviceEnvMapping && this.serviceEnvMapping[jobType]) {
+            const envMapping = this.serviceEnvMapping[jobType];
+            
+            // Process each environment variable from the mapping
+            for (const [envKey, envValue] of Object.entries(envMapping)) {
+              const processedValue = this.processEnvValue(envValue, index);
+              env[envKey] = processedValue;
+            }
+            this.logger.log(`📦 Loading ${Object.keys(envMapping).length} env vars into worker from config for job type ${jobType}`);
+          } else {
+            // No mapping found
+            this.logger.warn(`No environment mapping found for job type: ${jobType}`);
           }
-          this.logger.log(`📦 Loading ${Object.keys(envMapping).length} env vars into worker from config for capability ${capability}`);
-        } else {
-          // No mapping found
-          this.logger.warn(`No environment mapping found for capability: ${capability}`);
         }
       }
     }

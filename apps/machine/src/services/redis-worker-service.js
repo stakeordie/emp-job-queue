@@ -11,7 +11,8 @@ export default class RedisWorkerService extends BaseService {
     super('redis-worker', options);
     this.config = config;
     this.gpu = options.gpu || 0;
-    this.workerId = `${config.machine.id}-worker-${this.gpu}`;
+    this.index = options.index !== undefined ? options.index : this.gpu;
+    this.workerId = `${config.machine.id}-worker-${this.index}`;
     this.workerDir = `/tmp/worker_gpu${this.gpu}`;
     this.workerProcess = null;
     // Use GitHub releases URL for worker package

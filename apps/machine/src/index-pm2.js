@@ -8,6 +8,7 @@ import { createLogger } from './utils/logger.js';
 import config from './config/environment.js';
 import PM2ServiceManager from './lib/pm2-manager.cjs';
 console.log("🔥🔥🔥 TOTALLY NEW VERSION LOADED - NO CACHE 🔥🔥🔥");
+import fs from 'fs';
 import http from 'http';
 import { URL } from 'url';
 import { MachineStatusAggregator } from './services/machine-status-aggregator.js';
@@ -18,6 +19,76 @@ const logger = createLogger('main-pm2');
 const pm2Manager = new PM2ServiceManager();
 const statusAggregator = new MachineStatusAggregator(config);
 let startTime = null;
+
+/**
+ * Load service mapping and analyze which services need PM2 processes
+ */
+function analyzeServiceRequirements(workerConnectors) {
+  try {
+    // Load service mapping
+    const serviceMappingPath = './src/config/service-mapping.json';
+    const serviceMappingContent = fs.readFileSync(serviceMappingPath, 'utf8');
+    const serviceMapping = JSON.parse(serviceMappingContent);
+    
+    // Parse worker specifications (e.g., "simulation-http:10,comfyui:2")
+    const workerSpecs = workerConnectors
+      .split(',')
+      .map(s => s.trim())
+      .filter(s => s)
+      .map(spec => {
+        const [type, count] = spec.split(':');
+        return { type, count: parseInt(count) || 1 };
+      });
+    
+    logger.info(`🔍 Parsing worker specifications from WORKERS="${workerConnectors}":`, workerSpecs);
+    
+    // Convert worker types to required services
+    const requiredServices = new Set();
+    const servicesNeedingPM2 = [];
+    
+    for (const spec of workerSpecs) {
+      const workerConfig = serviceMapping.workers?.[spec.type];
+      if (workerConfig && workerConfig.services) {
+        logger.info(`🔄 Worker type "${spec.type}" provides services:`, workerConfig.services);
+        
+        workerConfig.services.forEach(serviceName => {
+          requiredServices.add(serviceName);
+          
+          // Check if this service needs PM2 processes
+          const serviceConfig = serviceMapping.services?.[serviceName];
+          if (serviceConfig && serviceConfig.type === 'internal') {
+            servicesNeedingPM2.push({
+              serviceName,
+              serviceConfig,
+              workerCount: spec.count,
+              workerType: spec.type
+            });
+            logger.info(`📋 Service "${serviceName}" needs PM2 processes: ${spec.count} instances`);
+          } else if (serviceConfig && serviceConfig.type === 'external') {
+            logger.info(`🌐 Service "${serviceName}" is external - no PM2 process needed`);
+          } else {
+            logger.warn(`⚠️  Service "${serviceName}" not found in service definitions`);
+          }
+        });
+      } else {
+        logger.warn(`⚠️  Worker type "${spec.type}" not found in service mapping`);
+      }
+    }
+    
+    const servicesArray = Array.from(requiredServices);
+    logger.info(`✅ Required services from service mapping:`, servicesArray);
+    logger.info(`🏗️  Services needing PM2 processes:`, servicesNeedingPM2.map(s => `${s.serviceName}:${s.workerCount}`));
+    
+    return {
+      allServices: servicesArray,
+      servicesNeedingPM2,
+      serviceMapping
+    };
+  } catch (error) {
+    logger.error('❌ Failed to load service mapping:', error);
+    return { allServices: [], servicesNeedingPM2: [], serviceMapping: null };
+  }
+}
 
 /**
  * Main application entry point - PM2 mode
@@ -118,92 +189,79 @@ async function startPM2Services() {
       // Continue anyway - not critical for startup
     }
     
-    // Start ComfyUI services if needed based on WORKERS configuration
+    // 🚨 FIXED: Use service mapping definitions instead of hardcoded service logic
     const workerConnectors = process.env.WORKERS || '';
-    const enableComfyUI = workerConnectors.includes('comfyui:') && !workerConnectors.includes('comfyui-remote:');
+    const serviceAnalysis = analyzeServiceRequirements(workerConnectors);
     
-    if (enableComfyUI) {
-      logger.info(`ComfyUI services needed based on WORKERS: ${workerConnectors}`);
+    logger.info(`🔍 Service analysis for WORKERS="${workerConnectors}":`, {
+      allServices: serviceAnalysis.allServices,
+      servicesNeedingPM2: serviceAnalysis.servicesNeedingPM2.map(s => `${s.serviceName}:${s.workerCount}`)
+    });
+    
+    // Start all internal services that need PM2 processes
+    for (const serviceInfo of serviceAnalysis.servicesNeedingPM2) {
+      const { serviceName, serviceConfig, workerCount } = serviceInfo;
       
-      // Determine number of ComfyUI instances to start
-      let comfyuiCount = 0;
-      const workerMatch = workerConnectors.match(/comfyui:(\d+)/);
-      if (workerMatch) {
-        comfyuiCount = parseInt(workerMatch[1]);
+      logger.info(`🏗️  Starting ${serviceName} service (${workerCount} workers requested)`);
+      
+      // Handle special ComfyUI setup process
+      if (serviceName === 'comfyui') {
+        await pm2Manager.pm2Exec('start /workspace/pm2-ecosystem.config.cjs --only comfyui-env-creator');
+        logger.info('ComfyUI env creator service started');
+        await new Promise(resolve => setTimeout(resolve, 3000));
       }
       
-      // Check if we're in mock_gpu mode
-      const isMockGpu = process.env.COMFYUI_RESOURCE_BINDING === 'mock_gpu';
+      // Build service instance names based on resource binding
+      const serviceInstances = [];
+      const resourceBinding = serviceConfig.resource_binding;
+      let instanceCount = workerCount;
       
-      if (isMockGpu) {
-        // In mock_gpu mode, use the worker count directly
-        logger.info(`Mock GPU mode: Starting ${comfyuiCount} ComfyUI instances as requested`);
-      } else {
-        // In real GPU mode, detect actual GPUs and use minimum
+      // Adjust instance count based on resource binding and actual hardware
+      if (resourceBinding === 'gpu') {
+        // Real GPU mode - limit by actual GPU count
         const actualGpuCount = parseInt(process.env.MACHINE_NUM_GPUS || '0');
-        if (actualGpuCount > 0) {
-          const originalCount = comfyuiCount;
-          comfyuiCount = Math.min(comfyuiCount, actualGpuCount);
-          if (originalCount !== comfyuiCount) {
-            logger.warn(`Requested ${originalCount} ComfyUI workers but only ${actualGpuCount} GPUs available. Starting ${comfyuiCount} instances.`);
+        if (actualGpuCount > 0 && instanceCount > actualGpuCount) {
+          logger.warn(`Requested ${instanceCount} ${serviceName} workers but only ${actualGpuCount} GPUs available. Starting ${actualGpuCount} instances.`);
+          instanceCount = actualGpuCount;
+        }
+      } else if (resourceBinding === 'mock_gpu') {
+        // Mock GPU mode - use requested count directly
+        logger.info(`Mock GPU mode: Starting ${instanceCount} ${serviceName} instances as requested`);
+      }
+      
+      // Generate instance names
+      if (resourceBinding === 'gpu' || resourceBinding === 'mock_gpu') {
+        // GPU-bound services: servicename-gpu0, servicename-gpu1, etc.
+        for (let gpu = 0; gpu < instanceCount; gpu++) {
+          serviceInstances.push(`${serviceName}-gpu${gpu}`);
+        }
+      } else if (resourceBinding === 'shared' || resourceBinding === 'cpu') {
+        // Shared/CPU services: use service_instances_per_machine setting
+        const perMachineInstances = parseInt(serviceConfig.service_instances_per_machine) || 1;
+        for (let i = 0; i < perMachineInstances; i++) {
+          if (perMachineInstances === 1) {
+            serviceInstances.push(serviceName);
+          } else {
+            serviceInstances.push(`${serviceName}-${i}`);
           }
         }
       }
       
-      await pm2Manager.pm2Exec('start /workspace/pm2-ecosystem.config.cjs --only comfyui-env-creator');
-      logger.info('ComfyUI env creator service started');
-      
-      // Wait for ComfyUI env setup to complete (much faster than full installation)
-      await new Promise(resolve => setTimeout(resolve, 3000));
-      
-      // Start ComfyUI service instances
-      const comfyuiServices = [];
-      for (let gpu = 0; gpu < comfyuiCount; gpu++) {
-        comfyuiServices.push(`comfyui-gpu${gpu}`);
-      }
-      
-      if (comfyuiServices.length > 0) {
-        await pm2Manager.pm2Exec(`start /workspace/pm2-ecosystem.config.cjs --only ${comfyuiServices.join(',')}`);
-        logger.info(`ComfyUI service instances started: ${comfyuiServices.join(', ')}`);
+      // Start the service instances
+      if (serviceInstances.length > 0) {
+        logger.info(`🚀 Starting service instances: ${serviceInstances.join(', ')}`);
+        await pm2Manager.pm2Exec(`start /workspace/pm2-ecosystem.config.cjs --only ${serviceInstances.join(',')}`);
+        logger.info(`✅ ${serviceName} service instances started successfully`);
         
-        // Wait for ComfyUI services to be ready before starting workers
-        logger.info('Waiting for ComfyUI services to initialize...');
-        await new Promise(resolve => setTimeout(resolve, 5000));
+        // Wait for services to initialize (ComfyUI needs more time)
+        const waitTime = serviceName.includes('comfyui') ? 5000 : 3000;
+        logger.info(`⏳ Waiting ${waitTime/1000}s for ${serviceName} services to initialize...`);
+        await new Promise(resolve => setTimeout(resolve, waitTime));
       }
-    } else {
-      logger.info(`ComfyUI services not needed. WORKERS: ${workerConnectors}`);
     }
     
-    // Start simulation services BEFORE workers (so workers can connect to them)
-    const enableSimulation = workerConnectors.includes('simulation:');
-    
-    if (enableSimulation) {
-      logger.info(`Simulation services needed based on WORKERS: ${workerConnectors}`);
-      
-      // Determine number of simulation instances to start  
-      let simulationCount = 0;
-      const workerMatch = workerConnectors.match(/simulation:(\d+)/);
-      if (workerMatch) {
-        simulationCount = parseInt(workerMatch[1]);
-      }
-      
-      // Build list of simulation service names (simulation-gpu0, simulation-gpu1, etc.)
-      const simulationServices = [];
-      for (let gpu = 0; gpu < simulationCount; gpu++) {
-        simulationServices.push(`simulation-gpu${gpu}`);
-      }
-      
-      if (simulationServices.length > 0) {
-        logger.info(`Starting ${simulationServices.length} simulation services: ${simulationServices.join(', ')}`);
-        await pm2Manager.pm2Exec(`start /workspace/pm2-ecosystem.config.cjs --only ${simulationServices.join(',')}`);
-        logger.info('Simulation services started');
-        
-        // Wait for simulation services to be ready
-        logger.info('Waiting for simulation services to initialize...');
-        await new Promise(resolve => setTimeout(resolve, 3000));
-      }
-    } else {
-      logger.info(`Simulation services not needed. WORKERS: ${workerConnectors}`);
+    if (serviceAnalysis.servicesNeedingPM2.length === 0) {
+      logger.info(`ℹ️  No internal services need PM2 processes. WORKERS: ${workerConnectors}`);
     }
     
     // Worker-driven mode: Start all worker processes from the ecosystem config

@@ -3,6 +3,8 @@ import { exec } from 'child_process';
 import { promisify } from 'util';
 import { createLogger } from '../utils/logger.js';
 import { TelemetryBroadcasterDash0 } from './telemetry-broadcaster-dash0.js';
+import fs from 'fs';
+import path from 'path';
 
 const execAsync = promisify(exec);
 const logger = createLogger('machine-status-aggregator');
@@ -24,6 +26,7 @@ export class MachineStatusAggregator {
     this.isConnected = false;
     this.statusInterval = null;
     this.startTime = Date.now();
+    this.serviceMapping = null;
     
     // Status update frequency from env var
     this.updateIntervalSeconds = parseInt(
@@ -44,11 +47,81 @@ export class MachineStatusAggregator {
   }
 
   /**
+   * Load service mapping configuration
+   */
+  async loadServiceMapping() {
+    if (this.serviceMapping) {
+      return this.serviceMapping;
+    }
+
+    try {
+      const possiblePaths = [
+        '/workspace/src/config/service-mapping.json',
+        '/service-manager/src/config/service-mapping.json', 
+        './src/config/service-mapping.json',
+        path.join(process.cwd(), 'src/config/service-mapping.json')
+      ];
+
+      let serviceMappingPath = null;
+      for (const p of possiblePaths) {
+        if (fs.existsSync(p)) {
+          serviceMappingPath = p;
+          break;
+        }
+      }
+
+      if (!serviceMappingPath) {
+        throw new Error(`service-mapping.json not found in paths: ${possiblePaths.join(', ')}`);
+      }
+
+      const serviceMappingContent = fs.readFileSync(serviceMappingPath, 'utf8');
+      this.serviceMapping = JSON.parse(serviceMappingContent);
+      
+      logger.info(`Loaded service mapping from ${serviceMappingPath}`);
+      return this.serviceMapping;
+    } catch (error) {
+      logger.error('Failed to load service mapping:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Convert worker type to actual services using service mapping
+   */
+  getServicesFromWorkerType(workerType) {
+    console.log(`🚨🚨🚨 [MACHINE-STATUS-AGGREGATOR] getServicesFromWorkerType called with: "${workerType}"`);
+    
+    if (!this.serviceMapping) {
+      console.log(`🚨🚨🚨 [MACHINE-STATUS-AGGREGATOR] ERROR: Service mapping not loaded!`);
+      logger.warn('Service mapping not loaded, returning worker type as-is');
+      return [workerType];
+    }
+
+    console.log(`🚨🚨🚨 [MACHINE-STATUS-AGGREGATOR] Service mapping loaded, checking for worker type "${workerType}"`);
+    const workerConfig = this.serviceMapping.workers?.[workerType];
+    
+    if (!workerConfig || !workerConfig.services) {
+      console.log(`🚨🚨🚨 [MACHINE-STATUS-AGGREGATOR] ERROR: Worker type "${workerType}" not found in service mapping!`);
+      logger.warn(`Worker type ${workerType} not found in service mapping or has no services`);
+      return [workerType];
+    }
+
+    console.log(`🚨🚨🚨 [MACHINE-STATUS-AGGREGATOR] SUCCESS: Found services for "${workerType}":`, workerConfig.services);
+    logger.debug(`🔄 Converting worker type "${workerType}" → services: [${workerConfig.services.join(', ')}]`);
+    return workerConfig.services;
+  }
+
+  /**
    * Get machine structure from service mapping instead of hardcoded config
    */
   async getStructureFromServiceMapping() {
     try {
       console.info('[MachineStatusAggregator] getStructureFromServiceMapping() called');
+      
+      // 🚨 CRITICAL: Load service mapping FIRST before any processing
+      console.log('🚨🚨🚨 [MACHINE-STATUS-AGGREGATOR] Loading service mapping...');
+      await this.loadServiceMapping();
+      console.log('🚨🚨🚨 [MACHINE-STATUS-AGGREGATOR] Service mapping loaded successfully!');
       
       // Get worker types from WORKERS environment variable
       const workersEnv = process.env.WORKERS || '';
@@ -101,20 +174,22 @@ export class MachineStatusAggregator {
       
       for (const spec of workerSpecs) {
         const workerConfig = serviceMapping.workers?.[spec.type];
-        if (workerConfig && workerConfig.service) {
-          // Extract capabilities
-          for (const service of workerConfig.service) {
-            if (service.capability) {
-              if (Array.isArray(service.capability)) {
-                service.capability.forEach(cap => allCapabilities.add(cap));
-              } else {
-                allCapabilities.add(service.capability);
-              }
+        if (workerConfig && workerConfig.services) {
+          // Extract capabilities from services referenced by this worker
+          for (const serviceName of workerConfig.services) {
+            const serviceConfig = serviceMapping.services?.[serviceName];
+            if (serviceConfig && serviceConfig.job_types_accepted) {
+              serviceConfig.job_types_accepted.forEach(jobType => allCapabilities.add(jobType));
             }
           }
           
-          // Determine resource binding
-          const resourceBinding = workerConfig.resource_binding || 'shared';
+          // Get resource binding from the first service (they should all be consistent)
+          let resourceBinding = 'shared';
+          if (workerConfig.services.length > 0) {
+            const firstService = serviceMapping.services?.[workerConfig.services[0]];
+            resourceBinding = firstService?.resource_binding || 'shared';
+          }
+          
           workers.push({
             type: spec.type,
             count: spec.count,
@@ -150,7 +225,14 @@ export class MachineStatusAggregator {
    * Build static machine structure from PM2 ecosystem config (never changes)
    */
   async buildMachineStructure() {
+    console.log('🔥🔥🔥 [BUILD-VERIFICATION] CODE REBUILD VERIFICATION - This should show if code was rebuilt!');
+    console.log('🔥🔥🔥 [BUILD-VERIFICATION] Timestamp:', new Date().toISOString());
     console.log('[MachineStatusAggregator] DEBUG: buildMachineStructure() called');
+    
+    // 🚨 CRITICAL FIX: Load service mapping FIRST before building structure
+    console.log('🚨🚨🚨 [MACHINE-STATUS-AGGREGATOR] Loading service mapping in buildMachineStructure...');
+    await this.loadServiceMapping();
+    console.log('🚨🚨🚨 [MACHINE-STATUS-AGGREGATOR] Service mapping loaded in buildMachineStructure!');
     
     const workers = {};
     const services = {};
@@ -180,29 +262,46 @@ export class MachineStatusAggregator {
           const connectors = app.env.CONNECTORS?.split(',') || [];
           
           // Extract index from app name or env
-          const gpuIndex = parseInt(app.env.GPU_INDEX || '0');
-          const actualWorkerId = `${machineId}-worker-${gpuIndex}`;
+          // PM2 app names are like: redis-worker-simulation-http-0, redis-worker-simulation-http-1, etc.
+          let workerIndex = 0;
+          const appNameMatch = app.name.match(/redis-worker-.+-(\d+)$/);
+          if (appNameMatch) {
+            workerIndex = parseInt(appNameMatch[1]);
+          } else {
+            // Fallback to GPU_INDEX if app name doesn't match expected pattern
+            workerIndex = parseInt(app.env.GPU_INDEX || '0');
+          }
+          const actualWorkerId = `${machineId}-worker-${workerIndex}`;
           
           console.log('[MachineStatusAggregator] DEBUG: Creating worker structure for:', actualWorkerId);
           console.log('[MachineStatusAggregator] DEBUG: PM2 app name:', app.name);
-          console.log('[MachineStatusAggregator] DEBUG: Connectors:', connectors);
+          console.log('[MachineStatusAggregator] DEBUG: Raw Connectors from PM2:', connectors);
+          
+          // 🚨 CRITICAL FIX: Convert worker types to actual services using service mapping
+          const workerType = connectors[0] || 'unknown';
+          const actualServices = this.getServicesFromWorkerType(workerType);
+          
+          console.log(`🚨🚨🚨 [MACHINE-STATUS-AGGREGATOR] CRITICAL FIX APPLIED!`);
+          console.log(`🚨🚨🚨 [MACHINE-STATUS-AGGREGATOR] Raw worker type from PM2: "${workerType}"`);
+          console.log(`🚨🚨🚨 [MACHINE-STATUS-AGGREGATOR] Converted to services:`, actualServices);
+          console.log(`🚨🚨🚨 [MACHINE-STATUS-AGGREGATOR] This should show ["simulation"] not ["sim"]!`);
           
           workers[actualWorkerId] = {
             worker_id: actualWorkerId,
             pm2_name: app.name,
-            gpu_id: gpuIndex,
-            worker_type: connectors[0] || 'unknown',
+            gpu_id: workerIndex,
+            worker_type: workerType,
             resource_binding: app.env.GPU_INDEX !== undefined ? 'mock_gpu' : 'shared',
-            services: connectors,
-            connectors: connectors
+            services: actualServices,  // 🚨 FIX: Use actual services, not raw connectors
+            connectors: connectors     // Keep raw connectors for reference
           };
           
-          // Create services for each connector this worker can handle
-          for (const connector of connectors) {
-            const serviceKey = `${actualWorkerId}.${connector}`;
+          // 🚨 CRITICAL FIX: Create services for actual services, not raw connectors
+          for (const serviceName of actualServices) {
+            const serviceKey = `${actualWorkerId}.${serviceName}`;
             services[serviceKey] = {
               worker_id: actualWorkerId,
-              service_type: connector,
+              service_type: serviceName,  // 🚨 FIX: Use actual service name
               pm2_name: app.name,
               status: 'unknown',
               health: 'unknown'

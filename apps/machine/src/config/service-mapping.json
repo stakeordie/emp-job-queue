@@ -1,4 +1,114 @@
 {
+  "workers": {
+    "comfyui": {
+      "services": ["comfyui"],
+      "job_service_required_map": [
+        {
+          "job_service_required": "comfyui",
+          "worker_service": "comfyui"
+        }
+      ]
+    },
+
+    "comfyui-remote": {
+      "services": ["comfyui-remote", "simulation-remote"],
+      "job_service_required_map": [
+        {
+          "job_service_required": "comfyui",
+          "worker_service": "comfyui-remote"
+        },
+        {
+          "job_service_required": "simulation",
+          "worker_service": "simulation-remote"
+        }
+      ]
+    },
+    
+    "playwright": {
+      "services": ["playwright"],
+      "job_service_required_map": [
+        {
+          "job_service_required": "playwright",
+          "worker_service": "playwright"
+        }
+      ]
+    },
+    
+    "simulation-http": {
+      "services": ["http-sim"],
+      "job_service_required_map": [
+        {
+          "job_service_required": "simulation",
+          "worker_service": "http-sim" 
+        }
+      ]
+    },
+    
+    "openai": {
+      "services": ["openai-text", "openai-image", "openai-img2img"],
+      "job_service_required_map": [
+        {
+          "job_service_required": "openai_text",
+          "worker_service": "openai-text"
+        },
+        {
+          "job_service_required": "openai_image",
+          "worker_service": "openai-image"
+        },
+        {
+          "job_service_required": "openai_img2img",
+          "worker_service": "openai-img2img"
+        }
+      ]
+    },
+    
+    "openai-text": {
+      "services": ["openai-text"],
+      "job_service_required_map": [
+        {
+          "job_service_required": "openai_text",
+          "worker_service": "openai-text"
+        },
+        {
+          "job_service_required": "text_generation",
+          "worker_service": "openai-text"
+        }
+      ]
+    }
+  },
+
+  "machine_capabilities": {
+    "auto_detect": {
+      "gpu": {
+        "detection_method": "nvidia-smi",
+        "fallback": "environment_variable",
+        "env_var": "NUM_GPUS"
+      },
+      "cpu_cores": {
+        "detection_method": "os.cpus().length"
+      },
+      "memory": {
+        "detection_method": "os.totalmem()"
+      },
+      "storage": {
+        "detection_method": "fs.statSync"
+      },
+      "network_access": {
+        "detection_method": "ping_test",
+        "test_urls": ["api.openai.com", "github.com"]
+      },
+      "cloud_storage": {
+        "detection_method": "environment_variable",
+        "required_env": ["CLOUD_STORAGE_PROVIDER"]
+      }
+    },
+    "static": {
+      "docker": true,
+      "node_js": true,
+      "local_storage": true
+    }
+  },
+
   "connectors": {
     "ComfyUIConnector": {
       "path": "./redis-direct-worker.js",
@@ -26,15 +136,10 @@
     }
   },
 
-  "workers": {
+  "services": {
     "comfyui": {
-      "service": [
-        {
-          "capability": "comfyui",
-          "connector": "ComfyUIConnector",
-          "type": "internal"
-        }
-      ],
+      "connector": "ComfyUIConnector",
+      "type": "internal",
       "installer": "installComfyUI",
       "resource_binding": "${COMFYUI_RESOURCE_BINDING:-gpu}",
       "build_stage": "comfyui",
@@ -50,34 +155,28 @@
         "install_timeout": "${COMFYUI_INSTALL_TIMEOUT:-300}"
       }
     },
-
+    
     "comfyui-remote": {
-      "service": [
-        {
-          "capability": ["comfyui"],
-          "connector": "ComfyUIRemoteConnector",
-          "type": "external"
-        },
-        {
-          "capability": ["simulation"],
-          "connector": "SimulationConnector",
-          "type": "external"
-        }
-      ],
+      "connector": "ComfyUIRemoteConnector",
+      "type": "external",
       "installer": null,
       "resource_binding": "shared",
       "build_stage": "base",
       "description": "Remote ComfyUI WebSocket connector - connects to external ComfyUI instance"
     },
     
+    "simulation-remote": {
+      "connector": "SimulationConnector",
+      "type": "external",
+      "installer": null,
+      "resource_binding": "shared",
+      "build_stage": "base",
+      "description": "Remote simulation connector - connects to external simulation service"
+    },
+    
     "playwright": {
-      "service": [
-        {
-          "capability": "playwright",
-          "connector": "PlaywrightConnector",
-          "type": "internal"
-        }
-      ],
+      "connector": "PlaywrightConnector",
+      "type": "internal",
       "installer": "installPlaywright",
       "resource_binding": "cpu",
       "build_stage": "playwright",
@@ -92,14 +191,9 @@
       }
     },
     
-    "simulation": {
-      "service": [
-        {
-          "capability": "simulation",
-          "connector": "SimulationHttpConnector",
-          "type": "internal"
-        }
-      ],
+    "http-sim": {
+      "connector": "SimulationHttpConnector",
+      "type": "internal",
       "installer": "installSimulation",
       "resource_binding": "mock_gpu",
       "build_stage": "simulation",
@@ -114,55 +208,54 @@
       }
     },
     
-    "openai": {
-      "service": [
-        {
-          "capability": "openai_text",
-          "connector": "OpenAITextConnector",
-          "type": "external"
-        },
-        {
-          "capability": "openai_image",
-          "connector": "OpenAIImageConnector",
-          "type": "external"
-        },
-        {
-          "capability": "openai_img2img",
-          "connector": "OpenAIImg2ImgConnector",
-          "type": "external"
-        }
-      ],
-      "installer": null,
-      "resource_binding": "shared",
-      "build_stage": "base",
-      "required_env": ["OPENAI_API_KEY","OPENAI_IMAGE_MODEL","CLOUD_STORAGE_PROVIDER"],
-      "description": "OpenAI API connectors (no installation required)",
-      "api_config": {
-        "base_url": "${OPENAI_BASE_URL:-https://api.openai.com/v1}",
-        "timeout": "${OPENAI_TIMEOUT:-60}",
-        "max_retries": "${OPENAI_MAX_RETRIES:-3}",
-        "text_models": "${OPENAI_TEXT_MODELS:-gpt-4,gpt-3.5-turbo}",
-        "image_models": "${OPENAI_IMAGE_MODELS:-dall-e-3,dall-e-2}"
-      }
-    },
     "openai-text": {
-      "service": [
-        {
-          "capability": "text_generation",
-          "connector": "OpenAITextConnector",
-          "type": "external"
-        }
-      ],
+      "connector": "OpenAITextConnector",
+      "type": "external",
+      "job_types_accepted": ["openai_text", "text_generation"],
       "installer": null,
       "resource_binding": "shared",
       "build_stage": "base",
       "required_env": ["OPENAI_API_KEY"],
-      "description": "OpenAI API connectors (no installation required)",
+      "description": "OpenAI text generation API connector",
       "api_config": {
         "base_url": "${OPENAI_BASE_URL:-https://api.openai.com/v1}",
         "timeout": "${OPENAI_TIMEOUT:-60}",
         "max_retries": "${OPENAI_MAX_RETRIES:-3}",
         "text_models": "${OPENAI_TEXT_MODELS:-gpt-4,gpt-3.5-turbo}"
+      }
+    },
+    
+    "openai-image": {
+      "connector": "OpenAIImageConnector", 
+      "type": "external",
+      "job_types_accepted": ["openai_image"],
+      "installer": null,
+      "resource_binding": "shared",
+      "build_stage": "base",
+      "required_env": ["OPENAI_API_KEY", "OPENAI_IMAGE_MODEL", "CLOUD_STORAGE_PROVIDER"],
+      "description": "OpenAI image generation API connector",
+      "api_config": {
+        "base_url": "${OPENAI_BASE_URL:-https://api.openai.com/v1}",
+        "timeout": "${OPENAI_TIMEOUT:-60}",
+        "max_retries": "${OPENAI_MAX_RETRIES:-3}",
+        "image_models": "${OPENAI_IMAGE_MODELS:-dall-e-3,dall-e-2}"
+      }
+    },
+    
+    "openai-img2img": {
+      "connector": "OpenAIImg2ImgConnector",
+      "type": "external",
+      "job_types_accepted": ["openai_img2img"],
+      "installer": null,
+      "resource_binding": "shared", 
+      "build_stage": "base",
+      "required_env": ["OPENAI_API_KEY", "OPENAI_IMAGE_MODEL", "CLOUD_STORAGE_PROVIDER"],
+      "description": "OpenAI image-to-image generation API connector",
+      "api_config": {
+        "base_url": "${OPENAI_BASE_URL:-https://api.openai.com/v1}",
+        "timeout": "${OPENAI_TIMEOUT:-60}",
+        "max_retries": "${OPENAI_MAX_RETRIES:-3}",
+        "image_models": "${OPENAI_IMAGE_MODELS:-dall-e-3,dall-e-2}"
       }
     }
   },
