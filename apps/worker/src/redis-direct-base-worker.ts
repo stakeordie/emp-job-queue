@@ -135,23 +135,30 @@ export class RedisDirectBaseWorker {
 
   private getServicesFromMapping(): string[] {
     try {
-      // Get worker types from WORKERS environment variable
-      const workersEnv = process.env.WORKERS || '';
-      const workerSpecs = workersEnv
-        .split(',')
-        .map(s => s.trim())
-        .filter(s => s)
-        .map(spec => spec.split(':')[0]); // Extract type from "type:count"
+      // Get the specific worker type for THIS worker instance
+      // Use CONNECTORS first (preferred), then fall back to parsing WORKER_ID
+      let workerType = process.env.CONNECTORS;
+      
+      if (!workerType && this.workerId) {
+        // Parse worker type from WORKER_ID format: machine-worker-{type}-{index}
+        const match = this.workerId.match(/worker-([^-]+)-\d+$/);
+        if (match) {
+          workerType = match[1];
+        }
+      }
 
       console.log('🚨🚨🚨 [TRACE] getServicesFromMapping START');
-      console.log('🚨🚨🚨 [TRACE] WORKERS env variable:', workersEnv);
-      console.log('🚨🚨🚨 [TRACE] Extracted workerSpecs:', workerSpecs);
+      console.log('🚨🚨🚨 [TRACE] CONNECTORS env:', process.env.CONNECTORS);
+      console.log('🚨🚨🚨 [TRACE] Worker ID:', this.workerId);
+      console.log('🚨🚨🚨 [TRACE] Determined worker type:', workerType);
 
-      if (workerSpecs.length === 0) {
+      if (!workerType) {
         throw new Error(
-          'SYSTEM IS FUCKED: No WORKERS environment variable specified. I cannot determine what services this worker should provide. Set WORKERS=worker-type:count environment variable.'
+          'SYSTEM IS FUCKED: Cannot determine worker type for this worker instance. Missing CONNECTORS or unable to parse from WORKER_ID. This worker does not know what services it should provide.'
         );
       }
+
+      const workerSpecs = [workerType]; // Only include THIS worker's type
 
       // Load service mapping
       const fs = require('fs');
@@ -186,37 +193,37 @@ export class RedisDirectBaseWorker {
         Object.keys(serviceMapping.workers || {})
       );
 
-      // Extract capabilities from all worker types
-      const allCapabilities = new Set<string>();
-
-      for (const workerType of workerSpecs) {
-        console.log(`🚨🚨🚨 [TRACE] Processing workerType: "${workerType}"`);
-        const workerConfig = serviceMapping.workers?.[workerType];
-
-        if (workerConfig && workerConfig.services) {
-          console.log(
-            `🚨🚨🚨 [TRACE] Found workerConfig for "${workerType}":`,
-            JSON.stringify(workerConfig, null, 2)
-          );
-          console.log(`🚨🚨🚨 [TRACE] Services array for "${workerType}":`, workerConfig.services);
-
-          // NEW structure: services is an array of service names
-          for (const serviceName of workerConfig.services) {
-            console.log(`🚨🚨🚨 [TRACE] Adding service: "${serviceName}"`);
-            allCapabilities.add(serviceName);
-          }
-        } else {
-          console.log(
-            `🚨🚨🚨 [TRACE] ERROR: Worker type "${workerType}" not found or has no services!`
-          );
-          throw new Error(
-            `SYSTEM IS FUCKED: Worker type '${workerType}' not found in service mapping or has no services array. Available worker types: ${Object.keys(serviceMapping.workers || {}).join(', ')}. Check your WORKERS environment variable.`
-          );
-        }
+      // Look up configuration for THIS specific worker type (not all worker types)
+      const specificWorkerType = workerSpecs[0]; // Should only be one worker type now
+      console.log(`🚨🚨🚨 [TRACE] Processing SPECIFIC workerType: "${specificWorkerType}"`);
+      const workerConfig = serviceMapping.workers?.[specificWorkerType];
+      
+      if (!workerConfig) {
+        throw new Error(
+          `SYSTEM IS FUCKED: Worker type '${specificWorkerType}' not found in service mapping. Available worker types: ${Object.keys(serviceMapping.workers || {}).join(', ')}. Check your CONNECTORS environment variable.`
+        );
       }
 
-      const capabilities = Array.from(allCapabilities);
-      console.log('🚨🚨🚨 [TRACE] Final services array to return:', capabilities);
+      console.log(`🚨🚨🚨 [TRACE] Found workerConfig for "${specificWorkerType}":`, JSON.stringify(workerConfig, null, 2));
+
+      // Extract job_service_required values (what jobs ask for) instead of internal services
+      const jobServiceRequiredSet = new Set<string>();
+      
+      if (workerConfig.job_service_required_map && Array.isArray(workerConfig.job_service_required_map)) {
+        for (const mapping of workerConfig.job_service_required_map) {
+          if (mapping.job_service_required) {
+            console.log(`🚨🚨🚨 [TRACE] Adding job_service_required: "${mapping.job_service_required}"`);
+            jobServiceRequiredSet.add(mapping.job_service_required);
+          }
+        }
+      } else {
+        throw new Error(
+          `SYSTEM IS FUCKED: Worker type '${specificWorkerType}' has no job_service_required_map. This worker cannot determine what job types it should accept.`
+        );
+      }
+
+      const capabilities = Array.from(jobServiceRequiredSet);
+      console.log('🚨🚨🚨 [TRACE] Final job_service_required values to return:', capabilities);
       console.log('🚨🚨🚨 [TRACE] getServicesFromMapping END');
       return capabilities;
     } catch (error) {
@@ -225,63 +232,6 @@ export class RedisDirectBaseWorker {
     }
   }
 
-  private getJobServiceRequiredFromMapping(): string[] {
-    try {
-      // Get worker types from WORKERS environment variable
-      const workersEnv = process.env.WORKERS || '';
-      const workerSpecs = workersEnv
-        .split(',')
-        .map(s => s.trim())
-        .filter(s => s)
-        .map(spec => spec.split(':')[0]); // Extract type from "type:count"
-
-      if (workerSpecs.length === 0) {
-        return [];
-      }
-
-      // Load service mapping
-      const fs = require('fs');
-      const possiblePaths = [
-        '/workspace/worker-bundled/src/config/service-mapping.json',
-        '/service-manager/worker-bundled/src/config/service-mapping.json',
-        '/workspace/src/config/service-mapping.json',
-        '/service-manager/src/config/service-mapping.json',
-        './src/config/service-mapping.json',
-      ];
-
-      let serviceMappingPath = null;
-      for (const p of possiblePaths) {
-        if (fs.existsSync(p)) {
-          serviceMappingPath = p;
-          break;
-        }
-      }
-
-      if (!serviceMappingPath) {
-        return [];
-      }
-
-      const serviceMappingContent = fs.readFileSync(serviceMappingPath, 'utf8');
-      const serviceMapping = JSON.parse(serviceMappingContent);
-
-      // Extract job service required values from all worker types
-      const jobServiceRequiredSet = new Set<string>();
-
-      for (const workerType of workerSpecs) {
-        const workerConfig = serviceMapping.workers?.[workerType];
-        if (workerConfig && workerConfig.job_service_required_map) {
-          for (const mapping of workerConfig.job_service_required_map) {
-            jobServiceRequiredSet.add(mapping.job_service_required);
-          }
-        }
-      }
-
-      return Array.from(jobServiceRequiredSet);
-    } catch (error) {
-      logger.error('Failed to load job service required map from service mapping:', error);
-      return [];
-    }
-  }
 
   private buildCapabilities(): WorkerCapabilities {
     console.log('🚨🚨🚨 [TRACE] buildCapabilities START');
@@ -293,9 +243,7 @@ export class RedisDirectBaseWorker {
       services
     );
 
-    // Job service requirements this worker accepts - for Redis function matching
-    const jobServiceRequiredMap = this.getJobServiceRequiredFromMapping();
-    console.log('🚨🚨🚨 [TRACE] buildCapabilities - jobServiceRequiredMap:', jobServiceRequiredMap);
+    // Note: services now contains job_service_required values for proper Redis matching
 
     // Hardware specs - Each worker represents ONE GPU + supporting resources
     const hardware: HardwareSpecs = {
@@ -376,7 +324,9 @@ export class RedisDirectBaseWorker {
       worker_id: this.workerId,
       machine_id: this.machineId,
       services,
-      job_service_required_map: jobServiceRequiredMap,
+      // Add job_service_required_map for Redis function compatibility
+      // The Redis function expects this as an array of strings
+      job_service_required_map: services,
       hardware,
       models: {}, // Will be populated by connectors
       customer_access: customerAccess,

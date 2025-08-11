@@ -453,6 +453,13 @@ export class RedisDirectWorkerClient {
     capabilities: WorkerCapabilities,
     maxScan = 100
   ): Promise<MatchingResult | null> {
+    console.log('🚨🚨🚨 [REDIS-CALL-DEBUG] About to call findMatchingJob with:');
+    console.log('🚨🚨🚨 [REDIS-CALL-DEBUG] Worker ID:', this.workerId);
+    console.log('🚨🚨🚨 [REDIS-CALL-DEBUG] Capabilities services:', capabilities.services);
+    console.log('🚨🚨🚨 [REDIS-CALL-DEBUG] Full capabilities:', JSON.stringify(capabilities, null, 2));
+    console.log('🚨🚨🚨 [REDIS-CALL-DEBUG] Max scan:', maxScan);
+    console.log('🚨🚨🚨 [REDIS-CALL-DEBUG] Exact Redis call: FCALL findMatchingJob 0 \'' + JSON.stringify(capabilities) + '\' ' + maxScan.toString());
+    
     const result = (await this.redis.call(
       'FCALL',
       'findMatchingJob',
@@ -460,6 +467,8 @@ export class RedisDirectWorkerClient {
       JSON.stringify(capabilities),
       maxScan.toString()
     )) as string | null;
+    
+    console.log('🚨🚨🚨 [REDIS-CALL-DEBUG] Redis function result:', result);
 
     if (!result) {
       return null;

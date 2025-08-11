@@ -302,7 +302,6 @@ export class EnhancedPM2EcosystemGenerator {
       WORKER_ID: generatedWorkerId,
       HUB_REDIS_URL: process.env.HUB_REDIS_URL || 'redis://localhost:6379',
       MACHINE_ID: process.env.MACHINE_ID || 'unknown',
-      WORKER_ID_PREFIX: workerType,
       
       // Worker type specification
       CONNECTORS: workerType,

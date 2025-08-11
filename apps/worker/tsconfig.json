@@ -16,7 +16,6 @@
     "dist",
     "node_modules",
     "**/*.test.ts",
-    "**/__tests__/**",
-    "**/refactor-todo/**"
+    "**/__tests__/**"
   ]
 }

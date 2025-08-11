@@ -4,6 +4,7 @@ export interface WorkerCapabilities {
   worker_id: string;
   machine_id?: string; // Physical machine identifier for multi-GPU setups
   services: string[]; // ["comfyui", "a1111"]
+  job_service_required_map?: string[]; // For Redis function compatibility - same as services
   components?: string[] | 'all'; // ["text-to-image-xl"] or "all" for no filtering
   workflows?: string[] | 'all'; // ["workflow-v1.2", "workflow-v2.0"] or "all" for no filtering
   models?: Record<string, string[]> | 'all'; // Future: service -> model list or "all"

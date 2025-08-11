@@ -11,15 +11,11 @@
     },
 
     "comfyui-remote": {
-      "services": ["comfyui-remote", "simulation-remote"],
+      "services": ["comfyui-remote"],
       "job_service_required_map": [
         {
           "job_service_required": "comfyui",
           "worker_service": "comfyui-remote"
-        },
-        {
-          "job_service_required": "simulation",
-          "worker_service": "simulation-remote"
         }
       ]
     },
@@ -68,20 +64,6 @@
         {
           "job_service_required": "openai_img2img",
           "worker_service": "openai-img2img"
-        }
-      ]
-    },
-    
-    "openai-text": {
-      "services": ["openai-text"],
-      "job_service_required_map": [
-        {
-          "job_service_required": "openai_text",
-          "worker_service": "openai-text"
-        },
-        {
-          "job_service_required": "text_generation",
-          "worker_service": "openai-text"
         }
       ]
     }
@@ -242,7 +224,6 @@
     "openai-text": {
       "connector": "OpenAITextConnector",
       "type": "external",
-      "job_types_accepted": ["openai_text", "text_generation"],
       "installer": null,
       "resource_binding": "shared",
       "build_stage": "base",
@@ -259,7 +240,6 @@
     "openai-image": {
       "connector": "OpenAIImageConnector", 
       "type": "external",
-      "job_types_accepted": ["openai_image"],
       "installer": null,
       "resource_binding": "shared",
       "build_stage": "base",
@@ -276,7 +256,6 @@
     "openai-img2img": {
       "connector": "OpenAIImg2ImgConnector",
       "type": "external",
-      "job_types_accepted": ["openai_img2img"],
       "installer": null,
       "resource_binding": "shared", 
       "build_stage": "base",

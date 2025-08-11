@@ -167,9 +167,6 @@ services:
         reservations:
           memory: ${MEMORY_RESERVATION:-2G}
   sim-local-dev:
-    <<: *base-machine
-    profiles:
-      - sim-local-dev
     build:
       context: .
       dockerfile: Dockerfile
@@ -179,11 +176,31 @@ services:
         WORKERS: simulation-websocket:2,simulation-http:2
         MACHINE_ID: sim-local-dev
         CACHE_BUST: ${CACHE_BUST:-1}
+    image: emprops/machine:sim-local-dev
+    platform: linux/amd64
     container_name: sim-local-dev
     hostname: sim-local-dev
+    profiles:
+      - sim-local-dev
+    restart: 'no'
+    stop_grace_period: 2s
+    stop_signal: SIGTERM
+    env_file:
+      - .env.secret
+    environment:
+      NODE_ENV: production
+      ENV: ${CURRENT_ENV}
+      NVIDIA_VISIBLE_DEVICES: all
+      NVIDIA_DRIVER_CAPABILITIES: compute,utility
+    working_dir: /workspace
+    deploy:
+      resources:
+        limits:
+          memory: ${MEMORY_LIMIT:-8G}
+        reservations:
+          memory: ${MEMORY_RESERVATION:-2G}
     ports:
       - ${EXPOSE_PORTS:-9090}:9090
-    image: emprops/machine:sim-local-dev
   sim-local-dev-http:
     build:
       context: .
@@ -254,6 +271,25 @@ services:
           memory: ${MEMORY_RESERVATION:-2G}
     ports:
       - ${EXPOSE_PORTS:-9090}:9090
+  local-dev-test:
+    <<: *base-machine
+    profiles:
+      - local-dev-test
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: simulation
+      args:
+        WORKER_SPEC: simulation-websocket:2,simulation-http:2,comfyui-remote:1,openai:1
+        WORKERS: simulation-websocket:2,simulation-http:2,comfyui-remote:1,openai:1
+        MACHINE_ID: local-dev-test
+        CACHE_BUST: ${CACHE_BUST:-1}
+    container_name: local-dev-test
+    hostname: local-dev-test
+    ports:
+      - ${EXPOSE_PORTS:-9090}:9090
+      - '3188:8188'
+    image: emprops/machine:local-dev-test
 networks:
   default:
     name: emp-job-queue
