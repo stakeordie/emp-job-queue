@@ -563,7 +563,11 @@ export class EventBroadcaster {
     this.broadcast(event);
   }
 
-  broadcastMachineUpdate(machineId: string, structure: Record<string, unknown>, statusData: Record<string, unknown>): void {
+  broadcastMachineUpdate(
+    machineId: string,
+    structure: Record<string, unknown>,
+    statusData: Record<string, unknown>
+  ): void {
     const event = {
       type: 'machine_update' as const,
       machine_id: machineId,
@@ -576,7 +580,11 @@ export class EventBroadcaster {
     this.broadcast(event);
   }
 
-  broadcastMachineStatusChange(machineId: string, structure: Record<string, unknown>, statusData: Record<string, unknown>): void {
+  broadcastMachineStatusChange(
+    machineId: string,
+    structure: Record<string, unknown>,
+    statusData: Record<string, unknown>
+  ): void {
     const event = {
       type: 'machine_status_change' as const,
       machine_id: machineId,

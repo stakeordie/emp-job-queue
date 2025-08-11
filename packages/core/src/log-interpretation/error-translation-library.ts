@@ -15,24 +15,27 @@ export const CommonErrorPatterns = {
     pattern: /(?:out of memory|OOM|memory.*(?:limit|exhausted)|CUDA.*memory|cannot allocate)/i,
     confidence: 0.9,
     interpreter: (match: RegExpMatchArray, context?: LogContext): InterpretedMessage => ({
-      userMessage: 'The system ran out of memory while processing your request. Try reducing image size or complexity.',
+      userMessage:
+        'The system ran out of memory while processing your request. Try reducing image size or complexity.',
       severity: 'error' as const,
       category: 'resource' as const,
-      suggestedAction: 'Reduce image dimensions, lower quality settings, or try again later when resources are available',
+      suggestedAction:
+        'Reduce image dimensions, lower quality settings, or try again later when resources are available',
       retryRecommended: true,
       errorCode: 'RESOURCE_MEMORY_EXHAUSTED',
       progressImpact: {
         shouldUpdateProgress: true,
-        newProgressPercent: context?.progressPercent || 0
-      }
-    })
+        newProgressPercent: context?.progressPercent || 0,
+      },
+    }),
   } as LogPattern,
 
   NetworkTimeout: {
     id: 'common_network_timeout',
     name: 'Network Timeout',
     description: 'Network connection or request timeout',
-    pattern: /(?:timeout|timed out|connection.*(?:refused|reset|failed)|network.*(?:error|unreachable))/i,
+    pattern:
+      /(?:timeout|timed out|connection.*(?:refused|reset|failed)|network.*(?:error|unreachable))/i,
     confidence: 0.8,
     interpreter: (match: RegExpMatchArray, context?: LogContext): InterpretedMessage => ({
       userMessage: 'Connection timeout occurred while processing your request.',
@@ -40,8 +43,8 @@ export const CommonErrorPatterns = {
       category: 'service' as const,
       suggestedAction: 'Check your internet connection and try again',
       retryRecommended: true,
-      errorCode: 'NETWORK_TIMEOUT'
-    })
+      errorCode: 'NETWORK_TIMEOUT',
+    }),
   } as LogPattern,
 
   FileNotFound: {
@@ -56,8 +59,8 @@ export const CommonErrorPatterns = {
       category: 'validation' as const,
       suggestedAction: 'Verify that all required files are available and accessible',
       retryRecommended: false,
-      errorCode: 'RESOURCE_NOT_FOUND'
-    })
+      errorCode: 'RESOURCE_NOT_FOUND',
+    }),
   } as LogPattern,
 
   PermissionDenied: {
@@ -72,15 +75,16 @@ export const CommonErrorPatterns = {
       category: 'system' as const,
       suggestedAction: 'Contact support to resolve permission issues',
       retryRecommended: false,
-      errorCode: 'PERMISSION_DENIED'
-    })
+      errorCode: 'PERMISSION_DENIED',
+    }),
   } as LogPattern,
 
   InvalidInput: {
     id: 'common_invalid_input',
     name: 'Invalid Input',
     description: 'Input validation failed',
-    pattern: /(?:invalid.*(?:input|parameter|value|format)|validation.*(?:failed|error)|bad.*(?:request|input))/i,
+    pattern:
+      /(?:invalid.*(?:input|parameter|value|format)|validation.*(?:failed|error)|bad.*(?:request|input))/i,
     confidence: 0.8,
     interpreter: (match: RegExpMatchArray, context?: LogContext): InterpretedMessage => ({
       userMessage: 'The provided input contains invalid or unsupported values.',
@@ -88,9 +92,9 @@ export const CommonErrorPatterns = {
       category: 'validation' as const,
       suggestedAction: 'Review your input parameters and ensure they meet the required format',
       retryRecommended: false,
-      errorCode: 'INVALID_INPUT'
-    })
-  } as LogPattern
+      errorCode: 'INVALID_INPUT',
+    }),
+  } as LogPattern,
 };
 
 /**
@@ -109,9 +113,9 @@ export const ProgressPatterns = {
       category: 'progress' as const,
       progressImpact: {
         shouldUpdateProgress: true,
-        newProgressPercent: 5
-      }
-    })
+        newProgressPercent: 5,
+      },
+    }),
   } as LogPattern,
 
   Processing: {
@@ -126,9 +130,9 @@ export const ProgressPatterns = {
       category: 'progress' as const,
       progressImpact: {
         shouldUpdateProgress: true,
-        newProgressPercent: Math.max(context?.progressPercent || 0, 30)
-      }
-    })
+        newProgressPercent: Math.max(context?.progressPercent || 0, 30),
+      },
+    }),
   } as LogPattern,
 
   Completing: {
@@ -143,10 +147,10 @@ export const ProgressPatterns = {
       category: 'progress' as const,
       progressImpact: {
         shouldUpdateProgress: true,
-        newProgressPercent: 90
-      }
-    })
-  } as LogPattern
+        newProgressPercent: 90,
+      },
+    }),
+  } as LogPattern,
 };
 
 /**
@@ -167,9 +171,9 @@ export const ModelPatterns = {
       progressImpact: {
         shouldUpdateProgress: true,
         newProgressPercent: 15,
-        estimatedTimeRemaining: 30000 // 30 seconds
-      }
-    })
+        estimatedTimeRemaining: 30000, // 30 seconds
+      },
+    }),
   } as LogPattern,
 
   ModelNotFound: {
@@ -184,15 +188,16 @@ export const ModelPatterns = {
       category: 'resource' as const,
       suggestedAction: 'Try a different model or wait for the model to become available',
       retryRecommended: true,
-      errorCode: 'MODEL_NOT_FOUND'
-    })
+      errorCode: 'MODEL_NOT_FOUND',
+    }),
   } as LogPattern,
 
   IncompatibleModel: {
     id: 'model_incompatible',
     name: 'Incompatible Model',
     description: 'Model version or format incompatibility',
-    pattern: /(?:incompatible.*model|model.*(?:version|format).*(?:error|mismatch)|unsupported.*model)/i,
+    pattern:
+      /(?:incompatible.*model|model.*(?:version|format).*(?:error|mismatch)|unsupported.*model)/i,
     confidence: 0.85,
     interpreter: (match: RegExpMatchArray, context?: LogContext): InterpretedMessage => ({
       userMessage: 'The specified model is not compatible with your request.',
@@ -200,9 +205,9 @@ export const ModelPatterns = {
       category: 'validation' as const,
       suggestedAction: 'Choose a different model that supports your request type',
       retryRecommended: false,
-      errorCode: 'MODEL_INCOMPATIBLE'
-    })
-  } as LogPattern
+      errorCode: 'MODEL_INCOMPATIBLE',
+    }),
+  } as LogPattern,
 };
 
 /**
@@ -221,8 +226,8 @@ export const ConnectionPatterns = {
       category: 'service' as const,
       suggestedAction: 'Please try again in a few minutes',
       retryRecommended: true,
-      errorCode: 'SERVICE_UNAVAILABLE'
-    })
+      errorCode: 'SERVICE_UNAVAILABLE',
+    }),
   } as LogPattern,
 
   APIRateLimit: {
@@ -237,8 +242,8 @@ export const ConnectionPatterns = {
       category: 'service' as const,
       suggestedAction: 'Wait a few minutes before submitting another request',
       retryRecommended: true,
-      errorCode: 'RATE_LIMIT_EXCEEDED'
-    })
+      errorCode: 'RATE_LIMIT_EXCEEDED',
+    }),
   } as LogPattern,
 
   AuthenticationFailed: {
@@ -253,9 +258,9 @@ export const ConnectionPatterns = {
       category: 'service' as const,
       suggestedAction: 'Contact support to verify service credentials',
       retryRecommended: false,
-      errorCode: 'AUTHENTICATION_FAILED'
-    })
-  } as LogPattern
+      errorCode: 'AUTHENTICATION_FAILED',
+    }),
+  } as LogPattern,
 };
 
 /**
@@ -266,14 +271,16 @@ export function getAllCommonPatterns(): LogPattern[] {
     ...Object.values(CommonErrorPatterns),
     ...Object.values(ProgressPatterns),
     ...Object.values(ModelPatterns),
-    ...Object.values(ConnectionPatterns)
+    ...Object.values(ConnectionPatterns),
   ];
 }
 
 /**
  * Get patterns by category
  */
-export function getPatternsByCategory(category: 'error' | 'progress' | 'model' | 'connection'): LogPattern[] {
+export function getPatternsByCategory(
+  category: 'error' | 'progress' | 'model' | 'connection'
+): LogPattern[] {
   switch (category) {
     case 'error':
       return Object.values(CommonErrorPatterns);
@@ -305,6 +312,6 @@ export function createCustomPattern(
     description: description || name,
     pattern,
     confidence,
-    interpreter
+    interpreter,
   };
 }

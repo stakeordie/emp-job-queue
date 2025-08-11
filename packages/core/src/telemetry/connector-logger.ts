@@ -59,16 +59,15 @@ export class ConnectorLogger {
       });
 
       this.logger.add(this.fluentBitTransport);
-      
+
       // Handle transport errors gracefully
-      this.fluentBitTransport.on('error', (error) => {
+      this.fluentBitTransport.on('error', error => {
         baseLogger.warn('Fluent Bit transport error', { error: error.message });
       });
-
     } catch (error) {
-      baseLogger.warn('Failed to setup Fluent Bit transport', { 
+      baseLogger.warn('Failed to setup Fluent Bit transport', {
         error: error.message,
-        connector_id: this.context.connectorId
+        connector_id: this.context.connectorId,
       });
     }
   }
@@ -83,10 +82,9 @@ export class ConnectorLogger {
   }
 
   error(message: string, error?: Error | any, meta?: any): void {
-    const errorMeta = error instanceof Error 
-      ? { error: error.message, stack: error.stack }
-      : { error };
-    
+    const errorMeta =
+      error instanceof Error ? { error: error.message, stack: error.stack } : { error };
+
     this.logger.error(message, { ...errorMeta, ...meta, ...this.getLogMeta() });
   }
 
@@ -95,7 +93,7 @@ export class ConnectorLogger {
   }
 
   // Specialized logging methods for common connector events
-  
+
   jobReceived(jobData: JobLogData): void {
     this.info('Job received', {
       event_type: 'job_received',
@@ -103,7 +101,7 @@ export class ConnectorLogger {
       job_status: 'received',
       model: jobData.model,
       input_size: jobData.inputSize,
-      ...this.normalizeJobData(jobData)
+      ...this.normalizeJobData(jobData),
     });
   }
 
@@ -113,7 +111,7 @@ export class ConnectorLogger {
       job_id: jobData.jobId,
       job_status: 'processing',
       model: jobData.model,
-      ...this.normalizeJobData(jobData)
+      ...this.normalizeJobData(jobData),
     });
   }
 
@@ -123,7 +121,7 @@ export class ConnectorLogger {
       job_id: jobData.jobId,
       job_status: 'processing',
       progress: jobData.progress,
-      ...this.normalizeJobData(jobData)
+      ...this.normalizeJobData(jobData),
     });
   }
 
@@ -134,7 +132,7 @@ export class ConnectorLogger {
       job_status: 'completed',
       duration: jobData.duration,
       output_size: jobData.outputSize,
-      ...this.normalizeJobData(jobData)
+      ...this.normalizeJobData(jobData),
     });
   }
 
@@ -145,7 +143,7 @@ export class ConnectorLogger {
       job_status: 'failed',
       duration: jobData.duration,
       error_type: this.classifyError(jobData.error),
-      ...this.normalizeJobData(jobData)
+      ...this.normalizeJobData(jobData),
     });
   }
 
@@ -155,7 +153,7 @@ export class ConnectorLogger {
       event_type: 'health_check',
       health_status: status,
       health_details: details,
-      ...this.getLogMeta()
+      ...this.getLogMeta(),
     });
   }
 
@@ -183,7 +181,7 @@ export class ConnectorLogger {
   private normalizeJobData(jobData: JobLogData): any {
     // Remove undefined values and normalize field names
     const normalized: any = {};
-    
+
     Object.entries(jobData).forEach(([key, value]) => {
       if (value !== undefined) {
         normalized[key] = value;

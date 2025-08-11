@@ -33,7 +33,7 @@ export class FluentBitTransport extends TransportStream {
     this.port = options.port || parseInt(process.env.FLUENT_BIT_PORT || '9880');
     this.endpoint = options.endpoint || '/';
     this.timeout = options.timeout || 5000;
-    
+
     // Worker identification
     this.machineId = options.machineId || process.env.MACHINE_ID;
     this.workerId = options.workerId || process.env.WORKER_ID;
@@ -54,13 +54,13 @@ export class FluentBitTransport extends TransportStream {
       level: info.level,
       message: info.message,
       ...info, // Include all Winston metadata
-      
+
       // Worker identification (override from info if provided)
       machine_id: info.machine_id || this.machineId,
       worker_id: info.worker_id || this.workerId,
       service_type: info.service_type || this.serviceType,
       connector_id: info.connector_id || this.connectorId,
-      
+
       // Source identification
       source: 'winston-logger',
       logger_name: info.service || 'emp-worker',
@@ -73,12 +73,11 @@ export class FluentBitTransport extends TransportStream {
       }
     });
 
-    this.sendToFluentBit(logEntry)
-      .catch(error => {
-        // Don't fail the application if logging fails
-        // Just emit error event for monitoring
-        this.emit('error', error);
-      });
+    this.sendToFluentBit(logEntry).catch(error => {
+      // Don't fail the application if logging fails
+      // Just emit error event for monitoring
+      this.emit('error', error);
+    });
 
     callback();
   }

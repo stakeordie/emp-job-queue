@@ -14,17 +14,17 @@ export interface InterpretedMessage {
   userMessage: string;
   severity: 'info' | 'warning' | 'error' | 'critical';
   category: 'progress' | 'resource' | 'validation' | 'service' | 'system';
-  
+
   // Actionable information
   suggestedAction?: string;
   documentationUrl?: string;
   retryRecommended?: boolean;
-  
+
   // Technical context (for debugging)
   originalMessage?: string;
   errorCode?: string;
   technicalDetails?: Record<string, unknown>;
-  
+
   // Progress context
   progressImpact?: {
     shouldUpdateProgress?: boolean;
@@ -60,7 +60,7 @@ export interface LogContext {
 export abstract class BaseLogInterpreter {
   protected patterns: Map<string, LogPattern> = new Map();
   protected serviceType: string;
-  
+
   constructor(serviceType: string) {
     this.serviceType = serviceType;
     this.initializePatterns();
@@ -83,7 +83,7 @@ export abstract class BaseLogInterpreter {
    */
   async interpretLog(entry: LogEntry, context?: LogContext): Promise<InterpretedMessage | null> {
     const bestMatch = await this.findBestPatternMatch(entry.message, context);
-    
+
     if (!bestMatch || !bestMatch.interpretation) {
       return this.createFallbackInterpretation(entry, context);
     }
@@ -98,8 +98,8 @@ export abstract class BaseLogInterpreter {
         source: entry.source,
         confidence: bestMatch.confidence,
         patternId: this.findMatchingPatternId(entry.message, context),
-        metadata: entry.metadata
-      }
+        metadata: entry.metadata,
+      },
     };
   }
 
@@ -108,7 +108,7 @@ export abstract class BaseLogInterpreter {
    */
   async interpretLogs(entries: LogEntry[], context?: LogContext): Promise<InterpretedMessage[]> {
     const interpretations: InterpretedMessage[] = [];
-    
+
     for (const entry of entries) {
       const interpretation = await this.interpretLog(entry, context);
       if (interpretation) {
@@ -122,13 +122,16 @@ export abstract class BaseLogInterpreter {
   /**
    * Find the best matching pattern for a log message
    */
-  private async findBestPatternMatch(message: string, context?: LogContext): Promise<PatternMatchResult | null> {
+  private async findBestPatternMatch(
+    message: string,
+    context?: LogContext
+  ): Promise<PatternMatchResult | null> {
     let bestMatch: PatternMatchResult | null = null;
     let highestConfidence = 0;
 
     for (const pattern of this.patterns.values()) {
       const matchResult = await this.testPattern(pattern, message, context);
-      
+
       if (matchResult.matched && matchResult.confidence > highestConfidence) {
         highestConfidence = matchResult.confidence;
         bestMatch = matchResult;
@@ -141,7 +144,11 @@ export abstract class BaseLogInterpreter {
   /**
    * Test a specific pattern against a message
    */
-  private async testPattern(pattern: LogPattern, message: string, context?: LogContext): Promise<PatternMatchResult> {
+  private async testPattern(
+    pattern: LogPattern,
+    message: string,
+    context?: LogContext
+  ): Promise<PatternMatchResult> {
     try {
       if (pattern.pattern instanceof RegExp) {
         const match = message.match(pattern.pattern);
@@ -149,7 +156,7 @@ export abstract class BaseLogInterpreter {
           return {
             matched: true,
             confidence: pattern.confidence,
-            interpretation: pattern.interpreter(match, context)
+            interpretation: pattern.interpreter(match, context),
           };
         }
       } else if (typeof pattern.pattern === 'function') {
@@ -158,7 +165,7 @@ export abstract class BaseLogInterpreter {
           return {
             matched: true,
             confidence: pattern.confidence,
-            interpretation: pattern.interpreter(message, context)
+            interpretation: pattern.interpreter(message, context),
           };
         }
       }
@@ -190,7 +197,10 @@ export abstract class BaseLogInterpreter {
   /**
    * Create fallback interpretation for unmatched messages
    */
-  private createFallbackInterpretation(entry: LogEntry, context?: LogContext): InterpretedMessage | null {
+  private createFallbackInterpretation(
+    entry: LogEntry,
+    context?: LogContext
+  ): InterpretedMessage | null {
     // Only create fallback for error/warning messages
     if (entry.level !== 'error' && entry.level !== 'warn') {
       return null;
@@ -208,8 +218,8 @@ export abstract class BaseLogInterpreter {
         source: entry.source,
         serviceType: this.serviceType,
         unmatched: true,
-        metadata: entry.metadata
-      }
+        metadata: entry.metadata,
+      },
     };
   }
 
@@ -218,13 +228,13 @@ export abstract class BaseLogInterpreter {
    */
   private createGenericUserMessage(entry: LogEntry): string {
     const service = this.serviceType.charAt(0).toUpperCase() + this.serviceType.slice(1);
-    
+
     if (entry.level === 'error') {
       return `${service} encountered an error during processing`;
     } else if (entry.level === 'warn') {
       return `${service} reported a warning that may affect processing`;
     }
-    
+
     return `${service} reported an issue`;
   }
 
@@ -234,7 +244,7 @@ export abstract class BaseLogInterpreter {
   private consolidateInterpretations(interpretations: InterpretedMessage[]): InterpretedMessage[] {
     // Group by category and severity
     const grouped = new Map<string, InterpretedMessage[]>();
-    
+
     for (const interpretation of interpretations) {
       const key = `${interpretation.category}_${interpretation.severity}`;
       if (!grouped.has(key)) {
@@ -245,7 +255,7 @@ export abstract class BaseLogInterpreter {
 
     // Keep the most recent interpretation per category/severity combination
     const consolidated: InterpretedMessage[] = [];
-    
+
     for (const group of grouped.values()) {
       // Sort by technical details timestamp if available
       const sorted = group.sort((a, b) => {
@@ -253,16 +263,14 @@ export abstract class BaseLogInterpreter {
         const bTime = (b.technicalDetails?.timestamp as Date) || new Date(0);
         return bTime.getTime() - aTime.getTime();
       });
-      
+
       consolidated.push(sorted[0]);
     }
 
     // Sort final results by severity (critical > error > warning > info)
     const severityOrder = { critical: 0, error: 1, warning: 2, info: 3 };
-    
-    return consolidated.sort((a, b) => 
-      severityOrder[a.severity] - severityOrder[b.severity]
-    );
+
+    return consolidated.sort((a, b) => severityOrder[a.severity] - severityOrder[b.severity]);
   }
 
   /**

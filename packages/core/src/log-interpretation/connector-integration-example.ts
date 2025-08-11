@@ -2,10 +2,10 @@
 // This demonstrates how existing connectors can be enhanced with log interpretation
 
 import { JobData, ProgressCallback } from '../types/connector.js';
-import { 
-  createEnhancedProgressReporter, 
+import {
+  createEnhancedProgressReporter,
   EnhancedProgressReporter,
-  interpretLogMessage 
+  interpretLogMessage,
 } from './enhanced-progress-callback.js';
 
 /**
@@ -21,7 +21,10 @@ export class IntelligentLogMixin {
    * Initialize intelligent logging for a job
    * Call this at the start of processJobImpl
    */
-  protected initializeIntelligentLogging(jobData: JobData, progressCallback: ProgressCallback): void {
+  protected initializeIntelligentLogging(
+    jobData: JobData,
+    progressCallback: ProgressCallback
+  ): void {
     this.logReporter = createEnhancedProgressReporter(
       this.service_type,
       this.connector_id,
@@ -56,10 +59,13 @@ export class IntelligentLogMixin {
    * Interpret a log message without reporting progress
    * Useful for analyzing error messages before deciding how to handle them
    */
-  protected async interpretLog(message: string, level: 'debug' | 'info' | 'warn' | 'error' | 'fatal' = 'info') {
+  protected async interpretLog(
+    message: string,
+    level: 'debug' | 'info' | 'warn' | 'error' | 'fatal' = 'info'
+  ) {
     return interpretLogMessage(this.service_type, message, level, {
       connectorId: this.connector_id,
-      serviceType: this.service_type
+      serviceType: this.service_type,
     });
   }
 
@@ -93,29 +99,31 @@ export class ExampleComfyUIConnectorWithIntelligentLogs extends IntelligentLogMi
 
       // Simulate some processing with various log messages
       await this.reportIntelligentLog('Loading required models', 'info');
-      
+
       // Simulate a warning that would be interpreted
       await this.reportIntelligentLog('CUDA out of memory, falling back to CPU', 'warn');
-      
+
       // Simulate progress with a standard callback
       if (enhancedCallback) {
         await enhancedCallback({
           job_id: jobData.id,
           progress: 50,
           message: 'Executing workflow nodes',
-          current_step: 'processing'
+          current_step: 'processing',
         });
       }
 
       // Simulate an error that would be interpreted
-      await this.reportIntelligentLog('Node execution failed: Unknown node type "CustomNode"', 'error');
+      await this.reportIntelligentLog(
+        'Node execution failed: Unknown node type "CustomNode"',
+        'error'
+      );
 
       return { success: true };
-
     } catch (error) {
       // Interpret the error before handling it
       const interpretation = await this.interpretLog(error.message, 'error');
-      
+
       if (interpretation && enhancedCallback) {
         await enhancedCallback({
           job_id: jobData.id,
@@ -125,8 +133,8 @@ export class ExampleComfyUIConnectorWithIntelligentLogs extends IntelligentLogMi
           metadata: {
             interpreted_message: interpretation,
             severity: interpretation.severity,
-            suggested_action: interpretation.suggestedAction
-          }
+            suggested_action: interpretation.suggestedAction,
+          },
         });
       }
 
@@ -151,16 +159,16 @@ export class ExampleOpenAIConnectorWithIntelligentLogs extends IntelligentLogMix
 
     try {
       await this.reportIntelligentLog('Creating OpenAI background request', 'info');
-      
+
       // Simulate API response interpretation
       await this.reportIntelligentLog('OpenAI job queued for processing', 'info');
-      
+
       if (enhancedCallback) {
         await enhancedCallback({
           job_id: jobData.id,
           progress: 30,
           message: 'Polling for job completion',
-          current_step: 'waiting'
+          current_step: 'waiting',
         });
       }
 
@@ -170,10 +178,9 @@ export class ExampleOpenAIConnectorWithIntelligentLogs extends IntelligentLogMix
       await this.reportIntelligentLog('Image extracted from response', 'info');
 
       return { success: true };
-
     } catch (error) {
       const interpretation = await this.interpretLog(error.message, 'error');
-      
+
       if (interpretation && enhancedCallback) {
         await enhancedCallback({
           job_id: jobData.id,
@@ -185,8 +192,8 @@ export class ExampleOpenAIConnectorWithIntelligentLogs extends IntelligentLogMix
             severity: interpretation.severity,
             error_code: interpretation.errorCode,
             suggested_action: interpretation.suggestedAction,
-            documentation_url: interpretation.documentationUrl
-          }
+            documentation_url: interpretation.documentationUrl,
+          },
         });
       }
 
@@ -206,7 +213,12 @@ export function enhanceExistingProgressCallback(
   connectorId: string,
   jobId: string
 ): ProgressCallback {
-  const reporter = createEnhancedProgressReporter(serviceType, connectorId, originalCallback, jobId);
+  const reporter = createEnhancedProgressReporter(
+    serviceType,
+    connectorId,
+    originalCallback,
+    jobId
+  );
   return reporter.createEnhancedCallback();
 }
 
@@ -220,6 +232,6 @@ export async function quickInterpretLog(
 ) {
   return interpretLogMessage(serviceType, message, 'info', {
     connectorId: connectorId || 'unknown',
-    serviceType
+    serviceType,
   });
 }

@@ -46,7 +46,7 @@ export interface OpenAILogSchema extends BaseLogSchema {
   response_size_bytes?: number;
 }
 
-// A1111 (Automatic1111) specific log fields  
+// A1111 (Automatic1111) specific log fields
 export interface A1111LogSchema extends BaseLogSchema {
   service_type: 'a1111';
   // A1111-specific fields
@@ -86,23 +86,23 @@ export interface RestLogSchema extends BaseLogSchema {
 }
 
 // Union type of all supported schemas
-export type ConnectorLogSchema = 
-  | ComfyUILogSchema 
-  | OpenAILogSchema 
-  | A1111LogSchema 
-  | SimulationLogSchema 
+export type ConnectorLogSchema =
+  | ComfyUILogSchema
+  | OpenAILogSchema
+  | A1111LogSchema
+  | SimulationLogSchema
   | RestLogSchema;
 
 // Schema mapping by service type
 export const LOG_SCHEMA_MAP = {
-  'comfyui': 'ComfyUILogSchema',
-  'openai': 'OpenAILogSchema', 
+  comfyui: 'ComfyUILogSchema',
+  openai: 'OpenAILogSchema',
   'openai-image': 'OpenAILogSchema',
   'openai-text': 'OpenAILogSchema',
-  'a1111': 'A1111LogSchema',
-  'simulation': 'SimulationLogSchema',
+  a1111: 'A1111LogSchema',
+  simulation: 'SimulationLogSchema',
   // Generic fallback for unknown services
-  'rest': 'RestLogSchema',
+  rest: 'RestLogSchema',
 } as const;
 
 // Field validation and normalization utilities
@@ -191,8 +191,15 @@ export class LogSchemaValidator {
   }
 
   static getRequiredFields(serviceType: string): string[] {
-    const baseFields = ['timestamp', 'level', 'message', 'event_type', 'service_type', 'connector_id'];
-    
+    const baseFields = [
+      'timestamp',
+      'level',
+      'message',
+      'event_type',
+      'service_type',
+      'connector_id',
+    ];
+
     switch (serviceType) {
       case 'comfyui':
         return [...baseFields, 'prompt_id', 'client_id'];

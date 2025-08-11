@@ -205,7 +205,8 @@
       "WebFetch(domain:docs.railway.com)",
       "Bash(git stash:*)",
       "Bash(DISABLE_PORTS=true RUNTIME_PORTS=9090:9090,3188:8188 WORKERS=simulation:1 node scripts/generate-docker-compose-ports.js)",
-      "WebFetch(domain:api.us-west-2.aws.dash0.com)"
+      "WebFetch(domain:api.us-west-2.aws.dash0.com)",
+      "Bash(REDIS_URL=\"redis://default:JQSoNVpIPsuaDQYicNvocglialxPrTjj@ballast.proxy.rlwy.net:30645\" redis-cli FUNCTION DUMP)"
     ],
     "deny": []
   }

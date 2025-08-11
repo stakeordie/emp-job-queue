@@ -2,7 +2,12 @@
 // Provides intelligent progress updates with user-friendly messages and actionable feedback
 
 import { JobProgress, ProgressCallback } from '../types/connector.js';
-import { BaseLogInterpreter, LogEntry, InterpretedMessage, LogContext } from './base-log-interpreter.js';
+import {
+  BaseLogInterpreter,
+  LogEntry,
+  InterpretedMessage,
+  LogContext,
+} from './base-log-interpreter.js';
 import { ComfyUILogInterpreter } from './comfyui-log-interpreter.js';
 import { OpenAILogInterpreter } from './openai-log-interpreter.js';
 
@@ -97,7 +102,7 @@ export class EnhancedProgressReporter {
       jobId,
       serviceType,
       connectorId,
-      progressPercent: 0
+      progressPercent: 0,
     };
   }
 
@@ -122,10 +127,14 @@ export class EnhancedProgressReporter {
         if (progress.message && this.interpreter) {
           const logEntry: LogEntry = {
             timestamp: new Date(),
-            level: progress.severity === 'error' ? 'error' : 
-                   progress.severity === 'warning' ? 'warn' : 'info',
+            level:
+              progress.severity === 'error'
+                ? 'error'
+                : progress.severity === 'warning'
+                  ? 'warn'
+                  : 'info',
             message: progress.message,
-            source: this.context.connectorId
+            source: this.context.connectorId,
           };
 
           const interpretation = await this.interpreter.interpretLog(logEntry, this.context);
@@ -140,14 +149,19 @@ export class EnhancedProgressReporter {
             progress.documentation_url = interpretation.documentationUrl;
 
             // Update progress if interpretation suggests it
-            if (interpretation.progressImpact?.shouldUpdateProgress && 
-                interpretation.progressImpact.newProgressPercent !== undefined) {
-              progress.progress = Math.max(progress.progress, interpretation.progressImpact.newProgressPercent);
+            if (
+              interpretation.progressImpact?.shouldUpdateProgress &&
+              interpretation.progressImpact.newProgressPercent !== undefined
+            ) {
+              progress.progress = Math.max(
+                progress.progress,
+                interpretation.progressImpact.newProgressPercent
+              );
             }
 
             // Store in history for context
             this.messageHistory.push(interpretation);
-            
+
             // Keep only last 10 messages
             if (this.messageHistory.length > 10) {
               this.messageHistory = this.messageHistory.slice(-10);
@@ -181,7 +195,7 @@ export class EnhancedProgressReporter {
       service_type: this.context.serviceType,
       connector_id: this.context.connectorId,
       has_interpreted_message: !!progress.interpreted_message,
-      message_history_count: this.messageHistory.length
+      message_history_count: this.messageHistory.length,
     };
 
     // Create the final progress object
@@ -192,7 +206,7 @@ export class EnhancedProgressReporter {
       current_step: progress.current_step,
       total_steps: progress.total_steps,
       estimated_completion_ms: progress.estimated_completion_ms,
-      metadata: enhancedMetadata
+      metadata: enhancedMetadata,
     };
 
     // Send to original callback
@@ -203,7 +217,7 @@ export class EnhancedProgressReporter {
    * Interpret a log message and send as progress update
    */
   async interpretAndReportLog(
-    message: string, 
+    message: string,
     level: 'debug' | 'info' | 'warn' | 'error' | 'fatal' = 'info',
     source?: string
   ): Promise<void> {
@@ -216,7 +230,7 @@ export class EnhancedProgressReporter {
         timestamp: new Date(),
         level,
         message,
-        source: source || this.context.connectorId
+        source: source || this.context.connectorId,
       };
 
       const interpretation = await this.interpreter.interpretLog(logEntry, this.context);
@@ -236,13 +250,15 @@ export class EnhancedProgressReporter {
           metadata: {
             log_level: level,
             original_message: message,
-            interpretation_confidence: interpretation.technicalDetails?.confidence || 0.5
-          }
+            interpretation_confidence: interpretation.technicalDetails?.confidence || 0.5,
+          },
         };
 
         // Apply progress impact if suggested
-        if (interpretation.progressImpact?.shouldUpdateProgress && 
-            interpretation.progressImpact.newProgressPercent !== undefined) {
+        if (
+          interpretation.progressImpact?.shouldUpdateProgress &&
+          interpretation.progressImpact.newProgressPercent !== undefined
+        ) {
           progress.progress = interpretation.progressImpact.newProgressPercent;
         }
 
@@ -325,13 +341,13 @@ export async function interpretLogMessage(
     timestamp: new Date(),
     level,
     message,
-    source: context?.connectorId || 'unknown'
+    source: context?.connectorId || 'unknown',
   };
 
   const fullContext: LogContext = {
     serviceType,
     connectorId: 'unknown',
-    ...context
+    ...context,
   };
 
   return interpreter.interpretLog(logEntry, fullContext);

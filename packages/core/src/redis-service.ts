@@ -116,7 +116,7 @@ export class RedisService implements RedisServiceInterface {
       retry_count: job.retry_count.toString(),
       max_retries: job.max_retries.toString(),
     };
-    
+
     // Add workflow fields if they exist
     if (job.workflow_id) {
       jobData.workflow_id = job.workflow_id;
@@ -165,9 +165,13 @@ export class RedisService implements RedisServiceInterface {
 
     // Only log workflow jobs for debugging
     if (job.workflow_id) {
-      logger.info(`📝 REDIS-SERVICE: Submitted workflow job ${jobId} (workflow: ${job.workflow_id}, step: ${job.step_number}/${job.total_steps}, service: ${job.service_required})`);
+      logger.info(
+        `📝 REDIS-SERVICE: Submitted workflow job ${jobId} (workflow: ${job.workflow_id}, step: ${job.step_number}/${job.total_steps}, service: ${job.service_required})`
+      );
     } else {
-      logger.info(`📝 REDIS-SERVICE: Submitted job ${jobId} (service: ${job.service_required}, no workflow)`);
+      logger.info(
+        `📝 REDIS-SERVICE: Submitted job ${jobId} (service: ${job.service_required}, no workflow)`
+      );
     }
     return jobId;
   }
@@ -184,8 +188,12 @@ export class RedisService implements RedisServiceInterface {
       requirements: jobData.requirements ? JSON.parse(jobData.requirements) : undefined,
       customer_id: jobData.customer_id || undefined,
       workflow_id: jobData.workflow_id || undefined,
-      workflow_priority: jobData.workflow_priority ? parseInt(jobData.workflow_priority) : undefined,
-      workflow_datetime: jobData.workflow_datetime ? parseInt(jobData.workflow_datetime) : undefined,
+      workflow_priority: jobData.workflow_priority
+        ? parseInt(jobData.workflow_priority)
+        : undefined,
+      workflow_datetime: jobData.workflow_datetime
+        ? parseInt(jobData.workflow_datetime)
+        : undefined,
       step_number: jobData.step_number ? parseInt(jobData.step_number) : undefined,
       total_steps: jobData.total_steps ? parseInt(jobData.total_steps) : undefined,
       created_at: jobData.created_at,
@@ -273,7 +281,9 @@ export class RedisService implements RedisServiceInterface {
 
       // Only log workflow jobs for debugging
       if (job.workflow_id) {
-        logger.info(`🔄 REDIS-SERVICE: Completing workflow job ${jobId} (workflow: ${job.workflow_id}, step: ${job.step_number}/${job.total_steps})`);
+        logger.info(
+          `🔄 REDIS-SERVICE: Completing workflow job ${jobId} (workflow: ${job.workflow_id}, step: ${job.step_number}/${job.total_steps})`
+        );
       }
 
       // Phase 1A: Simple Redis operations instead of Lua scripts
