@@ -2,7 +2,8 @@
 // Enhanced to use RestConnector for shared Redis connection and status reporting
 
 import { JobData, JobResult, ProgressCallback, ServiceInfo, logger } from '@emp/core';
-import { RestConnector, RestConnectorConfig } from './rest-connector.js';
+import { HTTPConnector, HTTPConnectorConfig } from './protocol/http-connector.js';
+import { AxiosResponse } from 'axios';
 
 export class A1111Connector extends RestConnector {
   service_type = 'a1111' as const;

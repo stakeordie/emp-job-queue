@@ -2,8 +2,6 @@
 // This file automatically exports all *-connector.ts files in this directory
 // No need to manually add exports when creating new connectors
 
-export * from './a1111-connector.js';
-export * from './comfyui-connector.js';
 export * from './comfyui-remote-connector.js';
 export * from './comfyui-websocket-connector.js';
 export * from './openai-base-connector.js';
@@ -11,7 +9,6 @@ export * from './openai-image-connector.js';
 export * from './openai-img2img-connector.js';
 export * from './openai-text-connector.js';
 export * from './rest-async-connector.js';
-export * from './rest-connector.js';
 export * from './rest-sync-connector.js';
 export * from './simulation-http-connector.js';
 export * from './simulation-websocket-connector.js';

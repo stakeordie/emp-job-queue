@@ -120,7 +120,7 @@
   },
 
   "connectors": {
-    "ComfyUIConnector": {
+    "ComfyUIWebSocketConnector": {
       "path": "./redis-direct-worker.js",
       "description": "Local ComfyUI WebSocket connector - uses internal ComfyUI installation"
     },
@@ -152,7 +152,7 @@
 
   "services": {
     "comfyui": {
-      "connector": "ComfyUIConnector",
+      "connector": "ComfyUIWebSocketConnector",
       "type": "internal",
       "installer": "installComfyUI",
       "resource_binding": "${COMFYUI_RESOURCE_BINDING:-gpu}",
