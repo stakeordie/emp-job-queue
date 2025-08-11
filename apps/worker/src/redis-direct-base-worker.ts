@@ -286,14 +286,16 @@ export class RedisDirectBaseWorker {
   private buildCapabilities(): WorkerCapabilities {
     console.log('🚨🚨🚨 [TRACE] buildCapabilities START');
 
-    // Services this worker can handle - derive from job_service_required_map
-    const services = this.getJobServiceRequiredFromMapping();
+    // Services this worker can handle - derive from service mapping
+    const services = this.getServicesFromMapping();
     console.log(
-      '🚨🚨🚨 [TRACE] buildCapabilities - services from getJobServiceRequiredFromMapping():',
+      '🚨🚨🚨 [TRACE] buildCapabilities - services from getServicesFromMapping():',
       services
     );
 
-    // Note: services and jobServiceRequiredMap are now the same - services contains job_service_required values
+    // Job service requirements this worker accepts - for Redis function matching
+    const jobServiceRequiredMap = this.getJobServiceRequiredFromMapping();
+    console.log('🚨🚨🚨 [TRACE] buildCapabilities - jobServiceRequiredMap:', jobServiceRequiredMap);
 
     // Hardware specs - Each worker represents ONE GPU + supporting resources
     const hardware: HardwareSpecs = {
@@ -374,6 +376,7 @@ export class RedisDirectBaseWorker {
       worker_id: this.workerId,
       machine_id: this.machineId,
       services,
+      job_service_required_map: jobServiceRequiredMap,
       hardware,
       models: {}, // Will be populated by connectors
       customer_access: customerAccess,
