@@ -524,7 +524,7 @@ export function JobSubmissionForm() {
         const freshPayload = generateFreshPayload(serviceType, useCpuMode);
         
         // Base job data that all jobs have
-        const jobData: any = {
+        const jobData: Record<string, unknown> = {
           job_type: serviceType,
           service_required: serviceType,
           priority: data.priority,

@@ -3,16 +3,16 @@
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
-import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-} from "@/components/ui/alert-dialog"
+// import {
+//   AlertDialog,
+//   AlertDialogAction,
+//   AlertDialogCancel,
+//   AlertDialogContent,
+//   AlertDialogDescription,
+//   AlertDialogFooter,
+//   AlertDialogHeader,
+//   AlertDialogTitle,
+// } from "@/components/ui/alert-dialog"
 import { SimpleProgress } from "@/components/ui/simple-progress"
 import { RefreshCw, X } from "lucide-react"
 import { MachineCard } from "@/components/MachineCard"
@@ -25,6 +25,7 @@ import { ConnectionsPanel } from "@/components/ConnectionsPanel"
 import { useMonitorStore } from "@/store"
 import { useState, useMemo } from "react"
 import type { Job } from "@/types/job"
+import { WorkerStatus, WorkerInfo } from "@/types/worker"
 
 // Environment presets moved to ConnectionHeader
 
@@ -33,10 +34,10 @@ interface HomeProps {
 }
 
 function Home({ isJobPanelOpen }: HomeProps) {
-  const { jobs, workers, machines, syncJobState, cancelJob, deleteMachine, finishedJobsPagination, setFinishedJobsPagination, refreshJobsOnly } = useMonitorStore();
-  const [cancelJobId, setCancelJobId] = useState<string | null>(null);
+  const { jobs, workers, machines, syncJobState, /* cancelJob, deleteMachine, */ finishedJobsPagination, setFinishedJobsPagination, refreshJobsOnly } = useMonitorStore();
+  // const [cancelJobId, setCancelJobId] = useState<string | null>(null);
   const [selectedJob, setSelectedJob] = useState<Job | null>(null);
-  const [deleteMachineId, setDeleteMachineId] = useState<string | null>(null);
+  // const [deleteMachineId, setDeleteMachineId] = useState<string | null>(null);
 
   // Format timestamp to relative time
   const formatRelativeTime = (timestamp: number | undefined): string => {
@@ -62,27 +63,27 @@ function Home({ isJobPanelOpen }: HomeProps) {
     syncJobState(jobId);
   };
 
-  const handleCancelJob = (jobId: string) => {
-    setCancelJobId(jobId);
-  };
+  // const handleCancelJob = (jobId: string) => {
+  //   setCancelJobId(jobId);
+  // };
 
-  const confirmCancelJob = () => {
-    if (cancelJobId) {
-      cancelJob(cancelJobId);
-      setCancelJobId(null);
-    }
-  };
+  // const confirmCancelJob = () => {
+  //   if (cancelJobId) {
+  //     cancelJob(cancelJobId);
+  //     setCancelJobId(null);
+  //   }
+  // };
 
-  const handleDeleteMachine = (machineId: string) => {
-    setDeleteMachineId(machineId);
-  };
+  // const handleDeleteMachine = (machineId: string) => {
+  //   setDeleteMachineId(machineId);
+  // };
 
-  const confirmDeleteMachine = () => {
-    if (deleteMachineId) {
-      deleteMachine(deleteMachineId);
-      setDeleteMachineId(null);
-    }
-  };
+  // const confirmDeleteMachine = () => {
+  //   if (deleteMachineId) {
+  //     deleteMachine(deleteMachineId);
+  //     setDeleteMachineId(null);
+  //   }
+  // };
 
   // Memoize job counts to avoid recalculating on every render
   const jobCounts = useMemo(() => {
@@ -244,31 +245,31 @@ function Home({ isJobPanelOpen }: HomeProps) {
                 // Return worker skeleton from structure with actual capabilities
                 return {
                   worker_id: workerId,
-                  machine_id: machine.machine_id,
-                  status: 'unknown',
+                  status: WorkerStatus.OFFLINE,
                   capabilities: { 
+                    worker_id: workerId,
                     services: services, 
-                    models: [], // Models will be populated when worker connects
+                    models: {}, // Models will be populated when worker connects
                     metadata: {
                       gpu_id: structureWorker?.gpu_id
                     },
                     performance: { concurrent_jobs: 1, quality_levels: ['balanced'] }
                   },
-                  current_job_id: null,
+                  connected_at: new Date().toISOString(),
+                  last_heartbeat: new Date().toISOString(),
                   current_jobs: [],
-                  last_activity: null,
                   total_jobs_completed: 0,
                   total_jobs_failed: 0,
                   average_processing_time: 0,
                   uptime: 0
-                };
+                } as WorkerInfo;
               });
               return (
                 <MachineCard 
                   key={machine.machine_id} 
                   machine={machine} 
                   workers={machineWorkers} 
-                  onDelete={handleDeleteMachine}
+                  onDelete={undefined}
                 />
               );
             })}
@@ -397,7 +398,7 @@ function Home({ isJobPanelOpen }: HomeProps) {
                           <Button
                             variant="outline"
                             size="sm"
-                            onClick={() => handleCancelJob(job.id)}
+                            onClick={() => {/* handleCancelJob(job.id) */}}
                             className="h-7 w-7 p-0 hover:bg-red-50 hover:border-red-200"
                             title="Cancel job"
                           >
@@ -456,7 +457,7 @@ function Home({ isJobPanelOpen }: HomeProps) {
                             size="sm"
                             onClick={(e) => {
                               e.stopPropagation();
-                              setCancelJobId(job.id);
+                              // setCancelJobId(job.id);
                             }}
                             title="Cancel job"
                           >
@@ -610,7 +611,7 @@ function Home({ isJobPanelOpen }: HomeProps) {
         </div>
 
       {/* Cancel Job Confirmation Dialog */}
-      <AlertDialog open={!!cancelJobId} onOpenChange={() => setCancelJobId(null)}>
+      {/* <AlertDialog open={!!cancelJobId} onOpenChange={() => setCancelJobId(null)}>
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle>Cancel Job</AlertDialogTitle>
@@ -629,10 +630,10 @@ function Home({ isJobPanelOpen }: HomeProps) {
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
-      </AlertDialog>
+      </AlertDialog> */}
 
       {/* Delete Machine Confirmation Dialog */}
-      <AlertDialog open={!!deleteMachineId} onOpenChange={() => setDeleteMachineId(null)}>
+      {/* <AlertDialog open={!!deleteMachineId} onOpenChange={() => setDeleteMachineId(null)}>
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle>Delete Machine</AlertDialogTitle>
@@ -651,7 +652,7 @@ function Home({ isJobPanelOpen }: HomeProps) {
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
-      </AlertDialog>
+      </AlertDialog> */}
 
       {/* Job Details Modal */}
       <JobDetailsModal

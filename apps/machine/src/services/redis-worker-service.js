@@ -12,7 +12,9 @@ export default class RedisWorkerService extends BaseService {
     this.config = config;
     this.gpu = options.gpu || 0;
     this.index = options.index !== undefined ? options.index : this.gpu;
-    this.workerId = `${config.machine.id}-worker-${this.index}`;
+    // Use PM2-provided WORKER_ID if available, otherwise generate fallback
+    this.workerId = process.env.WORKER_ID || `${config.machine.id}-worker-${this.index}`;
+    console.log(`🔴 [REDIS-WORKER-SERVICE-DEBUG] workerId set to: "${this.workerId}" (from PM2: ${!!process.env.WORKER_ID})`);
     this.workerDir = `/tmp/worker_gpu${this.gpu}`;
     this.workerProcess = null;
     // Use GitHub releases URL for worker package

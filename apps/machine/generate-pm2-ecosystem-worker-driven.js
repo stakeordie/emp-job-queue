@@ -10,6 +10,7 @@ import { EnhancedPM2EcosystemGenerator } from './src/config/enhanced-pm2-ecosyst
 
 async function main() {
   try {
+    console.log(`🚀🚀🚀 [BUILD-VERIFICATION] WORKER-DRIVEN GENERATOR ACTIVE - ${new Date().toISOString()}`);
     console.log('🚀 Generating PM2 ecosystem using worker-driven architecture...');
     
     // Always use enhanced generator (no legacy fallback)

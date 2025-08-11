@@ -192,8 +192,15 @@ class ComposeBuilder {
     // Map connector names to build stages from service mapping
     const stageNames = connectors.map(c => {
       const workerConfig = serviceMapping.workers[c.connector];
-      if (workerConfig && workerConfig.build_stage) {
-        return workerConfig.build_stage;
+      
+      // Get the first service from the worker config
+      if (workerConfig && workerConfig.services && workerConfig.services.length > 0) {
+        const firstServiceName = workerConfig.services[0];
+        const serviceConfig = serviceMapping.services[firstServiceName];
+        
+        if (serviceConfig && serviceConfig.build_stage) {
+          return serviceConfig.build_stage;
+        }
       }
       
       // Fallback for unmapped connectors

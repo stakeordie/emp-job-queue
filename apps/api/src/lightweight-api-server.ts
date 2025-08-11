@@ -1553,6 +1553,10 @@ export class LightweightAPIServer {
         services: statusData.status?.services || {}
       };
 
+      // Log worker IDs being processed by API
+      const workerIds = Object.keys(status_data.workers || {});
+      logger.info(`🔴 [API-WORKER-ID-DEBUG] Received worker IDs from machine ${machineId}: ${JSON.stringify(workerIds)}`);
+      
       // Store the separated data in memory for snapshot access
       const separatedData = {
         machine_id: machineId,

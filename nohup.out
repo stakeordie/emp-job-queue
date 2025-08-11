@@ -23,3 +23,177 @@ docs:dev:   vitepress v1.6.3
 docs:dev: 
 docs:dev:   ➜  Local:   http://localhost:5173/
 docs:dev:   ➜  Network: use --host to expose
+docs:dev:  ELIFECYCLE  Command failed.
+  x Internal errors encountered: external process killed a task
+
+ ELIFECYCLE  Command failed with exit code 1.
+
+> emp-ai-backend@1.0.0 dev:docs /Users/the_dusky/code/emprops/ai_infra/emp-job-queue
+> turbo run dev --filter=docs
+
+turbo 2.5.4
+
+• Packages in scope: docs
+• Running dev in 1 packages
+• Remote caching disabled
+docs:dev: cache bypass, force executing ad5f644ef882be33
+docs:dev: 
+docs:dev: > docs@1.0.0 dev /Users/the_dusky/code/emprops/ai_infra/emp-job-queue/apps/docs
+docs:dev: > mkdir -p ../../logs && echo '   - Logs:         pnpm logs:docs' && echo '   - All Logs:     pnpm logs:all' && vitepress dev src 2>&1 | tee ../../logs/docs.log
+docs:dev: 
+docs:dev:    - Logs:         pnpm logs:docs
+docs:dev:    - All Logs:     pnpm logs:all
+docs:dev: 
+docs:dev: The language 'redis' is not loaded, falling back to 'txt' for syntax highlighting.
+docs:dev: 
+docs:dev: The language 'redis' is not loaded, falling back to 'txt' for syntax highlighting.
+docs:dev: 
+docs:dev:   vitepress v1.6.3
+docs:dev: 
+docs:dev:   ➜  Local:   http://localhost:5173/
+docs:dev:   ➜  Network: use --host to expose
+docs:dev:  ELIFECYCLE  Command failed.
+  x Internal errors encountered: external process killed a task
+
+ ELIFECYCLE  Command failed with exit code 1.
+
+> emp-ai-backend@1.0.0 dev:docs /Users/the_dusky/code/emprops/ai_infra/emp-job-queue
+> turbo run dev --filter=docs
+
+turbo 2.5.4
+
+• Packages in scope: docs
+• Running dev in 1 packages
+• Remote caching disabled
+docs:dev: cache bypass, force executing ad5f644ef882be33
+docs:dev: 
+docs:dev: > docs@1.0.0 dev /Users/the_dusky/code/emprops/ai_infra/emp-job-queue/apps/docs
+docs:dev: > mkdir -p ../../logs && echo '   - Logs:         pnpm logs:docs' && echo '   - All Logs:     pnpm logs:all' && vitepress dev src 2>&1 | tee ../../logs/docs.log
+docs:dev: 
+docs:dev:    - Logs:         pnpm logs:docs
+docs:dev:    - All Logs:     pnpm logs:all
+docs:dev: 
+docs:dev: The language 'redis' is not loaded, falling back to 'txt' for syntax highlighting.
+docs:dev: 
+docs:dev: The language 'redis' is not loaded, falling back to 'txt' for syntax highlighting.
+docs:dev: 
+docs:dev:   vitepress v1.6.3
+docs:dev: 
+docs:dev:   ➜  Local:   http://localhost:5173/
+docs:dev:   ➜  Network: use --host to expose
+docs:dev:  ELIFECYCLE  Command failed.
+  x Internal errors encountered: external process killed a task
+
+ ELIFECYCLE  Command failed with exit code 1.
+
+> emp-ai-backend@1.0.0 dev:docs /Users/the_dusky/code/emprops/ai_infra/emp-job-queue
+> turbo run dev --filter=docs
+
+turbo 2.5.4
+
+• Packages in scope: docs
+• Running dev in 1 packages
+• Remote caching disabled
+docs:dev: cache bypass, force executing ad5f644ef882be33
+docs:dev: 
+docs:dev: > docs@1.0.0 dev /Users/the_dusky/code/emprops/ai_infra/emp-job-queue/apps/docs
+docs:dev: > mkdir -p ../../logs && echo '   - Logs:         pnpm logs:docs' && echo '   - All Logs:     pnpm logs:all' && vitepress dev src 2>&1 | tee ../../logs/docs.log
+docs:dev: 
+docs:dev:    - Logs:         pnpm logs:docs
+docs:dev:    - All Logs:     pnpm logs:all
+docs:dev: 
+docs:dev: The language 'redis' is not loaded, falling back to 'txt' for syntax highlighting.
+docs:dev: 
+docs:dev: The language 'redis' is not loaded, falling back to 'txt' for syntax highlighting.
+docs:dev: 
+docs:dev:   vitepress v1.6.3
+docs:dev: 
+docs:dev:   ➜  Local:   http://localhost:5173/
+docs:dev:   ➜  Network: use --host to expose
+docs:dev:  ELIFECYCLE  Command failed.
+  x Internal errors encountered: external process killed a task
+
+ ELIFECYCLE  Command failed with exit code 1.
+
+> emp-ai-backend@1.0.0 dev:docs /Users/the_dusky/code/emprops/ai_infra/emp-job-queue
+> turbo run dev --filter=docs
+
+turbo 2.5.4
+
+• Packages in scope: docs
+• Running dev in 1 packages
+• Remote caching disabled
+docs:dev: cache bypass, force executing ad5f644ef882be33
+docs:dev: 
+docs:dev: > docs@1.0.0 dev /Users/the_dusky/code/emprops/ai_infra/emp-job-queue/apps/docs
+docs:dev: > mkdir -p ../../logs && echo '   - Logs:         pnpm logs:docs' && echo '   - All Logs:     pnpm logs:all' && vitepress dev src 2>&1 | tee ../../logs/docs.log
+docs:dev: 
+docs:dev:    - Logs:         pnpm logs:docs
+docs:dev:    - All Logs:     pnpm logs:all
+docs:dev: 
+docs:dev: The language 'redis' is not loaded, falling back to 'txt' for syntax highlighting.
+docs:dev: 
+docs:dev: The language 'redis' is not loaded, falling back to 'txt' for syntax highlighting.
+docs:dev: 
+docs:dev:   vitepress v1.6.3
+docs:dev: 
+docs:dev:   ➜  Local:   http://localhost:5173/
+docs:dev:   ➜  Network: use --host to expose
+docs:dev:  ELIFECYCLE  Command failed.
+  x Internal errors encountered: external process killed a task
+
+ ELIFECYCLE  Command failed with exit code 1.
+
+> emp-ai-backend@1.0.0 dev:docs /Users/the_dusky/code/emprops/ai_infra/emp-job-queue
+> turbo run dev --filter=docs
+
+turbo 2.5.4
+
+• Packages in scope: docs
+• Running dev in 1 packages
+• Remote caching disabled
+docs:dev: cache bypass, force executing ad5f644ef882be33
+docs:dev: 
+docs:dev: > docs@1.0.0 dev /Users/the_dusky/code/emprops/ai_infra/emp-job-queue/apps/docs
+docs:dev: > mkdir -p ../../logs && echo '   - Logs:         pnpm logs:docs' && echo '   - All Logs:     pnpm logs:all' && vitepress dev src 2>&1 | tee ../../logs/docs.log
+docs:dev: 
+docs:dev:    - Logs:         pnpm logs:docs
+docs:dev:    - All Logs:     pnpm logs:all
+docs:dev: 
+docs:dev: The language 'redis' is not loaded, falling back to 'txt' for syntax highlighting.
+docs:dev: 
+docs:dev: The language 'redis' is not loaded, falling back to 'txt' for syntax highlighting.
+docs:dev: 
+docs:dev:   vitepress v1.6.3
+docs:dev: 
+docs:dev:   ➜  Local:   http://localhost:5173/
+docs:dev:   ➜  Network: use --host to expose
+docs:dev:  ELIFECYCLE  Command failed.
+  x Internal errors encountered: external process killed a task
+
+ ELIFECYCLE  Command failed with exit code 1.
+
+> emp-ai-backend@1.0.0 dev:docs /Users/the_dusky/code/emprops/ai_infra/emp-job-queue
+> turbo run dev --filter=docs
+
+turbo 2.5.4
+
+• Packages in scope: docs
+• Running dev in 1 packages
+• Remote caching disabled
+docs:dev: cache bypass, force executing ad5f644ef882be33
+docs:dev: 
+docs:dev: > docs@1.0.0 dev /Users/the_dusky/code/emprops/ai_infra/emp-job-queue/apps/docs
+docs:dev: > mkdir -p ../../logs && echo '   - Logs:         pnpm logs:docs' && echo '   - All Logs:     pnpm logs:all' && vitepress dev src 2>&1 | tee ../../logs/docs.log
+docs:dev: 
+docs:dev:    - Logs:         pnpm logs:docs
+docs:dev:    - All Logs:     pnpm logs:all
+docs:dev: 
+docs:dev: The language 'redis' is not loaded, falling back to 'txt' for syntax highlighting.
+docs:dev: 
+docs:dev: The language 'redis' is not loaded, falling back to 'txt' for syntax highlighting.
+docs:dev: 
+docs:dev:   vitepress v1.6.3
+docs:dev: 
+docs:dev:   ➜  Local:   http://localhost:5173/
+docs:dev:   ➜  Network: use --host to expose

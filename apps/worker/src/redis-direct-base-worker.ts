@@ -98,10 +98,16 @@ export class RedisDirectBaseWorker {
     hubRedisUrl: string
   ) {
     logger.info(`🔧 [DEBUG] RedisDirectBaseWorker constructor called with workerId: ${workerId}`);
+    logger.info(
+      `🔴 [RDirectBWorker-WORKER-ID-TRACE] RedisDirectBaseWorker received workerId: "${workerId}"`
+    );
     this.workerId = workerId;
     this.machineId = machineId;
     this.connectorManager = connectorManager;
     logger.info(`🔧 [DEBUG] Creating RedisDirectWorkerClient with workerId: ${workerId}`);
+    logger.info(
+      `🔴 [RDirectBWorker-WORKER-ID-TRACE] Passing workerId to RedisDirectWorkerClient: "${workerId}"`
+    );
     this.redisClient = new RedisDirectWorkerClient(hubRedisUrl, workerId);
 
     // Initialize job health monitor
@@ -173,9 +179,12 @@ export class RedisDirectBaseWorker {
 
       const serviceMappingContent = fs.readFileSync(serviceMappingPath, 'utf8');
       const serviceMapping = JSON.parse(serviceMappingContent);
-      
+
       console.log('🚨🚨🚨 [TRACE] Service mapping loaded from:', serviceMappingPath);
-      console.log('🚨🚨🚨 [TRACE] Available worker types in mapping:', Object.keys(serviceMapping.workers || {}));
+      console.log(
+        '🚨🚨🚨 [TRACE] Available worker types in mapping:',
+        Object.keys(serviceMapping.workers || {})
+      );
 
       // Extract capabilities from all worker types
       const allCapabilities = new Set<string>();
@@ -183,18 +192,23 @@ export class RedisDirectBaseWorker {
       for (const workerType of workerSpecs) {
         console.log(`🚨🚨🚨 [TRACE] Processing workerType: "${workerType}"`);
         const workerConfig = serviceMapping.workers?.[workerType];
-        
+
         if (workerConfig && workerConfig.services) {
-          console.log(`🚨🚨🚨 [TRACE] Found workerConfig for "${workerType}":`, JSON.stringify(workerConfig, null, 2));
+          console.log(
+            `🚨🚨🚨 [TRACE] Found workerConfig for "${workerType}":`,
+            JSON.stringify(workerConfig, null, 2)
+          );
           console.log(`🚨🚨🚨 [TRACE] Services array for "${workerType}":`, workerConfig.services);
-          
+
           // NEW structure: services is an array of service names
           for (const serviceName of workerConfig.services) {
             console.log(`🚨🚨🚨 [TRACE] Adding service: "${serviceName}"`);
             allCapabilities.add(serviceName);
           }
         } else {
-          console.log(`🚨🚨🚨 [TRACE] ERROR: Worker type "${workerType}" not found or has no services!`);
+          console.log(
+            `🚨🚨🚨 [TRACE] ERROR: Worker type "${workerType}" not found or has no services!`
+          );
           throw new Error(
             `SYSTEM IS FUCKED: Worker type '${workerType}' not found in service mapping or has no services array. Available worker types: ${Object.keys(serviceMapping.workers || {}).join(', ')}. Check your WORKERS environment variable.`
           );
@@ -271,10 +285,13 @@ export class RedisDirectBaseWorker {
 
   private buildCapabilities(): WorkerCapabilities {
     console.log('🚨🚨🚨 [TRACE] buildCapabilities START');
-    
+
     // Services this worker can handle - derive from service mapping
     const services = this.getServicesFromMapping();
-    console.log('🚨🚨🚨 [TRACE] buildCapabilities - services from getServicesFromMapping():', services);
+    console.log(
+      '🚨🚨🚨 [TRACE] buildCapabilities - services from getServicesFromMapping():',
+      services
+    );
 
     // Job service requirements this worker accepts - for Redis function matching
     const jobServiceRequiredMap = this.getJobServiceRequiredFromMapping();
@@ -458,7 +475,10 @@ export class RedisDirectBaseWorker {
       // Connect to Redis first to establish connection
       console.log('🚨🚨🚨 [TRACE] About to connect to Redis with capabilities:');
       console.log('🚨🚨🚨 [TRACE] this.capabilities.services:', this.capabilities.services);
-      console.log('🚨🚨🚨 [TRACE] Full capabilities object:', JSON.stringify(this.capabilities, null, 2));
+      console.log(
+        '🚨🚨🚨 [TRACE] Full capabilities object:',
+        JSON.stringify(this.capabilities, null, 2)
+      );
       await this.redisClient.connect(this.capabilities);
 
       // Pass Redis connection to ConnectorManager

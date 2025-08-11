@@ -491,12 +491,11 @@ export abstract class WebSocketConnector extends BaseConnector {
     const activeJob = this.activeJobs.get(message.jobId);
     if (activeJob && activeJob.progressCallback) {
       const progressValue = this.extractProgress(message.data);
-      // Create proper JobProgress object
+      // Create proper JobProgress object (no status to avoid triggering duplicate status changes)
       const jobProgress = {
         job_id: message.jobId,
         worker_id: this.config.connector_id,
         progress: progressValue,
-        status: 'processing' as const,
         message: `Processing job ${message.jobId}`,
         updated_at: new Date().toISOString()
       };

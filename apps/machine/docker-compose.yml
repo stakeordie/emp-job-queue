@@ -167,6 +167,24 @@ services:
         reservations:
           memory: ${MEMORY_RESERVATION:-2G}
   sim-local-dev:
+    <<: *base-machine
+    profiles:
+      - sim-local-dev
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: simulation
+      args:
+        WORKER_SPEC: simulation-websocket:2,simulation-http:2
+        WORKERS: simulation-websocket:2,simulation-http:2
+        MACHINE_ID: sim-local-dev
+        CACHE_BUST: ${CACHE_BUST:-1}
+    container_name: sim-local-dev
+    hostname: sim-local-dev
+    ports:
+      - ${EXPOSE_PORTS:-9090}:9090
+    image: emprops/machine:sim-local-dev
+  sim-local-dev-http:
     build:
       context: .
       dockerfile: Dockerfile
@@ -174,14 +192,14 @@ services:
       args:
         WORKER_SPEC: simulation-http:10
         WORKERS: simulation-http:10
-        MACHINE_ID: sim-local-dev
+        MACHINE_ID: sim-local-dev-http
         CACHE_BUST: ${CACHE_BUST:-1}
-    image: emprops/machine:sim-local-dev
+    image: emprops/machine:sim-local-dev-http
     platform: linux/amd64
-    container_name: sim-local-dev
-    hostname: sim-local-dev
+    container_name: sim-local-dev-http
+    hostname: sim-local-dev-http
     profiles:
-      - sim-local-dev
+      - sim-local-dev-http
     restart: 'no'
     stop_grace_period: 2s
     stop_signal: SIGTERM
@@ -201,24 +219,41 @@ services:
           memory: ${MEMORY_RESERVATION:-2G}
     ports:
       - ${EXPOSE_PORTS:-9090}:9090
-  sim-local-dev-http:
-    <<: *base-machine
-    profiles:
-      - sim-local-dev-http
+  sim-local-dev-websocket:
     build:
       context: .
       dockerfile: Dockerfile
-      target: base
+      target: simulation
       args:
-        WORKER_SPEC: simulation-http:10
-        WORKERS: simulation-http:10
-        MACHINE_ID: sim-local-dev-http
+        WORKER_SPEC: simulation-websocket:1
+        WORKERS: simulation-websocket:1
+        MACHINE_ID: sim-local-dev-websocket
         CACHE_BUST: ${CACHE_BUST:-1}
-    container_name: sim-local-dev-http
-    hostname: sim-local-dev-http
+    image: emprops/machine:sim-local-dev-websocket
+    platform: linux/amd64
+    container_name: sim-local-dev-websocket
+    hostname: sim-local-dev-websocket
+    profiles:
+      - sim-local-dev-websocket
+    restart: 'no'
+    stop_grace_period: 2s
+    stop_signal: SIGTERM
+    env_file:
+      - .env.secret
+    environment:
+      NODE_ENV: production
+      ENV: ${CURRENT_ENV}
+      NVIDIA_VISIBLE_DEVICES: all
+      NVIDIA_DRIVER_CAPABILITIES: compute,utility
+    working_dir: /workspace
+    deploy:
+      resources:
+        limits:
+          memory: ${MEMORY_LIMIT:-8G}
+        reservations:
+          memory: ${MEMORY_RESERVATION:-2G}
     ports:
       - ${EXPOSE_PORTS:-9090}:9090
-    image: emprops/machine:sim-local-dev-http
 networks:
   default:
     name: emp-job-queue

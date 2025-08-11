@@ -15,6 +15,9 @@ export * from './connectors/index.js';
 // PM2 creates unique IDs like: simulation-0, simulation-1, comfyui-gpu0, comfyui-gpu1
 const WORKER_ID = process.env.WORKER_ID;
 
+logger.info(`🔍 [WORKER-ID-DEBUG] redis-direct-worker.ts - WORKER_ID from env: ${WORKER_ID}`);
+logger.info(`🔍 [WORKER-ID-DEBUG] redis-direct-worker.ts - process.env.WORKER_ID: ${process.env.WORKER_ID}`);
+
 // logger.info(`🔍 WORKER_ID from environment: ${WORKER_ID}`);
 // logger.info(`🔍 All environment variables: ${JSON.stringify({
 //   WORKER_ID: process.env.WORKER_ID,
@@ -185,6 +188,8 @@ function logEnvironmentVariables() {
 }
 
 async function main() {
+  logger.info(`🔥🔥🔥 [REBUILD-VERIFICATION] Worker rebuilt successfully - timestamp: ${new Date().toISOString()}`);
+  logger.info(`🔥🔥🔥 [REBUILD-VERIFICATION] WORKER_ID from env: ${WORKER_ID}`);
   logger.info(`Starting Redis-direct worker ${WORKER_ID} on machine ${MACHINE_ID}`);
 
   // Log comprehensive environment variable resolution

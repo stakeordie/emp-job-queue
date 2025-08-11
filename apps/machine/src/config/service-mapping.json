@@ -34,12 +34,22 @@
       ]
     },
     
-    "simulation-http": {
-      "services": ["http-sim"],
+    "simulation-websocket": {
+      "services": ["simulation-websocket"],
       "job_service_required_map": [
         {
           "job_service_required": "simulation",
-          "worker_service": "http-sim" 
+          "worker_service": "simulation-websocket" 
+        }
+      ]
+    },
+
+    "simulation-http": {
+      "services": ["simulation-http"],
+      "job_service_required_map": [
+        {
+          "job_service_required": "simulation",
+          "worker_service": "simulation-http" 
         }
       ]
     },
@@ -122,6 +132,10 @@
       "path": "./redis-direct-worker.js",
       "description": "Simulation processing connector for testing and development"
     },
+    "SimulationWebsocketConnector": {
+      "path": "./redis-direct-worker.js",
+      "description": "Simulation processing connector for testing and development with Websocket"
+    },
     "OpenAITextConnector": {
       "path": "./redis-direct-worker.js",
       "description": "OpenAI text generation API connector"
@@ -191,7 +205,7 @@
       }
     },
     
-    "http-sim": {
+    "simulation-http": {
       "connector": "SimulationHttpConnector",
       "type": "internal",
       "installer": "installSimulation",
@@ -205,6 +219,23 @@
         "test_mode": "${SIMULATION_TEST_MODE:-true}",
         "data_path": "${SIMULATION_DATA_PATH:-/workspace/simulation/data}",
         "capabilities": "${SIMULATION_CAPABILITIES:-image_generation,text_processing}"
+      }
+    },
+
+    "simulation-websocket": {
+      "connector": "SimulationWebsocketConnector",
+      "type": "internal",
+      "installer": "installSimulationWebsocket",
+      "resource_binding": "mock_gpu",
+      "build_stage": "simulation",
+      "service_instances_per_machine": "${SIMULATION_WS_INSTANCES_PER_MACHINE:-10}",
+      "ports": ["${SIMULATION_WS_BASE_PORT:-8399}"],
+      "port_increment": "${SIMULATION_WS_PORT_INCREMENT:-0}",
+      "description": "WebSocket simulation service for testing and development",
+      "installer_config": {
+        "test_mode": "${SIMULATION_WS_TEST_MODE:-true}",
+        "data_path": "${SIMULATION_WS_DATA_PATH:-/workspace/simulation-ws/data}",
+        "capabilities": "${SIMULATION_WS_CAPABILITIES:-websocket,realtime,streaming}"
       }
     },
     

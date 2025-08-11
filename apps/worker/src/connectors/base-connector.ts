@@ -106,9 +106,11 @@ export abstract class BaseConnector implements ConnectorInterface {
    * This replaces the need for connectors to create their own Redis connections
    */
   setRedisConnection(redis: Redis, workerId: string, machineId?: string): void {
+    console.log(`🔴 [BASE-CONNECTOR-DEBUG] setRedisConnection() called with workerId: "${workerId}"`);
     this.redis = redis;
     this.workerId = workerId;
     this.machineId = machineId;
+    console.log(`🔴 [BASE-CONNECTOR-DEBUG] this.workerId set to: "${this.workerId}"`);
 
     logger.info(
       `${this.service_type} connector ${this.connector_id} received Redis connection injection`
@@ -125,8 +127,21 @@ export abstract class BaseConnector implements ConnectorInterface {
 
   protected async initializeRedisConnection(): Promise<void> {
     this.hubRedisUrl = process.env.HUB_REDIS_URL || 'redis://localhost:6379';
-    const workerIdPrefix = process.env.WORKER_ID || 'worker';
-    this.workerId = `${workerIdPrefix}-${process.pid}`;
+    
+    console.log(`🔴 [BASE-CONNECTOR-DEBUG] initializeRedisConnection() - this.workerId BEFORE: "${this.workerId}"`);
+    console.log(`🔴 [BASE-CONNECTOR-DEBUG] process.env.WORKER_ID: "${process.env.WORKER_ID}"`);
+    
+    // Only set workerId if it hasn't been injected via setRedisConnection()
+    if (!this.workerId) {
+      const workerIdPrefix = process.env.WORKER_ID || 'worker';
+      this.workerId = `${workerIdPrefix}-${process.pid}`;
+      console.log(`🔴 [BASE-CONNECTOR-DEBUG] Generated fallback workerId: "${this.workerId}"`);
+    } else {
+      console.log(`🔴 [BASE-CONNECTOR-DEBUG] Using injected workerId: "${this.workerId}"`);
+    }
+    
+    console.log(`🔴 [BASE-CONNECTOR-DEBUG] Final this.workerId: "${this.workerId}"`);
+    
 
     try {
       this.redis = new Redis(this.hubRedisUrl, {

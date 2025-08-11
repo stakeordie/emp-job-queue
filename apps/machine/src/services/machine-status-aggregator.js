@@ -256,29 +256,20 @@ export class MachineStatusAggregator {
       // Parse workers from PM2 redis-worker apps
       for (const app of ecosystemConfig.apps) {
         if (app.name.startsWith('redis-worker-')) {
-          // The PM2 app has env.WORKER_ID but we want the ACTUAL worker ID format
-          // which should be: {machine-id}-worker-{index}
-          const machineId = process.env.MACHINE_ID || 'unknown-machine';
+          // Use the WORKER_ID directly from PM2 environment (includes workerType)
           const connectors = app.env.CONNECTORS?.split(',') || [];
+          const actualWorkerId = app.env.WORKER_ID || 'unknown-worker';
           
-          // Extract index from app name or env
-          // PM2 app names are like: redis-worker-simulation-http-0, redis-worker-simulation-http-1, etc.
-          let workerIndex = 0;
-          const appNameMatch = app.name.match(/redis-worker-.+-(\d+)$/);
-          if (appNameMatch) {
-            workerIndex = parseInt(appNameMatch[1]);
-          } else {
-            // Fallback to GPU_INDEX if app name doesn't match expected pattern
-            workerIndex = parseInt(app.env.GPU_INDEX || '0');
-          }
-          const actualWorkerId = `${machineId}-worker-${workerIndex}`;
+          // Extract worker type and index for structure metadata
+          const appNameMatch = app.name.match(/redis-worker-(.+)-(\d+)$/);
+          const workerType = appNameMatch ? appNameMatch[1] : connectors[0] || 'unknown';
+          const workerIndex = appNameMatch ? parseInt(appNameMatch[2]) : parseInt(app.env.GPU_INDEX || '0');
           
           console.log('[MachineStatusAggregator] DEBUG: Creating worker structure for:', actualWorkerId);
           console.log('[MachineStatusAggregator] DEBUG: PM2 app name:', app.name);
           console.log('[MachineStatusAggregator] DEBUG: Raw Connectors from PM2:', connectors);
           
           // 🚨 CRITICAL FIX: Convert worker types to actual services using service mapping
-          const workerType = connectors[0] || 'unknown';
           const actualServices = this.getServicesFromWorkerType(workerType);
           
           console.log(`🚨🚨🚨 [MACHINE-STATUS-AGGREGATOR] CRITICAL FIX APPLIED!`);

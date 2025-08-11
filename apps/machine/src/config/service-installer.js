@@ -71,6 +71,8 @@ export class ServiceInstaller {
         return await this.installPlaywright(machineResources);
       case 'simulation':
         return await this.installSimulation(machineResources);
+      case 'simulationWebsocket':
+        return await this.installSimulationWebsocket(machineResources);
       default:
         throw new Error(`Unknown service: ${serviceName}`);
     }
@@ -166,6 +168,25 @@ export class ServiceInstaller {
   }
   
   /**
+   * Install Simulation WebSocket service (for testing)
+   */
+  async installSimulationWebsocket(machineResources) {
+    this.logger.log('🔌 Installing Simulation WebSocket service...');
+    
+    this.logger.log('Setting up WebSocket simulation environment...');
+    await this.simulateAsyncOperation('websocket simulation setup', 1000);
+    
+    this.logger.log('Configuring WebSocket test protocols...');
+    await this.simulateAsyncOperation('websocket protocol setup', 500);
+    
+    return {
+      status: 'installed',
+      test_mode: true,
+      capabilities: ['websocket', 'realtime', 'streaming']
+    };
+  }
+  
+  /**
    * Check if a service is installed and functional
    */
   async checkServiceHealth(serviceName) {
@@ -176,6 +197,8 @@ export class ServiceInstaller {
         return await this.checkPlaywrightHealth();
       case 'simulation':
         return await this.checkSimulationHealth();
+      case 'simulationWebsocket':
+        return await this.checkSimulationWebsocketHealth();
       default:
         return { healthy: false, error: `Unknown service: ${serviceName}` };
     }
@@ -230,6 +253,20 @@ export class ServiceInstaller {
       healthy: true,
       test_mode: true,
       endpoints_available: ['/generate', '/process']
+    };
+  }
+  
+  /**
+   * Check Simulation WebSocket health
+   */
+  async checkSimulationWebsocketHealth() {
+    await this.simulateAsyncOperation('simulation websocket health check', 200);
+    
+    return {
+      healthy: true,
+      test_mode: true,
+      protocols_available: ['simulation-protocol'],
+      websocket_ready: true
     };
   }
   

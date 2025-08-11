@@ -16,6 +16,7 @@ const __dirname = path.dirname(__filename);
 
 export class EnhancedPM2EcosystemGenerator {
   constructor() {
+    console.log(`🚀🚀🚀 [BUILD-VERIFICATION] NEW PM2 ECOSYSTEM GENERATOR BUILD ACTIVE - ${new Date().toISOString()}`);
     this.logger = {
       log: (msg) => console.log(`[Enhanced PM2 Generator] ${msg}`),
       warn: (msg) => console.warn(`[Enhanced PM2 Generator] ${msg}`),
@@ -282,14 +283,23 @@ export class EnhancedPM2EcosystemGenerator {
    * Create Redis worker PM2 app
    */
   createRedisWorkerApp(workerType, index, workerConfig, _totalInstances) {
+    this.logger.log(`🚀 [BUILD-VERIFICATION] NEW BUILD DEPLOYED - Enhanced PM2 Ecosystem Generator active at ${new Date().toISOString()}`);
+    this.logger.log(`🔴 [PM2-GENERATOR-DEBUG] createRedisWorkerApp called with:`);
+    this.logger.log(`🔴 [PM2-GENERATOR-DEBUG] - workerType: "${workerType}"`);
+    this.logger.log(`🔴 [PM2-GENERATOR-DEBUG] - index: ${index}`);
+    this.logger.log(`🔴 [PM2-GENERATOR-DEBUG] - MACHINE_ID env: "${process.env.MACHINE_ID}"`);
+    
     const resourceBinding = workerConfig.resource_binding || 'shared';
     const isGpuBound = resourceBinding === 'gpu' || resourceBinding === 'mock_gpu';
+    
+    const generatedWorkerId = `${process.env.MACHINE_ID || 'unknown-machine'}-worker-${workerType}-${index}`;
+    this.logger.log(`🔴 [PM2-GENERATOR-DEBUG] Generated WORKER_ID: "${generatedWorkerId}"`);
     
     // Generate environment variables
     const env = {
       NODE_ENV: 'production',
       LOG_LEVEL: 'info',
-      WORKER_ID: `${process.env.MACHINE_ID || 'unknown-machine'}-worker-${index}`,
+      WORKER_ID: generatedWorkerId,
       HUB_REDIS_URL: process.env.HUB_REDIS_URL || 'redis://localhost:6379',
       MACHINE_ID: process.env.MACHINE_ID || 'unknown',
       WORKER_ID_PREFIX: workerType,
@@ -333,6 +343,24 @@ export class EnhancedPM2EcosystemGenerator {
 
   /**
    * Generate service-specific PM2 apps (e.g., ComfyUI)
+   * 
+   * ⚠️  CRITICAL MAINTENANCE NOTE ⚠️
+   * 
+   * This method is HARDCODED for specific service types and must be manually updated
+   * every time a new service is added to the system. This is a known design limitation.
+   * 
+   * WHEN ADDING NEW SERVICES:
+   * 1. Add new connector type check (e.g., 'newservicetype')
+   * 2. Create corresponding createNewServiceApp() method
+   * 3. Test PM2 ecosystem generation
+   * 
+   * CURRENT SUPPORTED SERVICES:
+   * - comfyui (ComfyUIConnector)
+   * - simulationhttp (SimulationHttpConnector) 
+   * - simulation (SimulationConnector)
+   * - simulationwebsocket (SimulationWebsocketConnector)
+   * 
+   * TODO: Refactor to data-driven approach using service-mapping.json configuration
    */
   async generateServiceApps(workerType, instanceCount, workerConfig, serviceConfig, actualServiceName) {
     const apps = [];
@@ -360,6 +388,20 @@ export class EnhancedPM2EcosystemGenerator {
       } else {
         // Single simulation service for the machine
         apps.push(this.createSimulationApp(serviceName));
+      }
+    } else if (connectorType === 'simulationwebsocket') {
+      // WebSocket simulation service
+      const resourceBinding = serviceConfig.resource_binding || 'shared';
+      const isMockGpu = resourceBinding === 'mock_gpu';
+      
+      if (isMockGpu) {
+        // Create per-GPU WebSocket simulation instances (like ComfyUI)
+        for (let i = 0; i < instanceCount; i++) {
+          apps.push(this.createSimulationWebSocketApp(serviceName, i));
+        }
+      } else {
+        // Single WebSocket simulation service for the machine
+        apps.push(this.createSimulationWebSocketApp(serviceName));
       }
     }
     
@@ -424,6 +466,45 @@ export class EnhancedPM2EcosystemGenerator {
         LOG_LEVEL: 'info',
         SIMULATION_PORT: port.toString(),
         SIMULATION_HOST: '0.0.0.0',
+        ...(isPerGpu && {
+          GPU_INDEX: gpuIndex.toString(),
+          CUDA_VISIBLE_DEVICES: gpuIndex.toString()
+        })
+      }
+    };
+  }
+
+  /**
+   * Create Simulation WebSocket service PM2 app
+   */
+  createSimulationWebSocketApp(serviceName, gpuIndex = null) {
+    const isPerGpu = gpuIndex !== null;
+    const name = isPerGpu ? `${serviceName}-gpu${gpuIndex}` : `${serviceName}-service`;
+    const port = isPerGpu ? (8399 + gpuIndex) : 8399; // WebSocket port range starting at 8399
+    
+    return {
+      name,
+      script: 'src/services/standalone-wrapper.js',
+      args: isPerGpu ? ['simulation-websocket', `--gpu=${gpuIndex}`] : ['simulation-websocket'],
+      cwd: '/service-manager',
+      instances: 1,
+      autorestart: true,
+      max_restarts: 10,
+      min_uptime: '5s',
+      max_memory_restart: '512M',
+      restart_delay: 2000,
+      error_file: `/workspace/logs/${name}-error.log`,
+      out_file: `/workspace/logs/${name}-out.log`,
+      log_file: `/workspace/logs/${name}-combined.log`,
+      merge_logs: true,
+      env: {
+        NODE_ENV: 'production',
+        LOG_LEVEL: 'info',
+        PORT: port.toString(),
+        HOST: '0.0.0.0',
+        SIMULATION_WS_PROCESSING_TIME: '10',
+        SIMULATION_WS_STEPS: '10',
+        SIMULATION_WS_PROGRESS_INTERVAL_MS: '300',
         ...(isPerGpu && {
           GPU_INDEX: gpuIndex.toString(),
           CUDA_VISIBLE_DEVICES: gpuIndex.toString()

@@ -27,6 +27,7 @@ const serviceModules = {
   'comfyui-installer': './comfyui-installer.js',
   'comfyui-env-creator': './comfyui-env-creator.js',
   'simulation': './simulation-service.js',
+  'simulation-websocket': './simulation-websocket-service.js',
   'runtime-env-creator': './runtime-env-creator.js'
 };
 
@@ -42,6 +43,8 @@ async function runStandaloneService() {
 
     // Import service class
     const { default: ServiceClass } = await import(modulePath);
+    
+    logger.info(`🔧 REBUILD VERIFIED: Imported service class for ${serviceName} from ${modulePath} [BUILD: 2025-08-11T14:32:00Z]`);
 
     // Parse options from environment and command line arguments
     const options = {};
