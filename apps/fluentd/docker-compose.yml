@@ -1,0 +1,35 @@
+# Docker Compose - Orchestrates the Calyptia Fluentd container
+# This file defines how to build and run our Fluentd service
+
+services:
+  fluentd:
+    # Build from our local Dockerfile
+    build:
+      context: .
+      dockerfile: Dockerfile
+    
+    # Container name for easy reference
+    container_name: calyptia-fluentd
+    
+    # Port mapping: host:container
+    ports:
+      - "8888:8888"   # HTTP input endpoint
+      - "24220:24220" # Monitoring endpoint
+    
+    # Environment variables from .env file
+    environment:
+      - DASH0_API_KEY=${DASH0_API_KEY}
+      - DASH0_DATASET=${DASH0_DATASET}
+      - DASH0_LOGS_ENDPOINT=${DASH0_LOGS_ENDPOINT}
+      - CURRENT_ENV=${CURRENT_ENV}
+    
+    # Restart policy for reliability
+    restart: unless-stopped
+    
+    # Network configuration
+    networks:
+      - fluentd-network
+
+networks:
+  fluentd-network:
+    driver: bridge

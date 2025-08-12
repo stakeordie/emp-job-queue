@@ -28,11 +28,19 @@ bundled/
 # Environment secrets (never commit real secrets)
 config/environments/secrets/.env.secrets.local
 
-# Docker Compose files - ALL are generated and should not be committed
+# Docker Compose files - Only exclude generated/dynamic ones
 docker-compose.yml
 docker-compose.yaml
-**/docker-compose.yml
-**/docker-compose.yaml
+apps/machine/docker-compose.yml
+
+# Keep service-specific compose files that are part of the service definition
+!apps/fluentd/docker-compose.yml
+!apps/fluent-bit-sidecar/docker-compose.yml
+!packages/core/src/utils/docker-compose.yml
+
+# Deployment files with secrets - generated locally, never commit
+apps/machine/deployment-files/
+**/deployment-files/
 
 # Runtime data
 pids/
