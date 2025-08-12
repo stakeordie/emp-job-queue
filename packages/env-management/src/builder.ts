@@ -39,9 +39,8 @@ export class EnvironmentBuilder {
     currentEnv?: string
   ): Promise<void> {
     const serviceVars = this.serviceInterfaces.mapServiceVariables(serviceName, systemVars);
-    // If envName is provided, append it to the filename
-    const basePath = outputPath || `.env.${serviceName}`;
-    const serviceEnvPath = this.envName ? basePath.replace('.env', `.env.${this.envName}`) : basePath;
+    // outputPath should already include the correct path and envName
+    const serviceEnvPath = outputPath || `.env.${serviceName}`;
 
     // Split variables into public and secret based on service interface
     const { publicVars, secretVars } = this.splitVariablesByInterface(serviceName, serviceVars);
@@ -60,10 +59,8 @@ export class EnvironmentBuilder {
     // Write secret variables to .env.secret (runtime injection via compose)
     // Only create .env.secret if there are actually secret variables
     if (Object.keys(secretVars).length > 0) {
-      // Ensure proper naming for secret file with env name
-      const secretPath = this.envName 
-        ? serviceEnvPath.replace(`.env.${this.envName}`, `.env.secret.${this.envName}`)
-        : serviceEnvPath.replace('.env', '.env.secret');
+      // Create secret file path by replacing .env with .env.secret
+      const secretPath = serviceEnvPath.replace('.env', '.env.secret');
       const secretContent = Object.entries(secretVars)
         .map(([key, value]) => `${key}=${value}`)
         .join('\n');
@@ -138,14 +135,15 @@ export class EnvironmentBuilder {
       // All services validated successfully - now generate all .env files
       for (const [serviceName, serviceInterface] of availableInterfaces) {
         // Generate the service's env file
-        // Get location from interface, then default
-        const baseLocation = serviceInterface?.location
-          ? `${serviceInterface.location}/.env`
-          : `apps/${serviceName}/.env`;
-        // Append environment name if provided
+        // Service interface location is required - no fallback
+        if (!serviceInterface?.location) {
+          throw new Error(`Service interface '${serviceName}' is missing required 'location' field`);
+        }
+        
+        const baseLocation = serviceInterface.location;
         const outputPath = this.envName 
-          ? baseLocation.replace('.env', `.env.${this.envName}`)
-          : baseLocation;
+          ? `${baseLocation}/.env.${this.envName}`
+          : `${baseLocation}/.env`;
 
         // Ensure directory exists
         const outputDir = path.dirname(outputPath);
