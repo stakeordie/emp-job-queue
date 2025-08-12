@@ -8,6 +8,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Switch } from "@/components/ui/switch";
 import { Label } from "@/components/ui/label";
 import { Download, ExternalLink, Copy, Check, TestTube, AlertTriangle } from "lucide-react";
+import Image from "next/image";
 import type { Job } from "@/types/job";
 import { useState } from "react";
 
@@ -191,9 +192,11 @@ export function JobResultModal({ job, isOpen, onClose }: JobResultModalProps) {
                       </div>
                     </div>
                     <div className="bg-white border rounded p-2">
-                      <img 
+                      <Image 
                         src={url} 
                         alt={`EmProps prediction ${index + 1}`}
+                        width={300}
+                        height={128}
                         className="w-full h-32 object-contain bg-gray-100 rounded"
                         onError={(e) => {
                           const target = e.target as HTMLImageElement;
@@ -252,9 +255,11 @@ export function JobResultModal({ job, isOpen, onClose }: JobResultModalProps) {
             <div className="space-y-2">
               {predictedUrls.slice(0, 1).map((url, index) => (
                 <div key={index} className="border rounded p-2">
-                  <img 
+                  <Image 
                     src={url} 
                     alt="EmProps prediction"
+                    width={400}
+                    height={192}
                     className="w-full h-48 object-contain bg-gray-100 rounded"
                     onError={(e) => {
                       const target = e.target as HTMLImageElement;
@@ -313,9 +318,11 @@ export function JobResultModal({ job, isOpen, onClose }: JobResultModalProps) {
                     </div>
                   </div>
                   <div className="border rounded-lg overflow-hidden">
-                    <img 
+                    <Image 
                       src={url} 
                       alt={`Result ${index + 1}`}
+                      width={500}
+                      height={384}
                       className="w-full h-auto max-h-96 object-contain"
                       onError={(e) => {
                         const target = e.target as HTMLImageElement;
