@@ -71,6 +71,28 @@ end
 - Redis Functions → Will handle sophisticated pool routing
 - Container strategy → Will bake models for different pool types
 
+## CORE ENGINEERING PRINCIPLES
+
+### Error Handling Philosophy
+**ALWAYS favor descriptive errors over fallbacks... ALWAYS**
+
+- **NO SILENT FAILURES**: Never hide errors with fallbacks that mask the real problem
+- **EXPLICIT FAILURES**: Fail fast with clear, actionable error messages
+- **ROOT CAUSE VISIBILITY**: Surface the actual issue, not a workaround
+- **DEBUGGING EFFICIENCY**: Descriptive errors save hours of debugging time
+
+Examples:
+- ❌ **BAD**: Fallback to default config when service mapping missing → hides misconfiguration
+- ✅ **GOOD**: `throw new Error('Service mapping not found at expected paths. Check deployment configuration.')`
+- ❌ **BAD**: Return empty array when connector loading fails → job processing mysteriously fails later
+- ✅ **GOOD**: `throw new Error('ComfyUIRemoteConnector requires WORKER_COMFYUI_REMOTE_HOST environment variable')`
+
+**Why This Matters**:
+- Fallbacks create "works on my machine" scenarios
+- Silent failures waste engineering time on wild goose chases  
+- Clear errors guide users to the solution immediately
+- Production issues get fixed faster with explicit failure points
+
 ## DEVELOPMENT WORKFLOW
 
 ### 1. Task Analysis

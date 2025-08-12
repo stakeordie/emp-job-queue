@@ -250,12 +250,11 @@ export class ConnectorManager implements ConnectorRegistry, ConnectorFactory {
       }
 
       if (!serviceMappingPath) {
-        // Fallback to hardcoded mapping for basic connectors
-        logger.warn(
-          `service-mapping.json not found, using fallback for connector ${connectorName}`
+        throw new Error(
+          `CRITICAL: service-mapping.json not found in any of these paths: ${possiblePaths.join(', ')}. ` +
+          `Cannot load connector ${connectorName}. Check deployment configuration.`
         );
-        ConnectorClass = await this.loadConnectorFallback(connectorName);
-      } else {
+      }
         const serviceMappingContent = fs.readFileSync(serviceMappingPath, 'utf8');
         const serviceMapping = JSON.parse(serviceMappingContent);
 
@@ -264,10 +263,18 @@ export class ConnectorManager implements ConnectorRegistry, ConnectorFactory {
           const connectorConfig = serviceMapping.connectors[connectorName];
           const { path: modulePath } = connectorConfig;
           
-          // If path points to bundled worker file, use barrel import instead
+          // All bundled connectors use barrel import
           if (modulePath === './redis-direct-worker.js' || modulePath.includes('redis-direct-worker')) {
-            logger.debug(`Using barrel import for bundled connector ${connectorName}`);
-            ConnectorClass = await this.loadConnectorFallback(connectorName);
+            logger.debug(`Loading bundled connector ${connectorName} from barrel import`);
+            const connectorModule = await import('./connectors/index.js');
+            ConnectorClass = connectorModule[connectorName];
+            
+            if (!ConnectorClass) {
+              throw new Error(
+                `Connector class ${connectorName} not found in barrel exports. ` +
+                `Verify it's exported from ./connectors/index.ts`
+              );
+            }
           } else {
             ConnectorClass = await this.loadConnectorFromPath(modulePath, connectorName);
           }
@@ -366,85 +373,8 @@ export class ConnectorManager implements ConnectorRegistry, ConnectorFactory {
     }
   }
 
-  private async loadConnectorByNamingConvention(connectorId: string): Promise<any> {
-    // Convert connector ID to class name and file name using naming convention
-    // Examples:
-    // - "comfyui-remote" -> "ComfyUIRemoteConnector" in "./connectors/comfyui-remote-connector.js"
-    // - "simulation" -> "SimulationConnector" in "./connectors/simulation-connector.js"
-
-    const fileName = `${connectorId}-connector.js`;
-    const className = this.connectorIdToClassName(connectorId);
-
-    try {
-      const module = await import(`./connectors/${fileName}`);
-      const ConnectorClass = module[className];
-
-      if (!ConnectorClass) {
-        throw new Error(`Class ${className} not found in ./connectors/${fileName}`);
-      }
-
-      logger.info(`Dynamically loaded connector ${className} from ${fileName}`);
-      return ConnectorClass;
-    } catch (error) {
-      logger.error(`Failed to dynamically load connector ${connectorId}:`, error);
-      throw new Error(`Could not load connector ${connectorId}: ${error.message}`);
-    }
-  }
-
-  private connectorIdToClassName(connectorId: string): string {
-    // Convert kebab-case connector ID to PascalCase class name
-    // Examples:
-    // - "comfyui-remote" -> "ComfyUIRemoteConnector"
-    // - "simulation" -> "SimulationConnector"
-    // - "a1111" -> "A1111Connector"
-
-    const parts = connectorId.split('-');
-    const pascalCased = parts
-      .map(part => {
-        // Handle special cases
-        if (part.toLowerCase() === 'comfyui') return 'ComfyUI';
-        if (part.toLowerCase() === 'a1111') return 'A1111';
-        if (part.toLowerCase() === 'websocket') return 'WebSocket';
-
-        // Standard PascalCase conversion
-        return part.charAt(0).toUpperCase() + part.slice(1).toLowerCase();
-      })
-      .join('');
-
-    return `${pascalCased}Connector`;
-  }
-
-  private async loadConnectorFallback(connectorId: string): Promise<any> {
-    // Use barrel file for all connector imports - no more manual imports!
-    // Handle both full class names (ComfyUIWebSocketConnector) and IDs (comfyui-remote)
-    let connectorClassName;
-    
-    if (connectorId.endsWith('Connector')) {
-      // Already a full class name
-      connectorClassName = connectorId;
-    } else {
-      // Convert ID to class name
-      connectorClassName = this.connectorIdToClassName(connectorId);
-    }
-
-    try {
-      const connectorModule = await import('./connectors/index.js');
-      const ConnectorClass = connectorModule[connectorClassName];
-
-      if (!ConnectorClass) {
-        throw new Error(
-          `Connector class ${connectorClassName} not found in connectors barrel file`
-        );
-      }
-
-      return ConnectorClass;
-    } catch (error) {
-      throw new Error(
-        `Failed to load connector ${connectorId}: ${error.message}. ` +
-          `Make sure ${connectorClassName} is exported from ./connectors/index.ts`
-      );
-    }
-  }
+  // Removed unnecessary conversion functions and fallbacks
+  // Service mapping provides everything needed - fail explicitly if it's missing
 
   // ConnectorRegistry implementation
   registerConnector(connector: ConnectorInterface): void {
