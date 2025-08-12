@@ -300,7 +300,38 @@ export class EnhancedPM2EcosystemGenerator {
       NODE_ENV: 'production',
       LOG_LEVEL: 'info',
       WORKER_ID: generatedWorkerId,
-      HUB_REDIS_URL: process.env.HUB_REDIS_URL || 'redis://localhost:6379',
+      HUB_REDIS_URL: (() => {
+        const redisUrl = process.env.HUB_REDIS_URL;
+        if (!redisUrl) {
+          const errorMsg = `
+❌ FATAL ERROR: HUB_REDIS_URL environment variable is not set during PM2 ecosystem generation!
+
+The PM2 ecosystem generator requires HUB_REDIS_URL to be set BEFORE the container starts.
+
+This is a CRITICAL deployment configuration error. The environment variable must be available
+when the container initializes, not just at runtime.
+
+For Railway/Vast.ai/Docker deployments:
+  1. Set HUB_REDIS_URL in your deployment configuration
+  2. Ensure it's injected as an environment variable when starting the container
+  3. For Docker: docker run -e HUB_REDIS_URL=redis://... 
+  4. For Railway: Add to service environment variables (not just build)
+
+Debugging information:
+  - Container start time: ${new Date().toISOString()}
+  - Service: ${workerType}
+  - Worker index: ${index}
+  - Environment check:
+${Object.keys(process.env).filter(k => k.includes('HUB') || k.includes('REDIS')).map(k => `    - ${k}=${process.env[k]}`).join('\n') || '    (no HUB_ or REDIS variables found)'}
+
+This container will now exit. Please fix the deployment configuration and restart.
+`;
+          console.error(errorMsg);
+          require('fs').writeFileSync('/tmp/redis-url-error.log', errorMsg);
+          process.exit(1);
+        }
+        return redisUrl;
+      })(),
       MACHINE_ID: process.env.MACHINE_ID || 'unknown',
       
       // Worker type specification

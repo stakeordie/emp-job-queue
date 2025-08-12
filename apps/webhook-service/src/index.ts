@@ -11,7 +11,33 @@ import { logger } from '@emp/core';
 // Configuration from environment variables
 const config = {
   port: parseInt(process.env.WEBHOOK_SERVICE_PORT || '3332'),
-  redisUrl: process.env.REDIS_URL || 'redis://localhost:6379',
+  redisUrl: (() => {
+    const redisUrl = process.env.REDIS_URL;
+    if (!redisUrl) {
+      const errorMsg = `
+❌ FATAL ERROR: REDIS_URL environment variable is not set!
+
+The webhook service requires a Redis connection to function. Please set the REDIS_URL environment variable.
+
+Examples:
+  - Local development: REDIS_URL=redis://localhost:6379
+  - Docker container:  REDIS_URL=redis://host.docker.internal:6379
+  - Production:        REDIS_URL=redis://user:pass@your-redis-host:6379
+
+If deploying to Railway, Vast.ai, or other platforms:
+  1. Add REDIS_URL to your environment variables
+  2. Ensure it's available BEFORE the container starts
+  3. Restart the container after setting the variable
+
+Current environment variables containing REDIS:
+${Object.keys(process.env).filter(k => k.includes('REDIS')).map(k => `  - ${k}=${process.env[k]}`).join('\n') || '  (none found)'}
+`;
+      console.error(errorMsg);
+      logger.error(errorMsg);
+      process.exit(1);
+    }
+    return redisUrl;
+  })(),
   corsOrigins: (() => {
     const corsEnv = process.env.CORS_ORIGINS;
 

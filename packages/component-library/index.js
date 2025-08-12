@@ -1835,23 +1835,68 @@ async function addCustomNode(name) {
     }
 
     console.log(chalk.blue(`Adding new custom node: ${name}`));
+    console.log(chalk.gray("This will configure how the custom node gets installed on machines."));
 
     const repositoryUrl = await input({ message: "Enter the repository URL:", required: true });
-    const description = await input({ message: "Enter description:", required: true });
-    const installCommand = await input({ 
-      message: "Enter install command (optional, default: git clone):",
-      default: `git clone ${repositoryUrl}`
+    
+    // Installation options matching our actual installer
+    const branch = await input({ message: "Enter specific branch (optional, default: none):" });
+    const commit = await input({ message: "Enter specific commit hash (optional, default: none):" });
+    
+    const recursive = await expand({
+      message: "Use recursive clone (for repos with submodules)?",
+      default: "n",
+      choices: [
+        { key: "y", name: "Yes - git clone --recursive", value: true },
+        { key: "n", name: "No - standard git clone", value: false }
+      ]
     });
-    const dependencies = await input({ message: "Enter dependencies (comma-separated, optional):" });
+
+    const requirements = await expand({
+      message: "Install Python requirements.txt?",
+      default: "y",
+      choices: [
+        { key: "y", name: "Yes - run pip install -r requirements.txt", value: true },
+        { key: "n", name: "No - skip requirements installation", value: false }
+      ]
+    });
+
+    let env = null;
+    const hasEnv = await expand({
+      message: "Does this custom node need environment variables?",
+      default: "n",
+      choices: [
+        { key: "y", name: "Yes - create .env file", value: true },
+        { key: "n", name: "No - no .env file needed", value: false }
+      ]
+    });
+
+    if (hasEnv) {
+      console.log(chalk.gray("Enter environment variables as JSON (e.g., {\"API_KEY\": \"${SOME_TOKEN}\", \"BASE_URL\": \"https://api.example.com\"})"));
+      const envInput = await input({ message: "Environment variables (JSON):" });
+      if (envInput.trim()) {
+        try {
+          env = JSON.parse(envInput);
+        } catch (error) {
+          console.error(chalk.red("Invalid JSON format, skipping environment variables"));
+          env = null;
+        }
+      }
+    }
+
+    // Optional version tracking
     const version = await input({ message: "Enter version (optional):" });
 
     const customNodeData = {
       name,
       repositoryUrl,
-      description,
-      installCommand,
-      dependencies: dependencies ? dependencies.split(',').map(d => d.trim()) : [],
-      version: version || undefined
+      // Installation configuration that matches our installer
+      branch: branch || null,
+      commit: commit || null,
+      recursive: recursive || false,
+      requirements: requirements !== false, // Default to true
+      env: env || null,
+      version: version || null
     };
 
     const { data: newCustomNode, error } = await fetchCreateCustomNode(config, customNodeData);

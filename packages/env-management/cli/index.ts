@@ -80,7 +80,7 @@ program
   .description('List available profiles')
   .action(async () => {
     const configDir = process.cwd();
-    const builder = new EnvironmentBuilder(configDir);
+    const builder = new EnvironmentBuilder(configDir, 'unused');
 
     try {
       const profiles = builder.listProfiles();
@@ -107,7 +107,7 @@ program
   .argument('<profile>', 'Profile name to switch to')
   .action(async (profileName) => {
     const configDir = process.cwd();
-    const builder = new EnvironmentBuilder(configDir);
+    const builder = new EnvironmentBuilder(configDir, 'unused');
 
     try {
       console.log(chalk.blue(`Switching to profile: ${profileName}`));

@@ -3,9 +3,9 @@ import { config } from 'dotenv';
 import { LightweightAPIServer } from './lightweight-api-server.js';
 import { logger } from '@emp/core';
 
-// Load environment variables - prefer local dev config if it exists
+// Load environment variables from profile-specific env file
 import { existsSync } from 'fs';
-const envFile = existsSync('.env.local.dev') ? '.env.local.dev' : '.env.local';
+const envFile = existsSync('.env.local-dev') ? '.env.local-dev' : '.env.local';
 config({ path: envFile });
 
 // Also export components for library use
@@ -16,7 +16,33 @@ export * from './hybrid-client.js';
 async function main() {
   const config = {
     port: parseInt(process.env.API_PORT || '3331'),
-    redisUrl: process.env.REDIS_URL || 'redis://localhost:6379',
+    redisUrl: (() => {
+      const redisUrl = process.env.REDIS_URL;
+      if (!redisUrl) {
+        const errorMsg = `
+❌ FATAL ERROR: REDIS_URL environment variable is not set!
+
+The API server requires a Redis connection to function. Please set the REDIS_URL environment variable.
+
+Examples:
+  - Local development: REDIS_URL=redis://localhost:6379
+  - Docker container:  REDIS_URL=redis://host.docker.internal:6379
+  - Production:        REDIS_URL=redis://user:pass@your-redis-host:6379
+
+If deploying to Railway, Vast.ai, or other platforms:
+  1. Add REDIS_URL to your environment variables
+  2. Ensure it's available BEFORE the container starts
+  3. Restart the container after setting the variable
+
+Current environment variables containing REDIS:
+${Object.keys(process.env).filter(k => k.includes('REDIS')).map(k => `  - ${k}=${process.env[k]}`).join('\n') || '  (none found)'}
+`;
+        console.error(errorMsg);
+        logger.error(errorMsg);
+        process.exit(1);
+      }
+      return redisUrl;
+    })(),
     corsOrigins: (() => {
       const corsEnv = process.env.CORS_ORIGINS;
       if (corsEnv) {

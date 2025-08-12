@@ -1,0 +1,50 @@
+layout {
+    default_tab_template {
+        pane size=1 borderless=true {
+            plugin location="zellij:tab-bar"
+        }
+        children
+        pane size=2 borderless=true {
+            plugin location="zellij:status-bar"
+        }
+    }
+    
+    tab name="Development" {
+        pane split_direction="horizontal" {
+            pane split_direction="vertical" {
+                pane name="JOB QUEUE API" {
+                    command "bash"
+                    args "-c" "cd ~/code/emprops/ai_infra/emp-job-queue && LOG_LEVEL=info pnpm dev:local-redis"
+                    start_suspended false
+                }
+                pane name="WEBHOOK SERVICE" {
+                    command "bash" 
+                    args "-c" "sleep 5 && cd ~/code/emprops/ai_infra/emp-job-queue && pnpm dev:webhook --env local-prod"
+                    start_suspended false
+                }
+                pane name="JOB NETWORK MONITOR" {
+                    command "bash"
+                    args "-c" "sleep 5 && cd ~/code/emprops/ai_infra/emp-job-queue && pnpm dev:monitor --env local-prod"
+                    start_suspended false
+                }
+            }
+            pane split_direction="vertical" {
+                pane name="Redis Queue" {
+                    command "bash"
+                    args "-c" "cd ~/code/emprops/ai_infra/emp-job-queue && sleep 5 && pnpm logs:redis"
+                    start_suspended false
+                }
+                pane name="API Server" {
+                    command "bash" 
+                    args "-c" "sleep 5 && cd ~/code/emprops/emprops-open-api && yarn dev:local:prod"
+                    start_suspended false
+                }
+                pane name="Frontend Dev" {
+                    command "bash"
+                    args "-c" "sleep 7 && cd ~/code/emprops/core-services/emprops-open-interface && yarn dev:local:prod"
+                    start_suspended false
+                }
+            }
+        }
+    }
+}

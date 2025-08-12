@@ -53,7 +53,7 @@ export abstract class BaseConnector implements ConnectorInterface {
     return {
       // Common environment variables needed by all workers
       UNIFIED_MACHINE_STATUS: '${UNIFIED_MACHINE_STATUS:-false}',
-      HUB_REDIS_URL: '${HUB_REDIS_URL:-redis://localhost:6379}',
+      HUB_REDIS_URL: '${HUB_REDIS_URL}',
       MACHINE_ID: '${MACHINE_ID:-unknown}',
       WORKER_ID: '${WORKER_ID}',
     };
@@ -126,7 +126,25 @@ export abstract class BaseConnector implements ConnectorInterface {
 
 
   protected async initializeRedisConnection(): Promise<void> {
-    this.hubRedisUrl = process.env.HUB_REDIS_URL || 'redis://localhost:6379';
+    this.hubRedisUrl = process.env.HUB_REDIS_URL;
+    if (!this.hubRedisUrl) {
+      const errorMsg = `
+❌ FATAL ERROR: HUB_REDIS_URL environment variable is not set!
+
+The connector requires a Redis connection to function. Please set the HUB_REDIS_URL environment variable.
+
+Examples:
+  - Local development: HUB_REDIS_URL=redis://localhost:6379
+  - Docker container:  HUB_REDIS_URL=redis://host.docker.internal:6379
+  - Production:        HUB_REDIS_URL=redis://user:pass@your-redis-host:6379
+
+Current environment variables containing HUB or REDIS:
+${Object.keys(process.env).filter(k => k.includes('HUB') || k.includes('REDIS')).map(k => `  - ${k}=${process.env[k]}`).join('\n') || '  (none found)'}
+`;
+      console.error(errorMsg);
+      logger.error(errorMsg);
+      throw new Error('HUB_REDIS_URL environment variable is required');
+    }
     
     console.log(`🔴 [BASE-CONNECTOR-DEBUG] initializeRedisConnection() - this.workerId BEFORE: "${this.workerId}"`);
     console.log(`🔴 [BASE-CONNECTOR-DEBUG] process.env.WORKER_ID: "${process.env.WORKER_ID}"`);

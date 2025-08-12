@@ -31,7 +31,35 @@ if (!WORKER_ID) {
   logger.error('WORKER_ID environment variable is required');
   process.exit(1);
 }
-const HUB_REDIS_URL = process.env.HUB_REDIS_URL || 'redis://localhost:6379';
+
+const HUB_REDIS_URL = (() => {
+  const redisUrl = process.env.HUB_REDIS_URL;
+  if (!redisUrl) {
+    const errorMsg = `
+❌ FATAL ERROR: HUB_REDIS_URL environment variable is not set!
+
+The worker requires a Redis connection to function. Please set the HUB_REDIS_URL environment variable.
+
+Examples:
+  - Local development: HUB_REDIS_URL=redis://localhost:6379
+  - Docker container:  HUB_REDIS_URL=redis://host.docker.internal:6379
+  - Production:        HUB_REDIS_URL=redis://user:pass@your-redis-host:6379
+
+If deploying to Railway, Vast.ai, or other platforms:
+  1. Add HUB_REDIS_URL to your environment variables
+  2. Ensure it's available BEFORE the container starts
+  3. Restart the container after setting the variable
+
+Current environment variables containing HUB or REDIS:
+${Object.keys(process.env).filter(k => k.includes('HUB') || k.includes('REDIS')).map(k => `  - ${k}=${process.env[k]}`).join('\n') || '  (none found)'}
+`;
+    console.error(errorMsg);
+    logger.error(errorMsg);
+    process.exit(1);
+  }
+  return redisUrl;
+})();
+
 const MACHINE_ID = process.env.MACHINE_ID || os.hostname();
 
 /**
@@ -51,17 +79,15 @@ function logEnvironmentVariables() {
     CURRENT_ENV: process.env.CURRENT_ENV,
   };
 
-  const coreDisplay = Object.fromEntries(
-    Object.entries(coreVars).map(([key, value]) => [
-      key,
-      value !== undefined
-        ? key.includes('URL') && value
-          ? value.replace(/\/\/[^:]*:[^@]*@/, '//***:***@')
-          : value
-        : '<NOT SET>',
-    ])
-  );
-  logger.info(`📋 Core Variables: ${JSON.stringify(coreDisplay)}`);
+  logger.info('📋 Core Variables:');
+  Object.entries(coreVars).forEach(([key, value]) => {
+    const displayValue = value !== undefined
+      ? key.includes('URL') && value
+        ? value.replace(/\/\/[^:]*:[^@]*@/, '//***:***@')
+        : value
+      : '<NOT SET>';
+    logger.info(`  - ${key}: ${displayValue}`);
+  });
 
   // Machine Interface Variables - from machine.interface.ts
   const machineInterfaceVars = {
@@ -91,17 +117,15 @@ function logEnvironmentVariables() {
     WORKER_HEALTH_CHECK_INTERVAL: process.env.WORKER_HEALTH_CHECK_INTERVAL,
   };
 
-  const machineDisplay = Object.fromEntries(
-    Object.entries(machineInterfaceVars).map(([key, value]) => [
-      key, 
-      value !== undefined 
-        ? (key.includes('URL') || key.includes('TOKEN') 
-           ? value.replace(/\/\/[^:]*:[^@]*@/, '//***:***@') 
-           : value)
-        : '<NOT SET>'
-    ])
-  );
-  logger.info(`📋 Machine Interface Variables: ${JSON.stringify(machineDisplay)}`);
+  logger.info('📋 Machine Interface Variables:');
+  Object.entries(machineInterfaceVars).forEach(([key, value]) => {
+    const displayValue = value !== undefined 
+      ? (key.includes('URL') || key.includes('TOKEN') 
+         ? value.replace(/\/\/[^:]*:[^@]*@/, '//***:***@') 
+         : value)
+      : '<NOT SET>';
+    logger.info(`  - ${key}: ${displayValue}`);
+  });
 
   // Secret Variables (masked values)
   const secretVars = {
@@ -128,15 +152,13 @@ function logEnvironmentVariables() {
     AUTH_TOKEN: process.env.AUTH_TOKEN,
   };
 
-  const secretDisplay = Object.fromEntries(
-    Object.entries(secretVars).map(([key, value]) => [
-      key, 
-      value !== undefined 
-        ? (value.length > 8 ? `${value.slice(0, 4)}***${value.slice(-4)}` : '***MASKED***')
-        : '<NOT SET>'
-    ])
-  );
-  logger.info(`🔐 Secret Variables (masked): ${JSON.stringify(secretDisplay)}`);
+  logger.info('🔐 Secret Variables (masked):');
+  Object.entries(secretVars).forEach(([key, value]) => {
+    const displayValue = value !== undefined 
+      ? (value.length > 8 ? `${value.slice(0, 4)}***${value.slice(-4)}` : '***MASKED***')
+      : '<NOT SET>';
+    logger.info(`  - ${key}: ${displayValue}`);
+  });
 
   // Service-specific variables (OpenAI, ComfyUI, etc.)
   const serviceVars = Object.keys(process.env)
@@ -153,19 +175,17 @@ function logEnvironmentVariables() {
     .filter(key => !machineInterfaceVars.hasOwnProperty(key) && !secretVars.hasOwnProperty(key));
 
   if (serviceVars.length > 0) {
-    const serviceDisplay = Object.fromEntries(
-      serviceVars.map(key => {
-        const value = process.env[key];
-        const displayValue =
-          (key.includes('TOKEN') || key.includes('KEY') || key.includes('SECRET')) && value
-            ? value.length > 8
-              ? `${value.slice(0, 4)}***${value.slice(-4)}`
-              : '***MASKED***'
-            : value;
-        return [key, displayValue];
-      })
-    );
-    logger.info(`🔧 Additional Service Variables: ${JSON.stringify(serviceDisplay)}`);
+    logger.info('🔧 Additional Service Variables:');
+    serviceVars.forEach(key => {
+      const value = process.env[key];
+      const displayValue =
+        (key.includes('TOKEN') || key.includes('KEY') || key.includes('SECRET')) && value
+          ? value.length > 8
+            ? `${value.slice(0, 4)}***${value.slice(-4)}`
+            : '***MASKED***'
+          : value;
+      logger.info(`  - ${key}: ${displayValue}`);
+    });
   }
 
   // Summary
@@ -192,12 +212,26 @@ function logEnvironmentVariables() {
 async function main() {
   logger.info(`Starting Redis-direct worker ${WORKER_ID} on machine ${MACHINE_ID}`);
 
-  if (process.env.NODE_ENV !== 'production' && process.env.LOG_LEVEL === 'debug') {
-    logger.debug(`Worker rebuilt successfully - timestamp: ${new Date().toISOString()}`);
-    logger.debug(`WORKER_ID from env: ${WORKER_ID}`);
-    // Log comprehensive environment variable resolution
-    logEnvironmentVariables();
-  }
+  // ALWAYS log environment variables at startup for debugging production issues
+  // This is critical for diagnosing deployment problems
+  logger.info(`🚀 Worker starting - timestamp: ${new Date().toISOString()}`);
+  logger.info(`📋 Worker ID: ${WORKER_ID}`);
+  
+  // Always log environment for production debugging
+  logEnvironmentVariables();
+
+  // CRITICAL: Log worker bundle source for CI/CD verification
+  const workerBundleMode = process.env.WORKER_BUNDLE_MODE || 'unknown';
+  const bundleSource = workerBundleMode === 'local' 
+    ? '🎯 WORKER BUNDLE: LOCAL (bundled in container)' 
+    : workerBundleMode === 'remote'
+    ? '📥 WORKER BUNDLE: REMOTE (downloaded from GitHub releases)'
+    : `⚠️  WORKER BUNDLE: UNKNOWN MODE (${workerBundleMode})`;
+  
+  logger.info('='.repeat(80));
+  logger.info(bundleSource);
+  logger.info(`🔍 Bundle Mode Environment: WORKER_BUNDLE_MODE=${workerBundleMode}`);
+  logger.info('='.repeat(80));
 
   if (process.env.LOG_LEVEL === 'debug') {
     logger.debug(`Connecting to Redis at: ${HUB_REDIS_URL}`);

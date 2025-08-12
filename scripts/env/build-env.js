@@ -10,8 +10,15 @@ const configDir = process.cwd();
 const firstArg = args[0];
 const envName = firstArg && !firstArg.startsWith('--') ? firstArg : null;
 
-// Create builder with environment name
-const builder = new EnvironmentBuilder(configDir, '.env.local', envName);
+if (!envName) {
+  console.error(chalk.red('❌ Error: Environment name is required'));
+  console.error(chalk.gray('   Usage: pnpm env:build <profile-name>'));
+  console.error(chalk.gray('   Example: pnpm env:build production'));
+  process.exit(1);
+}
+
+// Create builder with environment name - outputPath is not used for profile builds
+const builder = new EnvironmentBuilder(configDir, 'unused', envName);
 
 // Parse arguments
 const getArgValue = (flag) => {
@@ -64,22 +71,36 @@ async function buildEnvironment() {
       result = await builder.buildFromProfile('full-local');
     }
 
+    // Always show errors first
+    if (result.errors && result.errors.length > 0) {
+      console.error(chalk.red('❌ Errors occurred during build:'));
+      result.errors.forEach(error => {
+        console.error(chalk.red(`  ${error}`));
+      });
+    }
+
+    // Always show warnings
+    if (result.warnings && result.warnings.length > 0) {
+      console.log(chalk.yellow('⚠️  Warnings:'));
+      result.warnings.forEach(warning => {
+        console.log(chalk.yellow(`  ${warning}`));
+      });
+    }
+
     if (result.success) {
       const envFileSuffix = envName ? `.${envName}` : '';
       console.log(chalk.green(`✅ Environment built successfully:`));
       console.log(chalk.green(`   Main: .env${envFileSuffix}`));
       console.log(chalk.green(`   Secrets: .env.secret${envFileSuffix}`));
       
-      if (result.warnings) {
-        result.warnings.forEach(warning => {
-          console.log(chalk.yellow(`⚠️  ${warning}`));
+      if (result.generatedFiles && result.generatedFiles.length > 0) {
+        console.log(chalk.blue(`📁 Generated files:`));
+        result.generatedFiles.forEach(file => {
+          console.log(chalk.blue(`   - ${file}`));
         });
       }
     } else {
-      console.error(chalk.red('❌ Failed to build environment:'));
-      result.errors?.forEach(error => {
-        console.error(chalk.red(`  ${error}`));
-      });
+      console.error(chalk.red('❌ Build failed - see errors above'));
       process.exit(1);
     }
   } catch (error) {

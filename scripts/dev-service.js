@@ -68,39 +68,7 @@ async function checkEnvironmentFiles(serviceName, envName) {
   return { envFile, secretFile };
 }
 
-async function symlinkEnvironmentFiles(serviceName, envName) {
-  const serviceDir = path.join(process.cwd(), 'apps', serviceName);
-  const sourceEnv = `.env.${envName}`;
-  const sourceSecret = `.env.secret.${envName}`;
-  const targetEnv = '.env';
-  const targetSecret = '.env.secret';
-
-  // Remove existing symlinks/files
-  try {
-    await fs.unlink(path.join(serviceDir, targetEnv));
-  } catch {}
-  try {
-    await fs.unlink(path.join(serviceDir, targetSecret));
-  } catch {}
-
-  // Create symlinks to environment-specific files
-  try {
-    await fs.symlink(sourceEnv, path.join(serviceDir, targetEnv));
-    console.log(chalk.blue(`🔗 Linked apps/${serviceName}/.env → .env.${envName}`));
-  } catch (error) {
-    console.error(chalk.red(`❌ Failed to link env file: ${error.message}`));
-    process.exit(1);
-  }
-
-  // Create secret symlink if secret file exists
-  try {
-    await fs.access(path.join(serviceDir, sourceSecret));
-    await fs.symlink(sourceSecret, path.join(serviceDir, targetSecret));
-    console.log(chalk.blue(`🔗 Linked apps/${serviceName}/.env.secret → .env.secret.${envName}`));
-  } catch {
-    // Secret file doesn't exist, that's okay
-  }
-}
+// Removed symlink creation - services should load profile-specific env files directly
 
 async function runService(serviceName) {
   console.log(chalk.cyan(`🚀 Starting ${serviceName} development server...\n`));
@@ -145,7 +113,7 @@ async function main() {
     await checkEnvironmentFiles(serviceName, envName);
 
     // Create symlinks to the correct environment files
-    await symlinkEnvironmentFiles(serviceName, envName);
+    // Services load profile-specific env files directly - no symlinks needed
 
     // Run the service
     await runService(serviceName);

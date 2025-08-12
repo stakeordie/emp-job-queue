@@ -16,7 +16,7 @@ export class EnvironmentBuilder {
   private outputPath: string;
   private serviceInterfaces: ServiceInterfaceManager;
 
-  constructor(configDir: string, outputPath: string = '.env.local', private envName?: string) {
+  constructor(configDir: string, outputPath: string, private envName?: string) {
     this.configDir = configDir;
     this.outputPath = outputPath;
     this.serviceInterfaces = new ServiceInterfaceManager(configDir);
@@ -141,9 +141,11 @@ export class EnvironmentBuilder {
         }
         
         const baseLocation = serviceInterface.location;
-        const outputPath = this.envName 
-          ? `${baseLocation}/.env.${this.envName}`
-          : `${baseLocation}/.env`;
+        if (!this.envName) {
+          throw new Error(`Environment name is required. Cannot create generic .env files - use profile-specific files like .env.production`);
+        }
+        
+        const outputPath = `${baseLocation}/.env.${this.envName}`;
 
         // Ensure directory exists
         const outputDir = path.dirname(outputPath);

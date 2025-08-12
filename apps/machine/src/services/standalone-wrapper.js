@@ -82,7 +82,33 @@ async function runStandaloneService() {
         }
       },
       redis: {
-        url: process.env.HUB_REDIS_URL || 'redis://host.docker.internal:6379',
+        url: (() => {
+          const redisUrl = process.env.HUB_REDIS_URL;
+          if (!redisUrl) {
+            const errorMsg = `
+❌ FATAL ERROR: HUB_REDIS_URL environment variable is not set!
+
+This container requires a Redis connection to function. Please set the HUB_REDIS_URL environment variable.
+
+Examples:
+  - Local development: HUB_REDIS_URL=redis://localhost:6379
+  - Docker container:  HUB_REDIS_URL=redis://host.docker.internal:6379
+  - Production:        HUB_REDIS_URL=redis://user:pass@your-redis-host:6379
+
+If deploying to Railway, Vast.ai, or other platforms:
+  1. Add HUB_REDIS_URL to your environment variables
+  2. Ensure it's available BEFORE the container starts
+  3. Restart the container after setting the variable
+
+Current environment variables starting with HUB_ or REDIS:
+${Object.keys(process.env).filter(k => k.includes('HUB') || k.includes('REDIS')).map(k => `  - ${k}=${process.env[k]}`).join('\n') || '  (none found)'}
+`;
+            logger.error(errorMsg);
+            console.error(errorMsg);
+            process.exit(1);
+          }
+          return redisUrl;
+        })(),
         authToken: process.env.WORKER_WEBSOCKET_AUTH_TOKEN
       },
       machine: {
