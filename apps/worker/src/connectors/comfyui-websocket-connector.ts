@@ -32,12 +32,13 @@ export class ComfyUIWebSocketConnector extends WebSocketConnector {
     }
   ) {
     // Accept configuration directly OR read from LOCAL ComfyUI environment variables
+    // For local ComfyUI, we check both unprefixed (for backwards compat) and COMFYUI_ prefixed vars
     const host = config?.host || process.env.COMFYUI_HOST || 'localhost';
-    const port = config?.port || parseInt(process.env.COMFYUI_PORT || '8188');
+    const port = config?.port || parseInt(process.env.COMFYUI_BASE_PORT || process.env.COMFYUI_PORT || '8188');
     const isSecure = config?.secure || process.env.COMFYUI_SECURE === 'true';
     const wsProtocol = isSecure ? 'wss' : 'ws';
     
-    // Auth configuration (if provided)
+    // Auth configuration (typically not needed for local)
     const username = config?.username || process.env.COMFYUI_USERNAME;
     const password = config?.password || process.env.COMFYUI_PASSWORD;
     const apiKey = config?.apiKey || process.env.COMFYUI_API_KEY;
