@@ -19,12 +19,12 @@ layout {
                 }
                 pane name="WEBHOOK SERVICE" {
                     command "bash" 
-                    args "-c" "sleep 5 && cd ~/code/emprops/ai_infra/emp-job-queue && pnpm dev:webhook"
+                    args "-c" "sleep 5 && cd ~/code/emprops/ai_infra/emp-job-queue && pnpm dev:webhook --env local-dev"
                     start_suspended false
                 }
                 pane name="JOB NETWORK MONITOR" {
                     command "bash"
-                    args "-c" "sleep 5 && cd ~/code/emprops/ai_infra/emp-job-queue && pnpm dev:monitor"
+                    args "-c" "sleep 5 && cd ~/code/emprops/ai_infra/emp-job-queue && pnpm dev:monitor --env local-dev"
                     start_suspended false
                 }
             }

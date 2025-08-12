@@ -40,16 +40,11 @@ node dist/cli/redis-functions.js install
 
 cd ../..
 
-# Create local environment for API
-echo "🌐 Configuring API for local Redis..."
-cat > apps/api/.env.local.dev << EOF
-REDIS_URL=redis://localhost:6379
-API_PORT=3331
-CORS_ORIGINS=http://localhost:3333,http://localhost:3331
-EOF
+# Build environment for local development
+echo "🌐 Building local development environment..."
+pnpm env:build local-dev
 
-# Start API server with local Redis
-echo "🚀 Starting API server with local Redis..."
-mkdir -p ../../logs
-cd apps/api
-REDIS_URL=redis://localhost:6379 pnpm dev 2>&1 | tee ../../logs/api-redis.log
+# Start API server with local-dev environment
+echo "🚀 Starting API server with local-dev environment..."
+mkdir -p logs
+pnpm dev:api --env local-dev

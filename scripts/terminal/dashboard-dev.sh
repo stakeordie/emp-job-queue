@@ -7,7 +7,7 @@ pnpm shutdown
 nohup pnpm dev:docs &
 
 # Dashboard setup
-PROFILE=${1:-dev}
+PROFILE=${1:-local-dev}
 PROJECT_ROOT="$HOME/code/emprops/ai_infra/emp-job-queue"
 ENV_FILE="$PROJECT_ROOT/.env.$PROFILE"
 KDL_FILE="$PROJECT_ROOT/scripts/terminal/dashboard-$PROFILE.kdl"

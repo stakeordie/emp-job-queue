@@ -20,16 +20,6 @@
       ]
     },
     
-    "playwright": {
-      "services": ["playwright"],
-      "job_service_required_map": [
-        {
-          "job_service_required": "playwright",
-          "worker_service": "playwright"
-        }
-      ]
-    },
-    
     "simulation-websocket": {
       "services": ["simulation-websocket"],
       "job_service_required_map": [
@@ -52,6 +42,7 @@
     
     "openai": {
       "services": ["openai-text", "openai-image", "openai-img2img"],
+      "required_env": ["OPENAI_API_KEY", "OPENAI_IMAGE_MODEL", "CLOUD_STORAGE_PROVIDER"],
       "job_service_required_map": [
         {
           "job_service_required": "openai_text",
@@ -159,32 +150,6 @@
       "resource_binding": "shared",
       "build_stage": "base",
       "description": "Remote ComfyUI WebSocket connector - connects to external ComfyUI instance"
-    },
-    
-    "simulation-remote": {
-      "connector": "SimulationConnector",
-      "type": "external",
-      "installer": null,
-      "resource_binding": "shared",
-      "build_stage": "base",
-      "description": "Remote simulation connector - connects to external simulation service"
-    },
-    
-    "playwright": {
-      "connector": "PlaywrightConnector",
-      "type": "internal",
-      "installer": "installPlaywright",
-      "resource_binding": "cpu",
-      "build_stage": "playwright",
-      "service_instances_per_machine": "${PLAYWRIGHT_INSTANCES_PER_MACHINE:-1}",
-      "ports": ["${PLAYWRIGHT_BASE_PORT:-9092}"],
-      "port_increment": "${PLAYWRIGHT_PORT_INCREMENT:-0}",
-      "description": "Playwright browser automation service",
-      "installer_config": {
-        "browsers": "${PLAYWRIGHT_BROWSERS:-chromium,firefox,webkit}",
-        "headless": "${PLAYWRIGHT_HEADLESS:-true}",
-        "install_timeout": "${PLAYWRIGHT_INSTALL_TIMEOUT:-120}"
-      }
     },
     
     "simulation-http": {
