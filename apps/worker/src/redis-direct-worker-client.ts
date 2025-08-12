@@ -185,7 +185,9 @@ export class RedisDirectWorkerClient {
       total_jobs_failed: '0',
     };
 
-    logger.info(`🔴 [WORKER-ID-TRACE] About to register in Redis with this.workerId: "${regObj}"`);
+    if (process.env.NODE_ENV !== 'production' && process.env.LOG_LEVEL === 'debug') {
+      logger.debug(`About to register in Redis with this.workerId: "${regObj}"`);
+    }
 
     // Store worker capabilities
     await this.redis.hmset(`worker:${this.workerId}`, regObj);
@@ -222,19 +224,13 @@ export class RedisDirectWorkerClient {
       timestamp: Date.now(),
     };
 
-    // 🚨🚨🚨 CRITICAL TRACE: This is what gets sent to the UI for the worker card!
-    console.log('🚨🚨🚨🚨🚨 [WORKER CARD TRACE] Publishing worker_connected event');
-    console.log(
-      '🚨🚨🚨🚨🚨 [WORKER CARD TRACE] capabilities.services that will show in UI:',
-      JSON.stringify(capabilities.services)
-    );
-    console.log(
-      '🚨🚨🚨🚨🚨 [WORKER CARD TRACE] workerConnectedEvent.worker_data.capabilities.services:',
-      JSON.stringify(capabilities.services || [])
-    );
-    console.log(
-      '🚨🚨🚨🚨🚨 [WORKER CARD TRACE] This is THE VALUE that the worker card will display as pills/tags!'
-    );
+    // Debug worker card data only in development/debug mode
+    if (process.env.NODE_ENV !== 'production' && process.env.LOG_LEVEL === 'debug') {
+      logger.debug('Publishing worker_connected event');
+      logger.debug('capabilities.services that will show in UI:', JSON.stringify(capabilities.services));
+      logger.debug('workerConnectedEvent.worker_data.capabilities.services:', JSON.stringify(capabilities.services || []));
+      logger.debug('This is THE VALUE that the worker card will display as pills/tags!');
+    }
 
     await this.redis.publish('worker:events', JSON.stringify(workerConnectedEvent));
 
@@ -285,11 +281,11 @@ export class RedisDirectWorkerClient {
         services: [], // No services if not specified
       };
 
-      console.log('🚨🚨🚨🚨🚨 [WORKER STATUS TRACE] Publishing worker status');
-      console.log(
-        '🚨🚨🚨🚨🚨 [WORKER STATUS TRACE] safeCapabilities.services:',
-        JSON.stringify(safeCapabilities.services || [])
-      );
+      // Debug worker status only in development/debug mode
+      if (process.env.NODE_ENV !== 'production' && process.env.LOG_LEVEL === 'debug') {
+        logger.debug('Publishing worker status');
+        logger.debug('safeCapabilities.services:', JSON.stringify(safeCapabilities.services || []));
+      }
 
       const workerStatusReport = {
         worker_id: this.workerId,
@@ -307,13 +303,11 @@ export class RedisDirectWorkerClient {
         connected_at: safeCapabilities.connected_at || new Date().toISOString(),
       };
 
-      console.log(
-        '🚨🚨🚨🚨🚨 [WORKER STATUS TRACE] Final workerStatusReport.capabilities.services:',
-        JSON.stringify(workerStatusReport.capabilities.services)
-      );
-      console.log(
-        '🚨🚨🚨🚨🚨 [WORKER STATUS TRACE] This goes to worker_status channel - API/UI reads this!'
-      );
+      // Debug final worker status report only in development/debug mode
+      if (process.env.NODE_ENV !== 'production' && process.env.LOG_LEVEL === 'debug') {
+        logger.debug('Final workerStatusReport.capabilities.services:', JSON.stringify(workerStatusReport.capabilities.services));
+        logger.debug('This goes to worker_status channel - API/UI reads this!');
+      }
 
       // Publish to worker_status channel for API discovery
       await this.redis.publish(
@@ -453,12 +447,18 @@ export class RedisDirectWorkerClient {
     capabilities: WorkerCapabilities,
     maxScan = 100
   ): Promise<MatchingResult | null> {
-    console.log('🚨🚨🚨 [REDIS-CALL-DEBUG] About to call findMatchingJob with:');
-    console.log('🚨🚨🚨 [REDIS-CALL-DEBUG] Worker ID:', this.workerId);
-    console.log('🚨🚨🚨 [REDIS-CALL-DEBUG] Capabilities services:', capabilities.services);
-    console.log('🚨🚨🚨 [REDIS-CALL-DEBUG] Full capabilities:', JSON.stringify(capabilities, null, 2));
-    console.log('🚨🚨🚨 [REDIS-CALL-DEBUG] Max scan:', maxScan);
-    console.log('🚨🚨🚨 [REDIS-CALL-DEBUG] Exact Redis call: FCALL findMatchingJob 0 \'' + JSON.stringify(capabilities) + '\' ' + maxScan.toString());
+    // Debug capabilities only in development/debug mode
+    if (process.env.NODE_ENV !== 'production' && process.env.LOG_LEVEL === 'debug') {
+      logger.debug('About to call findMatchingJob with:');
+      logger.debug('Worker ID:', this.workerId);
+      logger.debug('Capabilities services:', capabilities.services);
+      logger.debug('Full capabilities:', JSON.stringify(capabilities, null, 2));
+    }
+    // Debug Redis call only in development/debug mode
+    if (process.env.NODE_ENV !== 'production' && process.env.LOG_LEVEL === 'debug') {
+      logger.debug('Max scan:', maxScan);
+      logger.debug('Redis call: FCALL findMatchingJob 0 \'' + JSON.stringify(capabilities) + '\' ' + maxScan.toString());
+    }
     
     const result = (await this.redis.call(
       'FCALL',
@@ -468,7 +468,10 @@ export class RedisDirectWorkerClient {
       maxScan.toString()
     )) as string | null;
     
-    console.log('🚨🚨🚨 [REDIS-CALL-DEBUG] Redis function result:', result);
+    // Debug result only in development/debug mode
+    if (process.env.NODE_ENV !== 'production' && process.env.LOG_LEVEL === 'debug') {
+      logger.debug('Redis function result:', result);
+    }
 
     if (!result) {
       return null;
@@ -505,7 +508,9 @@ export class RedisDirectWorkerClient {
       const matchResult = await this.callFindMatchingJob(capabilitiesWithId, 100);
 
       if (matchResult) {
-        logger.info(`🎯 Worker ${this.workerId} - claimed job ID: ${matchResult.jobId}`);
+        if (process.env.LOG_LEVEL === 'debug') {
+          logger.debug(`Worker ${this.workerId} - claimed job ID: ${matchResult.jobId}`);
+        }
       }
 
       if (!matchResult) {
@@ -532,7 +537,9 @@ export class RedisDirectWorkerClient {
       this.currentStatus = 'busy';
       await this.redis.publish('worker_status', JSON.stringify(statusEvent));
 
-      logger.info(`Worker ${this.workerId} claimed job ${job.id} via Redis Function orchestration`);
+      if (process.env.LOG_LEVEL === 'debug') {
+        logger.debug(`Worker ${this.workerId} claimed job ${job.id} via Redis Function orchestration`);
+      }
       logger.debug(
         `Job details: service=${job.service_required}, priority=${job.priority}, workflow=${job.workflow_id || 'none'}`
       );
@@ -583,7 +590,9 @@ export class RedisDirectWorkerClient {
         return null;
       }
 
-      logger.info(`Worker ${this.workerId} claimed job ${jobId} via Redis-direct polling`);
+      if (process.env.LOG_LEVEL === 'debug') {
+        logger.debug(`Worker ${this.workerId} claimed job ${jobId} via Redis-direct polling`);
+      }
       return job;
     } catch (error) {
       logger.error(`Worker ${this.workerId} job request failed:`, error);
@@ -722,7 +731,9 @@ export class RedisDirectWorkerClient {
         updated_at: new Date().toISOString(),
       });
 
-      logger.info(`✅ Worker ${this.workerId} updated Redis hash job:${jobId}:progress`);
+      if (process.env.LOG_LEVEL === 'debug') {
+        logger.debug(`Worker ${this.workerId} updated Redis hash job:${jobId}:progress`);
+      }
 
       // Publish to Redis pub/sub for real-time delivery to API server
       const progressEvent = {
@@ -1021,7 +1032,9 @@ export class RedisDirectWorkerClient {
         if (this.currentStatus === 'idle') {
           const job = await this.requestJob(capabilities);
           if (job) {
-            logger.info(`✅ Worker ${this.workerId} - received job: ${job.id}`);
+            if (process.env.LOG_LEVEL === 'debug') {
+              logger.debug(`Worker ${this.workerId} - received job: ${job.id}`);
+            }
             onJobReceived(job);
           } else {
           }
@@ -1049,7 +1062,9 @@ export class RedisDirectWorkerClient {
     if (this.pollTimeout) {
       clearTimeout(this.pollTimeout);
       this.pollTimeout = undefined;
-      logger.info(`Worker ${this.workerId} stopped job polling`);
+      if (process.env.LOG_LEVEL === 'debug') {
+        logger.debug(`Worker ${this.workerId} stopped job polling`);
+      }
     }
   }
 

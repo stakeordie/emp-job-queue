@@ -15,8 +15,10 @@ export * from './connectors/index.js';
 // PM2 creates unique IDs like: simulation-0, simulation-1, comfyui-gpu0, comfyui-gpu1
 const WORKER_ID = process.env.WORKER_ID;
 
-logger.info(`🔍 [WORKER-ID-DEBUG] redis-direct-worker.ts - WORKER_ID from env: ${WORKER_ID}`);
-logger.info(`🔍 [WORKER-ID-DEBUG] redis-direct-worker.ts - process.env.WORKER_ID: ${process.env.WORKER_ID}`);
+if (process.env.NODE_ENV !== 'production' && process.env.LOG_LEVEL === 'debug') {
+  logger.debug(`redis-direct-worker.ts - WORKER_ID from env: ${WORKER_ID}`);
+  logger.debug(`redis-direct-worker.ts - process.env.WORKER_ID: ${process.env.WORKER_ID}`);
+}
 
 // logger.info(`🔍 WORKER_ID from environment: ${WORKER_ID}`);
 // logger.info(`🔍 All environment variables: ${JSON.stringify({
@@ -188,14 +190,18 @@ function logEnvironmentVariables() {
 }
 
 async function main() {
-  logger.info(`🔥🔥🔥 [REBUILD-VERIFICATION] Worker rebuilt successfully - timestamp: ${new Date().toISOString()}`);
-  logger.info(`🔥🔥🔥 [REBUILD-VERIFICATION] WORKER_ID from env: ${WORKER_ID}`);
   logger.info(`Starting Redis-direct worker ${WORKER_ID} on machine ${MACHINE_ID}`);
 
-  // Log comprehensive environment variable resolution
-  logEnvironmentVariables();
+  if (process.env.NODE_ENV !== 'production' && process.env.LOG_LEVEL === 'debug') {
+    logger.debug(`Worker rebuilt successfully - timestamp: ${new Date().toISOString()}`);
+    logger.debug(`WORKER_ID from env: ${WORKER_ID}`);
+    // Log comprehensive environment variable resolution
+    logEnvironmentVariables();
+  }
 
-  logger.info(`Connecting to Redis at: ${HUB_REDIS_URL}`);
+  if (process.env.LOG_LEVEL === 'debug') {
+    logger.debug(`Connecting to Redis at: ${HUB_REDIS_URL}`);
+  }
 
   // Initialize connector manager
   const connectorManager = new ConnectorManager();
@@ -243,7 +249,9 @@ async function main() {
     logger.info(
       `📋 Services: ${capabilities.services.join(', ')} | GPU: ${capabilities.hardware.gpu_memory_gb}GB | RAM: ${capabilities.hardware.ram_gb}GB`
     );
-    logger.info('🔄 Polling Redis for jobs...');
+    if (process.env.LOG_LEVEL === 'debug') {
+      logger.debug('Polling Redis for jobs...');
+    }
 
     // Keep the process alive
     process.stdin.resume();

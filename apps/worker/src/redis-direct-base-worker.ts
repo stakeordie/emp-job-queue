@@ -97,14 +97,18 @@ export class RedisDirectBaseWorker {
     connectorManager: ConnectorManager,
     hubRedisUrl: string
   ) {
-    logger.info(`🔧 [DEBUG] RedisDirectBaseWorker constructor called with workerId: ${workerId}`);
+    if (process.env.NODE_ENV !== 'production' && process.env.LOG_LEVEL === 'debug') {
+      logger.debug(`RedisDirectBaseWorker constructor called with workerId: ${workerId}`);
+    }
     logger.info(
       `🔴 [RDirectBWorker-WORKER-ID-TRACE] RedisDirectBaseWorker received workerId: "${workerId}"`
     );
     this.workerId = workerId;
     this.machineId = machineId;
     this.connectorManager = connectorManager;
-    logger.info(`🔧 [DEBUG] Creating RedisDirectWorkerClient with workerId: ${workerId}`);
+    if (process.env.NODE_ENV !== 'production' && process.env.LOG_LEVEL === 'debug') {
+      logger.debug(`Creating RedisDirectWorkerClient with workerId: ${workerId}`);
+    }
     logger.info(
       `🔴 [RDirectBWorker-WORKER-ID-TRACE] Passing workerId to RedisDirectWorkerClient: "${workerId}"`
     );
@@ -147,10 +151,13 @@ export class RedisDirectBaseWorker {
         }
       }
 
-      console.log('🚨🚨🚨 [TRACE] getServicesFromMapping START');
-      console.log('🚨🚨🚨 [TRACE] CONNECTORS env:', process.env.CONNECTORS);
-      console.log('🚨🚨🚨 [TRACE] Worker ID:', this.workerId);
-      console.log('🚨🚨🚨 [TRACE] Determined worker type:', workerType);
+      // Debug service mapping only in development/debug mode
+      if (process.env.NODE_ENV !== 'production' && process.env.LOG_LEVEL === 'debug') {
+        logger.debug('getServicesFromMapping START');
+        logger.debug('CONNECTORS env:', process.env.CONNECTORS);
+        logger.debug('Worker ID:', this.workerId);
+        logger.debug('Determined worker type:', workerType);
+      }
 
       if (!workerType) {
         throw new Error(
@@ -187,15 +194,17 @@ export class RedisDirectBaseWorker {
       const serviceMappingContent = fs.readFileSync(serviceMappingPath, 'utf8');
       const serviceMapping = JSON.parse(serviceMappingContent);
 
-      console.log('🚨🚨🚨 [TRACE] Service mapping loaded from:', serviceMappingPath);
-      console.log(
-        '🚨🚨🚨 [TRACE] Available worker types in mapping:',
-        Object.keys(serviceMapping.workers || {})
-      );
+      // Debug service mapping loading only in development/debug mode
+      if (process.env.NODE_ENV !== 'production' && process.env.LOG_LEVEL === 'debug') {
+        logger.debug('Service mapping loaded from:', serviceMappingPath);
+        logger.debug('Available worker types in mapping:', Object.keys(serviceMapping.workers || {}));
+      }
 
       // Look up configuration for THIS specific worker type (not all worker types)
       const specificWorkerType = workerSpecs[0]; // Should only be one worker type now
-      console.log(`🚨🚨🚨 [TRACE] Processing SPECIFIC workerType: "${specificWorkerType}"`);
+      if (process.env.NODE_ENV !== 'production' && process.env.LOG_LEVEL === 'debug') {
+        logger.debug(`Processing SPECIFIC workerType: "${specificWorkerType}"`);
+      }
       const workerConfig = serviceMapping.workers?.[specificWorkerType];
       
       if (!workerConfig) {
@@ -204,7 +213,9 @@ export class RedisDirectBaseWorker {
         );
       }
 
-      console.log(`🚨🚨🚨 [TRACE] Found workerConfig for "${specificWorkerType}":`, JSON.stringify(workerConfig, null, 2));
+      if (process.env.NODE_ENV !== 'production' && process.env.LOG_LEVEL === 'debug') {
+        logger.debug(`Found workerConfig for "${specificWorkerType}":`, JSON.stringify(workerConfig, null, 2));
+      }
 
       // Extract job_service_required values (what jobs ask for) instead of internal services
       const jobServiceRequiredSet = new Set<string>();
@@ -212,7 +223,9 @@ export class RedisDirectBaseWorker {
       if (workerConfig.job_service_required_map && Array.isArray(workerConfig.job_service_required_map)) {
         for (const mapping of workerConfig.job_service_required_map) {
           if (mapping.job_service_required) {
-            console.log(`🚨🚨🚨 [TRACE] Adding job_service_required: "${mapping.job_service_required}"`);
+            if (process.env.NODE_ENV !== 'production' && process.env.LOG_LEVEL === 'debug') {
+              logger.debug(`Adding job_service_required: "${mapping.job_service_required}"`);
+            }
             jobServiceRequiredSet.add(mapping.job_service_required);
           }
         }
@@ -223,8 +236,10 @@ export class RedisDirectBaseWorker {
       }
 
       const capabilities = Array.from(jobServiceRequiredSet);
-      console.log('🚨🚨🚨 [TRACE] Final job_service_required values to return:', capabilities);
-      console.log('🚨🚨🚨 [TRACE] getServicesFromMapping END');
+      if (process.env.NODE_ENV !== 'production' && process.env.LOG_LEVEL === 'debug') {
+        logger.debug('Final job_service_required values to return:', capabilities);
+        logger.debug('getServicesFromMapping END');
+      }
       return capabilities;
     } catch (error) {
       logger.error('Failed to load capabilities from service mapping:', error);
@@ -234,14 +249,15 @@ export class RedisDirectBaseWorker {
 
 
   private buildCapabilities(): WorkerCapabilities {
-    console.log('🚨🚨🚨 [TRACE] buildCapabilities START');
+    if (process.env.NODE_ENV !== 'production' && process.env.LOG_LEVEL === 'debug') {
+      logger.debug('buildCapabilities START');
+    }
 
     // Services this worker can handle - derive from service mapping
     const services = this.getServicesFromMapping();
-    console.log(
-      '🚨🚨🚨 [TRACE] buildCapabilities - services from getServicesFromMapping():',
-      services
-    );
+    if (process.env.NODE_ENV !== 'production' && process.env.LOG_LEVEL === 'debug') {
+      logger.debug('buildCapabilities - services from getServicesFromMapping():', services);
+    }
 
     // Note: services now contains job_service_required values for proper Redis matching
 
@@ -423,12 +439,11 @@ export class RedisDirectBaseWorker {
       //logger.info(`Starting Redis-direct worker ${this.workerId}...`);
 
       // Connect to Redis first to establish connection
-      console.log('🚨🚨🚨 [TRACE] About to connect to Redis with capabilities:');
-      console.log('🚨🚨🚨 [TRACE] this.capabilities.services:', this.capabilities.services);
-      console.log(
-        '🚨🚨🚨 [TRACE] Full capabilities object:',
-        JSON.stringify(this.capabilities, null, 2)
-      );
+      if (process.env.NODE_ENV !== 'production' && process.env.LOG_LEVEL === 'debug') {
+        logger.debug('About to connect to Redis with capabilities:');
+        logger.debug('this.capabilities.services:', this.capabilities.services);
+        logger.debug('Full capabilities object:', JSON.stringify(this.capabilities, null, 2));
+      }
       await this.redisClient.connect(this.capabilities);
 
       // Pass Redis connection to ConnectorManager
