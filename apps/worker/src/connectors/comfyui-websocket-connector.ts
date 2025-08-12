@@ -20,25 +20,32 @@ export class ComfyUIWebSocketConnector extends WebSocketConnector {
   protected promptId: string | null = null;
   protected lastProgress: number = 0;
 
-  constructor(connectorId: string) {
-    // Build WebSocket URL from environment (supporting both local and remote)
-    const host = process.env.WORKER_COMFYUI_HOST || 'localhost';
-    const port = parseInt(process.env.WORKER_COMFYUI_PORT || '8188');
-    const isSecure = process.env.WORKER_COMFYUI_SECURE === 'true';
+  constructor(
+    connectorId: string,
+    config?: {
+      host?: string;
+      port?: number;
+      secure?: boolean;
+      username?: string;
+      password?: string;
+      apiKey?: string;
+    }
+  ) {
+    // Accept configuration directly OR read from LOCAL ComfyUI environment variables
+    const host = config?.host || process.env.COMFYUI_HOST || 'localhost';
+    const port = config?.port || parseInt(process.env.COMFYUI_PORT || '8188');
+    const isSecure = config?.secure || process.env.COMFYUI_SECURE === 'true';
     const wsProtocol = isSecure ? 'wss' : 'ws';
-    // Authentication for remote connections
-    const username = process.env.WORKER_COMFYUI_USERNAME;
-    const password = process.env.WORKER_COMFYUI_PASSWORD;
-    const apiKey = process.env.WORKER_COMFYUI_API_KEY;
+    
+    // Auth configuration (if provided)
+    const username = config?.username || process.env.COMFYUI_USERNAME;
+    const password = config?.password || process.env.COMFYUI_PASSWORD;
+    const apiKey = config?.apiKey || process.env.COMFYUI_API_KEY;
 
-    // Only use auth for remote connections (not localhost/127.0.0.1)
-    const isRemoteConnection = host !== 'localhost' && host !== '127.0.0.1';
-    const shouldUseAuth = isRemoteConnection && ((username && password) || apiKey);
-
-    // Build WebSocket URL with auth if needed
-    let websocketUrl = process.env.WORKER_COMFYUI_WS_URL;
+    // Build WebSocket URL
+    let websocketUrl = process.env.COMFYUI_WS_URL;
     if (!websocketUrl) {
-      if (shouldUseAuth && username && password) {
+      if (username && password) {
         // Basic auth in URL
         websocketUrl = `${wsProtocol}://${encodeURIComponent(username)}:${encodeURIComponent(password)}@${host}:${port}/ws`;
       } else {
@@ -46,14 +53,13 @@ export class ComfyUIWebSocketConnector extends WebSocketConnector {
       }
     }
 
-    // Debug: Log what we're actually using
-    logger.debug('[ComfyUI-WS] Environment check:', {
-      WORKER_COMFYUI_HOST: process.env.WORKER_COMFYUI_HOST,
-      WORKER_COMFYUI_PORT: process.env.WORKER_COMFYUI_PORT,
+    // Debug: Log configuration
+    logger.debug(`[ComfyUI-${connectorId}] Configuration:`, {
       host,
       port,
-      websocketUrl,
-      finalBaseUrl: websocketUrl,
+      secure: isSecure,
+      hasAuth: !!(username || apiKey),
+      websocketUrl: websocketUrl.replace(/:[^@]*@/, ':***@'), // Mask password in logs
     });
 
     // Create WebSocketConnectorConfig
@@ -62,17 +68,18 @@ export class ComfyUIWebSocketConnector extends WebSocketConnector {
       service_type: 'comfyui',
       base_url: websocketUrl,
       websocket_url: websocketUrl,
-      timeout_seconds: parseInt(process.env.WORKER_COMFYUI_TIMEOUT_SECONDS || '300'),
-      retry_attempts: parseInt(process.env.WORKER_COMFYUI_RETRY_ATTEMPTS || '3'),
-      retry_delay_seconds: parseInt(process.env.WORKER_COMFYUI_RETRY_DELAY_SECONDS || '2'),
+      // Use config values if provided (for remote), otherwise use local ENV vars
+      timeout_seconds: parseInt(config ? '300' : process.env.COMFYUI_TIMEOUT_SECONDS || '300'),
+      retry_attempts: parseInt(config ? '3' : process.env.COMFYUI_RETRY_ATTEMPTS || '3'),
+      retry_delay_seconds: parseInt(config ? '2' : process.env.COMFYUI_RETRY_DELAY_SECONDS || '2'),
       health_check_interval_seconds: 30,
-      max_concurrent_jobs: parseInt(process.env.WORKER_COMFYUI_MAX_CONCURRENT_JOBS || '5'),
-      heartbeat_interval_ms: parseInt(process.env.WORKER_COMFYUI_HEARTBEAT_MS || '30000'),
-      reconnect_delay_ms: parseInt(process.env.WORKER_COMFYUI_RECONNECT_DELAY_MS || '5000'),
-      max_reconnect_attempts: parseInt(process.env.WORKER_COMFYUI_MAX_RECONNECT || '5'),
+      max_concurrent_jobs: parseInt(config ? '5' : process.env.COMFYUI_MAX_CONCURRENT_JOBS || '5'),
+      heartbeat_interval_ms: parseInt(config ? '30000' : process.env.COMFYUI_HEARTBEAT_MS || '30000'),
+      reconnect_delay_ms: parseInt(config ? '5000' : process.env.COMFYUI_RECONNECT_DELAY_MS || '5000'),
+      max_reconnect_attempts: parseInt(config ? '5' : process.env.COMFYUI_MAX_RECONNECT || '5'),
       
-      // Auth settings for WebSocket connection
-      auth: shouldUseAuth
+      // Auth settings for WebSocket connection (if provided)
+      auth: (username || apiKey)
         ? {
             type: apiKey ? 'bearer' as const : 'basic' as const,
             username: username,

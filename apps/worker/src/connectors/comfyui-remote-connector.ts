@@ -9,35 +9,30 @@ export class ComfyUIRemoteConnector extends ComfyUIWebSocketConnector {
   // The connector_id will distinguish this as 'comfyui-remote'
 
   constructor(connectorId: string = 'comfyui-remote') {
-    // Use remote-specific environment variables
-    const remoteHost = process.env.WORKER_COMFYUI_REMOTE_HOST || process.env.REMOTE_COMFYUI_HOST;
-    const remotePort =
-      process.env.WORKER_COMFYUI_REMOTE_PORT || process.env.REMOTE_COMFYUI_PORT || '8188';
-    const remoteUsername =
-      process.env.WORKER_COMFYUI_REMOTE_USERNAME || process.env.REMOTE_COMFYUI_USERNAME;
-    const remotePassword =
-      process.env.WORKER_COMFYUI_REMOTE_PASSWORD || process.env.REMOTE_COMFYUI_PASSWORD;
-    const isSecure = process.env.WORKER_COMFYUI_REMOTE_SECURE === 'true';
+    // Read REMOTE-specific environment variables
+    const remoteHost = process.env.COMFYUI_REMOTE_HOST;
+    const remotePort = parseInt(process.env.COMFYUI_REMOTE_PORT || '8188');
+    const remoteUsername = process.env.COMFYUI_REMOTE_USERNAME;
+    const remotePassword = process.env.COMFYUI_REMOTE_PASSWORD;
+    const remoteApiKey = process.env.COMFYUI_REMOTE_API_KEY;
+    const isSecure = process.env.COMFYUI_REMOTE_SECURE === 'true';
 
     if (!remoteHost) {
       throw new Error(
-        'ComfyUI Remote connector requires WORKER_COMFYUI_REMOTE_HOST or REMOTE_COMFYUI_HOST'
+        'ComfyUI Remote connector requires COMFYUI_REMOTE_HOST environment variable. ' +
+        'Set it to the hostname/IP of your external ComfyUI instance.'
       );
     }
 
-    // Override environment variables for parent constructor
-    const originalEnv = { ...process.env };
-    process.env.WORKER_COMFYUI_HOST = remoteHost;
-    process.env.WORKER_COMFYUI_PORT = remotePort;
-    process.env.WORKER_COMFYUI_USERNAME = remoteUsername;
-    process.env.WORKER_COMFYUI_PASSWORD = remotePassword;
-    process.env.WORKER_COMFYUI_SECURE = isSecure ? 'true' : 'false';
-
-    // Call parent constructor with remote settings
-    super(connectorId);
-
-    // Restore original environment
-    process.env = originalEnv;
+    // Call parent constructor with remote configuration
+    super(connectorId, {
+      host: remoteHost,
+      port: remotePort,
+      secure: isSecure,
+      username: remoteUsername,
+      password: remotePassword,
+      apiKey: remoteApiKey,
+    });
 
     logger.info(
       `ComfyUI Remote connector ${connectorId} initialized for ${remoteHost}:${remotePort}`
