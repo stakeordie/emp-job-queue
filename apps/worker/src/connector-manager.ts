@@ -263,7 +263,14 @@ export class ConnectorManager implements ConnectorRegistry, ConnectorFactory {
         if (serviceMapping.connectors && serviceMapping.connectors[connectorName]) {
           const connectorConfig = serviceMapping.connectors[connectorName];
           const { path: modulePath } = connectorConfig;
-          ConnectorClass = await this.loadConnectorFromPath(modulePath, connectorName);
+          
+          // If path points to bundled worker file, use barrel import instead
+          if (modulePath === './redis-direct-worker.js' || modulePath.includes('redis-direct-worker')) {
+            logger.debug(`Using barrel import for bundled connector ${connectorName}`);
+            ConnectorClass = await this.loadConnectorFallback(connectorName);
+          } else {
+            ConnectorClass = await this.loadConnectorFromPath(modulePath, connectorName);
+          }
         } else {
           throw new Error(
             `Connector ${connectorName} not found in connectors section of service mapping`
@@ -409,7 +416,16 @@ export class ConnectorManager implements ConnectorRegistry, ConnectorFactory {
 
   private async loadConnectorFallback(connectorId: string): Promise<any> {
     // Use barrel file for all connector imports - no more manual imports!
-    const connectorClassName = this.connectorIdToClassName(connectorId);
+    // Handle both full class names (ComfyUIWebSocketConnector) and IDs (comfyui-remote)
+    let connectorClassName;
+    
+    if (connectorId.endsWith('Connector')) {
+      // Already a full class name
+      connectorClassName = connectorId;
+    } else {
+      // Convert ID to class name
+      connectorClassName = this.connectorIdToClassName(connectorId);
+    }
 
     try {
       const connectorModule = await import('./connectors/index.js');
