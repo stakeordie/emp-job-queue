@@ -255,6 +255,8 @@ export class ConnectorManager implements ConnectorRegistry, ConnectorFactory {
           `Cannot load connector ${connectorName}. Check deployment configuration.`
         );
       }
+
+      try {
         const serviceMappingContent = fs.readFileSync(serviceMappingPath, 'utf8');
         const serviceMapping = JSON.parse(serviceMappingContent);
 
@@ -283,6 +285,8 @@ export class ConnectorManager implements ConnectorRegistry, ConnectorFactory {
             `Connector ${connectorName} not found in connectors section of service mapping`
           );
         }
+      } catch (error) {
+        throw new Error(`Failed to load service mapping: ${error}`);
       }
 
       // Create connector instance

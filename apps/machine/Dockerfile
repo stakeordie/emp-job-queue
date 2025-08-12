@@ -219,6 +219,7 @@ FROM base-machine AS base
 ARG WORKER_SPEC
 ARG WORKERS
 ARG MACHINE_ID
+ARG ENV_FILE=.env
 
 # Convert build args to environment variables so they're baked into the container
 ENV WORKERS=${WORKERS}
@@ -227,7 +228,7 @@ ENV MACHINE_ID=${MACHINE_ID}
 # Inherits: Complete application runtime including entrypoint, PM2, service manager
 # No additional installations - for external API connectors like comfyui-remote
 COPY --from=base-machine /service-manager/worker-bundled /service-manager/worker-bundled
-COPY .env /service-manager/.env
+COPY ${ENV_FILE} /service-manager/.env
 
 # Use base-specific entrypoint
 ENTRYPOINT ["/scripts/entrypoint-base.sh"]
@@ -239,6 +240,7 @@ FROM base-machine-with-nodes AS comfyui
 ARG WORKER_SPEC
 ARG WORKERS
 ARG MACHINE_ID
+ARG ENV_FILE=.env
 
 # Convert build args to environment variables so they're baked into the container
 ENV WORKERS=${WORKERS}
@@ -248,7 +250,7 @@ ENV MACHINE_ID=${MACHINE_ID}
 # Also inherits: ComfyUI installation, custom nodes, installer files from comfyui-with-nodes
 # Also inherits: worker-bundled from base-machine-with-nodes
 COPY --from=base-machine-with-nodes /service-manager/worker-bundled /service-manager/worker-bundled
-COPY .env /service-manager/.env
+COPY ${ENV_FILE} /service-manager/.env
 
 # Use ComfyUI-specific entrypoint
 ENTRYPOINT ["/scripts/entrypoint-comfyui.sh"]
@@ -261,6 +263,7 @@ FROM base-machine AS simulation
 ARG WORKER_SPEC
 ARG WORKERS
 ARG MACHINE_ID
+ARG ENV_FILE=.env
 
 # Convert build args to environment variables so they're baked into the container
 ENV WORKERS=${WORKERS}
@@ -269,7 +272,7 @@ ENV MACHINE_ID=${MACHINE_ID}
 # Inherits: Complete application runtime including entrypoint, PM2, service manager
 # Add: Any simulation-specific setup here if needed
 COPY --from=base-machine /service-manager/worker-bundled /service-manager/worker-bundled
-COPY .env /service-manager/.env
+COPY ${ENV_FILE} /service-manager/.env
 
 # Use simulation-specific entrypoint
 ENTRYPOINT ["/scripts/entrypoint-simulation.sh"]

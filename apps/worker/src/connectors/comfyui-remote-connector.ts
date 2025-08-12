@@ -22,8 +22,8 @@ export class ComfyUIRemoteConnector extends ComfyUIWebSocketConnector {
     if (!remoteHost) {
       throw new Error(
         'ComfyUI Remote connector requires WORKER_COMFYUI_REMOTE_HOST environment variable. ' +
-        'This should be set to the hostname/IP of your external ComfyUI instance. ' +
-        'Check that COMFYUI_REMOTE_HOST is set in your environment.'
+          'This should be set to the hostname/IP of your external ComfyUI instance. ' +
+          'Check that COMFYUI_REMOTE_HOST is set in your environment.'
       );
     }
 

@@ -256,12 +256,12 @@ class ComposeBuilder {
 
   /**
    * Create service configuration for worker specification
-   * Inherits from base-machine using YAML anchors
+   * Standalone configuration (no base-machine inheritance)
    */
   async createServiceConfig(workerSpec, options = {}) {
-    const { tag } = options;
+    const { tag, envName = 'local-dev' } = options;
     
-    // Create config that inherits from base-machine
+    // Create standalone config with full configuration
     const baseConfig = {
       profiles: [workerSpec.profileName],
       build: {
@@ -273,12 +273,37 @@ class ComposeBuilder {
           WORKERS: workerSpec.raw,
           MACHINE_ID: workerSpec.profileName,
           CACHE_BUST: '${CACHE_BUST:-1}',
+          ENV_FILE: `.env.${envName}`,
           // Add all environment variables as build args
           ...(await this.generateEnvironmentForWorkerSpec(workerSpec))
         }
       },
+      platform: 'linux/amd64',
       container_name: workerSpec.profileName,
-      hostname: workerSpec.profileName
+      hostname: workerSpec.profileName,
+      restart: 'no',
+      stop_grace_period: '2s',
+      stop_signal: 'SIGTERM',
+      env_file: [
+        `.env.secret.${envName}`
+      ],
+      environment: {
+        NODE_ENV: 'production',
+        ENV: '${CURRENT_ENV}',
+        NVIDIA_VISIBLE_DEVICES: 'all',
+        NVIDIA_DRIVER_CAPABILITIES: 'compute,utility'
+      },
+      working_dir: '/workspace',
+      deploy: {
+        resources: {
+          limits: {
+            memory: '${MEMORY_LIMIT:-8G}'
+          },
+          reservations: {
+            memory: '${MEMORY_RESERVATION:-2G}'
+          }
+        }
+      }
     };
     
     // Only add ports if there are any to add
@@ -345,41 +370,31 @@ class ComposeBuilder {
       compose.services = {};
     }
 
-    // Ensure base-machine has the YAML anchor for inheritance
+    // Remove base-machine if it exists (no longer needed)
     if (compose.services['base-machine']) {
-      // If base-machine exists but doesn't have the anchor, we need to preserve its content
-      // and add the anchor. This is complex with js-yaml, so we'll read and modify manually.
+      delete compose.services['base-machine'];
+      console.log(chalk.yellow('🗑️  Removed base-machine (no longer using inheritance)'));
     }
 
     // Create or update service
     const serviceName = workerSpec.serviceName;
     compose.services[serviceName] = await this.createServiceConfig(workerSpec, options);
 
-    // Write updated compose file with special handling for YAML anchors
+    // Write updated compose file
     await this.writeComposeFileWithAnchors(compose, serviceName);
     console.log(chalk.green('✅ Updated docker-compose.yml'));
   }
 
   /**
-   * Write compose file with proper YAML anchor support
+   * Write compose file without YAML anchors (standalone services)
    */
   async writeComposeFileWithAnchors(compose, newServiceName = null) {
-    // Generate YAML content
+    // Generate YAML content - no anchors needed since services are standalone
     let yamlContent = yaml.dump(compose, {
       indent: 2,
       lineWidth: 120,
       noRefs: false
     });
-
-    // Ensure base-machine has the anchor
-    yamlContent = yamlContent.replace(/^  base-machine:$/m, '  base-machine: &base-machine');
-
-    // Add inheritance to the new service if specified
-    if (newServiceName && newServiceName !== 'base-machine') {
-      // Find the service line and add inheritance right after it
-      const servicePattern = new RegExp(`^  ${newServiceName}:$`, 'm');
-      yamlContent = yamlContent.replace(servicePattern, `  ${newServiceName}:\n    <<: *base-machine`);
-    }
 
     await fs.writeFile(COMPOSE_FILE, yamlContent, 'utf8');
   }
@@ -498,10 +513,12 @@ function parseArgs() {
     console.log('  --build           Build container image (skipped by default)');
     console.log('  --push            Push container to registry after build');
     console.log('  --platform <arch> Target platform (e.g., linux/amd64)');
+    console.log('  --env <name>      Environment name for .env files (default: local-dev)');
     console.log('\nExamples:');
     console.log('  pnpm compose:profile comfyui-remote:1');
     console.log('  pnpm compose:profile comfyui:2 --tag emprops/machines:comfy-latest');
     console.log('  pnpm compose:profile comfyui:2,openai:4 --tag emprops/machines:mixed-v1.0.0 --build --push');
+    console.log('  pnpm compose:profile simulation:1 --env production');
     process.exit(0);
   }
 
@@ -521,6 +538,9 @@ function parseArgs() {
         break;
       case '--platform':
         options.platform = args[++i];
+        break;
+      case '--env':
+        options.envName = args[++i];
         break;
       default:
         console.warn(chalk.yellow(`⚠️  Unknown option: ${args[i]}`));

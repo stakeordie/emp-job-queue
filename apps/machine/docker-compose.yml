@@ -1,39 +1,4 @@
 services:
-  base-machine: &base-machine
-    build:
-      context: .
-      dockerfile: Dockerfile
-      args:
-        CACHE_BUST: ${CACHE_BUST:-1}
-        AWS_ACCESS_KEY_ID: ${AWS_ACCESS_KEY_ID}
-        AWS_SECRET_ACCESS_KEY_ENCODED: ${AWS_SECRET_ACCESS_KEY_ENCODED}
-        AWS_DEFAULT_REGION: ${AWS_DEFAULT_REGION}
-        HF_TOKEN: ${HF_TOKEN}
-        CIVITAI_TOKEN: ${CIVITAI_TOKEN}
-        OPENAI_API_KEY: ${OPENAI_API_KEY}
-    image: ${MACHINE_IMAGE:-base-machine:latest}
-    platform: linux/amd64
-    container_name: ${MACHINE_CONTAINER_NAME:-base-machine}
-    hostname: ${MACHINE_CONTAINER_NAME:-base-machine}
-    profiles:
-      - never-run-directly
-    restart: 'no'
-    stop_grace_period: 2s
-    stop_signal: SIGTERM
-    env_file:
-      - .env.secret
-    environment:
-      NODE_ENV: production
-      ENV: ${CURRENT_ENV}
-      NVIDIA_VISIBLE_DEVICES: all
-      NVIDIA_DRIVER_CAPABILITIES: compute,utility
-    working_dir: /workspace
-    deploy:
-      resources:
-        limits:
-          memory: ${MEMORY_LIMIT:-8G}
-        reservations:
-          memory: ${MEMORY_RESERVATION:-2G}
   comfyui-remote:
     build:
       context: .
@@ -67,6 +32,8 @@ services:
           memory: ${MEMORY_LIMIT:-8G}
         reservations:
           memory: ${MEMORY_RESERVATION:-2G}
+    ports:
+      - ${EXPOSE_PORTS:-9090}:9090
   openai:
     build:
       context: .
@@ -134,6 +101,8 @@ services:
         reservations:
           memory: ${MEMORY_RESERVATION:-2G}
   comfyui-remote-test:
+    profiles:
+      - comfyui-remote-test
     build:
       context: .
       dockerfile: Dockerfile
@@ -143,20 +112,23 @@ services:
         WORKERS: comfyui-remote:1
         MACHINE_ID: comfyui-remote-test
         CACHE_BUST: ${CACHE_BUST:-1}
-    image: emprops/machine:comfyui-remote-test
+        AWS_ACCESS_KEY_ID: ${AWS_ACCESS_KEY_ID}
+        AWS_SECRET_ACCESS_KEY_ENCODED: ${AWS_SECRET_ACCESS_KEY_ENCODED}
+        AWS_DEFAULT_REGION: ${AWS_DEFAULT_REGION}
+        HF_TOKEN: ${HF_TOKEN}
+        CIVITAI_TOKEN: ${CIVITAI_TOKEN}
+        OPENAI_API_KEY: ${OPENAI_API_KEY}
     platform: linux/amd64
     container_name: comfyui-remote-test
     hostname: comfyui-remote-test
-    profiles:
-      - comfyui-remote-test
     restart: 'no'
     stop_grace_period: 2s
     stop_signal: SIGTERM
     env_file:
-      - .env.secret
+      - .env.secret.local-dev
     environment:
       NODE_ENV: production
-      ENV: production
+      ENV: ${CURRENT_ENV}
       NVIDIA_VISIBLE_DEVICES: all
       NVIDIA_DRIVER_CAPABILITIES: compute,utility
     working_dir: /workspace
@@ -166,6 +138,9 @@ services:
           memory: ${MEMORY_LIMIT:-8G}
         reservations:
           memory: ${MEMORY_RESERVATION:-2G}
+    ports:
+      - ${EXPOSE_PORTS:-9090}:9090
+    image: emprops/machine:comfyui-remote-test
   sim-local-dev:
     build:
       context: .
@@ -272,9 +247,6 @@ services:
     ports:
       - ${EXPOSE_PORTS:-9090}:9090
   local-dev-test:
-    <<: *base-machine
-    profiles:
-      - local-dev-test
     build:
       context: .
       dockerfile: Dockerfile
@@ -284,12 +256,298 @@ services:
         WORKERS: simulation-websocket:2,simulation-http:2,comfyui-remote:1,openai:1
         MACHINE_ID: local-dev-test
         CACHE_BUST: ${CACHE_BUST:-1}
+    image: emprops/machine:local-dev-test
+    platform: linux/amd64
     container_name: local-dev-test
     hostname: local-dev-test
+    profiles:
+      - local-dev-test
+    restart: 'no'
+    stop_grace_period: 2s
+    stop_signal: SIGTERM
+    env_file:
+      - .env.secret
+    environment:
+      NODE_ENV: production
+      ENV: ${CURRENT_ENV}
+      NVIDIA_VISIBLE_DEVICES: all
+      NVIDIA_DRIVER_CAPABILITIES: compute,utility
+    working_dir: /workspace
+    deploy:
+      resources:
+        limits:
+          memory: ${MEMORY_LIMIT:-8G}
+        reservations:
+          memory: ${MEMORY_RESERVATION:-2G}
     ports:
       - ${EXPOSE_PORTS:-9090}:9090
       - '3188:8188'
-    image: emprops/machine:local-dev-test
+  comfyui-remote-production:
+    profiles:
+      - comfyui-remote-production
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: base
+      args:
+        WORKER_SPEC: comfyui-remote:1
+        WORKERS: comfyui-remote:1
+        MACHINE_ID: comfyui-remote-production
+        CACHE_BUST: ${CACHE_BUST:-1}
+        ENV_FILE: .env.production
+        AWS_ACCESS_KEY_ID: ${AWS_ACCESS_KEY_ID}
+        AWS_SECRET_ACCESS_KEY_ENCODED: ${AWS_SECRET_ACCESS_KEY_ENCODED}
+        AWS_DEFAULT_REGION: ${AWS_DEFAULT_REGION}
+        HF_TOKEN: ${HF_TOKEN}
+        CIVITAI_TOKEN: ${CIVITAI_TOKEN}
+        OPENAI_API_KEY: ${OPENAI_API_KEY}
+    platform: linux/amd64
+    container_name: comfyui-remote-production
+    hostname: comfyui-remote-production
+    restart: 'no'
+    stop_grace_period: 2s
+    stop_signal: SIGTERM
+    env_file:
+      - .env.secret.production
+    environment:
+      NODE_ENV: production
+      ENV: ${CURRENT_ENV}
+      NVIDIA_VISIBLE_DEVICES: all
+      NVIDIA_DRIVER_CAPABILITIES: compute,utility
+    working_dir: /workspace
+    deploy:
+      resources:
+        limits:
+          memory: ${MEMORY_LIMIT:-8G}
+        reservations:
+          memory: ${MEMORY_RESERVATION:-2G}
+    ports:
+      - ${EXPOSE_PORTS:-9090}:9090
+    image: emprops/machine:comfyui-remote-production
+  openai-production:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: base
+      args:
+        WORKER_SPEC: openai:1
+        WORKERS: openai:1
+        MACHINE_ID: openai-production
+        CACHE_BUST: ${CACHE_BUST:-1}
+    image: emprops/machine:openai-production
+    platform: linux/amd64
+    container_name: openai-production
+    hostname: openai-production
+    profiles:
+      - openai-production
+    restart: 'no'
+    stop_grace_period: 2s
+    stop_signal: SIGTERM
+    env_file:
+      - .env.secret
+    environment:
+      NODE_ENV: production
+      ENV: ${CURRENT_ENV}
+      NVIDIA_VISIBLE_DEVICES: all
+      NVIDIA_DRIVER_CAPABILITIES: compute,utility
+    working_dir: /workspace
+    deploy:
+      resources:
+        limits:
+          memory: ${MEMORY_LIMIT:-8G}
+        reservations:
+          memory: ${MEMORY_RESERVATION:-2G}
+    ports:
+      - ${EXPOSE_PORTS:-9090}:9090
+  openai-local:
+    profiles:
+      - openai-local
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: base
+      args:
+        WORKER_SPEC: openai:1
+        WORKERS: openai:1
+        MACHINE_ID: openai-local
+        CACHE_BUST: ${CACHE_BUST:-1}
+    platform: linux/amd64
+    container_name: openai-local
+    hostname: openai-local
+    restart: 'no'
+    stop_grace_period: 2s
+    stop_signal: SIGTERM
+    env_file:
+      - .env.secret.local-dev
+    environment:
+      NODE_ENV: production
+      ENV: ${CURRENT_ENV}
+      NVIDIA_VISIBLE_DEVICES: all
+      NVIDIA_DRIVER_CAPABILITIES: compute,utility
+    working_dir: /workspace
+    deploy:
+      resources:
+        limits:
+          memory: ${MEMORY_LIMIT:-8G}
+        reservations:
+          memory: ${MEMORY_RESERVATION:-2G}
+    ports:
+      - ${EXPOSE_PORTS:-9090}:9090
+    image: emprops/machine:openai-local
+  sim-prod:
+    profiles:
+      - sim-prod
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: simulation
+      args:
+        WORKER_SPEC: simulation-websocket:1
+        WORKERS: simulation-websocket:1
+        MACHINE_ID: sim-prod
+        CACHE_BUST: ${CACHE_BUST:-1}
+    platform: linux/amd64
+    container_name: sim-prod
+    hostname: sim-prod
+    restart: 'no'
+    stop_grace_period: 2s
+    stop_signal: SIGTERM
+    env_file:
+      - .env.secret.production
+    environment:
+      NODE_ENV: production
+      ENV: ${CURRENT_ENV}
+      NVIDIA_VISIBLE_DEVICES: all
+      NVIDIA_DRIVER_CAPABILITIES: compute,utility
+    working_dir: /workspace
+    deploy:
+      resources:
+        limits:
+          memory: ${MEMORY_LIMIT:-8G}
+        reservations:
+          memory: ${MEMORY_RESERVATION:-2G}
+    ports:
+      - ${EXPOSE_PORTS:-9090}:9090
+    image: emprops/machine:sim-prod
+  comfyui-remote-local:
+    profiles:
+      - comfyui-remote-local
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: base
+      args:
+        WORKER_SPEC: comfyui-remote:1
+        WORKERS: comfyui-remote:1
+        MACHINE_ID: comfyui-remote-local
+        CACHE_BUST: ${CACHE_BUST:-1}
+    platform: linux/amd64
+    container_name: comfyui-remote-local
+    hostname: comfyui-remote-local
+    restart: 'no'
+    stop_grace_period: 2s
+    stop_signal: SIGTERM
+    env_file:
+      - .env.secret.local-dev
+    environment:
+      NODE_ENV: production
+      ENV: ${CURRENT_ENV}
+      NVIDIA_VISIBLE_DEVICES: all
+      NVIDIA_DRIVER_CAPABILITIES: compute,utility
+    working_dir: /workspace
+    deploy:
+      resources:
+        limits:
+          memory: ${MEMORY_LIMIT:-8G}
+        reservations:
+          memory: ${MEMORY_RESERVATION:-2G}
+    ports:
+      - ${EXPOSE_PORTS:-9090}:9090
+    image: emprops/machine:comfyui-remote-local
+  openai-test:
+    profiles:
+      - openai-test
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: base
+      args:
+        WORKER_SPEC: openai:1
+        WORKERS: openai:1
+        MACHINE_ID: openai-test
+        CACHE_BUST: ${CACHE_BUST:-1}
+        AWS_ACCESS_KEY_ID: ${AWS_ACCESS_KEY_ID}
+        AWS_SECRET_ACCESS_KEY_ENCODED: ${AWS_SECRET_ACCESS_KEY_ENCODED}
+        AWS_DEFAULT_REGION: ${AWS_DEFAULT_REGION}
+        HF_TOKEN: ${HF_TOKEN}
+        CIVITAI_TOKEN: ${CIVITAI_TOKEN}
+        OPENAI_API_KEY: ${OPENAI_API_KEY}
+    platform: linux/amd64
+    container_name: openai-test
+    hostname: openai-test
+    restart: 'no'
+    stop_grace_period: 2s
+    stop_signal: SIGTERM
+    env_file:
+      - .env.secret.local-dev
+    environment:
+      NODE_ENV: production
+      ENV: ${CURRENT_ENV}
+      NVIDIA_VISIBLE_DEVICES: all
+      NVIDIA_DRIVER_CAPABILITIES: compute,utility
+    working_dir: /workspace
+    deploy:
+      resources:
+        limits:
+          memory: ${MEMORY_LIMIT:-8G}
+        reservations:
+          memory: ${MEMORY_RESERVATION:-2G}
+    ports:
+      - ${EXPOSE_PORTS:-9090}:9090
+    image: emprops/machine:openai-test
+  openai-complete:
+    profiles:
+      - openai-complete
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: base
+      args:
+        WORKER_SPEC: openai:1
+        WORKERS: openai:1
+        MACHINE_ID: openai-complete
+        CACHE_BUST: ${CACHE_BUST:-1}
+        AWS_ACCESS_KEY_ID: ${AWS_ACCESS_KEY_ID}
+        AWS_SECRET_ACCESS_KEY_ENCODED: ${AWS_SECRET_ACCESS_KEY_ENCODED}
+        AWS_DEFAULT_REGION: ${AWS_DEFAULT_REGION}
+        HF_TOKEN: ${HF_TOKEN}
+        CIVITAI_TOKEN: ${CIVITAI_TOKEN}
+        OPENAI_API_KEY: ${OPENAI_API_KEY}
+        OPENAI_IMAGE_MODEL: ${OPENAI_IMAGE_MODEL}
+        CLOUD_STORAGE_PROVIDER: ${CLOUD_STORAGE_PROVIDER}
+    platform: linux/amd64
+    container_name: openai-complete
+    hostname: openai-complete
+    restart: 'no'
+    stop_grace_period: 2s
+    stop_signal: SIGTERM
+    env_file:
+      - .env.secret.local-dev
+    environment:
+      NODE_ENV: production
+      ENV: ${CURRENT_ENV}
+      NVIDIA_VISIBLE_DEVICES: all
+      NVIDIA_DRIVER_CAPABILITIES: compute,utility
+    working_dir: /workspace
+    deploy:
+      resources:
+        limits:
+          memory: ${MEMORY_LIMIT:-8G}
+        reservations:
+          memory: ${MEMORY_RESERVATION:-2G}
+    ports:
+      - ${EXPOSE_PORTS:-9090}:9090
+    image: emprops/machine:openai-complete
 networks:
   default:
     name: emp-job-queue
