@@ -47,7 +47,8 @@ const processUnifiedMachineStatus = (unifiedStatus: UnifiedMachineStatus): Omit<
       gpu_count: unifiedStatus.structure?.gpu_count
     },
     // Include structure data for creating worker skeletons
-    structure: unifiedStatus.structure
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    structure: (unifiedStatus.structure || { gpu_count: 0, capabilities: [], workers: {} }) as any
   };
 };
 
@@ -1449,7 +1450,7 @@ export const useMonitorStore = create<MonitorStore>()(
           };
           
           // Set appropriate timestamp based on new status
-          if (jobEvent.new_status === 'processing') {
+          if (jobEvent.new_status === 'in_progress') {
             updates.started_at = jobEvent.timestamp;
           }
           

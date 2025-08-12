@@ -3,6 +3,7 @@
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
+// AlertDialog imports temporarily removed due to React 19 compatibility issues
 // import {
 //   AlertDialog,
 //   AlertDialogAction,
@@ -34,10 +35,9 @@ interface HomeProps {
 }
 
 function Home({ isJobPanelOpen }: HomeProps) {
-  const { jobs, workers, machines, syncJobState, /* cancelJob, deleteMachine, */ finishedJobsPagination, setFinishedJobsPagination, refreshJobsOnly } = useMonitorStore();
-  // const [cancelJobId, setCancelJobId] = useState<string | null>(null);
+  const { jobs, workers, machines, syncJobState, cancelJob, finishedJobsPagination, setFinishedJobsPagination, refreshJobsOnly } = useMonitorStore();
+  const [cancelJobId, setCancelJobId] = useState<string | null>(null);
   const [selectedJob, setSelectedJob] = useState<Job | null>(null);
-  // const [deleteMachineId, setDeleteMachineId] = useState<string | null>(null);
 
   // Format timestamp to relative time
   const formatRelativeTime = (timestamp: number | undefined): string => {
@@ -63,16 +63,16 @@ function Home({ isJobPanelOpen }: HomeProps) {
     syncJobState(jobId);
   };
 
-  // const handleCancelJob = (jobId: string) => {
-  //   setCancelJobId(jobId);
-  // };
+  const handleCancelJob = (jobId: string) => {
+    setCancelJobId(jobId);
+  };
 
-  // const confirmCancelJob = () => {
-  //   if (cancelJobId) {
-  //     cancelJob(cancelJobId);
-  //     setCancelJobId(null);
-  //   }
-  // };
+  const confirmCancelJob = () => {
+    if (cancelJobId) {
+      cancelJob(cancelJobId);
+      setCancelJobId(null);
+    }
+  };
 
   // const handleDeleteMachine = (machineId: string) => {
   //   setDeleteMachineId(machineId);
@@ -398,7 +398,7 @@ function Home({ isJobPanelOpen }: HomeProps) {
                           <Button
                             variant="outline"
                             size="sm"
-                            onClick={() => {/* handleCancelJob(job.id) */}}
+                            onClick={() => handleCancelJob(job.id)}
                             className="h-7 w-7 p-0 hover:bg-red-50 hover:border-red-200"
                             title="Cancel job"
                           >
@@ -457,7 +457,7 @@ function Home({ isJobPanelOpen }: HomeProps) {
                             size="sm"
                             onClick={(e) => {
                               e.stopPropagation();
-                              // setCancelJobId(job.id);
+                              handleCancelJob(job.id);
                             }}
                             title="Cancel job"
                           >
@@ -611,26 +611,34 @@ function Home({ isJobPanelOpen }: HomeProps) {
         </div>
 
       {/* Cancel Job Confirmation Dialog */}
-      {/* <AlertDialog open={!!cancelJobId} onOpenChange={() => setCancelJobId(null)}>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>Cancel Job</AlertDialogTitle>
-            <AlertDialogDescription>
-              Are you sure you want to cancel job &quot;{cancelJobId}&quot;? This action cannot be undone.
-              The job will be marked as failed and removed from the queue.
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel>Keep Job</AlertDialogCancel>
-            <AlertDialogAction
-              onClick={confirmCancelJob}
-              className="bg-red-600 hover:bg-red-700"
-            >
-              Cancel Job
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog> */}
+      {/* TODO: Fix AlertDialog React 19 compatibility issue */}
+      {cancelJobId && (
+        <div className="fixed inset-0 z-50 bg-background/80 backdrop-blur-sm">
+          <div className="fixed left-[50%] top-[50%] z-50 grid w-full max-w-lg translate-x-[-50%] translate-y-[-50%] gap-4 border bg-background p-6 shadow-lg rounded-lg">
+            <div className="flex flex-col space-y-2 text-center sm:text-left">
+              <h2 className="text-lg font-semibold">Cancel Job</h2>
+              <p className="text-sm text-muted-foreground">
+                Are you sure you want to cancel job &quot;{cancelJobId}&quot;? This action cannot be undone.
+                The job will be marked as failed and removed from the queue.
+              </p>
+            </div>
+            <div className="flex flex-col-reverse sm:flex-row sm:justify-end sm:space-x-2">
+              <button
+                onClick={() => setCancelJobId(null)}
+                className="mt-2 sm:mt-0 px-4 py-2 text-sm border border-input bg-background hover:bg-accent hover:text-accent-foreground rounded-md"
+              >
+                Keep Job
+              </button>
+              <button
+                onClick={confirmCancelJob}
+                className="px-4 py-2 text-sm bg-red-600 hover:bg-red-700 text-white rounded-md"
+              >
+                Cancel Job
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Delete Machine Confirmation Dialog */}
       {/* <AlertDialog open={!!deleteMachineId} onOpenChange={() => setDeleteMachineId(null)}>

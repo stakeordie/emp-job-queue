@@ -547,7 +547,7 @@ export function JobSubmissionForm() {
         
         // For simulation jobs with multiple steps, register the workflow for auto-progression
         if (data.is_workflow && serviceType === 'simulation' && stepsPerWorkflow > 1) {
-          trackSimulationWorkflow(jobData.workflow_id, {
+          trackSimulationWorkflow(jobData.workflow_id as string, {
             total_steps: stepsPerWorkflow,
             job_type: serviceType,
             priority: data.priority,
@@ -559,7 +559,7 @@ export function JobSubmissionForm() {
             useCpuMode: useCpuMode
           });
           
-          console.log(`Registered simulation workflow ${currentWorkflowId} with ${stepsPerWorkflow} steps`);
+          console.log(`Registered simulation workflow ${jobData.workflow_id} with ${stepsPerWorkflow} steps`);
         }
         
         // Submit only the first step - subsequent steps will be submitted automatically

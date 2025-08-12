@@ -239,15 +239,14 @@ export function MachineCard({ machine, workers, onDelete }: MachineCardProps) {
                       key={worker.worker_id}
                       className={`w-2 h-2 rounded-full ${
                         // Processing: has active job OR explicitly busy status
-                        (worker.current_job_id !== null && worker.current_job_id !== undefined) || 
                         worker.current_jobs?.length > 0 || 
                         worker.status === 'busy'
                           ? 'bg-blue-500 animate-pulse' :
                         // Error states  
                         worker.status === 'error' ? 'bg-red-500' :
-                        // Idle: explicitly idle OR (no active jobs AND connected)
+                        // Idle: explicitly idle OR no active jobs
                         worker.status === 'idle' || 
-                        (worker.current_job_id === null && worker.is_connected)
+                        (worker.current_jobs?.length === 0 || !worker.current_jobs)
                           ? 'bg-green-500' :
                         // Default for disconnected/unknown states
                         'bg-gray-400'

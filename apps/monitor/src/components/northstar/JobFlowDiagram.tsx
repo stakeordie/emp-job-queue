@@ -384,7 +384,7 @@ function generateFlowTopology(jobs: Job[], machines: Machine[], workers: Worker[
         avgLatency: 5125,
         errorCount: recentJobs.filter(j => j.status === 'failed').length
       },
-      recentJobs: recentJobs.filter(j => j.status === 'active' || j.status === 'processing').slice(0, 5).map(j => j.id)
+      recentJobs: recentJobs.filter(j => j.status === 'accepted' || j.status === 'in_progress').slice(0, 5).map(j => j.id)
     }
   ];
 
