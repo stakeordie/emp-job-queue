@@ -2,7 +2,7 @@
 // Uses stakeordie/ComfyUI fork with native WebSocket job submission and progress
 
 import { JobData, JobResult, ProgressCallback, ServiceInfo, logger } from '@emp/core';
-import { WebSocketConnector, MessageType, WebSocketMessage } from './protocol/websocket-connector.js';
+import { WebSocketConnector, MessageType, WebSocketMessage, WebSocketState } from './protocol/websocket-connector.js';
 import { HealthCheckCapabilities, ServiceJobStatus } from './base-connector.js';
 
 interface AuthConfig {
@@ -153,7 +153,12 @@ export class ComfyUIWebSocketConnector extends WebSocketConnector {
       case 'status':
         return MessageType.CONNECTION;
       case 'prompt_queued':
+        return MessageType.JOB_SUBMIT;
       case 'executing':
+        // Check if this is a completion message (node is null)
+        if (messageData.data?.node === null) {
+          return MessageType.JOB_COMPLETE;
+        }
         return MessageType.JOB_SUBMIT;
       case 'progress':
         return MessageType.JOB_PROGRESS;
@@ -169,7 +174,29 @@ export class ComfyUIWebSocketConnector extends WebSocketConnector {
 
   protected extractJobId(messageData: any): string | undefined {
     // ComfyUI doesn't have direct job IDs, use prompt_id as correlation
-    return messageData.data?.prompt_id;
+    let promptId = messageData.data?.prompt_id;
+    
+    // For completion messages, we need to use the current prompt ID since the message doesn't contain it
+    if (messageData.type === 'executing' && messageData.data?.node === null) {
+      promptId = this.promptId;
+    }
+    
+    // Convert ComfyUI prompt_id back to worker job_id using our active jobs mapping
+    if (promptId) {
+      // Find the active job that matches this prompt_id
+      for (const [jobId, activeJob] of (this as any).activeJobs.entries()) {
+        // Check if this job's prompt_id matches (stored when we sent the job)
+        if ((activeJob as any).promptId === promptId) {
+          return jobId;
+        }
+      }
+      
+      // Fallback: if no active job mapping found, return the prompt_id
+      // This can happen for messages before job submission completes
+      return promptId;
+    }
+    
+    return undefined;
   }
 
   protected extractProgress(messageData: any): number {
@@ -259,6 +286,26 @@ export class ComfyUIWebSocketConnector extends WebSocketConnector {
   private async handlePromptQueued(message: any): Promise<void> {
     this.promptId = message.data?.prompt_id;
     logger.info(`ComfyUI: Prompt queued with ID: ${this.promptId}`);
+    
+    // Find the most recently submitted job (should be the one that triggered this prompt)
+    // and store the prompt_id correlation
+    let mostRecentJob: any = null;
+    let mostRecentTime = 0;
+    
+    for (const [jobId, activeJob] of (this as any).activeJobs.entries()) {
+      if ((activeJob as any).startTime > mostRecentTime && !(activeJob as any).promptId) {
+        mostRecentJob = activeJob;
+        mostRecentTime = (activeJob as any).startTime;
+      }
+    }
+    
+    if (mostRecentJob && this.promptId) {
+      mostRecentJob.promptId = this.promptId;
+      logger.info(`🔗 [${this.connector_id}] Job ID correlation established:`, {
+        jobId: mostRecentJob.jobData.id,
+        promptId: this.promptId
+      });
+    }
 
     // Store service job ID mapping for health checks
     if (this.redis && this.promptId) {
@@ -326,5 +373,70 @@ export class ComfyUIWebSocketConnector extends WebSocketConnector {
 
   getConfiguration(): any {
     return super.getConfiguration();
+  }
+
+  // ============================================================================
+  // Override processJob to handle ComfyUI prompt_id correlation
+  // ============================================================================
+
+  async processJob(jobData: JobData, progressCallback?: ProgressCallback): Promise<JobResult> {
+    // Ensure connection is established
+    if (this.connectionState !== WebSocketState.CONNECTED) {
+      await super.connect();
+    }
+
+    return new Promise<JobResult>((resolve, reject) => {
+      // Setup job timeout
+      const timeout = setTimeout(() => {
+        this.handleJobFailure(jobData.id, new Error('Job timeout'));
+      }, this.wsConfig.message_timeout_ms);
+
+      // Track active job with ComfyUI-specific fields
+      const activeJob: any = {
+        jobData,
+        progressCallback,
+        resolve,
+        reject,
+        timeout,
+        startTime: Date.now(),
+        promptId: null // Will be set when we get the prompt_queued message
+      };
+
+      (this as any).activeJobs.set(jobData.id, activeJob);
+
+      try {
+        // Build and send job message
+        const jobMessage = this.buildJobMessage(jobData);
+        this.sendMessage(jobMessage);
+
+        logger.debug(`ComfyUI WebSocket job submitted`, {
+          connector: this.connector_id,
+          jobId: jobData.id,
+          type: jobData.type
+        });
+
+      } catch (error) {
+        this.handleJobFailure(jobData.id, error as Error);
+      }
+    });
+  }
+
+  private handleJobFailure(jobId: string, error: Error): void {
+    const activeJob = (this as any).activeJobs.get(jobId);
+    if (activeJob) {
+      if (activeJob.timeout) {
+        clearTimeout(activeJob.timeout);
+      }
+      
+      (this as any).activeJobs.delete(jobId);
+      activeJob.reject(error);
+      
+      logger.error(`ComfyUI WebSocket job failed`, {
+        connector: this.connector_id,
+        jobId,
+        error: error.message,
+        duration: Date.now() - activeJob.startTime
+      });
+    }
   }
 }

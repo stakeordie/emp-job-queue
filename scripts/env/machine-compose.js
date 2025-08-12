@@ -57,6 +57,37 @@ class MachineCompose {
   }
 
   /**
+   * Load regular environment variables from .env.{envName}
+   */
+  loadEnvRegular(envName = 'local-dev') {
+    const envPath = path.join(MACHINE_DIR, `.env.${envName}`);
+    if (!fs.existsSync(envPath)) {
+      console.warn(chalk.yellow(`⚠️ .env.${envName} not found at ${envPath}`));
+      console.warn(chalk.gray(`   Run: pnpm env:build ${envName}`));
+      return {};
+    }
+
+    const result = dotenv.config({ path: envPath });
+    if (result.error) {
+      console.error(chalk.red(`❌ Failed to parse .env.${envName}:`), result.error);
+      return {};
+    }
+
+    return result.parsed || {};
+  }
+
+  /**
+   * Load all environment variables (regular + secret) for runtime injection
+   */
+  loadAllEnvVars(envName = 'local-dev') {
+    const regularEnv = this.loadEnvRegular(envName);
+    const secretEnv = this.loadEnvSecret(envName);
+    
+    // Secret vars override regular vars (secrets have priority)
+    return { ...regularEnv, ...secretEnv };
+  }
+
+  /**
    * Create .env symlink for Docker Compose variable substitution
    */
   async createEnvironmentSymlink(envName) {
@@ -186,6 +217,8 @@ class MachineCompose {
     console.log('  pull       Pull images from registry');
     console.log('  push       Push images to registry');
     console.log('  logs       View service logs');
+    console.log('  run        Run single container with docker run (production-style)');
+    console.log('  generate_args  Generate deployment files for hosting platforms');
     console.log('\nPort Control:');
     console.log('  --open host:container   Expose container port to host port');
     console.log('  Multiple --open flags can be used');
@@ -194,13 +227,64 @@ class MachineCompose {
     console.log('  pnpm machine:up sim-prod --open 9090:9090');
     console.log('  pnpm machine:build comfyui-remote-production');
     console.log('  pnpm machine:down comfyui-remote-local');
+    console.log('  pnpm machine:run comfyui-remote-production --open 9090:9090');
+    console.log('  pnpm machine:generate_args comfyui-remote-production');
     console.log('\nNote: Environment is automatically determined from profile configuration');
+    console.log('\nProduction Emulation:');
+    console.log('  run command uses docker run with -e flags (true production hosting style)');
+  }
+
+  /**
+   * Build Docker Run command (production-style with -e flags)
+   */
+  buildDockerRunCommand(profile, flags, envName, portMappings) {
+    if (!profile) {
+      throw new Error('Profile is required for docker run command');
+    }
+
+    const cmd = ['docker', 'run'];
+    
+    // Add common docker run flags
+    cmd.push('--rm'); // Remove container when it exits
+    cmd.push('--name', profile); // Container name
+    cmd.push('--hostname', profile); // Hostname
+    
+    // Add port mappings
+    portMappings.forEach(mapping => {
+      cmd.push('-p', mapping);
+    });
+    
+    // Add environment variables as -e flags (production hosting style)
+    if (envName) {
+      const allEnvVars = this.loadAllEnvVars(envName);
+      Object.entries(allEnvVars).forEach(([key, value]) => {
+        cmd.push('-e', `${key}=${value}`);
+      });
+      
+      console.log(chalk.blue(`🌐 Added ${Object.keys(allEnvVars).length} environment variables as -e flags`));
+      console.log(chalk.dim(`  Environment variables: ${Object.keys(allEnvVars).join(', ')}`));
+    }
+    
+    // Add working directory
+    cmd.push('-w', '/workspace');
+    
+    // Add image name (based on profile)
+    cmd.push(`emprops/machine:${profile}`);
+    
+    // Add additional flags
+    flags.forEach(flag => {
+      if (!flag.startsWith('--')) {
+        cmd.push(flag);
+      }
+    });
+    
+    return cmd;
   }
 
   /**
    * Build Docker Compose command
    */
-  buildDockerComposeCommand(command, profile, flags) {
+  buildDockerComposeCommand(command, profile, flags, envName) {
     const cmd = ['docker', 'compose'];
     
     // Add profile if specified
@@ -221,7 +305,13 @@ class MachineCompose {
         break;
       case 'build':
         cmd.push('build');
-        // Docker Compose will automatically use env_file from the profile
+        // For build command, inject environment variables as build args
+        if (envName) {
+          const secretEnv = this.loadEnvSecret(envName);
+          Object.entries(secretEnv).forEach(([key, value]) => {
+            cmd.push('--build-arg', `${key}=${value}`);
+          });
+        }
         break;
       case 'pull':
         cmd.push('pull');
@@ -231,6 +321,12 @@ class MachineCompose {
         break;
       case 'logs':
         cmd.push('logs', '-f');
+        break;
+      case 'run':
+        // Special case: handled by buildDockerRunCommand instead
+        break;
+      case 'generate_args':
+        // Special case: handled by generateDeploymentArgs instead
         break;
       default:
         throw new Error(`Unknown command: ${command}`);
@@ -249,7 +345,7 @@ class MachineCompose {
   /**
    * Execute Docker Compose command
    */
-  async executeCommand(cmd, includeEnvVars = false, portMappings = []) {
+  async executeCommand(cmd, includeEnvVars = false, portMappings = [], envName = null) {
     console.log(chalk.blue(`🐳 Running: ${cmd.join(' ')}`));
     console.log(chalk.gray(`📁 Working directory: ${MACHINE_DIR}\n`));
 
@@ -264,6 +360,23 @@ class MachineCompose {
       // Disable all ports by default in local profile
       env = { ...env, DISABLE_PORTS: 'true' };
       console.log(chalk.dim(`  Disabled all port exposures (use --open to enable specific ports)`));
+    }
+
+    // PRODUCTION-STYLE: Inject environment variables into process environment (for 'up' commands)
+    if (includeEnvVars && envName && (cmd.includes('up') || cmd.includes('run'))) {
+      const allEnvVars = this.loadAllEnvVars(envName);
+      const envCount = Object.keys(allEnvVars).length;
+      
+      if (envCount > 0) {
+        console.log(chalk.blue(`🌐 Injecting ${envCount} environment variables into process environment (production-style)`));
+        
+        // Merge environment variables into the process environment
+        // This mimics how production hosts provide env vars to Docker Compose
+        env = { ...env, ...allEnvVars };
+        
+        console.log(chalk.dim(`  Environment variables: ${Object.keys(allEnvVars).join(', ')}`));
+        console.log(chalk.dim(`  Docker Compose will inherit these from the host environment`));
+      }
     }
 
     return new Promise((resolve, reject) => {
@@ -305,10 +418,18 @@ class MachineCompose {
     
     console.log(chalk.blue(`🎯 Action: ${command}`));
     
+    if (command === 'run') {
+      console.log(chalk.green(`🏗️  Mode: Production hosting emulation (docker run with -e flags)`));
+    }
+    
     if (portMappings.length > 0) {
       console.log(chalk.blue(`🔌 Port Mappings: ${portMappings.join(', ')}`));
     } else {
-      console.log(chalk.yellow('🔒 No ports exposed (use --open to expose ports)'));
+      if (command === 'run') {
+        console.log(chalk.yellow('🔒 No ports exposed (use --open to expose ports)'));
+      } else {
+        console.log(chalk.yellow('🔒 No ports exposed (use --open to expose ports)'));
+      }
     }
     
     if (flags.length > 0) {
@@ -349,7 +470,7 @@ class MachineCompose {
     
     try {
       await new Promise((resolve, reject) => {
-        const process = spawn('node', ['scripts/port-manager.js', 'generate'], {
+        const process = spawn('node', ['scripts/generate-docker-compose-ports.js'], {
           stdio: 'inherit',
           cwd: MACHINE_DIR,
           env: env
@@ -374,6 +495,146 @@ class MachineCompose {
   }
 
   /**
+   * Generate deployment arguments for hosting platforms
+   */
+  generateDeploymentArgs(profile, envName, outputDir = 'deployment-files') {
+    if (!profile) {
+      throw new Error('Profile is required for generating deployment args');
+    }
+
+    console.log(chalk.cyan('🚀 Generating Deployment Files'));
+    console.log(chalk.blue(`📋 Profile: ${profile}`));
+    console.log(chalk.blue(`🌐 Environment: ${envName}`));
+    console.log();
+
+    const allEnvVars = this.loadAllEnvVars(envName);
+    const envCount = Object.keys(allEnvVars).length;
+
+    // Create output directory
+    const deployDir = path.join(MACHINE_DIR, outputDir);
+    if (!fs.existsSync(deployDir)) {
+      fs.mkdirSync(deployDir, { recursive: true });
+    }
+
+    console.log(chalk.blue(`📁 Output directory: ${deployDir}`));
+    console.log(chalk.blue(`🌐 Found ${envCount} environment variables`));
+    console.log();
+
+    // Generate different formats for different platforms
+
+    // 1. Railway deployment file (.env format)
+    const railwayFile = path.join(deployDir, `${profile}.railway.env`);
+    const railwayContent = Object.entries(allEnvVars)
+      .map(([key, value]) => `${key}=${value}`)
+      .join('\n');
+    fs.writeFileSync(railwayFile, railwayContent);
+    console.log(chalk.green(`✅ Railway: ${railwayFile}`));
+
+    // 2. Vast.ai deployment file (bash export format)
+    const vastFile = path.join(deployDir, `${profile}.vast.sh`);
+    const vastContent = [
+      '#!/bin/bash',
+      '# Vast.ai Environment Variables',
+      `# Profile: ${profile}`,
+      `# Environment: ${envName}`,
+      `# Generated: ${new Date().toISOString()}`,
+      '',
+      ...Object.entries(allEnvVars).map(([key, value]) => `export ${key}="${value}"`),
+      '',
+      '# Run the container',
+      `docker run --rm --name ${profile} \\`,
+      ...Object.entries(allEnvVars).map(([key, value]) => `  -e ${key}="${value}" \\`),
+      `  -w /workspace \\`,
+      `  emprops/machine:${profile}`
+    ].join('\n');
+    fs.writeFileSync(vastFile, vastContent);
+    fs.chmodSync(vastFile, '755'); // Make executable
+    console.log(chalk.green(`✅ Vast.ai: ${vastFile}`));
+
+    // 3. Docker run command file
+    const dockerFile = path.join(deployDir, `${profile}.docker-run.sh`);
+    const dockerContent = [
+      '#!/bin/bash',
+      '# Docker Run Command',
+      `# Profile: ${profile}`,
+      `# Environment: ${envName}`,
+      `# Generated: ${new Date().toISOString()}`,
+      '',
+      'docker run --rm \\',
+      `  --name ${profile} \\`,
+      `  --hostname ${profile} \\`,
+      ...Object.entries(allEnvVars).map(([key, value]) => `  -e ${key}="${value}" \\`),
+      '  -w /workspace \\',
+      `  emprops/machine:${profile}`
+    ].join('\n');
+    fs.writeFileSync(dockerFile, dockerContent);
+    fs.chmodSync(dockerFile, '755'); // Make executable
+    console.log(chalk.green(`✅ Docker Run: ${dockerFile}`));
+
+    // 4. Kubernetes ConfigMap/Secret YAML
+    const k8sFile = path.join(deployDir, `${profile}.k8s.yaml`);
+    const k8sContent = [
+      'apiVersion: v1',
+      'kind: ConfigMap',
+      'metadata:',
+      `  name: ${profile}-config`,
+      'data:',
+      ...Object.entries(allEnvVars).map(([key, value]) => `  ${key}: "${value}"`),
+      '---',
+      'apiVersion: apps/v1',
+      'kind: Deployment',
+      'metadata:',
+      `  name: ${profile}`,
+      'spec:',
+      '  replicas: 1',
+      '  selector:',
+      '    matchLabels:',
+      `      app: ${profile}`,
+      '  template:',
+      '    metadata:',
+      '      labels:',
+      `        app: ${profile}`,
+      '    spec:',
+      '      containers:',
+      `      - name: ${profile}`,
+      `        image: emprops/machine:${profile}`,
+      '        workingDir: /workspace',
+      '        envFrom:',
+      '        - configMapRef:',
+      `            name: ${profile}-config`
+    ].join('\n');
+    fs.writeFileSync(k8sFile, k8sContent);
+    console.log(chalk.green(`✅ Kubernetes: ${k8sFile}`));
+
+    // 5. Environment variables list (for copying/pasting)
+    const envListFile = path.join(deployDir, `${profile}.env-list.txt`);
+    const envListContent = [
+      `# Environment Variables for ${profile}`,
+      `# Environment: ${envName}`,
+      `# Generated: ${new Date().toISOString()}`,
+      `# Total variables: ${envCount}`,
+      '',
+      '# Variable names (for UI forms):',
+      ...Object.keys(allEnvVars).map(key => `# ${key}`),
+      '',
+      '# Key=Value pairs:',
+      ...Object.entries(allEnvVars).map(([key, value]) => `${key}=${value}`)
+    ].join('\n');
+    fs.writeFileSync(envListFile, envListContent);
+    console.log(chalk.green(`✅ Environment List: ${envListFile}`));
+
+    console.log();
+    console.log(chalk.cyan('📋 Deployment Files Summary:'));
+    console.log(chalk.dim(`  Railway:    Upload ${profile}.railway.env to Railway environment variables`));
+    console.log(chalk.dim(`  Vast.ai:    Run ${profile}.vast.sh on Vast.ai instance`));
+    console.log(chalk.dim(`  Docker:     Execute ${profile}.docker-run.sh locally`));
+    console.log(chalk.dim(`  Kubernetes: kubectl apply -f ${profile}.k8s.yaml`));
+    console.log(chalk.dim(`  Manual:     Copy variables from ${profile}.env-list.txt`));
+    console.log();
+    console.log(chalk.green(`🎉 Generated deployment files for ${envCount} environment variables`));
+  }
+
+  /**
    * Main execution
    */
   async run() {
@@ -390,7 +651,7 @@ class MachineCompose {
       // Always bundle worker first for build command
       if (command === 'build') {
         console.log(chalk.blue('📦 Bundling worker...'));
-        await this.executeCommand(['pnpm', '-w', 'worker:bundle'], false, []);
+        await this.executeCommand(['pnpm', '-w', 'worker:bundle'], false, [], null);
         console.log(chalk.green('✅ Worker bundled successfully\n'));
       }
       
@@ -410,8 +671,36 @@ class MachineCompose {
         await this.generatePorts(portMappings, profile, isDebug);
       }
       
-      const cmd = this.buildDockerComposeCommand(command, profile, flags);
-      await this.executeCommand(cmd, false, portMappings);
+      let cmd;
+      let injectEnvVars = false;
+      
+      if (command === 'generate_args') {
+        // Generate deployment files for hosting platforms
+        if (!profile) {
+          throw new Error('Profile is required for generating deployment args');
+        }
+        
+        this.generateDeploymentArgs(profile, envName);
+        return; // Don't execute docker commands
+        
+      } else if (command === 'run') {
+        // Use docker run command (production hosting style)
+        if (!profile) {
+          throw new Error('Profile is required for docker run command');
+        }
+        
+        console.log(chalk.blue('🏗️  Using docker run (production hosting emulation)'));
+        cmd = this.buildDockerRunCommand(profile, flags, envName, portMappings);
+        // Environment variables are already injected as -e flags in buildDockerRunCommand
+        injectEnvVars = false;
+      } else {
+        // Use docker compose command
+        cmd = this.buildDockerComposeCommand(command, profile, flags, envName);
+        // Enable runtime env injection for 'up' commands to emulate production
+        injectEnvVars = (command === 'up');
+      }
+      
+      await this.executeCommand(cmd, injectEnvVars, portMappings, envName);
       
     } catch (error) {
       console.error(chalk.red('❌ Error:'), error.message);

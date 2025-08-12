@@ -431,6 +431,19 @@ export abstract class WebSocketConnector extends BaseConnector {
       const rawMessage = data instanceof Buffer ? data.toString() : data;
       const messageData = typeof rawMessage === 'string' ? JSON.parse(rawMessage) : rawMessage;
       
+      // 🔇 FILTER OUT NOISE MESSAGES COMPLETELY - don't process them at all
+      if (this.isNoiseMessage(messageData)) {
+        // Just drop the message entirely - don't log, don't process, don't route
+        return;
+      }
+      
+      // 🔍 LOG IMPORTANT MESSAGES ONLY
+      logger.info(`🔍 [${this.connector_id}] RAW WebSocket Message:`, {
+        type: messageData.type,
+        data: messageData.data,
+        full_message: messageData
+      });
+      
       // Classify and route message
       const message: WebSocketMessage = {
         type: this.classifyMessage(messageData),
@@ -438,6 +451,14 @@ export abstract class WebSocketConnector extends BaseConnector {
         data: messageData,
         timestamp: Date.now()
       };
+
+      // 🔍 LOG MESSAGE CLASSIFICATION
+      logger.info(`🔍 [${this.connector_id}] Message Classification:`, {
+        original_type: messageData.type,
+        classified_as: message.type,
+        extracted_job_id: message.jobId,
+        will_route_to: this.getRouteDescription(message.type)
+      });
 
       // Route message to appropriate handler
       this.routeMessage(message);
@@ -449,6 +470,47 @@ export abstract class WebSocketConnector extends BaseConnector {
         data: data.toString().substring(0, 200) // First 200 chars for debugging
       });
     }
+  }
+
+  /**
+   * Helper to describe where a message type will be routed
+   */
+  private getRouteDescription(messageType: MessageType): string {
+    switch (messageType) {
+      case MessageType.JOB_PROGRESS: return 'handleJobProgressMessage()';
+      case MessageType.JOB_COMPLETE: return 'handleJobCompleteMessage()';
+      case MessageType.JOB_ERROR: return 'handleJobErrorMessage()';
+      case MessageType.HEARTBEAT: return 'handleHeartbeatMessage()';
+      case MessageType.CONNECTION: return 'handleConnectionMessage()';
+      case MessageType.JOB_SUBMIT: return 'onMessage() [service-specific]';
+      default: return 'onMessage() [service-specific]';
+    }
+  }
+
+  /**
+   * Filter out noise messages that don't need detailed logging
+   */
+  private isNoiseMessage(messageData: any): boolean {
+    const type = messageData.type?.toLowerCase();
+    const data = messageData.data;
+    
+    // Filter out crystools.monitor messages (note: plural "crystools")
+    if (type === 'crystools.monitor' || 
+        type === 'crystool.monitor' ||
+        data?.node_id?.includes?.('crystool') ||
+        data?.class_type?.includes?.('crystool')) {
+      return true;
+    }
+    
+    // Filter out other common noise messages
+    const noiseTypes = [
+      'b_preview', // Preview updates
+      'preview_image', // Image previews  
+      'execution_cached', // Cached execution notifications
+      'executed', // Individual node execution completions (too verbose)
+    ];
+    
+    return noiseTypes.includes(type);
   }
 
   /**
@@ -507,16 +569,45 @@ export abstract class WebSocketConnector extends BaseConnector {
    * Handle job completion messages
    */
   private handleJobCompleteMessage(message: WebSocketMessage): void {
-    if (!message.jobId) return;
+    logger.info(`🔍 [${this.connector_id}] JOB COMPLETION MESSAGE RECEIVED:`, {
+      jobId: message.jobId,
+      hasActiveJob: !!message.jobId && this.activeJobs.has(message.jobId),
+      activeJobsCount: this.activeJobs.size,
+      messageData: message.data
+    });
+
+    if (!message.jobId) {
+      logger.warn(`🔍 [${this.connector_id}] Job completion message has no jobId - cannot complete job`);
+      return;
+    }
     
     const activeJob = this.activeJobs.get(message.jobId);
     if (activeJob) {
+      logger.info(`🔍 [${this.connector_id}] Found active job for completion:`, {
+        jobId: message.jobId,
+        jobStartTime: activeJob.startTime,
+        durationMs: Date.now() - activeJob.startTime
+      });
+      
       try {
         const result = this.parseJobResult(message.data, activeJob.jobData);
+        logger.info(`🔍 [${this.connector_id}] Parsed job result successfully, completing job:`, {
+          jobId: message.jobId,
+          resultSuccess: result.success
+        });
         this.completeJob(message.jobId, result);
       } catch (error) {
+        logger.error(`🔍 [${this.connector_id}] Failed to parse job result:`, {
+          jobId: message.jobId,
+          error: error.message
+        });
         this.failJob(message.jobId, error as Error);
       }
+    } else {
+      logger.warn(`🔍 [${this.connector_id}] No active job found for completion:`, {
+        jobId: message.jobId,
+        activeJobIds: Array.from(this.activeJobs.keys())
+      });
     }
   }
 
@@ -578,12 +669,25 @@ export abstract class WebSocketConnector extends BaseConnector {
       }
       
       this.activeJobs.delete(jobId);
+      
+      logger.info(`🎉 [${this.connector_id}] JOB COMPLETED SUCCESSFULLY:`, {
+        jobId,
+        duration: Date.now() - activeJob.startTime,
+        resultSuccess: result.success,
+        resultData: result.data
+      });
+      
       activeJob.resolve(result);
       
       logger.debug(`WebSocket job completed`, {
         connector: this.connector_id,
         jobId,
         duration: Date.now() - activeJob.startTime
+      });
+    } else {
+      logger.error(`🔍 [${this.connector_id}] Cannot complete job - no active job found:`, {
+        jobId,
+        activeJobIds: Array.from(this.activeJobs.keys())
       });
     }
   }

@@ -46,6 +46,8 @@
     "machine:pull": "node scripts/env/machine-compose.js pull",
     "machine:push": "node scripts/env/machine-compose.js push",
     "machine:logs": "node scripts/env/machine-compose.js logs",
+    "machine:run": "node scripts/env/machine-compose.js run",
+    "machine:generate_args": "node scripts/env/machine-compose.js generate_args",
     "machine:status": "curl -s http://localhost:9092/health | jq || echo '❌ Health check failed'",
     "worker:bundle": "./scripts/bundle-worker.sh",
     "compose:profile": "node scripts/env/compose-build.js",
