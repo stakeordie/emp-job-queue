@@ -114,14 +114,15 @@ jobs:
         RELEASE_ID="GITHUB-RELEASE-${{ steps.get_tag.outputs.tag }}-${BUILD_TIMESTAMP}"
         
         # Create a temporary modified worker file with injected release identifier
-        cp apps/worker/src/redis-direct-worker.ts worker-release/redis-direct-worker-modified.ts
+        # Use the original location to preserve import paths during bundling
+        cp apps/worker/src/redis-direct-worker.ts apps/worker/src/redis-direct-worker-modified.ts
         
         # Inject hardcoded log message right after the worker startup
-        sed -i 's/logger\.info(\`🚀 Worker starting - timestamp: \${new Date()\.toISOString()}\`);/logger.info(`🚀 Worker starting - timestamp: ${new Date().toISOString()}`);\'$'\n''  logger.info("🔥 GITHUB RELEASE WORKER: '"${RELEASE_ID}"'");\'$'\n''  logger.info("📦 This worker was downloaded from GitHub releases!");/g' worker-release/redis-direct-worker-modified.ts
+        sed -i 's/logger\.info(\`🚀 Worker starting - timestamp: \${new Date()\.toISOString()}\`);/logger.info(`🚀 Worker starting - timestamp: ${new Date().toISOString()}`);\'$'\n''  logger.info("🔥 GITHUB RELEASE WORKER: '"${RELEASE_ID}"'");\'$'\n''  logger.info("📦 This worker was downloaded from GitHub releases!");/g' apps/worker/src/redis-direct-worker-modified.ts
         
         # Bundle worker into a single executable file using esbuild
         # This bundles all dependencies including @emp/core into a single file
-        esbuild worker-release/redis-direct-worker-modified.ts \
+        esbuild apps/worker/src/redis-direct-worker-modified.ts \
           --bundle \
           --platform=node \
           --target=node18 \
@@ -139,6 +140,9 @@ jobs:
         cat worker-release/redis-direct-worker-clean.cjs >> worker-release/redis-direct-worker.js
         chmod +x worker-release/redis-direct-worker.js
         rm worker-release/redis-direct-worker.cjs worker-release/redis-direct-worker-clean.cjs
+        
+        # Clean up temporary modified file
+        rm apps/worker/src/redis-direct-worker-modified.ts
         
         # Create a minimal package.json for the bundled worker with release version
         cat > worker-release/package.json << EOF
