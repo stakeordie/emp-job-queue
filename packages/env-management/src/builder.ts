@@ -16,7 +16,7 @@ export class EnvironmentBuilder {
   private outputPath: string;
   private serviceInterfaces: ServiceInterfaceManager;
 
-  constructor(configDir: string, outputPath: string = '.env.local') {
+  constructor(configDir: string, outputPath: string = '.env.local', private envName?: string) {
     this.configDir = configDir;
     this.outputPath = outputPath;
     this.serviceInterfaces = new ServiceInterfaceManager(configDir);
@@ -39,7 +39,9 @@ export class EnvironmentBuilder {
     currentEnv?: string
   ): Promise<void> {
     const serviceVars = this.serviceInterfaces.mapServiceVariables(serviceName, systemVars);
-    const serviceEnvPath = outputPath || `.env.${serviceName}`;
+    // If envName is provided, append it to the filename
+    const basePath = outputPath || `.env.${serviceName}`;
+    const serviceEnvPath = this.envName ? basePath.replace('.env', `.env.${this.envName}`) : basePath;
 
     // Split variables into public and secret based on service interface
     const { publicVars, secretVars } = this.splitVariablesByInterface(serviceName, serviceVars);
@@ -58,7 +60,10 @@ export class EnvironmentBuilder {
     // Write secret variables to .env.secret (runtime injection via compose)
     // Only create .env.secret if there are actually secret variables
     if (Object.keys(secretVars).length > 0) {
-      const secretPath = serviceEnvPath.replace('.env', '.env.secret');
+      // Ensure proper naming for secret file with env name
+      const secretPath = this.envName 
+        ? serviceEnvPath.replace(`.env.${this.envName}`, `.env.secret.${this.envName}`)
+        : serviceEnvPath.replace('.env', '.env.secret');
       const secretContent = Object.entries(secretVars)
         .map(([key, value]) => `${key}=${value}`)
         .join('\n');
@@ -134,11 +139,13 @@ export class EnvironmentBuilder {
       for (const [serviceName, serviceInterface] of availableInterfaces) {
         // Generate the service's env file
         // Get location from interface, then default
-        const interfaceLocation = serviceInterface?.location
+        const baseLocation = serviceInterface?.location
           ? `${serviceInterface.location}/.env`
-          : null;
-        const defaultPath = `apps/${serviceName}/.env`;
-        const outputPath = interfaceLocation || defaultPath;
+          : `apps/${serviceName}/.env`;
+        // Append environment name if provided
+        const outputPath = this.envName 
+          ? baseLocation.replace('.env', `.env.${this.envName}`)
+          : baseLocation;
 
         // Ensure directory exists
         const outputDir = path.dirname(outputPath);

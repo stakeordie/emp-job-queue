@@ -12,7 +12,13 @@ const COMPOSE_FILE = path.join(PROJECT_ROOT, 'apps/machine/docker-compose.yml');
 
 const args = process.argv.slice(2);
 const configDir = process.cwd();
-const builder = new EnvironmentBuilder(configDir);
+
+// Get the environment name from the first argument (profile name)
+const firstArg = args[0];
+const envName = firstArg && !firstArg.startsWith('--') ? firstArg : null;
+
+// Create builder with environment name
+const builder = new EnvironmentBuilder(configDir, '.env.local', envName);
 
 // Parse arguments
 const getArgValue = (flag) => {
@@ -26,9 +32,8 @@ const getArgValue = (flag) => {
   return args[index + 1];
 };
 
-// Handle positional argument as profile name
-const firstArg = args[0];
-const isPositionalProfile = firstArg && !firstArg.startsWith('--');
+// Handle positional argument as profile name (already extracted above)
+const isPositionalProfile = envName !== null;
 
 const profile = getArgValue('profile') || (isPositionalProfile ? firstArg : null);
 const redis = getArgValue('redis');
@@ -111,7 +116,10 @@ async function buildEnvironment() {
     }
 
     if (result.success) {
-      console.log(chalk.green(`✅ Environment built successfully: ${result.envPath}`));
+      const envFileSuffix = envName ? `.${envName}` : '';
+      console.log(chalk.green(`✅ Environment built successfully:`));
+      console.log(chalk.green(`   Main: .env${envFileSuffix}`));
+      console.log(chalk.green(`   Secrets: .env.secret${envFileSuffix}`));
       
       // Update Docker Compose base machine service if machine interface changed
       try {
