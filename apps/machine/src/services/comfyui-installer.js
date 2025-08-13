@@ -576,6 +576,12 @@ export default class ComfyUIInstallerService extends BaseService {
     // Check if component-based configuration is requested
     const hasComponents = process.env.COMPONENTS || process.env.COLLECTIONS;
     
+    // Debug environment variables
+    this.logger.info('🔍 Environment variable debug:');
+    this.logger.info(`   COMPONENTS: "${process.env.COMPONENTS}"`);
+    this.logger.info(`   COLLECTIONS: "${process.env.COLLECTIONS}"`);
+    this.logger.info(`   hasComponents: ${hasComponents}`);
+    
     if (!hasComponents) {
       this.logger.info('No component-based configuration requested');
       return;
