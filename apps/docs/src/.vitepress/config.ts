@@ -74,6 +74,7 @@ const config = defineConfig({
       { text: 'Production', link: '/04-running-in-production/' },
       { text: 'Development', link: '/05-development/' },
       { text: 'Future', link: '/06-future-vision/' },
+      { text: 'Planned Features', link: '/07-planned-features/' },
       { text: 'Open API', link: '/08-emprops-open-api/' },
       { text: 'Observability', link: '/09-observability/' },
       { text: 'Notes', link: '/10-development-notes/' },
@@ -162,6 +163,16 @@ const config = defineConfig({
             { text: 'Pool-Based Routing 📝', link: '/06-future-vision/pool-based-routing' },
             { text: 'Technical Roadmap 📝', link: '/06-future-vision/technical-roadmap' },
             { text: 'Customer Documentation Plans 📝', link: '/06-future-vision/customer-docs-planning' }
+          ]
+        }
+      ],
+      '/07-planned-features/': [
+        {
+          text: '7. Planned Features',
+          items: [
+            { text: 'Overview', link: '/07-planned-features/' },
+            { text: 'Migration Plan: Component → Collection 🚀', link: '/07-planned-features/component-to-collection-migration' },
+            { text: 'Collection & Model Management 🎯', link: '/07-planned-features/collection-model-management' }
           ]
         }
       ],

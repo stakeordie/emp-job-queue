@@ -247,6 +247,37 @@ export class RedisDirectBaseWorker {
     }
   }
 
+  /**
+   * Load component configuration if available
+   */
+  private loadComponentConfiguration(): any {
+    try {
+      // Look for component configuration file
+      const configPath = '/workspace/component-config.json';
+      const fs = require('fs');
+      
+      if (fs.existsSync(configPath)) {
+        const configContent = fs.readFileSync(configPath, 'utf8');
+        const config = JSON.parse(configContent);
+        
+        if (process.env.NODE_ENV !== 'production' && process.env.LOG_LEVEL === 'debug') {
+          logger.debug('Loaded component configuration:', {
+            components: config.components?.length || 0,
+            customNodes: config.customNodes?.length || 0,
+            models: config.models?.length || 0,
+          });
+        }
+        
+        return config;
+      }
+    } catch (error) {
+      if (process.env.NODE_ENV !== 'production' && process.env.LOG_LEVEL === 'debug') {
+        logger.debug('No component configuration found or failed to load:', error.message);
+      }
+    }
+    
+    return null;
+  }
 
   private buildCapabilities(): WorkerCapabilities {
     if (process.env.NODE_ENV !== 'production' && process.env.LOG_LEVEL === 'debug') {
@@ -335,6 +366,9 @@ export class RedisDirectBaseWorker {
       }
     };
 
+    // Load component configuration if available
+    const componentConfig = this.loadComponentConfiguration();
+    
     // Build base capabilities
     const capabilities: WorkerCapabilities = {
       worker_id: this.workerId,
@@ -355,6 +389,11 @@ export class RedisDirectBaseWorker {
         platform: os.platform(),
         arch: os.arch(),
       },
+      // Add component metadata if configured (for informational purposes only)
+      ...(componentConfig && {
+        supported_components: componentConfig.capabilities.supported_component_names,
+        // Note: No component restrictions - worker accepts all jobs based on standard service mapping
+      }),
     };
 
     // Add custom capability fields from environment variables

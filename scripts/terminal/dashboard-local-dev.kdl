@@ -34,6 +34,11 @@ layout {
                     args "-c" "cd ~/code/emprops/ai_infra/emp-job-queue && sleep 5 && pnpm logs:redis"
                     start_suspended false
                 }
+                pane name="Fluentd Logs" {
+                    command "bash"
+                    args "-c" "cd ~/code/emprops/ai_infra/emp-job-queue && pnpm fluentd:run local-dev"
+                    start_suspended false
+                }
                 pane name="API Server" {
                     command "bash" 
                     args "-c" "sleep 5 && cd ~/code/emprops/emprops-open-api && yarn dev:local:dev"

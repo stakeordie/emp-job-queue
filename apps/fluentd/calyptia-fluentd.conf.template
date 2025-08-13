@@ -1,0 +1,96 @@
+# Fluentd Configuration for EMP Job Queue Log Aggregation
+# Static configuration generated at build time
+# Environment: ${ENV}
+
+# System configuration
+<system>
+  log_level debug
+  suppress_repeated_stacktrace false
+  emit_error_log_interval 10s
+  process_name fluentd-aggregator
+</system>
+
+# Input: HTTP for direct log submission (from Fluent Bit)
+<source>
+  @type http
+  @id http_input
+  port 8888
+  bind 0.0.0.0
+  body_size_limit 32m
+  keepalive_timeout 10s
+  
+  # CORS for web clients
+  add_http_headers true
+  cors_allow_origins ["*"]
+  cors_allow_methods ["POST", "PUT"]
+  cors_allow_headers ["Content-Type", "Authorization", "X-Trace-ID", "X-Machine-ID"]
+</source>
+
+# Input: Health check and monitoring
+<source>
+  @type monitor_agent
+  @id monitor_agent_input
+  port 24220
+  bind 0.0.0.0
+  include_tag_metrics true
+  include_time_metrics true
+</source>
+
+# Handle Fluentd's own logs (removes the warning)
+<label @FLUENT_LOG>
+  <match fluent.**>
+    @type null
+  </match>
+</label>
+
+# Add environment metadata
+<filter **>
+  @type record_transformer
+  @id add_common_fields
+  enable_ruby true
+  
+  <record>
+    # Environment context
+    fluentd_env ${ENV}
+    fluentd_host "#{Socket.gethostname}"
+    fluentd_timestamp "#{Time.now.strftime('%Y-%m-%dT%H:%M:%S.%3NZ')}"
+    processed_at ${time}
+    
+    # Extract dataset from HTTP header, fallback to environment default
+    dash0_dataset ${record.dig("headers", "x-dash0-dataset") || "${DASH0_DATASET}"}
+  </record>
+</filter>
+
+# Send all logs to Dash0 (clean single output)
+<match **>
+  @type http
+  @id dash0_output
+  @log_level debug
+  
+  endpoint ${DASH0_LOGS_ENDPOINT}
+  http_method post
+  open_timeout 10
+  read_timeout 30
+  
+  # Authentication and headers
+  headers {"Authorization":"Bearer ${DASH0_API_KEY}","Content-Type":"application/json","Dash0-Dataset":"${DASH0_DATASET}"}
+  
+  # Buffering for reliability
+  <buffer>
+    @type memory
+    flush_mode interval
+    flush_interval 5s
+    flush_at_shutdown true
+    retry_max_times 3
+    retry_wait 1s
+    
+    # Performance settings  
+    chunk_limit_size 8MB
+    queue_limit_length 16
+  </buffer>
+  
+  # Format for Dash0
+  <format>
+    @type json
+  </format>
+</match>

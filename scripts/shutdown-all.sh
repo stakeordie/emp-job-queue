@@ -39,9 +39,8 @@ pkill -f "redis-server"
 pkill -f "redis-cli"
 
 # Kill Docker containers
-echo "🔥 Stopping Docker containers..."
-docker stop $(docker ps -q --filter "name=basic-machine") 2>/dev/null || true
-docker stop $(docker ps -q --filter "name=emp-") 2>/dev/null || true
+echo "🔥 Stopping all running Docker containers..."
+docker stop $(docker ps -q) 2>/dev/null || true
 
 # Kill any remaining node processes in the project
 echo "🔥 Killing any remaining project processes..."
@@ -61,5 +60,6 @@ echo "  pnpm dev:local-redis"
 echo ""
 echo "To start individual services:"
 echo "  pnpm dev:api"
+echo "  pnpm fluentd:up"
 echo "  pnpm machines:basic:local:up:build"
 echo "  pnpm dev:monitor"

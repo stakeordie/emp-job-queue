@@ -8,14 +8,16 @@ The Planned Features section tracks current development priorities and implement
 
 ## In This Section
 
+- [Migration Plan: Component → Collection](./component-to-collection-migration.md) 🚀 - **Evolution path from today's component-based system to full Collection & Model Management**
+- [Collection & Workflow Model Management](./collection-model-management.md) 🎯 - **Automated model downloading and inventory system based on assigned collections and workflows**
 - [Webhook Ingest Service](./webhook-ingest-service.md) - **General-purpose webhook service for external API integration**
 - [Playwright Service Architecture](./playwright-service-architecture.md) - **Local GPU-accelerated rendering service to replace external Puppeteer**
-- [Collection & Workflow Model Management](./collection-model-management.md) - **Automated model downloading and inventory system based on assigned collections and workflows**
 
 ## Implementation Status
 
 ### High Priority
-- **Collection & Workflow Model Management** - Planning phase, 3-5 day implementation
+- **Migration Plan: Component → Collection** 🚀 - Ready to implement, 5-7 day execution plan
+- **Collection & Workflow Model Management** 🎯 - Planning phase, builds on migration plan
 - **Webhook Ingest Service** - Planning phase, 1-2 day implementation
 
 ### In Progress  

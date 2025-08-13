@@ -54,6 +54,10 @@ export default class ComfyUIInstallerService extends BaseService {
       if (await this.isComfyUIInstalled()) {
         this.logger.info('ComfyUI is already installed, validating installation...');
         await this.validateInstallation();
+        
+        // Check for component-based configuration
+        await this.handleComponentConfiguration();
+        
         this.logger.info('ComfyUI installation validation completed');
         return;
       }
@@ -61,6 +65,9 @@ export default class ComfyUIInstallerService extends BaseService {
       // Full installation sequence
       await this.installComfyUI();
       await this.validateInstallation();
+      
+      // Handle component-based configuration
+      await this.handleComponentConfiguration();
       
       this.logger.info('ComfyUI installation completed successfully');
     } catch (error) {
@@ -559,6 +566,36 @@ export default class ComfyUIInstallerService extends BaseService {
     } catch (error) {
       this.logger.error('ComfyUI installation validation failed:', error);
       throw new Error(`ComfyUI installation validation failed: ${error.message}`);
+    }
+  }
+
+  /**
+   * Handle component-based configuration
+   */
+  async handleComponentConfiguration() {
+    // Check if component-based configuration is requested
+    const hasComponents = process.env.COMPONENTS || process.env.COLLECTIONS;
+    
+    if (!hasComponents) {
+      this.logger.info('No component-based configuration requested');
+      return;
+    }
+    
+    this.logger.info('Component-based configuration detected, starting component manager...');
+    
+    try {
+      // Import and start component manager
+      const ComponentManagerService = (await import('./component-manager.js')).default;
+      const componentManager = new ComponentManagerService({}, this.config);
+      
+      // Run component-based setup
+      await componentManager.onStart();
+      
+      this.logger.info('Component-based configuration completed successfully');
+    } catch (error) {
+      this.logger.error('Component-based configuration failed:', error);
+      // Don't fail the entire installation for component errors
+      // The machine can still run with basic ComfyUI
     }
   }
 

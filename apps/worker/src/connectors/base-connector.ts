@@ -14,6 +14,7 @@ import {
   HealthCheckClass,
   HealthCheckRequirements,
   logger,
+  ConnectorLogger,
 } from '@emp/core';
 import Redis from 'ioredis';
 
@@ -76,6 +77,9 @@ export abstract class BaseConnector implements ConnectorInterface {
   protected statusReportingInterval?: NodeJS.Timeout;
   protected startTime: number = Date.now();
   protected jobsProcessed: number = 0;
+  
+  // Structured logging
+  protected connectorLogger: ConnectorLogger;
 
   // Configuration
   protected config: ConnectorConfig;
@@ -95,6 +99,14 @@ export abstract class BaseConnector implements ConnectorInterface {
       max_concurrent_jobs: parseInt(process.env.SERVICE_MAX_CONCURRENT_JOBS || '5'),
       ...config,
     };
+
+    // Initialize structured logging
+    this.connectorLogger = new ConnectorLogger({
+      machineId: process.env.MACHINE_ID || 'unknown',
+      workerId: process.env.WORKER_ID || 'unknown',
+      serviceType: this.service_type,
+      connectorId: this.connector_id,
+    });
   }
 
   // ============================================================================
@@ -443,30 +455,57 @@ ${Object.keys(process.env).filter(k => k.includes('HUB') || k.includes('REDIS'))
 
   async processJob(jobData: JobData, progressCallback: ProgressCallback): Promise<JobResult> {
     const startTime = Date.now();
+    const jobLogger = this.connectorLogger.withJobContext(jobData.id || 'unknown');
 
     try {
+      // Log job received
+      jobLogger.jobReceived({
+        jobId: jobData.id || 'unknown',
+        inputSize: JSON.stringify(jobData).length,
+        model: (jobData.payload?.model as string) || 'unknown',
+      });
+
       // Report that we're starting to process a job
       await this.reportJobStatusChange(true);
+      
+      jobLogger.jobStarted({ jobId: jobData.id || 'unknown' });
 
       // Call subclass job processing
       const result = await this.processJobImpl(jobData, progressCallback);
+
+      // Calculate processing time
+      const duration = Date.now() - startTime;
+
+      // Log successful completion
+      jobLogger.jobCompleted({
+        jobId: jobData.id || 'unknown',
+        duration,
+        outputSize: JSON.stringify(result).length,
+      });
 
       // Report that we're done processing
       await this.reportJobStatusChange(false);
 
       return result;
     } catch (error) {
+      const duration = Date.now() - startTime;
+      const errorMessage = error instanceof Error ? error.message : 'Job processing failed';
+
+      // Log job failure
+      jobLogger.jobFailed({
+        jobId: jobData.id || 'unknown',
+        error: errorMessage,
+        duration,
+      });
+
       // Report error and return to idle
-      await this.reportStatus(
-        'error',
-        error instanceof Error ? error.message : 'Job processing failed'
-      );
+      await this.reportStatus('error', errorMessage);
       await this.reportJobStatusChange(false);
 
       // Return failed result
       return {
         success: false,
-        error: error instanceof Error ? error.message : 'Unknown job processing error',
+        error: errorMessage,
         processing_time_ms: Date.now() - startTime,
         service_metadata: {
           service_version: this.version,

@@ -1,0 +1,17 @@
+{
+  "name": "@emp/fluentd",
+  "version": "1.0.0",
+  "description": "Fluentd log aggregation service for EMP job queue",
+  "scripts": {
+    "build": "./fluentd-compose.sh --env local-dev build",
+    "build:prod": "./fluentd-compose.sh --env production build",
+    "up": "./fluentd-compose.sh --env local-dev up",
+    "up:prod": "./fluentd-compose.sh --env production up",
+    "down": "./fluentd-compose.sh --env local-dev down",
+    "logs": "docker logs calyptia-fluentd",
+    "test": "curl -X POST http://localhost:8888/test -H 'Content-Type: application/json' -d '{\"message\": \"Test log\", \"timestamp\": \"'$(date -u +%Y-%m-%dT%H:%M:%S.%3NZ)'\"}'",
+    "clean": "docker compose down && docker system prune -f"
+  },
+  "author": "EmProps",
+  "license": "MIT"
+}

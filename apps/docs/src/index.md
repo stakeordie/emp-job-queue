@@ -9,10 +9,16 @@ hero:
       text: Start Here →
       link: /01-understanding-the-system/
     - theme: alt
+      text: Architecture
+      link: /architecture/
+    - theme: alt
       text: How It Works
       link: /02-how-it-works/
 
 features:
+  - title: 📐 System Architecture
+    details: Comprehensive diagrams showing current infrastructure, logging pipeline, and North Star evolution
+    link: /architecture/
   - title: 1. Understanding the System
     details: What we built, why we built it, and the strategic vision driving our architecture
     link: /01-understanding-the-system/
@@ -31,6 +37,9 @@ features:
   - title: 6. Future Vision
     details: North Star architecture and the evolution toward specialized machine pools
     link: /06-future-vision/
+  - title: 7. Planned Features
+    details: Concrete implementation plans for upcoming features like collection & model management
+    link: /07-planned-features/
   - title: 8. EmProps Open API
     details: REST API documentation, architecture, and implementation guides
     link: /08-emprops-open-api/
@@ -53,8 +62,9 @@ The documentation follows a narrative flow:
 4. **Production** → Operating and troubleshooting
 5. **Development** → Team processes and system evolution
 6. **Future Vision** → Strategic roadmap and north star architecture
-7. **Observability** → Monitoring, logging, tracing, and debugging
+7. **Planned Features** → Concrete implementation plans for upcoming features
 8. **Open API** → External API documentation and guides
+9. **Observability** → Monitoring, logging, tracing, and debugging
 
 ### Legend
 

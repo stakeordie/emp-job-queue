@@ -157,41 +157,38 @@ class DockerComposePortGenerator {
   }
 
   async updateDockerCompose(portMappings) {
-    const composePath = path.join(__dirname, '..', 'docker-compose.yml');
+    const overridePath = path.join(__dirname, '..', 'docker-compose.override.yml');
     
-    if (!fs.existsSync(composePath)) {
-      throw new Error(`Docker Compose file not found: ${composePath}`);
-    }
-    
-    let composeContent = fs.readFileSync(composePath, 'utf8');
+    // Create override file to preserve original docker-compose.yml profiles
+    let overrideContent = 'services:\n';
     
     // Handle the case where there are no port mappings
     if (portMappings.length === 0) {
-      // Remove the ports section entirely for services without port mappings
-      const portsRegex = /(\n\s*)ports:\s*\n\s*#[^\n]*\n/g;
-      composeContent = composeContent.replace(portsRegex, '\n');
-      
-      this.logger.log('✅ Removed empty ports sections from docker-compose.yml');
+      // Create minimal override that doesn't add ports
+      overrideContent += '  # No additional port mappings needed\n';
+      this.logger.log('✅ No port mappings needed - creating minimal override');
     } else {
-      // Create the new ports section
-      const portsSection = portMappings.map(port => `      - ${port}`).join('\n');
+      // Determine the service name from environment or use default
+      const serviceName = process.env.COMPOSE_PROFILES || 'base-machine';
       
-      // Replace the ports section in base-machine
-      const portsRegex = /(ports:\s*\n)([\s\S]*?)(\n\s+deploy:)/;
-      const newPortsSection = `$1      # Health monitoring port (always exposed)\n${portsSection}\n$3`;
+      // Create override for the specific service
+      overrideContent += `  ${serviceName}:\n`;
+      overrideContent += '    ports:\n';
+      overrideContent += '      # Health monitoring port (always exposed)\n';
+      overrideContent += '      - "9090:9090"\n';
       
-      if (portsRegex.test(composeContent)) {
-        composeContent = composeContent.replace(portsRegex, newPortsSection);
-      } else {
-        this.logger.error('Could not find ports section in docker-compose.yml');
-        throw new Error('Invalid docker-compose.yml format');
-      }
+      // Add generated port mappings
+      portMappings.forEach(port => {
+        overrideContent += `      - "${port}"\n`;
+      });
+      
+      this.logger.log(`✅ Created override for service '${serviceName}' with ${portMappings.length} port mappings`);
     }
     
-    // Write the updated content
-    fs.writeFileSync(composePath, composeContent);
+    // Write the override file (preserves original docker-compose.yml)
+    fs.writeFileSync(overridePath, overrideContent, 'utf8');
     
-    this.logger.log(`✅ Updated docker-compose.yml with ${portMappings.length} port mappings`);
+    this.logger.log(`✅ Created docker-compose.override.yml with ${portMappings.length} port mappings`);
     this.logger.log(`Port mappings: ${portMappings.length > 0 ? portMappings.join(', ') : 'No ports'}`);
   }
 }

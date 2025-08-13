@@ -30,6 +30,14 @@ FROM pytorch/pytorch:2.7.0-cuda12.8-cudnn9-devel AS ai-base
         apt-get clean && \
         rm -rf /var/lib/apt/lists/*
 
+    # Install Fluent Bit for structured logging
+    RUN curl -fsSL https://packages.fluentbit.io/fluentbit.key | sudo gpg --dearmor -o /usr/share/keyrings/fluentbit-keyring.gpg && \
+        echo "deb [signed-by=/usr/share/keyrings/fluentbit-keyring.gpg] https://packages.fluentbit.io/ubuntu/jammy jammy main" | sudo tee /etc/apt/sources.list.d/fluent-bit.list && \
+        apt-get update && \
+        apt-get install -y fluent-bit && \
+        apt-get clean && \
+        rm -rf /var/lib/apt/lists/*
+
     # Set up working directory
     WORKDIR /workspace
 
@@ -42,7 +50,16 @@ FROM pytorch/pytorch:2.7.0-cuda12.8-cudnn9-devel AS ai-base
         /workspace/configs \
         /workspace/tmp \
         /workspace/.pm2 \
-        /workspace/scripts
+        /workspace/scripts \
+        /workspace/fluent-bit \
+        /tmp/fluent-bit-buffer
+
+    # Copy Fluent Bit configuration
+    COPY fluent-bit-worker.conf /workspace/fluent-bit/
+    
+    # Set proper permissions for Fluent Bit
+    RUN chmod 644 /workspace/fluent-bit/fluent-bit-worker.conf && \
+        chmod 755 /tmp/fluent-bit-buffer
 
 # Stage 3: ComfyUI Base Installation (HEAVY BUT STABLE)
 FROM ai-base AS comfyui-base
@@ -72,84 +89,8 @@ FROM comfyui-base AS installer-builder
         sed -i '1i#!/usr/bin/env node' installer-bundle.js && \
         chmod +x installer-bundle.js
 
-# Stage 5: ComfyUI + Custom Nodes (HEAVY BUT STABLE UNTIL CONFIG CHANGES)
-FROM installer-builder AS comfyui-with-nodes
-
-    # Copy custom nodes config (cache busts only when this file changes)
-    COPY config_nodes.json /workspace/config_nodes.json
-
-    # Install custom nodes - this caches until config_nodes.json changes
-    RUN echo "Installing custom nodes" && \
-        cd /build && \
-        NODE_PATH=/build/node_modules node installer-bundle.js --build-time --custom-nodes-only
-
-# Stage 6: Base Machine - COMPLETE APPLICATION RUNTIME (BUILT AFTER COMFYUI CACHING)
+# Stage 5: Base Machine - COMPLETE APPLICATION RUNTIME (BUILT AFTER COMFYUI CACHING)
 FROM ai-base AS base-machine
-
-    # Install dependencies first (better caching)
-    COPY package.json pnpm-lock.yaml* /service-manager/
-    COPY .workspace-packages/ /service-manager/.workspace-packages/
-
-    # Install dependencies
-    WORKDIR /service-manager
-    RUN sed -i 's/"@emp\/service-config": "workspace:\*"/"@emp\/service-config": "file:.workspace-packages\/service-config"/' package.json && \
-        sed -i 's/"@emp\/custom-nodes": "workspace:\*"/"@emp\/custom-nodes": "file:.workspace-packages\/custom-nodes"/' package.json && \
-        pnpm install --prod --no-frozen-lockfile --ignore-workspace
-
-    # Inject machine version and build info
-    ARG MACHINE_VERSION=latest
-    ARG BUILD_DATE
-    RUN sed -i "s/\"version\": \"[^\"]*\"/\"version\": \"${MACHINE_VERSION}\"/" package.json && \
-        echo "MACHINE_VERSION=${MACHINE_VERSION}" > .version && \
-        echo "BUILD_DATE=${BUILD_DATE}" >> .version
-
-    # Set environment variables for runtime
-    ENV MACHINE_VERSION=${MACHINE_VERSION}
-    ENV BUILD_DATE=${BUILD_DATE}
-
-    # Copy all application files
-    COPY src/ /service-manager/src/
-    COPY scripts/ /service-manager/scripts/
-    COPY generate-pm2-ecosystem-worker-driven.js /service-manager/generate-pm2-ecosystem-worker-driven.js
-
-    # Set up environment
-    ENV NODE_ENV=production \
-        LOG_LEVEL=info \
-        SERVICE_MANAGER_PATH=/service-manager \
-        WORKSPACE_PATH=/workspace \
-        PM2_HOME=/workspace/.pm2 \
-        PATH="/service-manager/node_modules/.bin:${PATH}"
-
-    # Worker bundle mode - build arg for build-time decisions, ENV for runtime
-    ENV WORKER_BUNDLE_MODE=${WORKER_BUNDLE_MODE}
-
-    # Create worker-bundled directory
-    RUN mkdir -p /workspace/worker-bundled
-
-    COPY worker-bundled/ /service-manager/worker-bundled/
-
-    # Copy PM2 ecosystem config to workspace (needed by PM2)
-    RUN cp /service-manager/scripts/pm2-ecosystem.config.cjs /workspace/pm2-ecosystem.config.cjs
-
-    # Create env files script
-    RUN echo 'import EnvCreator from "../src/services/comfyui-env-creator.js";\n\
-    const creator = new EnvCreator({}, {});\n\
-    await creator.onStart();\n\
-    console.log("Environment files created successfully");' > /service-manager/scripts/create-env-files.mjs
-
-    # Copy entrypoint scripts
-    COPY scripts/entrypoint-*.sh /scripts/
-    RUN chmod +x /scripts/entrypoint-*.sh
-
-    # Health check (use health monitoring port instead of NGINX)
-    HEALTHCHECK --interval=30s --timeout=10s --start-period=5m --retries=3 \
-        CMD curl -f http://localhost:9090/health || exit 1
-
-    # PROFILE TARGETS - Each inherits from appropriate base
-
-
-# Stage 6: Base Machine - COMPLETE APPLICATION RUNTIME (BUILT AFTER COMFYUI CACHING)
-FROM comfyui-with-nodes AS base-machine-with-nodes
 
     # Install dependencies first (better caching)
     COPY package.json pnpm-lock.yaml* /service-manager/
@@ -233,8 +174,8 @@ COPY ${ENV_FILE} /service-manager/.env
 # Use base-specific entrypoint
 ENTRYPOINT ["/scripts/entrypoint-base.sh"]
 
-# Profile: comfyui - Internal ComfyUI connectors  
-FROM base-machine-with-nodes AS comfyui
+# Profile: comfyui - Internal ComfyUI connectors (NOW USES RUNTIME COMPONENT INSTALLATION)
+FROM comfyui-base AS comfyui
 
 # Accept build args from compose generator
 ARG WORKER_SPEC
@@ -246,14 +187,44 @@ ARG ENV_FILE=.env
 ENV WORKERS=${WORKERS}
 ENV MACHINE_ID=${MACHINE_ID}
 
-# Inherits: Complete application runtime including entrypoint, PM2, service manager
-# Also inherits: ComfyUI installation, custom nodes, installer files from comfyui-with-nodes
-# Also inherits: worker-bundled from base-machine-with-nodes
-COPY --from=base-machine-with-nodes /service-manager/worker-bundled /service-manager/worker-bundled
+# Copy application runtime from base-machine
+COPY --from=base-machine /service-manager /service-manager
+
+# Copy installer tools for runtime custom node installation
+COPY --from=installer-builder /build/installer-bundle.js /service-manager/installer-bundle.js
+COPY --from=installer-builder /build/node_modules /service-manager/node_modules
+
+# Set up environment (copied from base-machine)
+ENV NODE_ENV=production \
+    LOG_LEVEL=info \
+    SERVICE_MANAGER_PATH=/service-manager \
+    WORKSPACE_PATH=/workspace \
+    PM2_HOME=/workspace/.pm2 \
+    PATH="/service-manager/node_modules/.bin:${PATH}"
+
+# Worker bundle mode
+ENV WORKER_BUNDLE_MODE=${WORKER_BUNDLE_MODE}
+
+# Create worker-bundled directory and copy worker files
+RUN mkdir -p /workspace/worker-bundled
+COPY worker-bundled/ /service-manager/worker-bundled/
+
+# Copy PM2 ecosystem config to workspace (needed by PM2)
+RUN cp /service-manager/scripts/pm2-ecosystem.config.cjs /workspace/pm2-ecosystem.config.cjs
+
+# Copy environment file
 COPY ${ENV_FILE} /service-manager/.env
 
-# Use ComfyUI-specific entrypoint
-ENTRYPOINT ["/scripts/entrypoint-comfyui.sh"]
+# Copy entrypoint scripts
+COPY scripts/entrypoint-*.sh /scripts/
+RUN chmod +x /scripts/entrypoint-*.sh
+
+# Health check (use health monitoring port instead of NGINX)
+HEALTHCHECK --interval=30s --timeout=10s --start-period=5m --retries=3 \
+    CMD curl -f http://localhost:9090/health || exit 1
+
+# Use base entrypoint (service manager handles ComfyUI-specific logic)
+ENTRYPOINT ["/scripts/entrypoint-base.sh"]
 
 
 # Profile: simulation - Testing and simulation  

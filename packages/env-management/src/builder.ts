@@ -16,7 +16,11 @@ export class EnvironmentBuilder {
   private outputPath: string;
   private serviceInterfaces: ServiceInterfaceManager;
 
-  constructor(configDir: string, outputPath: string, private envName?: string) {
+  constructor(
+    configDir: string,
+    outputPath: string,
+    private envName?: string
+  ) {
     this.configDir = configDir;
     this.outputPath = outputPath;
     this.serviceInterfaces = new ServiceInterfaceManager(configDir);
@@ -137,14 +141,18 @@ export class EnvironmentBuilder {
         // Generate the service's env file
         // Service interface location is required - no fallback
         if (!serviceInterface?.location) {
-          throw new Error(`Service interface '${serviceName}' is missing required 'location' field`);
+          throw new Error(
+            `Service interface '${serviceName}' is missing required 'location' field`
+          );
         }
-        
+
         const baseLocation = serviceInterface.location;
         if (!this.envName) {
-          throw new Error(`Environment name is required. Cannot create generic .env files - use profile-specific files like .env.production`);
+          throw new Error(
+            `Environment name is required. Cannot create generic .env files - use profile-specific files like .env.production`
+          );
         }
-        
+
         const outputPath = `${baseLocation}/.env.${this.envName}`;
 
         // Ensure directory exists

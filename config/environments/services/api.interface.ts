@@ -9,7 +9,7 @@ export const ApiEnvInterface = {
   
   required: {
     // Core Redis connection for job brokering
-    "REDIS_URL": "REDIS_URL",
+    "REDIS_URL": "API_REDIS_URL",
     
     // HTTP server configuration
     "API_PORT": "API_PORT",

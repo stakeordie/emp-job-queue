@@ -101,6 +101,9 @@ function buildConfig() {
   const baseId = process.env.MACHINE_ID || process.env.CONTAINER_NAME || 'basic-machine';
   const machineId = baseId.includes('-') ? `${baseId}-${generateShortUUID()}` : `${baseId}-${generateShortUUID()}`;
   
+  // Update environment variable so PM2 ecosystem generator uses the unique machine ID
+  process.env.MACHINE_ID = machineId;
+  
   const config = {
     machine: {
       id: machineId,

@@ -1,0 +1,366 @@
+[
+  {
+    "name": "ComfyUI-Manager",
+    "repositoryUrl": "https://github.com/Comfy-Org/ComfyUI-Manager.git",
+    "requirements": true
+  },
+  {
+    "name": "emprops_comfy_nodes",
+    "repositoryUrl": "https://github.com/stakeordie/emprops_comfy_nodes.git",
+    "recursive": true,
+    "requirements": true,
+    "env": {
+      "AWS_ACCESS_KEY_ID": "${AWS_ACCESS_KEY_ID}",
+      "AWS_SECRET_ACCESS_KEY_ENCODED": "${AWS_SECRET_ACCESS_KEY_ENCODED}",
+      "AWS_DEFAULT_REGION": "${AWS_DEFAULT_REGION}",
+      "GOOGLE_APPLICATION_CREDENTIALS": "${GOOGLE_APPLICATION_CREDENTIALS}",
+      "AZURE_STORAGE_ACCOUNT": "${AZURE_STORAGE_ACCOUNT}",
+      "AZURE_STORAGE_KEY": "${AZURE_STORAGE_KEY}",
+      "CLOUD_STORAGE_CONTAINER": "${CLOUD_STORAGE_CONTAINER}",
+      "CLOUD_MODELS_CONTAINER": "${CLOUD_MODELS_CONTAINER}",
+      "CLOUD_STORAGE_TEST_CONTAINER": "${CLOUD_STORAGE_TEST_CONTAINER}",
+      "CLOUD_PROVIDER": "${CLOUD_PROVIDER}",
+      "STATIC_MODELS": "${STATIC_MODELS}",
+      "EMPROPS_DEBUG_LOGGING": "${EMPROPS_DEBUG_LOGGING}",
+      "HF_TOKEN": "${HF_TOKEN}",
+      "CIVITAI_TOKEN": "${CIVITAI_TOKEN}",
+      "OLLAMA_HOST": "${OLLAMA_HOST}",
+      "OLLAMA_PORT": "${OLLAMA_PORT}",
+      "OLLAMA_DEFAULT_MODEL": "${OLLAMA_DEFAULT_MODEL}"
+    }
+  },
+  {
+    "name": "eden_comfy_pipelines",
+    "repositoryUrl": "https://github.com/edenartlab/eden_comfy_pipelines.git",
+    "requirements": true,
+    "env": {
+      "OPENAI_API_KEY": "${OPENAI_API_KEY}"
+    }
+  },
+  {
+    "name": "ComfyUI_ModdedNodes",
+    "repositoryUrl": "https://github.com/Derfuu/Derfuu_ComfyUI_ModdedNodes",
+    "requirements": true
+  },
+  {
+    "name": "comfyui-dreambait-nodes",
+    "repositoryUrl": "https://github.com/drmbt/comfyui-dreambait-nodes",
+    "requirements": true
+  },
+  {
+    "name": "ComfyUI-Frame-Interpolation",
+    "repositoryUrl": "https://github.com/Fannovel16/ComfyUI-Frame-Interpolation",
+    "requirements": true
+  },
+  {
+    "name": "ComfyUI-Crystools",
+    "repositoryUrl": "https://github.com/crystian/ComfyUI-Crystools",
+    "requirements": true
+  },
+  {
+    "name": "execution-inversion-demo-comfyui",
+    "repositoryUrl": "https://github.com/BadCafeCode/execution-inversion-demo-comfyui.git",
+    "requirements": true
+  },
+  {
+    "name": "comfyui_controlnet_aux",
+    "repositoryUrl": "https://github.com/Fannovel16/comfyui_controlnet_aux",
+    "requirements": true
+  },
+  {
+    "name": "ComfyUI_FizzNodes",
+    "repositoryUrl": "https://github.com/FizzleDorf/ComfyUI_FizzNodes",
+    "requirements": true
+  },
+  {
+    "name": "ComfyUI-Advanced-ControlNet",
+    "repositoryUrl": "https://github.com/Kosinkadink/ComfyUI-Advanced-ControlNet",
+    "requirements": true
+  },
+  {
+    "name": "ComfyUI-AnimateDiff-Evolved",
+    "repositoryUrl": "https://github.com/Kosinkadink/ComfyUI-AnimateDiff-Evolved",
+    "requirements": true
+  },
+  {
+    "name": "ComfyUI-VideoHelperSuite",
+    "repositoryUrl": "https://github.com/stakeordie/ComfyUI-VideoHelperSuite",
+    "requirements": true,
+    "env": {
+      "AWS_ACCESS_KEY_ID": "${AWS_ACCESS_KEY_ID}",
+      "AWS_SECRET_ACCESS_KEY_ENCODED": "${AWS_SECRET_ACCESS_KEY_ENCODED}",
+      "AWS_DEFAULT_REGION": "${AWS_DEFAULT_REGION}",
+      "GOOGLE_APPLICATION_CREDENTIALS": "${GOOGLE_APPLICATION_CREDENTIALS}",
+      "AZURE_STORAGE_ACCOUNT": "${AZURE_STORAGE_ACCOUNT}",
+      "AZURE_STORAGE_KEY": "${AZURE_STORAGE_KEY}",
+      "CLOUD_MODELS_CONTAINER": "${CLOUD_MODELS_CONTAINER}",
+      "CLOUD_STORAGE_CONTAINER": "${CLOUD_STORAGE_CONTAINER}",
+      "CLOUD_STORAGE_TEST_CONTAINER": "${CLOUD_STORAGE_TEST_CONTAINER}",
+      "CLOUD_PROVIDER": "${CLOUD_PROVIDER}",
+      "EMPROPS_DEBUG_LOGGING": "${EMPROPS_DEBUG_LOGGING}",
+      "HF_TOKEN": "${HF_TOKEN}",
+      "CIVITAI_TOKEN": "${CIVITAI_TOKEN}",
+      "OLLAMA_HOST": "${OLLAMA_HOST}",
+      "OLLAMA_PORT": "${OLLAMA_PORT}",
+      "OLLAMA_DEFAULT_MODEL": "${OLLAMA_DEFAULT_MODEL}"
+    }
+  },
+  {
+    "name": "SeargeSDXL",
+    "repositoryUrl": "https://github.com/SeargeDP/SeargeSDXL",
+    "requirements": true
+  },
+  {
+    "name": "ComfyUi_NNLatentUpscale",
+    "repositoryUrl": "https://github.com/Ttl/ComfyUi_NNLatentUpscale",
+    "requirements": true
+  },
+  {
+    "name": "was-node-suite-comfyui",
+    "repositoryUrl": "https://github.com/WASasquatch/was-node-suite-comfyui",
+    "requirements": true
+  },
+  {
+    "name": "ComfyUI_IPAdapter_plus",
+    "repositoryUrl": "https://github.com/cubiq/ComfyUI_IPAdapter_plus.git",
+    "requirements": true
+  },
+  {
+    "name": "ComfyUI_essentials",
+    "repositoryUrl": "https://github.com/cubiq/ComfyUI_essentials",
+    "requirements": true
+  },
+  {
+    "name": "ComfyUI-DepthAnythingV2",
+    "repositoryUrl": "https://github.com/kijai/ComfyUI-DepthAnythingV2",
+    "requirements": true
+  },
+  {
+    "name": "ComfyUI-Florence2",
+    "repositoryUrl": "https://github.com/kijai/ComfyUI-Florence2",
+    "requirements": true
+  },
+  {
+    "name": "efficiency-nodes-comfyui",
+    "repositoryUrl": "https://github.com/jags111/efficiency-nodes-comfyui",
+    "requirements": true
+  },
+  {
+    "name": "ComfyUI-KJNodes",
+    "repositoryUrl": "https://github.com/kijai/ComfyUI-KJNodes",
+    "requirements": true
+  },
+  {
+    "name": "rgthree-comfy",
+    "repositoryUrl": "https://github.com/rgthree/rgthree-comfy",
+    "requirements": true
+  },
+  {
+    "name": "ComfyUI-Depthflow-Nodes",
+    "repositoryUrl": "https://github.com/akatz-ai/ComfyUI-Depthflow-Nodes",
+    "requirements": true
+  },
+  {
+    "name": "comfyui_segment_anything",
+    "repositoryUrl": "https://github.com/storyicon/comfyui_segment_anything",
+    "requirements": true
+  },
+  {
+    "name": "ComfyUI_ExtraModels",
+    "repositoryUrl": "https://github.com/city96/ComfyUI_ExtraModels.git",
+    "requirements": true
+  },
+  {
+    "name": "ComfyUI-Custom-Scripts",
+    "repositoryUrl": "https://github.com/pythongosssss/ComfyUI-Custom-Scripts.git",
+    "requirements": true
+  },
+  {
+    "name": "ComfyUI-LLaVA-OneVision",
+    "repositoryUrl": "https://github.com/the-dusky/ComfyUI-LLaVA-OneVision.git",
+    "branch": "add-video-dependencies",
+    "requirements": true
+  },
+  {
+    "name": "ComfyUI-Universal-Styler",
+    "repositoryUrl": "https://github.com/KoreTeknology/ComfyUI-Universal-Styler.git",
+    "requirements": true
+  },
+  {
+    "name": "ComfyUI-Easy-Use",
+    "repositoryUrl": "https://github.com/yolain/ComfyUI-Easy-Use.git",
+    "requirements": true
+  },
+  {
+    "name": "ComfyUI_LayerStyle",
+    "repositoryUrl": "https://github.com/chflame163/ComfyUI_LayerStyle.git",
+    "requirements": true
+  },
+  {
+    "name": "ComfyUI-MochiWrapper",
+    "repositoryUrl": "https://github.com/kijai/ComfyUI-MochiWrapper.git",
+    "requirements": true
+  },
+  {
+    "name": "ComfyUI-MochiEdit",
+    "repositoryUrl": "https://github.com/logtd/ComfyUI-MochiEdit.git",
+    "requirements": true
+  },
+  {
+    "name": "ComfyUI-AutomaticCFG",
+    "repositoryUrl": "https://github.com/Extraltodeus/ComfyUI-AutomaticCFG",
+    "requirements": true
+  },
+  {
+    "name": "comfyui-dream-project",
+    "repositoryUrl": "https://github.com/alt-key-project/comfyui-dream-project",
+    "requirements": true
+  },
+  {
+    "name": "ComfyUI-TiledDiffusion",
+    "repositoryUrl": "https://github.com/shiimizu/ComfyUI-TiledDiffusion",
+    "requirements": true
+  },
+  {
+    "name": "ComfyUI_Comfyroll_CustomNodes",
+    "repositoryUrl": "https://github.com/Suzie1/ComfyUI_Comfyroll_CustomNodes",
+    "requirements": true
+  },
+  {
+    "name": "ComfyUI-layerdiffuse",
+    "repositoryUrl": "https://github.com/huchenlei/ComfyUI-layerdiffuse",
+    "requirements": true
+  },
+  {
+    "name": "ComfyUI-LogicUtils",
+    "repositoryUrl": "https://github.com/aria1th/ComfyUI-LogicUtils",
+    "requirements": true
+  },
+  {
+    "name": "ComfyUI-Impact-Pack",
+    "repositoryUrl": "https://github.com/ltdrdata/ComfyUI-Impact-Pack",
+    "requirements": true
+  },
+  {
+    "name": "comfyui-prompt-reader-node",
+    "repositoryUrl": "https://github.com/receyuki/comfyui-prompt-reader-node",
+    "recursive": true,
+    "requirements": true
+  },
+  {
+    "name": "ComfyMath",
+    "repositoryUrl": "https://github.com/evanspearman/ComfyMath",
+    "requirements": true
+  },
+  {
+    "name": "x-flux-comfyui",
+    "repositoryUrl": "https://github.com/XLabs-AI/x-flux-comfyui",
+    "commit": "14cfba14655eb19058963fb0d858b0bdb2d89cf0",
+    "requirements": true
+  },
+  {
+    "name": "cg-use-everywhere",
+    "repositoryUrl": "https://github.com/chrisgoringe/cg-use-everywhere",
+    "requirements": true
+  },
+  {
+    "name": "ComfyUI_Yvann-Nodes",
+    "repositoryUrl": "https://github.com/yvann-ba/ComfyUI_Yvann-Nodes",
+    "requirements": true
+  },
+  {
+    "name": "ComfyLiterals",
+    "repositoryUrl": "https://github.com/M1kep/ComfyLiterals",
+    "requirements": false
+  },
+  {
+    "name": "ComfyUI_Mira",
+    "repositoryUrl": "https://github.com/mirabarukaso/ComfyUI_Mira",
+    "requirements": false
+  },
+  {
+    "name": "ComfyUI-BiRefNet-Hugo",
+    "repositoryUrl": "https://github.com/MoonHugo/ComfyUI-BiRefNet-Hugo",
+    "requirements": true
+  },
+  {
+    "name": "ComfyUI_RH_OminiControl",
+    "repositoryUrl": "https://github.com/HM-RunningHub/ComfyUI_RH_OminiControl",
+    "requirements": false
+  },
+  {
+    "name": "DJZ-Nodes",
+    "repositoryUrl": "https://github.com/MushroomFleet/DJZ-Nodes.git",
+    "requirements": true
+  },
+  {
+    "name": "comfy_mtb",
+    "repositoryUrl": "https://github.com/melMass/comfy_mtb.git",
+    "requirements": true
+  },
+  {
+    "name": "ComfyUI_YFG_Comical",
+    "repositoryUrl": "https://github.com/gonzalu/ComfyUI_YFG_Comical",
+    "requirements": false
+  },
+  {
+    "name": "ComfyUI_ADV_CLIP_emb",
+    "repositoryUrl": "https://github.com/BlenderNeko/ComfyUI_ADV_CLIP_emb",
+    "requirements": false
+  },
+  {
+    "name": "comfy-asset-downloader",
+    "repositoryUrl": "https://github.com/ServiceStack/comfy-asset-downloader.git",
+    "requirements": false
+  },
+  {
+    "name": "ComfyUI-LTXVideo-Emprops",
+    "repositoryUrl": "https://github.com/stakeordie/ComfyUI-LTXVideo-EmProps",
+    "requirements": true
+  },
+  {
+    "name": "ComfyUI-GGUF",
+    "repositoryUrl": "https://github.com/stakeordie/ComfyUI-GGUF-EmProps",
+    "requirements": true
+  },
+  {
+    "name": "ComfyUI-Ollama-Describer",
+    "repositoryUrl": "https://github.com/alisson-anjos/ComfyUI-Ollama-Describer",
+    "requirements": true
+  },
+  {
+    "name": "comfyui-ollama",
+    "repositoryUrl": "https://github.com/stavsap/comfyui-ollama",
+    "requirements": true
+  },
+  {
+    "name": "ControlFlowUtils",
+    "repositoryUrl": "https://github.com/VykosX/ControlFlowUtils",
+    "requirements": false
+  },
+  {
+    "name": "komojini-comfyui-nodes",
+    "repositoryUrl": "https://github.com/komojini/komojini-comfyui-nodes",
+    "requirements": true
+  },
+  {
+    "name": "ComfyUI-Hunyuan3D-2.1",
+    "repositoryUrl": "git clone https://github.com/Yuan-ManX/ComfyUI-Hunyuan3D-2.1",
+    "requirements": true
+  },
+  {
+    "name": "ComfyUI-Inpaint-CropAndStitch",
+    "repositoryUrl": "git clone https://github.com/lquesada/ComfyUI-Inpaint-CropAndStitch",
+    "requirements": false
+  },
+  {
+    "name": "comfyui-kokoro",
+    "repositoryUrl": "git clone https://github.com/stavsap/comfyui-kokoro",
+    "requirements": true
+  },
+  {
+    "name": "ComfyUI_ACE-Step",
+    "repositoryUrl": "git clone https://github.com/billwuhao/ComfyUI_ACE-Step",
+    "requirements": true
+  }
+]

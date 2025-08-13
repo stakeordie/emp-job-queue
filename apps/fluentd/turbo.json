@@ -1,0 +1,31 @@
+{
+  "extends": ["//"],
+  "tasks": {
+    "build": {
+      "outputs": [],
+      "cache": false,
+      "env": ["DASH0_*", "ENV"]
+    },
+    "build:prod": {
+      "outputs": [],
+      "cache": false,
+      "env": ["DASH0_*", "ENV"]
+    },
+    "up": {
+      "outputs": [],
+      "cache": false,
+      "persistent": true,
+      "env": ["DASH0_*", "ENV"]
+    },
+    "up:prod": {
+      "outputs": [],
+      "cache": false,
+      "persistent": true,
+      "env": ["DASH0_*", "ENV"]
+    },
+    "down": {
+      "outputs": [],
+      "cache": false
+    }
+  }
+}

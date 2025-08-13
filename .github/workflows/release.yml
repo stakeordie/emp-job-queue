@@ -92,6 +92,26 @@ jobs:
         docker push emprops/emp-webhook-service:latest
         docker push emprops/emp-webhook-service:${{ steps.get_tag.outputs.tag }}
 
+    - name: Build and push FLUENTD Docker image
+      run: |
+        # Get current date for build timestamp
+        BUILD_DATE=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
+        
+        # Build Fluentd Docker image for log aggregation with production config
+        docker build \
+          --build-arg ENV=prod \
+          --build-arg DASH0_API_KEY="${{ secrets.DASH0_API_KEY }}" \
+          --build-arg DASH0_DATASET="production" \
+          --build-arg DASH0_LOGS_ENDPOINT="https://ingress.us-west-2.aws.dash0.com/logs/json" \
+          -f apps/fluentd/Dockerfile \
+          -t emprops/emp-fluentd:latest \
+          -t emprops/emp-fluentd:${{ steps.get_tag.outputs.tag }} \
+          apps/fluentd/
+        
+        # Push both tags
+        docker push emprops/emp-fluentd:latest
+        docker push emprops/emp-fluentd:${{ steps.get_tag.outputs.tag }}
+
     - name: Build and package worker
       run: |
         # Enable corepack and install dependencies
@@ -205,6 +225,8 @@ jobs:
           
           **🐳 Docker Images:**
           - `emprops/emp-job-queue-api:${{ steps.get_tag.outputs.tag }}` - **API server container**
+          - `emprops/emp-webhook-service:${{ steps.get_tag.outputs.tag }}` - **Webhook service container**
+          - `emprops/emp-fluentd:${{ steps.get_tag.outputs.tag }}` - **Fluentd log aggregation container**
           - `emprops/basic-machine:${{ steps.get_tag.outputs.tag }}` - **GPU machine container** (built separately)
           
           ### Installation Options
@@ -218,6 +240,12 @@ jobs:
           ```bash
           # API server (built by CI/CD)
           docker pull emprops/emp-job-queue-api:${{ steps.get_tag.outputs.tag }}
+          
+          # Webhook service (built by CI/CD)
+          docker pull emprops/emp-webhook-service:${{ steps.get_tag.outputs.tag }}
+          
+          # Fluentd log aggregation (built by CI/CD)
+          docker pull emprops/emp-fluentd:${{ steps.get_tag.outputs.tag }}
           
           # GPU machine with ComfyUI + worker (built separately)
           docker pull emprops/basic-machine:${{ steps.get_tag.outputs.tag }}
@@ -274,10 +302,16 @@ jobs:
         # Redeploy API service from Docker Hub  
         railway redeploy --service emp-job-queue-production --yes
 
+        # Redeploy Fluentd service from Docker Hub
+        railway redeploy --service emp-fluentd --yes
+
         # Redeploy API service from Docker Hub  
         railway redeploy --service openai-machine --yes
 
         # Redeploy API service from Docker Hub  
         railway redeploy --service comfyui-remote-machine --yes
-      env:
+
+        railway redeploy --service emp-fluentd --yes
+
+        env:
         RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}

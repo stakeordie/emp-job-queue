@@ -39,6 +39,38 @@ async function fetchGetComponent(config, name) {
   }
 }
 
+async function fetchGetCollection(config, collectionId) {
+  try {
+    const url = `${config.apiUrl}/collections/${collectionId}`;
+    const response = await fetch(url);
+    if (!response.ok) {
+      throw new Error(`HTTP error! status: ${response.status}`);
+    }
+    return response.json();
+  } catch (error) {
+    return {
+      data: null,
+      error: `Failed to fetch collection ${collectionId}: ${error.message}`,
+    };
+  }
+}
+
+async function fetchListCollections(config) {
+  try {
+    const url = `${config.apiUrl}/collections`;
+    const response = await fetch(url);
+    if (!response.ok) {
+      throw new Error(`HTTP error! status: ${response.status}`);
+    }
+    return response.json();
+  } catch (error) {
+    return {
+      data: null,
+      error: `Failed to fetch collections: ${error.message}`,
+    };
+  }
+}
+
 
 async function fetchCreateComponent(config, data) {
   try {
@@ -1790,6 +1822,59 @@ async function migrateWorkflows(options) {
   }
 }
 
+async function listCollections() {
+  try {
+    console.log(chalk.blue("📚 Fetching collections..."));
+    const config = await getCurrentEnvironment();
+    const result = await fetchListCollections(config);
+    
+    if (result.error) {
+      console.error(chalk.red(`❌ ${result.error}`));
+      return;
+    }
+    
+    const collections = result.data || [];
+    
+    if (collections.length === 0) {
+      console.log(chalk.yellow("No collections found"));
+      return;
+    }
+    
+    console.log(chalk.green(`\n✅ Found ${collections.length} collections:\n`));
+    
+    collections.forEach((collection, index) => {
+      console.log(`${index + 1}. ${chalk.cyan(collection.name)} (${chalk.gray(collection.id)})`);
+      if (collection.description) {
+        console.log(`   ${chalk.gray(collection.description)}`);
+      }
+      if (collection.components && collection.components.length > 0) {
+        console.log(`   ${chalk.yellow('Components:')} ${collection.components.length}`);
+      }
+      console.log();
+    });
+  } catch (error) {
+    console.error(chalk.red(`❌ Failed to list collections: ${error.message}`));
+  }
+}
+
+async function getCollection(collectionId) {
+  try {
+    console.log(chalk.blue(`📚 Getting details of collection "${collectionId}"...`));
+    const config = await getCurrentEnvironment();
+    const result = await fetchGetCollection(config, collectionId);
+    
+    if (result.error) {
+      console.error(chalk.red(`❌ ${result.error}`));
+      return;
+    }
+    
+    const collection = result.data || result;
+    console.log(JSON.stringify(collection, null, 2));
+  } catch (error) {
+    console.error(chalk.red(`❌ Failed to get collection: ${error.message}`));
+  }
+}
+
 async function listCustomNodes(options) {
   try {
     const config = await getCurrentEnvironment();
@@ -1820,6 +1905,285 @@ async function listCustomNodes(options) {
     });
   } catch (error) {
     console.error(chalk.red(`Error listing custom nodes: ${error.message}`));
+  }
+}
+
+async function importCustomNodes(filePath) {
+  try {
+    const config = await getCurrentEnvironment();
+    
+    // Check if file exists
+    if (!await fs.pathExists(filePath)) {
+      console.error(chalk.red(`File not found: ${filePath}`));
+      return;
+    }
+    
+    console.log(chalk.blue(`Importing custom nodes from: ${filePath}`));
+    
+    // Read and parse the file
+    let customNodes = [];
+    const fileExtension = path.extname(filePath).toLowerCase();
+    
+    if (fileExtension === '.json') {
+      const fileContent = await fs.readFile(filePath, 'utf8');
+      const parsedData = JSON.parse(fileContent);
+      
+      // Handle different JSON structures
+      if (Array.isArray(parsedData)) {
+        customNodes = parsedData;
+      } else if (parsedData.custom_nodes && Array.isArray(parsedData.custom_nodes)) {
+        customNodes = parsedData.custom_nodes;
+      } else if (typeof parsedData === 'object') {
+        // Convert object format to array
+        customNodes = Object.entries(parsedData).map(([name, config]) => ({
+          name,
+          ...config
+        }));
+      }
+    } else {
+      console.error(chalk.red('Only JSON files are supported for import'));
+      return;
+    }
+    
+    if (customNodes.length === 0) {
+      console.log(chalk.yellow('No custom nodes found in file'));
+      return;
+    }
+    
+    console.log(chalk.blue(`Found ${customNodes.length} custom nodes to import`));
+    
+    // Validate required fields
+    const validNodes = [];
+    const invalidNodes = [];
+    
+    customNodes.forEach((node, index) => {
+      if (!node.name || !node.repositoryUrl) {
+        invalidNodes.push({
+          index,
+          node,
+          reason: 'Missing required fields: name and repositoryUrl'
+        });
+      } else {
+        // Ensure all fields are present with defaults
+        validNodes.push({
+          name: node.name,
+          repositoryUrl: node.repositoryUrl,
+          branch: node.branch || null,
+          commit: node.commit || null,
+          recursive: node.recursive || false,
+          requirements: node.requirements !== false, // Default to true
+          env: node.env || null,
+          version: node.version || null
+        });
+      }
+    });
+    
+    if (invalidNodes.length > 0) {
+      console.log(chalk.red(`\nSkipping ${invalidNodes.length} invalid nodes:`));
+      invalidNodes.forEach(({ index, reason }) => {
+        console.log(chalk.red(`  - Item ${index + 1}: ${reason}`));
+      });
+    }
+    
+    if (validNodes.length === 0) {
+      console.error(chalk.red('No valid custom nodes to import'));
+      return;
+    }
+    
+    console.log(chalk.blue(`\nImporting ${validNodes.length} valid custom nodes...`));
+    
+    // Import nodes one by one with progress
+    const results = {
+      success: [],
+      failed: []
+    };
+    
+    for (let i = 0; i < validNodes.length; i++) {
+      const node = validNodes[i];
+      console.log(chalk.gray(`[${i + 1}/${validNodes.length}] Importing: ${node.name}`));
+      
+      try {
+        // Check if already exists
+        const { data: existingNode } = await fetchGetCustomNodeByName(config, node.name);
+        if (existingNode) {
+          console.log(chalk.yellow(`  - Skipped: ${node.name} already exists`));
+          results.failed.push({ node: node.name, error: 'Already exists' });
+          continue;
+        }
+        
+        // Create the custom node
+        const { data: newNode, error } = await fetchCreateCustomNode(config, node);
+        
+        if (error) {
+          console.log(chalk.red(`  - Failed: ${node.name} - ${error}`));
+          results.failed.push({ node: node.name, error });
+        } else {
+          console.log(chalk.green(`  - Success: ${node.name}`));
+          results.success.push(node.name);
+        }
+      } catch (error) {
+        console.log(chalk.red(`  - Error: ${node.name} - ${error.message}`));
+        results.failed.push({ node: node.name, error: error.message });
+      }
+    }
+    
+    // Summary
+    console.log(chalk.blue(`\n📊 Import Summary:`));
+    console.log(chalk.green(`✅ Successfully imported: ${results.success.length}`));
+    console.log(chalk.red(`❌ Failed: ${results.failed.length}`));
+    
+    if (results.success.length > 0) {
+      console.log(chalk.green(`\nSuccessfully imported:`));
+      results.success.forEach(name => console.log(chalk.green(`  - ${name}`)));
+    }
+    
+    if (results.failed.length > 0) {
+      console.log(chalk.red(`\nFailed imports:`));
+      results.failed.forEach(({ node, error }) => console.log(chalk.red(`  - ${node}: ${error}`)));
+    }
+    
+  } catch (error) {
+    console.error(chalk.red(`Import failed: ${error.message}`));
+  }
+}
+
+async function importModels(filePath) {
+  try {
+    const config = await getCurrentEnvironment();
+    
+    // Check if file exists
+    if (!await fs.pathExists(filePath)) {
+      console.error(chalk.red(`File not found: ${filePath}`));
+      return;
+    }
+    
+    console.log(chalk.blue(`Importing models from: ${filePath}`));
+    
+    // Read and parse the file
+    let models = [];
+    const fileExtension = path.extname(filePath).toLowerCase();
+    
+    if (fileExtension === '.json') {
+      const fileContent = await fs.readFile(filePath, 'utf8');
+      const parsedData = JSON.parse(fileContent);
+      
+      // Handle different JSON structures
+      if (Array.isArray(parsedData)) {
+        models = parsedData;
+      } else if (parsedData.models && Array.isArray(parsedData.models)) {
+        models = parsedData.models;
+      } else if (typeof parsedData === 'object') {
+        // Convert object format to array
+        models = Object.entries(parsedData).map(([name, config]) => ({
+          name,
+          ...config
+        }));
+      }
+    } else {
+      console.error(chalk.red('Only JSON files are supported for import'));
+      return;
+    }
+    
+    if (models.length === 0) {
+      console.log(chalk.yellow('No models found in file'));
+      return;
+    }
+    
+    console.log(chalk.blue(`Found ${models.length} models to import`));
+    
+    // Validate required fields
+    const validModels = [];
+    const invalidModels = [];
+    
+    models.forEach((model, index) => {
+      if (!model.name || !model.downloadUrl || !model.fileSize) {
+        invalidModels.push({
+          index,
+          model,
+          reason: 'Missing required fields: name, downloadUrl, fileSize'
+        });
+      } else {
+        // Ensure all fields are present with defaults
+        validModels.push({
+          name: model.name,
+          downloadUrl: model.downloadUrl,
+          saveTo: model.saveTo || `models/${model.name}`,
+          description: model.description || '',
+          fileSize: model.fileSize,
+          modelType: model.modelType || 'unknown',
+          hash: model.hash || undefined,
+          isAuthReq: model.isAuthReq || false,
+          authEnvVar: model.authEnvVar || undefined
+        });
+      }
+    });
+    
+    if (invalidModels.length > 0) {
+      console.log(chalk.red(`\nSkipping ${invalidModels.length} invalid models:`));
+      invalidModels.forEach(({ index, reason }) => {
+        console.log(chalk.red(`  - Item ${index + 1}: ${reason}`));
+      });
+    }
+    
+    if (validModels.length === 0) {
+      console.error(chalk.red('No valid models to import'));
+      return;
+    }
+    
+    console.log(chalk.blue(`\nImporting ${validModels.length} valid models...`));
+    
+    // Import models one by one with progress
+    const results = {
+      success: [],
+      failed: []
+    };
+    
+    for (let i = 0; i < validModels.length; i++) {
+      const model = validModels[i];
+      console.log(chalk.gray(`[${i + 1}/${validModels.length}] Importing: ${model.name}`));
+      
+      try {
+        // Check if already exists
+        const { data: existingModel } = await fetchGetModelByName(config, model.name);
+        if (existingModel) {
+          console.log(chalk.yellow(`  - Skipped: ${model.name} already exists`));
+          results.failed.push({ model: model.name, error: 'Already exists' });
+          continue;
+        }
+        
+        // Create the model
+        const { data: newModel, error } = await fetchCreateModel(config, model);
+        
+        if (error) {
+          console.log(chalk.red(`  - Failed: ${model.name} - ${error}`));
+          results.failed.push({ model: model.name, error });
+        } else {
+          console.log(chalk.green(`  - Success: ${model.name}`));
+          results.success.push(model.name);
+        }
+      } catch (error) {
+        console.log(chalk.red(`  - Error: ${model.name} - ${error.message}`));
+        results.failed.push({ model: model.name, error: error.message });
+      }
+    }
+    
+    // Summary
+    console.log(chalk.blue(`\n📊 Import Summary:`));
+    console.log(chalk.green(`✅ Successfully imported: ${results.success.length}`));
+    console.log(chalk.red(`❌ Failed: ${results.failed.length}`));
+    
+    if (results.success.length > 0) {
+      console.log(chalk.green(`\nSuccessfully imported:`));
+      results.success.forEach(name => console.log(chalk.green(`  - ${name}`)));
+    }
+    
+    if (results.failed.length > 0) {
+      console.log(chalk.red(`\nFailed imports:`));
+      results.failed.forEach(({ model, error }) => console.log(chalk.red(`  - ${model}: ${error}`)));
+    }
+    
+  } catch (error) {
+    console.error(chalk.red(`Import failed: ${error.message}`));
   }
 }
 
@@ -2132,5 +2496,29 @@ customNodeCommand
   .command("add <name>")
   .description("Add a new custom node to the registry")
   .action(addCustomNode);
+
+customNodeCommand
+  .command("import <filePath>")
+  .description("Import multiple custom nodes from a JSON file")
+  .action(importCustomNodes);
+
+const collectionCommand = program
+  .command("collection")
+  .description("Manage collections");
+
+collectionCommand
+  .command("list")
+  .description("List all collections")
+  .action(listCollections);
+
+collectionCommand
+  .command("get <collectionId>")
+  .description("Get collection details by ID")
+  .action(getCollection);
+
+modelCommand
+  .command("import <filePath>")
+  .description("Import multiple models from a JSON file")
+  .action(importModels);
 
 program.parse(process.argv);

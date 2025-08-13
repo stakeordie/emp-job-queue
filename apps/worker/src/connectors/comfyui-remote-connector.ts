@@ -1,7 +1,7 @@
 // ComfyUI Remote Connector - WebSocket connector for remote ComfyUI instances
 // Extends ComfyUIWebSocketConnector with remote-specific configuration
 
-import { logger } from '@emp/core';
+import { logger, ConnectorLogger } from '@emp/core';
 import { ComfyUIWebSocketConnector } from './comfyui-websocket-connector.js';
 
 export class ComfyUIRemoteConnector extends ComfyUIWebSocketConnector {
@@ -35,6 +35,22 @@ export class ComfyUIRemoteConnector extends ComfyUIWebSocketConnector {
       username: remoteUsername,
       password: remotePassword,
       apiKey: remoteApiKey,
+    });
+
+    // Initialize structured logging
+    this.connectorLogger = new ConnectorLogger({
+      machineId: process.env.MACHINE_ID || 'unknown',
+      workerId: process.env.WORKER_ID || 'unknown',
+      serviceType: 'comfyui',
+      connectorId,
+    });
+
+    this.connectorLogger.info('ComfyUI Remote connector initialized', {
+      event_type: 'connector_initialized',
+      remote_host: remoteHost,
+      remote_port: remotePort,
+      secure: isSecure,
+      timeout_seconds: timeoutSeconds,
     });
 
     logger.info(

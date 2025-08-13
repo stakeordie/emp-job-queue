@@ -5,8 +5,14 @@
  * Listens to Redis events and delivers HTTP webhooks to registered endpoints.
  */
 
+import { config as dotenvConfig } from 'dotenv';
 import { WebhookServer } from './webhook-server.js';
 import { logger } from '@emp/core';
+
+// Load environment variables from profile-specific env file
+import { existsSync } from 'fs';
+const envFile = existsSync('.env.local-dev') ? '.env.local-dev' : '.env.local';
+dotenvConfig({ path: envFile });
 
 // Configuration from environment variables
 const config = {
