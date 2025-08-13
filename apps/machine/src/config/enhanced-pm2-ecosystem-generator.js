@@ -274,6 +274,9 @@ export class EnhancedPM2EcosystemGenerator {
       log_file: '/workspace/logs/health-server-combined.log',
       merge_logs: true,
       env: {
+        ...process.env, // Pass through ALL environment variables
+        
+        // Override/add specific values
         NODE_ENV: 'production',
         LOG_LEVEL: 'info',
         SERVICE_MANAGER_PATH: '/service-manager',
@@ -292,7 +295,7 @@ export class EnhancedPM2EcosystemGenerator {
       args: ['-c', '/workspace/fluent-bit/fluent-bit-worker.conf'],
       cwd: '/workspace',
       instances: 1,
-      exec_mode: 'fork',
+      exec_mode: 'fork_mode',
       interpreter: 'none',
       autorestart: true,
       max_restarts: 10,
@@ -333,8 +336,11 @@ export class EnhancedPM2EcosystemGenerator {
     const generatedWorkerId = `${process.env.MACHINE_ID || 'unknown-machine'}-worker-${workerType}-${index}`;
     this.logger.log(`🔴 [PM2-GENERATOR-DEBUG] Generated WORKER_ID: "${generatedWorkerId}"`);
     
-    // Generate environment variables
+    // Generate environment variables - start with ALL current environment variables
     const env = {
+      ...process.env, // Pass through ALL environment variables
+      
+      // Override/add specific values
       NODE_ENV: 'production',
       LOG_LEVEL: 'info',
       WORKER_ID: generatedWorkerId,
@@ -496,6 +502,9 @@ This container will now exit. Please fix the deployment configuration and restar
       log_file: `/workspace/logs/${serviceName}-gpu${gpuIndex}-combined.log`,
       merge_logs: true,
       env: {
+        ...process.env, // Pass through ALL environment variables
+        
+        // Override/add specific values
         NODE_ENV: 'production',
         LOG_LEVEL: 'info',
         GPU_INDEX: gpuIndex.toString(),
@@ -530,6 +539,9 @@ This container will now exit. Please fix the deployment configuration and restar
       log_file: `/workspace/logs/${name}-combined.log`,
       merge_logs: true,
       env: {
+        ...process.env, // Pass through ALL environment variables
+        
+        // Override/add specific values
         NODE_ENV: 'production',
         LOG_LEVEL: 'info',
         SIMULATION_PORT: port.toString(),
@@ -566,6 +578,9 @@ This container will now exit. Please fix the deployment configuration and restar
       log_file: `/workspace/logs/${name}-combined.log`,
       merge_logs: true,
       env: {
+        ...process.env, // Pass through ALL environment variables
+        
+        // Override/add specific values
         NODE_ENV: 'production',
         LOG_LEVEL: 'info',
         PORT: port.toString(),
