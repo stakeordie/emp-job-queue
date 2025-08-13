@@ -204,7 +204,30 @@ async function startPM2Services() {
       
       logger.info(`🏗️  Starting ${serviceName} service (${workerCount} workers requested)`);
       
-      // Handle special ComfyUI setup process
+      // Check if service has an installer that needs to run first
+      if (serviceConfig.installer) {
+        logger.info(`📦 Running installer service: ${serviceConfig.installer}`);
+        try {
+          // Use exact installer file path from service mapping
+          const { default: InstallerService } = await import(serviceConfig.installer_filename);
+          
+          // Create and run the installer
+          const installer = new InstallerService({}, {
+            machine: { id: process.env.MACHINE_ID || 'unknown' },
+            services: { [serviceName]: { enabled: true } }
+          });
+          
+          // Run the installer's onStart method
+          await installer.onStart();
+          logger.info(`✅ Installer ${serviceConfig.installer} completed successfully`);
+          
+        } catch (error) {
+          logger.error(`❌ Failed to run installer ${serviceConfig.installer}:`, error);
+          throw error;
+        }
+      }
+      
+      // Handle special ComfyUI setup process (after installer)
       if (serviceName === 'comfyui') {
         await pm2Manager.pm2Exec('start /workspace/pm2-ecosystem.config.cjs --only comfyui-env-creator');
         logger.info('ComfyUI env creator service started');

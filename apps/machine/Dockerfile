@@ -56,9 +56,11 @@ FROM pytorch/pytorch:2.7.0-cuda12.8-cudnn9-devel AS ai-base
 
     # Copy Fluent Bit configuration
     COPY fluent-bit-worker.conf /workspace/fluent-bit/
+    COPY fluent-bit-parsers.conf /workspace/fluent-bit/
     
     # Set proper permissions for Fluent Bit
     RUN chmod 644 /workspace/fluent-bit/fluent-bit-worker.conf && \
+        chmod 644 /workspace/fluent-bit/fluent-bit-parsers.conf && \
         chmod 755 /tmp/fluent-bit-buffer
 
 # Stage 3: ComfyUI Base Installation (HEAVY BUT STABLE)

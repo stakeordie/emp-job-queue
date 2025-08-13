@@ -292,6 +292,8 @@ export class EnhancedPM2EcosystemGenerator {
       args: ['-c', '/workspace/fluent-bit/fluent-bit-worker.conf'],
       cwd: '/workspace',
       instances: 1,
+      exec_mode: 'fork',
+      interpreter: 'none',
       autorestart: true,
       max_restarts: 10,
       min_uptime: '10s',
