@@ -314,11 +314,13 @@ start_fluent_bit() {
         return 1
     fi
     
-    # Start Fluent Bit in background
-    /opt/fluent-bit/bin/fluent-bit -c /workspace/fluent-bit/fluent-bit-worker.conf &
+    # Start Fluent Bit in background with logs to file
+    /opt/fluent-bit/bin/fluent-bit -c /workspace/fluent-bit/fluent-bit-worker.conf \
+        > /workspace/logs/fluent-bit.log 2>&1 &
     FLUENT_BIT_PID=$!
     
     log_info "✅ Fluent Bit started (PID: $FLUENT_BIT_PID)"
+    log_info "📁 Fluent Bit logs: /workspace/logs/fluent-bit.log"
     
     # Give it a moment to start
     sleep 2
