@@ -216,6 +216,7 @@ class MachineCompose {
     console.log('  build      Build services');
     console.log('  pull       Pull images from registry');
     console.log('  push       Push images to registry');
+    console.log('  pull:run   Pull latest images and run (hosted env simulation)');
     console.log('  logs       View service logs');
     console.log('  run        Run single container with docker run (production-style)');
     console.log('  generate_args  Generate deployment files for hosting platforms');
@@ -227,6 +228,7 @@ class MachineCompose {
     console.log('  pnpm machine:up sim-prod --open 9090:9090');
     console.log('  pnpm machine:build comfyui-remote-production');
     console.log('  pnpm machine:down comfyui-remote-local');
+    console.log('  pnpm machine:pull:run comfyui-remote-production --open 9090:9090');
     console.log('  pnpm machine:run comfyui-remote-production --open 9090:9090');
     console.log('  pnpm machine:generate_args comfyui-remote-production');
     console.log('\nNote: Environment is automatically determined from profile configuration');
@@ -425,6 +427,8 @@ class MachineCompose {
     
     if (command === 'run') {
       console.log(chalk.green(`🏗️  Mode: Production hosting emulation (docker run with -e flags)`));
+    } else if (command === 'pull:run') {
+      console.log(chalk.green(`🏗️  Mode: Hosted environment simulation (pull latest + docker run)`));
     }
     
     if (portMappings.length > 0) {
@@ -688,6 +692,20 @@ class MachineCompose {
         this.generateDeploymentArgs(profile, envName);
         return; // Don't execute docker commands
         
+      } else if (command === 'pull:run') {
+        // Pull latest images then run (hosted environment simulation)
+        if (!profile) {
+          throw new Error('Profile is required for pull:run command');
+        }
+        
+        console.log(chalk.blue('📥 Step 1: Pulling latest images...'));
+        const pullCmd = this.buildDockerComposeCommand('pull', profile, [], envName);
+        await this.executeCommand(pullCmd, false, [], envName);
+        
+        console.log(chalk.blue('🏗️  Step 2: Using docker run (hosted environment simulation)'));
+        cmd = this.buildDockerRunCommand(profile, flags, envName, portMappings);
+        // Environment variables are already injected as -e flags in buildDockerRunCommand
+        injectEnvVars = false;
       } else if (command === 'run') {
         // Use docker run command (production hosting style)
         if (!profile) {

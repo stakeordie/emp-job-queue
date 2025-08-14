@@ -52,6 +52,7 @@
     "machine:down": "node scripts/env/machine-compose.js down",
     "machine:build": "node scripts/env/machine-compose.js build",
     "machine:build:local": "./scripts/env/machine-local-build.sh",
+    "machine:pull:run": "node scripts/env/machine-compose.js pull:run",
     "machine:pull": "node scripts/env/machine-compose.js pull",
     "machine:push": "node scripts/env/machine-compose.js push",
     "machine:logs": "node scripts/env/machine-compose.js logs",
