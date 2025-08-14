@@ -1,0 +1,30 @@
+# Fluent Bit Configuration - File tailing only
+[SERVICE]
+    Flush 5
+    Log_Level info
+    Daemon off
+
+# Collect log files from PM2 services (raw logs)
+[INPUT]
+    Name tail
+    Tag worker.logs
+    Path /workspace/logs/*.log
+    Skip_Long_Lines On
+    Skip_Empty_Lines On
+    Refresh_Interval 5
+
+# Add machine metadata to all logs
+[FILTER]
+    Name record_modifier
+    Match worker.*
+    Record machine_id ${MACHINE_ID}
+    Record source fluent-bit-file-tail
+
+# Send to Fluentd service
+[OUTPUT]
+    Name http
+    Match worker.*
+    Host ${FLUENTD_HOST}
+    Port ${FLUENTD_PORT}
+    URI /worker-logs
+    Format json

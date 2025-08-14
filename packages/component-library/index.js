@@ -294,6 +294,13 @@ async function fetchGetModelByName(config, name) {
 async function fetchCreateModel(config, modelData) {
   try {
     const url = `${config.apiUrl}/models`;
+    
+    // Log the full request being sent
+    console.log(chalk.blue(`🔍 Creating model: ${modelData.name}`));
+    console.log(chalk.gray(`📡 Request URL: ${url}`));
+    console.log(chalk.gray(`📦 Request body:`));
+    console.log(chalk.gray(JSON.stringify(modelData, null, 2)));
+    
     const response = await fetch(url, {
       method: "POST",
       headers: {
@@ -301,7 +308,16 @@ async function fetchCreateModel(config, modelData) {
       },
       body: JSON.stringify(modelData),
     });
+    
     if (!response.ok) {
+      // Get the response text for detailed error logging
+      const errorText = await response.text();
+      console.log(chalk.red(`❌ HTTP ${response.status} Error for model: ${modelData.name}`));
+      console.log(chalk.red(`📡 Response status: ${response.status} ${response.statusText}`));
+      console.log(chalk.red(`📝 Response body: ${errorText}`));
+      console.log(chalk.red(`📦 Request that failed:`));
+      console.log(chalk.red(JSON.stringify(modelData, null, 2)));
+      
       throw new Error(`HTTP error! status: ${response.status}`);
     }
     return response.json(); // API already returns { data, error } structure
@@ -1401,7 +1417,11 @@ async function updateComponent(componentName) {
         console.log(chalk.blue("\n🔧 Update Linked Custom Nodes for Component:"));
         console.log(chalk.gray("ComfyUI workflow components can specify which custom nodes they require"));
         
-        const currentCustomNodes = component.custom_nodes || []; // Get existing custom nodes
+        // Debug: log the component structure to see available fields
+        console.log(chalk.gray("DEBUG: Component structure:"));
+        console.log(chalk.gray(JSON.stringify(component, null, 2)));
+        
+        const currentCustomNodes = component.custom_nodes || component.customNodes || []; // Try different field names
         if (currentCustomNodes.length > 0) {
           console.log(chalk.gray(`Currently linked custom nodes: ${currentCustomNodes.join(', ')}`));
         } else {
@@ -2110,7 +2130,6 @@ async function importModels(filePath) {
           saveTo: model.saveTo || `models/${model.name}`,
           description: model.description || '',
           fileSize: model.fileSize,
-          modelType: model.modelType || 'unknown',
           hash: model.hash || undefined,
           isAuthReq: model.isAuthReq || false,
           authEnvVar: model.authEnvVar || undefined

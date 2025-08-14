@@ -104,13 +104,13 @@ jobs:
           --build-arg DASH0_DATASET="production" \
           --build-arg DASH0_LOGS_ENDPOINT="https://ingress.us-west-2.aws.dash0.com/logs/json" \
           -f apps/fluentd/Dockerfile \
-          -t emprops/emp-fluentd:latest \
-          -t emprops/emp-fluentd:${{ steps.get_tag.outputs.tag }} \
+          -t emprops/fluentd:latest \
+          -t emprops/fluentd:${{ steps.get_tag.outputs.tag }} \
           apps/fluentd/
         
         # Push both tags
-        docker push emprops/emp-fluentd:latest
-        docker push emprops/emp-fluentd:${{ steps.get_tag.outputs.tag }}
+        docker push emprops/fluentd:latest
+        docker push emprops/fluentd:${{ steps.get_tag.outputs.tag }}
 
     - name: Build and package worker
       run: |
@@ -226,7 +226,7 @@ jobs:
           **🐳 Docker Images:**
           - `emprops/emp-job-queue-api:${{ steps.get_tag.outputs.tag }}` - **API server container**
           - `emprops/emp-webhook-service:${{ steps.get_tag.outputs.tag }}` - **Webhook service container**
-          - `emprops/emp-fluentd:${{ steps.get_tag.outputs.tag }}` - **Fluentd log aggregation container**
+          - `emprops/fluentd:${{ steps.get_tag.outputs.tag }}` - **Fluentd log aggregation container**
           - `emprops/basic-machine:${{ steps.get_tag.outputs.tag }}` - **GPU machine container** (built separately)
           
           ### Installation Options

@@ -2,6 +2,7 @@ import { BaseService } from './base-service.js';
 import fs from 'fs-extra';
 import path from 'path';
 import { fileURLToPath } from 'url';
+import EMPApiClient from './emp-api-client.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -22,6 +23,13 @@ export default class ComponentManagerService extends BaseService {
     this.workspacePath = process.env.WORKSPACE_PATH || '/workspace';
     this.comfyuiPath = path.join(this.workspacePath, 'ComfyUI');
     this.componentConfigPath = path.join(this.workspacePath, 'component-config.json');
+    
+    // Initialize EMP API client
+    this.empApi = new EMPApiClient({
+      baseUrl: process.env.EMPROPS_API_URL || process.env.EMP_API_URL,
+      apiKey: process.env.EMPROPS_API_KEY,
+      logger: this.logger
+    });
     
     // Component configuration from environment
     this.components = this.parseComponentConfig();
@@ -134,36 +142,38 @@ export default class ComponentManagerService extends BaseService {
   }
 
   /**
-   * Fetch component details from API using ECLI tool
+   * Fetch component details from EMP API using dependencies endpoint
    */
   async fetchComponent(componentName) {
-    this.logger.info(`Fetching component: ${componentName}`);
+    this.logger.info(`Fetching component dependencies: ${componentName}`);
     
     try {
-      // Use ECLI to get component details
-      const { execa } = await import('execa');
-      const componentLibraryPath = path.resolve(__dirname, '../../../../packages/component-library');
+      // Use the new dependencies API
+      const dependencies = await this.empApi.getWorkflowDependencies([componentName]);
       
-      const result = await execa('node', ['index.js', 'component', 'get', componentName], {
-        cwd: componentLibraryPath,
-        stdio: 'pipe'
-      });
-      
-      // Parse the JSON output - find the JSON block after the description line
-      const output = result.stdout;
-      const jsonStartIndex = output.indexOf('{');
-      
-      if (jsonStartIndex === -1) {
-        throw new Error('No JSON response found from ECLI component get command');
+      if (dependencies.length === 0) {
+        throw new Error(`No workflow found with name: ${componentName}`);
       }
       
-      const jsonContent = output.substring(jsonStartIndex);
-      const component = JSON.parse(jsonContent);
-      this.logger.info(`Successfully fetched component: ${component.name}`);
+      const workflow = dependencies[0];
+      
+      // Convert to component format
+      const component = {
+        id: workflow.workflow_id,
+        name: workflow.workflow_name,
+        custom_nodes: workflow.custom_nodes || [],
+        models: workflow.models || []
+      };
+      
+      this.logger.info(`Successfully fetched component: ${component.name}`, {
+        customNodesCount: component.custom_nodes.length,
+        modelsCount: component.models.length
+      });
       
       return component;
     } catch (error) {
-      throw new Error(`Failed to fetch component ${componentName}: ${error.message}`);
+      this.logger.error(`Failed to fetch component ${componentName}:`, error.message);
+      throw error;
     }
   }
 
@@ -174,29 +184,12 @@ export default class ComponentManagerService extends BaseService {
     this.logger.info(`Fetching collection: ${collectionId}`);
     
     try {
-      // Use ECLI to get collection details
-      const { execa } = await import('execa');
-      const componentLibraryPath = path.resolve(__dirname, '../../../packages/component-library');
-      
-      const result = await execa('node', ['index.js', 'collection', 'get', collectionId], {
-        cwd: componentLibraryPath,
-        stdio: 'pipe'
-      });
-      
-      // Parse the JSON output
-      const lines = result.stdout.split('\n');
-      const jsonLine = lines.find(line => line.trim().startsWith('{'));
-      
-      if (!jsonLine) {
-        throw new Error('No JSON response found from ECLI collection get command');
-      }
-      
-      const collection = JSON.parse(jsonLine);
-      this.logger.info(`Successfully fetched collection: ${collection.name} with ${collection.components?.length || 0} components`);
-      
+      const collection = await this.empApi.getCollection(collectionId);
+      this.logger.info(`Successfully fetched collection: ${collection.name || collectionId} with ${collection.components?.length || 0} components`);
       return collection;
     } catch (error) {
-      throw new Error(`Failed to fetch collection ${collectionId}: ${error.message}`);
+      this.logger.error(`Failed to fetch collection ${collectionId}:`, error.message);
+      throw error;
     }
   }
 
@@ -214,16 +207,32 @@ export default class ComponentManagerService extends BaseService {
     
     for (const component of components) {
       try {
-        // Extract custom nodes from workflow
-        const customNodes = this.extractCustomNodesFromWorkflow(component);
-        for (const node of customNodes) {
-          requirements.customNodes.set(node.name, node);
+        // Log what we received from API
+        this.logger.info(`Component ${component.name} API data:`, {
+          hasCustomNodes: !!component.custom_nodes,
+          customNodesCount: component.custom_nodes?.length || 0,
+          hasModels: !!component.models,
+          modelsCount: component.models?.length || 0
+        });
+        
+        // Get custom nodes directly from API response and process them
+        const rawCustomNodes = component.custom_nodes || [];
+        const processedNodes = this.processCustomNodes(rawCustomNodes);
+        for (const node of processedNodes) {
+          if (node.name) {
+            this.logger.info(`Adding custom node: ${node.name}`, { url: node.url });
+            requirements.customNodes.set(node.name, node);
+          }
         }
         
-        // Extract models from component
-        const models = this.extractModelsFromComponent(component);
-        for (const model of models) {
-          requirements.models.set(model.name, model);
+        // Get models directly from API response and process them
+        const rawModels = component.models || [];
+        const processedModels = this.processModels(rawModels);
+        for (const model of processedModels) {
+          if (model.name) {
+            this.logger.info(`Adding model: ${model.name}`, { url: model.url });
+            requirements.models.set(model.name, model);
+          }
         }
         
         // Track supported components for worker capabilities
@@ -234,8 +243,8 @@ export default class ComponentManagerService extends BaseService {
         });
         
         this.logger.info(`Component ${component.name} requires:`, {
-          customNodes: customNodes.length,
-          models: models.length
+          customNodes: processedNodes.length,
+          models: processedModels.length
         });
       } catch (error) {
         this.logger.error(`Failed to analyze component ${component.name}:`, error.message);
@@ -253,107 +262,68 @@ export default class ComponentManagerService extends BaseService {
   }
 
   /**
-   * Extract custom nodes from component workflow
+   * Process custom nodes from API response
+   * The API returns custom_nodes array with all required data
    */
-  extractCustomNodesFromWorkflow(component) {
-    const customNodes = [];
-    const workflow = component.data?.workflow || {};
-    
-    // Known EmProps custom nodes that need to be installed
-    const empropsNodeTypes = [
-      'EmProps_Cloud_Storage_Saver',
-      'EmProps_VAE_Loader',
-      'EmProps_Asset_Downloader',
-      'EmProps_DualCLIP_Loader',
-      'EmProps_Diffusion_Model_Loader'
-    ];
-    
-    // Scan workflow for custom node usage
-    for (const nodeId in workflow) {
-      const node = workflow[nodeId];
-      const classType = node.class_type;
-      
-      if (empropsNodeTypes.includes(classType)) {
-        // EmProps nodes are handled by the monorepo package
-        if (!customNodes.find(n => n.name === 'emprops_comfy_nodes')) {
-          customNodes.push({
-            name: 'emprops_comfy_nodes',
-            repositoryUrl: 'https://github.com/stakeordie/emprops_comfy_nodes.git',
-            recursive: true,
-            requirements: true,
-            env: {
-              "AWS_ACCESS_KEY_ID": "${AWS_ACCESS_KEY_ID}",
-              "AWS_SECRET_ACCESS_KEY_ENCODED": "${AWS_SECRET_ACCESS_KEY_ENCODED}",
-              "AWS_DEFAULT_REGION": "${AWS_DEFAULT_REGION}",
-              "GOOGLE_APPLICATION_CREDENTIALS": "${GOOGLE_APPLICATION_CREDENTIALS}",
-              "AZURE_STORAGE_ACCOUNT": "${AZURE_STORAGE_ACCOUNT}",
-              "AZURE_STORAGE_KEY": "${AZURE_STORAGE_KEY}",
-              "CLOUD_STORAGE_CONTAINER": "${CLOUD_STORAGE_CONTAINER}",
-              "CLOUD_MODELS_CONTAINER": "${CLOUD_MODELS_CONTAINER}",
-              "CLOUD_STORAGE_TEST_CONTAINER": "${CLOUD_STORAGE_TEST_CONTAINER}",
-              "CLOUD_PROVIDER": "${CLOUD_PROVIDER}",
-              "STATIC_MODELS": "${STATIC_MODELS}",
-              "EMPROPS_DEBUG_LOGGING": "${EMPROPS_DEBUG_LOGGING}",
-              "HF_TOKEN": "${HF_TOKEN}",
-              "CIVITAI_TOKEN": "${CIVITAI_TOKEN}",
-              "OLLAMA_HOST": "${OLLAMA_HOST}",
-              "OLLAMA_PORT": "${OLLAMA_PORT}",
-              "OLLAMA_DEFAULT_MODEL": "${OLLAMA_DEFAULT_MODEL}"
-            }
-          });
-        }
-      }
+  processCustomNodes(customNodes) {
+    if (!Array.isArray(customNodes)) {
+      return [];
     }
     
-    return customNodes;
+    return customNodes.map(node => {
+      // Use the new API spec field names
+      const processedNode = {
+        name: node.name,
+        url: node.repositoryUrl,  // New API spec uses 'repositoryUrl'
+        branch: node.branch,
+        commit: node.commit,
+        recursive: node.recursive,
+        requirements: node.requirements,
+        env: node.env,
+        custom_script: node.custom_script,
+        version: node.version,
+        description: node.description
+      };
+      
+      // Remove undefined fields
+      Object.keys(processedNode).forEach(key => {
+        if (processedNode[key] === undefined) {
+          delete processedNode[key];
+        }
+      });
+      
+      return processedNode;
+    });
   }
 
   /**
-   * Extract models from component data
+   * Process models from API response
+   * The API returns models array with all required data
    */
-  extractModelsFromComponent(component) {
-    const models = [];
-    
-    // Get models from workflow_models if available
-    if (component.workflow_models && Array.isArray(component.workflow_models)) {
-      for (const workflowModel of component.workflow_models) {
-        if (workflowModel.model?.name) {
-          models.push({
-            name: workflowModel.model.name,
-            isRequired: workflowModel.isRequired || false,
-            source: 'workflow_models'
-          });
-        }
-      }
+  processModels(models) {
+    if (!Array.isArray(models)) {
+      return [];
     }
     
-    // Get models from data.models if available
-    if (component.data?.models && Array.isArray(component.data.models)) {
-      for (const modelName of component.data.models) {
-        if (!models.find(m => m.name === modelName)) {
-          models.push({
-            name: modelName,
-            isRequired: true,
-            source: 'data.models'
-          });
-        }
+    return models.map(model => {
+      // Handle both string and object formats
+      if (typeof model === 'string') {
+        return {
+          name: model,
+          isRequired: true
+        };
       }
-    }
-    
-    // Get models from models array if available
-    if (component.models && Array.isArray(component.models)) {
-      for (const modelName of component.models) {
-        if (!models.find(m => m.name === modelName)) {
-          models.push({
-            name: modelName,
-            isRequired: true,
-            source: 'models'
-          });
-        }
-      }
-    }
-    
-    return models;
+      
+      return {
+        name: model.name || model.filename,
+        type: model.type,
+        modelType: model.modelType || model.type,
+        downloadUrl: model.downloadUrl || model.url || model.download_url,
+        isRequired: model.isRequired !== false,
+        size: model.size,
+        hash: model.hash
+      };
+    });
   }
 
   /**
@@ -413,13 +383,142 @@ export default class ComponentManagerService extends BaseService {
       return;
     }
     
-    this.logger.info(`Models that would be downloaded: ${models.map(m => m.name).join(', ')}`);
+    this.logger.info(`Installing ${models.length} models using wget...`);
     
-    // TODO: Implement model downloading
-    // This will integrate with the EmProps Asset Downloader or the model management system
-    // For now, models are downloaded at runtime by the EmProps_Asset_Downloader nodes in the workflow
+    for (const model of models) {
+      try {
+        await this.downloadModel(model);
+      } catch (error) {
+        this.logger.error(`Failed to download model ${model.name}:`, error.message);
+        // Continue with other models even if one fails
+      }
+    }
     
-    this.logger.info('Model installation completed (handled at runtime)');
+    this.logger.info('Model installation completed');
+  }
+
+  /**
+   * Download a single model using wget
+   */
+  async downloadModel(model) {
+    const { name, downloadUrl, modelType } = model;
+    
+    if (!downloadUrl) {
+      this.logger.warn(`No download URL for model ${name}, skipping`);
+      return;
+    }
+
+    // Determine target directory based on model type and file extension
+    const targetDir = this.getModelDirectory(name, modelType);
+    const targetPath = `${targetDir}/${name}`;
+    
+    this.logger.info(`Downloading model ${name} to ${targetPath}`);
+    
+    // Create target directory if it doesn't exist
+    const { execSync } = await import('child_process');
+    try {
+      execSync(`mkdir -p "${targetDir}"`, { encoding: 'utf8' });
+    } catch (error) {
+      throw new Error(`Failed to create directory ${targetDir}: ${error.message}`);
+    }
+    
+    // Check if model already exists
+    try {
+      execSync(`test -f "${targetPath}"`, { encoding: 'utf8' });
+      this.logger.info(`Model ${name} already exists, skipping download`);
+      return;
+    } catch (error) {
+      // File doesn't exist, proceed with download
+    }
+    
+    // Download using wget with progress and resume support
+    const wgetCmd = [
+      'wget',
+      '--continue',                    // Resume partial downloads
+      '--progress=bar:force:noscroll', // Show progress bar
+      '--timeout=30',                  // Connection timeout
+      '--tries=3',                     // Retry 3 times
+      '--user-agent="ComfyUI-Machine/1.0"', // Identify as ComfyUI machine
+      `--output-document="${targetPath}"`,   // Target file path
+      `"${downloadUrl}"`               // Source URL
+    ].join(' ');
+    
+    this.logger.info(`Running: ${wgetCmd}`);
+    
+    try {
+      execSync(wgetCmd, { 
+        encoding: 'utf8',
+        stdio: 'inherit' // Show wget progress in console
+      });
+      
+      this.logger.info(`✅ Successfully downloaded model ${name}`);
+      
+      // Verify the downloaded file exists and has content
+      const stat = execSync(`stat -c '%s' "${targetPath}"`, { encoding: 'utf8' });
+      const fileSize = parseInt(stat.trim());
+      if (fileSize > 0) {
+        this.logger.info(`Model ${name} downloaded successfully (${this.formatFileSize(fileSize)})`);
+        
+        // Add to inventory
+        await this.addModelToInventory(model, targetPath, fileSize);
+      } else {
+        throw new Error(`Downloaded file is empty`);
+      }
+      
+    } catch (error) {
+      // Clean up partial download on failure
+      try {
+        execSync(`rm -f "${targetPath}"`, { encoding: 'utf8' });
+      } catch (cleanupError) {
+        this.logger.warn(`Failed to clean up partial download: ${cleanupError.message}`);
+      }
+      
+      throw new Error(`wget failed: ${error.message}`);
+    }
+  }
+
+  /**
+   * Determine the correct ComfyUI directory for a model based on its name and type
+   */
+  getModelDirectory(modelName, modelType) {
+    const lowerName = modelName.toLowerCase();
+    
+    // Map file extensions and names to ComfyUI directories
+    if (lowerName.includes('vae') || lowerName.includes('ae.safetensors')) {
+      return '/workspace/ComfyUI/models/vae';
+    } else if (lowerName.includes('clip') || lowerName.includes('t5xxl')) {
+      return '/workspace/ComfyUI/models/clip';
+    } else if (lowerName.includes('controlnet')) {
+      return '/workspace/ComfyUI/models/controlnet';
+    } else if (lowerName.includes('upscale') || lowerName.includes('esrgan')) {
+      return '/workspace/ComfyUI/models/upscale_models';
+    } else if (lowerName.includes('lora')) {
+      return '/workspace/ComfyUI/models/loras';
+    } else if (lowerName.includes('embedding') || lowerName.includes('textual_inversion')) {
+      return '/workspace/ComfyUI/models/embeddings';
+    } else if (modelType === 'checkpoint' || lowerName.includes('.safetensors') || lowerName.includes('.ckpt')) {
+      // Default to checkpoints for main model files
+      return '/workspace/ComfyUI/models/checkpoints';
+    } else {
+      // Fallback to checkpoints directory
+      return '/workspace/ComfyUI/models/checkpoints';
+    }
+  }
+
+  /**
+   * Format file size for human-readable output
+   */
+  formatFileSize(bytes) {
+    const units = ['B', 'KB', 'MB', 'GB', 'TB'];
+    let size = bytes;
+    let unitIndex = 0;
+    
+    while (size >= 1024 && unitIndex < units.length - 1) {
+      size /= 1024;
+      unitIndex++;
+    }
+    
+    return `${size.toFixed(1)} ${units[unitIndex]}`;
   }
 
   /**
