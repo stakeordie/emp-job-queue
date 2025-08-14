@@ -46,6 +46,11 @@ FROM pytorch/pytorch:2.7.0-cuda12.8-cudnn9-devel AS ai-base
 
     # Set up working directory
     WORKDIR /workspace
+    
+    # Add build timestamp for debugging
+    ARG BUILD_TIMESTAMP
+    ENV BUILD_TIMESTAMP=${BUILD_TIMESTAMP}
+    RUN echo "Image built at: ${BUILD_TIMESTAMP}" > /workspace/BUILD_INFO.txt
 
     # Create necessary directories
     RUN mkdir -p \

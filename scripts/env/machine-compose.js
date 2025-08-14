@@ -305,6 +305,11 @@ class MachineCompose {
         break;
       case 'build':
         cmd.push('build');
+        
+        // Add build timestamp
+        const buildTimestamp = new Date().toISOString().replace('T', ' ').replace(/\.\d{3}Z$/, ' UTC');
+        cmd.push('--build-arg', `BUILD_TIMESTAMP=${buildTimestamp}`);
+        
         // For build command, inject environment variables as build args
         if (envName) {
           const secretEnv = this.loadEnvSecret(envName);

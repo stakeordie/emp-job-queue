@@ -57,6 +57,14 @@ setup_environment() {
         log_warn "No .env file found at /service-manager/.env"
     fi
     
+    # Show build info for debugging
+    if [ -f "/workspace/BUILD_INFO.txt" ]; then
+        BUILD_INFO=$(cat /workspace/BUILD_INFO.txt)
+        log_info "🏗️  ${BUILD_INFO}"
+    else
+        log_info "🏗️  Build timestamp: ${BUILD_TIMESTAMP:-unknown}"
+    fi
+    
     # Log key environment variables for debugging
     log_info "Base Profile Configuration:"
     log_info "  - NODE_ENV: ${NODE_ENV}"
