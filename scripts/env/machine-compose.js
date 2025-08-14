@@ -214,6 +214,7 @@ class MachineCompose {
     console.log('  up:build   Build and start services');
     console.log('  down       Stop services');
     console.log('  build      Build services');
+    console.log('  build:push Build and push images to registry');
     console.log('  pull       Pull images from registry');
     console.log('  push       Push images to registry');
     console.log('  pull:run   Pull latest images and run (hosted env simulation)');
@@ -429,6 +430,8 @@ class MachineCompose {
       console.log(chalk.green(`🏗️  Mode: Production hosting emulation (docker run with -e flags)`));
     } else if (command === 'pull:run') {
       console.log(chalk.green(`🏗️  Mode: VAST.ai/Railway simulation (docker rmi → docker pull → docker run)`));
+    } else if (command === 'build:push') {
+      console.log(chalk.green(`🏗️  Mode: Build with timestamp → Push to registry (one-step deployment)`));
     }
     
     if (portMappings.length > 0) {
@@ -658,14 +661,14 @@ class MachineCompose {
       }
       
       // Always bundle worker first for build command
-      if (command === 'build') {
+      if (command === 'build' || command === 'build:push') {
         console.log(chalk.blue('📦 Bundling worker...'));
         await this.executeCommand(['pnpm', '-w', 'worker:bundle'], false, [], null);
         console.log(chalk.green('✅ Worker bundled successfully\n'));
       }
       
       // For both build and up commands, create symlink so Docker Compose can resolve ${VARIABLES}
-      if ((command === 'build' || command === 'up') && envName) {
+      if ((command === 'build' || command === 'build:push' || command === 'up') && envName) {
         await this.createEnvironmentSymlink(envName);
       }
       
@@ -691,6 +694,23 @@ class MachineCompose {
         
         this.generateDeploymentArgs(profile, envName);
         return; // Don't execute docker commands
+        
+      } else if (command === 'build:push') {
+        // Build and push in one step
+        if (!profile) {
+          throw new Error('Profile is required for build:push command');
+        }
+        
+        console.log(chalk.blue('🔨 Step 1: Building image with timestamp...'));
+        const buildCmd = this.buildDockerComposeCommand('build', profile, flags, envName);
+        await this.executeCommand(buildCmd, false, [], envName);
+        
+        console.log(chalk.blue('📤 Step 2: Pushing image to registry...'));
+        const pushCmd = this.buildDockerComposeCommand('push', profile, [], envName);
+        await this.executeCommand(pushCmd, false, [], envName);
+        
+        console.log(chalk.green('✅ Build and push completed successfully!'));
+        return; // Done
         
       } else if (command === 'pull:run') {
         // Pull latest images then run (hosted environment simulation - like VAST.ai/Railway)
