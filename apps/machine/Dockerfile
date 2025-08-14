@@ -54,22 +54,10 @@ FROM pytorch/pytorch:2.7.0-cuda12.8-cudnn9-devel AS ai-base
         /workspace/fluent-bit \
         /tmp/fluent-bit-buffer
 
-    # Build-time environment variables for Fluent Bit config generation
-    ARG FLUENTD_HOST=host.docker.internal
-    ARG FLUENTD_PORT=8888
-    ARG MACHINE_ID=unknown
-    
-    # Set environment variables for envsubst
-    ENV FLUENTD_HOST=${FLUENTD_HOST}
-    ENV FLUENTD_PORT=${FLUENTD_PORT}
-    ENV MACHINE_ID=${MACHINE_ID}
-    
-    # Copy Fluent Bit template and generate static config at build time
-    COPY fluent-bit-worker.conf.template /tmp/fluent-bit-worker.conf.template
-    RUN envsubst < /tmp/fluent-bit-worker.conf.template > /workspace/fluent-bit/fluent-bit-worker.conf && \
-        chmod 644 /workspace/fluent-bit/fluent-bit-worker.conf && \
-        chmod 755 /tmp/fluent-bit-buffer && \
-        rm /tmp/fluent-bit-worker.conf.template
+    # Copy Fluent Bit template for runtime config generation
+    COPY fluent-bit-worker.conf.template /workspace/fluent-bit/fluent-bit-worker.conf.template
+    RUN chmod 644 /workspace/fluent-bit/fluent-bit-worker.conf.template && \
+        chmod 755 /tmp/fluent-bit-buffer
 
 # Stage 3: ComfyUI Base Installation (HEAVY BUT STABLE)
 FROM ai-base AS comfyui-base

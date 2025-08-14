@@ -11,9 +11,25 @@ if [ ! -f "/usr/sbin/calyptia-fluentd" ]; then
     exit 1
 fi
 
-# Verify config file
+# Generate config from template at runtime (keeps credentials secure)
+echo "🔧 Generating Fluentd configuration at runtime..."
+echo "  - Environment: ${ENV:-dev}"
+echo "  - Dash0 Dataset: ${DASH0_DATASET:-unknown}"
+echo "  - Dash0 Endpoint: ${DASH0_LOGS_ENDPOINT:-unknown}"
+echo "  - Template: /etc/calyptia-fluentd/calyptia-fluentd.conf.template"
+echo "  - Config: /etc/calyptia-fluentd/calyptia-fluentd.conf"
+
+if [ -f "/etc/calyptia-fluentd/calyptia-fluentd.conf.template" ]; then
+    envsubst < /etc/calyptia-fluentd/calyptia-fluentd.conf.template > /etc/calyptia-fluentd/calyptia-fluentd.conf
+    echo "✅ Fluentd configuration generated successfully"
+else
+    echo "❌ Fluentd template not found at /etc/calyptia-fluentd/calyptia-fluentd.conf.template"
+    exit 1
+fi
+
+# Verify generated config file
 if [ ! -f "/etc/calyptia-fluentd/calyptia-fluentd.conf" ]; then
-    echo "❌ Config file not found at /etc/calyptia-fluentd/calyptia-fluentd.conf"
+    echo "❌ Generated config file not found at /etc/calyptia-fluentd/calyptia-fluentd.conf"
     exit 1
 fi
 

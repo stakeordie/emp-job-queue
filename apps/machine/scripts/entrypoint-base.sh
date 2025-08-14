@@ -212,10 +212,20 @@ start_fluent_bit() {
     export FLUENTD_HOST=${FLUENTD_HOST:-host.docker.internal}
     export FLUENTD_PORT=${FLUENTD_PORT:-8888}
     
-    log_info "Fluent Bit configuration:"
+    log_info "Generating Fluent Bit configuration at runtime..."
     log_info "  - Machine ID: ${MACHINE_ID}"
     log_info "  - Fluentd Host: ${FLUENTD_HOST}:${FLUENTD_PORT}"
+    log_info "  - Template: /workspace/fluent-bit/fluent-bit-worker.conf.template"
     log_info "  - Config: /workspace/fluent-bit/fluent-bit-worker.conf"
+    
+    # Generate Fluent Bit config from template at runtime (keeps credentials secure)
+    if [ -f "/workspace/fluent-bit/fluent-bit-worker.conf.template" ]; then
+        envsubst < /workspace/fluent-bit/fluent-bit-worker.conf.template > /workspace/fluent-bit/fluent-bit-worker.conf
+        log_info "✅ Fluent Bit configuration generated successfully"
+    else
+        log_error "❌ Fluent Bit template not found"
+        return 1
+    fi
     
     # Start Fluent Bit in background
     /opt/fluent-bit/bin/fluent-bit -c /workspace/fluent-bit/fluent-bit-worker.conf &
