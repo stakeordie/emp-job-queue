@@ -174,12 +174,10 @@ class DockerComposePortGenerator {
       // Create override for the specific service
       overrideContent += `  ${serviceName}:\n`;
       overrideContent += '    ports:\n';
-      overrideContent += '      # Health monitoring port (always exposed)\n';
-      overrideContent += '      - "9090:9090"\n';
       
-      // Add generated port mappings
+      // Add generated port mappings (which already include health port)
       portMappings.forEach(port => {
-        overrideContent += `      - "${port}"\n`;
+        overrideContent += `      - ${port}\n`;
       });
       
       this.logger.log(`✅ Created override for service '${serviceName}' with ${portMappings.length} port mappings`);

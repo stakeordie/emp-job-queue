@@ -67,7 +67,7 @@
   @id dash0_output
   @log_level debug
   
-  endpoint ${DASH0_LOGS_ENDPOINT}
+  endpoint https://ingress.us-west-2.aws.dash0.com/logs/json
   http_method post
   open_timeout 10
   read_timeout 30

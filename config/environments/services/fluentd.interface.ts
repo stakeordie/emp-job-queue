@@ -9,7 +9,6 @@ export const FluentdEnvInterface = {
     "DASH0_API_KEY": "TELEMETRY_DASH0_API_KEY",
     "REDIS_URL": "REDIS_URL",
     "DASH0_LOGS_ENDPOINT": "TELEMETRY_DASH0_LOGS_ENDPOINT"
-
   },
   optional: {
   },

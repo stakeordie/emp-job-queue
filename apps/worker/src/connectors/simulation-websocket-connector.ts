@@ -25,6 +25,7 @@ import {
   MessageType,
   WebSocketMessage 
 } from './protocol/websocket-connector.js';
+import { WorkerTracer } from '../telemetry/worker-tracer.js';
 
 export class SimulationWebsocketConnector extends WebSocketConnector {
   service_type = 'simulation-websocket' as const;
@@ -35,6 +36,9 @@ export class SimulationWebsocketConnector extends WebSocketConnector {
   private steps: number;
   private progressIntervalMs: number;
   private healthCheckFailureRate: number;
+  
+  // Telemetry
+  private tracer: WorkerTracer;
 
   constructor(connectorId: string) {
     // Parse simulation-specific environment variables
@@ -81,6 +85,18 @@ export class SimulationWebsocketConnector extends WebSocketConnector {
     this.steps = steps;
     this.progressIntervalMs = progressIntervalMs;
     this.healthCheckFailureRate = healthCheckFailureRate;
+
+    // Initialize telemetry
+    this.tracer = new WorkerTracer(`simulation-websocket-${connectorId}`);
+    
+    // Send a test telemetry event to verify connectivity
+    this.tracer.addTestEvent('Simulation WebSocket connector initialized', {
+      'connector.id': connectorId,
+      'connector.type': 'simulation-websocket',
+      'processing_time_ms': processingTimeMs,
+      'steps': steps,
+      'websocket_url': wsConfig.websocket_url
+    }).catch(err => console.error('Failed to send telemetry:', err));
 
     logger.info(`🔧 REBUILT WebSocket connector - URL FIX APPLIED!`, {
       connector: connectorId,
@@ -222,15 +238,31 @@ export class SimulationWebsocketConnector extends WebSocketConnector {
       messageType: message.type
     });
 
+    // Add telemetry for WebSocket message received
+    this.tracer.addTestEvent('WebSocket message received', {
+      'message.type': message.type,
+      'message.job_id': message.jobId || 'none',
+      'websocket.connected': this.connectionState === 'connected'
+    }).catch(err => console.error('Failed to send telemetry:', err));
+
     // Handle simulation-specific messages
     switch (message.type) {
       case MessageType.CONNECTION:
         if (message.data?.type === 'simulation_ready') {
           logger.info('Simulation service ready', message.data);
+          this.tracer.addTestEvent('Simulation service ready', {
+            'service.status': 'ready'
+          }).catch(err => console.error('Failed to send telemetry:', err));
         } else if (message.data?.type === 'simulation_status') {
           logger.info('Simulation status update', message.data);
+          this.tracer.addTestEvent('Simulation status update', {
+            'service.status': message.data.status || 'unknown'
+          }).catch(err => console.error('Failed to send telemetry:', err));
         } else if (message.data?.type === 'simulation_metrics') {
           logger.debug('Simulation metrics received', message.data);
+          this.tracer.addTestEvent('Simulation metrics received', {
+            'metrics.type': 'simulation'
+          }).catch(err => console.error('Failed to send telemetry:', err));
         }
         break;
       
@@ -238,6 +270,27 @@ export class SimulationWebsocketConnector extends WebSocketConnector {
         // Parent class handles job-related messages
         break;
     }
+  }
+
+  // ========================================
+  // Job Processing with Telemetry
+  // ========================================
+
+  /**
+   * Process job with telemetry instrumentation
+   */
+  async processJob(jobData: JobData, progressCallback: any): Promise<JobResult> {
+    return this.tracer.traceJobProcessing(
+      jobData.id,
+      jobData.type,
+      async () => {
+        // The traceJobProcessing method now handles all the telemetry
+        // Call parent processJob implementation
+        const result = await super.processJob(jobData, progressCallback);
+
+        return result;
+      }
+    );
   }
 
   // ========================================
