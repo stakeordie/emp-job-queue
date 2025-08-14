@@ -428,7 +428,7 @@ class MachineCompose {
     if (command === 'run') {
       console.log(chalk.green(`🏗️  Mode: Production hosting emulation (docker run with -e flags)`));
     } else if (command === 'pull:run') {
-      console.log(chalk.green(`🏗️  Mode: Hosted environment simulation (remove local → pull latest → docker run)`));
+      console.log(chalk.green(`🏗️  Mode: VAST.ai/Railway simulation (docker rmi → docker pull → docker run)`));
     }
     
     if (portMappings.length > 0) {
@@ -693,39 +693,38 @@ class MachineCompose {
         return; // Don't execute docker commands
         
       } else if (command === 'pull:run') {
-        // Pull latest images then run (hosted environment simulation)
+        // Pull latest images then run (hosted environment simulation - like VAST.ai/Railway)
         if (!profile) {
           throw new Error('Profile is required for pull:run command');
         }
         
-        // Step 1: Remove local images to force fresh pull
-        console.log(chalk.yellow('🗑️  Step 1: Removing local images to ensure fresh pull...'));
-        try {
-          // Get the service name from docker-compose for this profile
-          const composeConfig = yaml.load(fs.readFileSync(path.join(MACHINE_DIR, 'docker-compose.yml'), 'utf8'));
-          const profileServices = Object.entries(composeConfig.services || {})
-            .filter(([name, service]) => !service.profiles || service.profiles.includes(profile))
-            .map(([name, service]) => service.image)
-            .filter(image => image); // Only services with image specified
-          
-          for (const imageName of profileServices) {
-            console.log(chalk.gray(`   Removing: ${imageName}`));
-            try {
-              await this.executeCommand(['docker', 'rmi', imageName], false, [], null);
-            } catch (err) {
-              // Image might not exist locally, that's ok
-              console.log(chalk.gray(`   Image not found locally (already clean)`));
-            }
-          }
-        } catch (err) {
-          console.log(chalk.yellow(`   Could not determine images to remove: ${err.message}`));
+        // Get the image name for this profile
+        const composeConfig = yaml.load(fs.readFileSync(path.join(MACHINE_DIR, 'docker-compose.yml'), 'utf8'));
+        const profileService = Object.entries(composeConfig.services || {})
+          .find(([name, service]) => !service.profiles || service.profiles.includes(profile));
+        
+        if (!profileService || !profileService[1].image) {
+          throw new Error(`No image found for profile ${profile}`);
         }
         
-        console.log(chalk.blue('📥 Step 2: Pulling latest images from registry...'));
-        const pullCmd = this.buildDockerComposeCommand('pull', profile, [], envName);
-        await this.executeCommand(pullCmd, false, [], envName);
+        const imageName = profileService[1].image;
+        console.log(chalk.cyan(`📦 Image: ${imageName}`));
         
-        console.log(chalk.blue('🏗️  Step 3: Using docker run (hosted environment simulation)'));
+        // Step 1: Remove local image to force fresh pull (mimics fresh machine)
+        console.log(chalk.yellow('🗑️  Step 1: Removing local image (simulating fresh machine)...'));
+        try {
+          await this.executeCommand(['docker', 'rmi', imageName], false, [], null);
+          console.log(chalk.green('   ✓ Local image removed'));
+        } catch (err) {
+          console.log(chalk.gray('   Image not found locally (already clean)'));
+        }
+        
+        // Step 2: Pull image directly (like VAST.ai/Railway would)
+        console.log(chalk.blue('📥 Step 2: Pulling image from registry (like hosted platforms)...'));
+        await this.executeCommand(['docker', 'pull', imageName], false, [], null);
+        
+        // Step 3: Docker run with environment injection (exactly like hosted platforms)
+        console.log(chalk.blue('🏗️  Step 3: Running container (hosted platform simulation)...'));
         cmd = this.buildDockerRunCommand(profile, flags, envName, portMappings);
         // Environment variables are already injected as -e flags in buildDockerRunCommand
         injectEnvVars = false;
