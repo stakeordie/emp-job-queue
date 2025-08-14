@@ -311,7 +311,5 @@ jobs:
         # Redeploy API service from Docker Hub  
         railway redeploy --service comfyui-remote-machine --yes
 
-        railway redeploy --service emp-fluentd --yes
-
         env:
         RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
