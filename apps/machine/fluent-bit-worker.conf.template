@@ -30,3 +30,5 @@
     Format json
     tls ${FLUENTD_SECURE}
     tls.verify off
+    # Ensure Host header doesn't include port
+    Header Host ${FLUENTD_HOST}

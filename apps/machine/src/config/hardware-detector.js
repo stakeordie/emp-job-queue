@@ -92,7 +92,8 @@ export class HardwareDetector {
    */
   async detectNvidiaGPUs() {
     return new Promise((resolve) => {
-      const nvidia = spawn('nvidia-smi', ['--query-gpu=count,name,memory.total', '--format=csv,noheader,nounits']);
+      this.logger.log('🔍 Using nvidia-smi --list-gpus for GPU detection (updated detection method)');
+      const nvidia = spawn('nvidia-smi', ['--list-gpus']);
       let stdout = '';
       let stderr = '';
 
@@ -111,16 +112,16 @@ export class HardwareDetector {
             const gpuCount = lines.length;
             
             if (gpuCount > 0) {
-              const firstGpu = lines[0].split(',').map(s => s.trim());
-              const gpuModel = firstGpu[1] || 'NVIDIA GPU';
-              const gpuMemoryMB = parseInt(firstGpu[2]) || 0;
-              const gpuMemoryGB = Math.round(gpuMemoryMB / 1024);
+              // Parse first GPU line: "GPU 0: NVIDIA GeForce RTX 4090 (UUID: GPU-xxx)"
+              const firstLine = lines[0];
+              const gpuMatch = firstLine.match(/GPU \d+: (.+?) \(UUID:/);
+              const gpuModel = gpuMatch ? gpuMatch[1].trim() : 'NVIDIA GPU';
 
               resolve({
                 hasGpu: true,
                 gpuCount,
                 gpuModel,
-                gpuMemoryGB,
+                gpuMemoryGB: 16, // Estimate - will get actual memory in separate call if needed
                 gpuVendor: 'NVIDIA'
               });
               return;

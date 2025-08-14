@@ -210,8 +210,17 @@ start_fluent_bit() {
     # Set default environment variables for Fluent Bit
     export MACHINE_ID=${MACHINE_ID:-unknown}
     export FLUENTD_HOST=${FLUENTD_HOST:-host.docker.internal}
-    export FLUENTD_PORT=${FLUENTD_PORT:-8888}
-    export FLUENTD_SECURE=${FLUENTD_SECURE:-false}
+    
+    # Convert true/false to on/off for Fluent Bit
+    if [ "${FLUENTD_SECURE}" = "true" ]; then
+        export FLUENTD_SECURE="on"
+        # If secure and no port specified, default to 443
+        export FLUENTD_PORT=${FLUENTD_PORT:-443}
+    else
+        export FLUENTD_SECURE="off"
+        # If not secure and no port specified, default to 8888
+        export FLUENTD_PORT=${FLUENTD_PORT:-8888}
+    fi
     
     log_info "Generating Fluent Bit configuration at runtime..."
     log_info "  - Machine ID: ${MACHINE_ID}"

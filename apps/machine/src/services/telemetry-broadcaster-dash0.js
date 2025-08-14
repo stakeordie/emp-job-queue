@@ -35,13 +35,10 @@ export class TelemetryBroadcasterDash0 {
     
     logger.info(`Dash0 telemetry: environment=${environment}, dataset=${dataset}`);
     
-    // Create Dash0 exporter with required headers
+    // Create local OTel collector exporter (collector forwards to Dash0)
     const exporter = new OTLPMetricExporter({
-      url: process.env.DASH0_ENDPOINT || 'https://ingress.us-west-2.aws.dash0.com/v1/metrics',
-      headers: {
-        'Authorization': `Bearer ${process.env.DASH0_API_KEY || 'auth_w8VowQspnZ8whZHWp1pe6azIIehBAAvL'}`,
-        'Dash0-Dataset': dataset
-      }
+      url: process.env.OTEL_COLLECTOR_METRICS_ENDPOINT || 'http://localhost:4318/v1/metrics'
+      // No auth headers needed - local collector handles Dash0 authentication
     });
     
     // Create metric reader

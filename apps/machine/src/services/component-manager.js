@@ -3,6 +3,7 @@ import fs from 'fs-extra';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import EMPApiClient from './emp-api-client.js';
+import TelemetryTracerDash0 from './telemetry-tracer-dash0.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -35,6 +36,9 @@ export default class ComponentManagerService extends BaseService {
     this.components = this.parseComponentConfig();
     this.collections = this.parseCollectionConfig();
     
+    // Initialize telemetry tracer
+    this.tracer = new TelemetryTracerDash0(process.env.MACHINE_ID || 'unknown');
+
     this.logger.info('Component manager initialized', {
       components: this.components,
       collections: this.collections,
@@ -65,31 +69,49 @@ export default class ComponentManagerService extends BaseService {
   async onStart() {
     this.logger.info('Starting component-based configuration...');
     
-    try {
-      // Step 1: Analyze all components and collections
-      const allComponents = await this.gatherAllComponents();
-      
-      if (allComponents.length === 0) {
-        this.logger.info('No components specified, skipping component-based configuration');
-        return;
+    return this.tracer.traceComponentInstallation('component-manager-startup', async () => {
+      try {
+        // Step 1: Analyze all components and collections
+        const allComponents = await this.gatherAllComponents();
+        
+        if (allComponents.length === 0) {
+          this.logger.info('No components specified, skipping component-based configuration');
+          return;
+        }
+        
+        this.tracer.addAttributes({
+          'components.count': allComponents.length,
+          'components.names': allComponents.map(c => c.name).join(',')
+        });
+        
+        this.logger.info(`Found ${allComponents.length} components to configure:`, allComponents.map(c => c.name));
+        
+        // Step 2: Analyze requirements
+        const requirements = await this.analyzeRequirements(allComponents);
+        
+        this.tracer.addAttributes({
+          'requirements.custom_nodes': requirements.customNodes.size,
+          'requirements.models': requirements.models.size
+        });
+        
+        // Step 3: Install missing dependencies
+        await this.installMissingDependencies(requirements);
+        
+        // Step 4: Save component configuration for worker capabilities
+        await this.saveComponentConfiguration(allComponents, requirements);
+        
+        this.logger.info('Component-based configuration completed successfully');
+        
+        return {
+          components: allComponents.length,
+          customNodes: requirements.customNodes.size,
+          models: requirements.models.size
+        };
+      } catch (error) {
+        this.logger.error('Component-based configuration failed:', error);
+        throw error;
       }
-      
-      this.logger.info(`Found ${allComponents.length} components to configure:`, allComponents.map(c => c.name));
-      
-      // Step 2: Analyze requirements
-      const requirements = await this.analyzeRequirements(allComponents);
-      
-      // Step 3: Install missing dependencies
-      await this.installMissingDependencies(requirements);
-      
-      // Step 4: Save component configuration for worker capabilities
-      await this.saveComponentConfiguration(allComponents, requirements);
-      
-      this.logger.info('Component-based configuration completed successfully');
-    } catch (error) {
-      this.logger.error('Component-based configuration failed:', error);
-      throw error;
-    }
+    });
   }
 
   async onStop() {
@@ -350,26 +372,44 @@ export default class ComponentManagerService extends BaseService {
       return;
     }
     
-    this.logger.info(`Installing ${customNodes.length} custom nodes...`);
-    
-    try {
-      // Import and use the ComfyUI installer
-      const ComfyUIInstallerService = (await import('./comfyui-installer.js')).default;
-      const installer = new ComfyUIInstallerService({}, this.config);
+    return this.tracer.traceComponentInstallation('custom-nodes-batch', async () => {
+      this.tracer.addAttributes({
+        'custom_nodes.count': customNodes.length,
+        'custom_nodes.names': customNodes.map(n => n.name).join(',')
+      });
       
-      // Install each custom node
-      const customNodesPath = path.join(this.comfyuiPath, 'custom_nodes');
-      await fs.ensureDir(customNodesPath);
+      this.logger.info(`Installing ${customNodes.length} custom nodes...`);
       
-      for (const nodeConfig of customNodes) {
-        await installer.installCustomNode(nodeConfig.name, nodeConfig, customNodesPath);
+      try {
+        // Import and use the ComfyUI installer
+        const ComfyUIInstallerService = (await import('./comfyui-installer.js')).default;
+        const installer = new ComfyUIInstallerService({}, this.config);
+        
+        // Install each custom node
+        const customNodesPath = path.join(this.comfyuiPath, 'custom_nodes');
+        await fs.ensureDir(customNodesPath);
+        
+        for (const nodeConfig of customNodes) {
+          // Each custom node gets its own trace span
+          await this.tracer.traceComponentInstallation(`custom-node-${nodeConfig.name}`, async () => {
+            this.tracer.addAttributes({
+              'custom_node.name': nodeConfig.name,
+              'custom_node.url': nodeConfig.url || nodeConfig.gitUrl,
+              'custom_node.type': nodeConfig.url ? 'url' : 'git'
+            });
+            
+            await installer.installCustomNode(nodeConfig.name, nodeConfig, customNodesPath);
+            return { name: nodeConfig.name };
+          });
+        }
+      
+        this.logger.info('Custom nodes installation completed');
+        return { customNodes: customNodes.length };
+      } catch (error) {
+        this.logger.error('Custom nodes installation failed:', error);
+        throw error;
       }
-      
-      this.logger.info('Custom nodes installation completed');
-    } catch (error) {
-      this.logger.error('Custom nodes installation failed:', error);
-      throw error;
-    }
+    });
   }
 
   /**
@@ -403,16 +443,23 @@ export default class ComponentManagerService extends BaseService {
   async downloadModel(model) {
     const { name, downloadUrl, modelType } = model;
     
-    if (!downloadUrl) {
-      this.logger.warn(`No download URL for model ${name}, skipping`);
-      return;
-    }
+    return this.tracer.traceModelDownload(name, downloadUrl, async () => {
+      if (!downloadUrl) {
+        this.logger.warn(`No download URL for model ${name}, skipping`);
+        return;
+      }
 
-    // Determine target directory based on model type and file extension
-    const targetDir = this.getModelDirectory(name, modelType);
-    const targetPath = `${targetDir}/${name}`;
-    
-    this.logger.info(`Downloading model ${name} to ${targetPath}`);
+      // Determine target directory based on model type and file extension
+      const targetDir = this.getModelDirectory(name, modelType);
+      const targetPath = `${targetDir}/${name}`;
+      
+      this.tracer.addAttributes({
+        'model.type': modelType,
+        'model.target_path': targetPath,
+        'model.target_dir': targetDir
+      });
+      
+      this.logger.info(`Downloading model ${name} to ${targetPath}`);
     
     // Create target directory if it doesn't exist
     const { execSync } = await import('child_process');
@@ -461,6 +508,8 @@ export default class ComponentManagerService extends BaseService {
         
         // Add to inventory
         await this.addModelToInventory(model, targetPath, fileSize);
+        
+        return { size: fileSize };
       } else {
         throw new Error(`Downloaded file is empty`);
       }
@@ -475,6 +524,7 @@ export default class ComponentManagerService extends BaseService {
       
       throw new Error(`wget failed: ${error.message}`);
     }
+    });
   }
 
   /**

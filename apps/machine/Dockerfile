@@ -38,6 +38,12 @@ FROM pytorch/pytorch:2.7.0-cuda12.8-cudnn9-devel AS ai-base
         apt-get clean && \
         rm -rf /var/lib/apt/lists/*
 
+    # Install OpenTelemetry Collector Contrib for telemetry aggregation
+    RUN OTEL_VERSION="0.114.0" && \
+        curl -fsSL "https://github.com/open-telemetry/opentelemetry-collector-releases/releases/download/v${OTEL_VERSION}/otelcol-contrib_${OTEL_VERSION}_linux_amd64.tar.gz" | \
+        tar -xzC /usr/local/bin/ && \
+        chmod +x /usr/local/bin/otelcol-contrib
+
     # Set up working directory
     WORKDIR /workspace
 
@@ -58,6 +64,15 @@ FROM pytorch/pytorch:2.7.0-cuda12.8-cudnn9-devel AS ai-base
     COPY fluent-bit-worker.conf.template /workspace/fluent-bit/fluent-bit-worker.conf.template
     RUN chmod 644 /workspace/fluent-bit/fluent-bit-worker.conf.template && \
         chmod 755 /tmp/fluent-bit-buffer
+    
+    # Copy nginx proxy config for Railway Host header workaround
+    COPY nginx-proxy.conf /etc/nginx/sites-available/fluentd-proxy
+    RUN ln -sf /etc/nginx/sites-available/fluentd-proxy /etc/nginx/sites-enabled/fluentd-proxy && \
+        rm -f /etc/nginx/sites-enabled/default
+
+    # Copy OpenTelemetry Collector configuration template
+    RUN mkdir -p /workspace/otel
+    COPY otel-collector-machine.yaml.template /workspace/otel/otel-collector-machine.yaml.template
 
 # Stage 3: ComfyUI Base Installation (HEAVY BUT STABLE)
 FROM ai-base AS comfyui-base
@@ -244,4 +259,4 @@ COPY --from=base-machine /service-manager/worker-bundled /service-manager/worker
 COPY ${ENV_FILE} /service-manager/.env
 
 # Use simulation-specific entrypoint
-ENTRYPOINT ["/scripts/entrypoint-simulation.sh"]
+ENTRYPOINT ["/scripts/entrypoint-base.sh"]
