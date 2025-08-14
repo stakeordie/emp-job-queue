@@ -6,6 +6,9 @@
       "default",
       "local"
     ],
+    "emprops": [
+      "default"
+    ],
     "webhook-service": [
       "default",
       "local"

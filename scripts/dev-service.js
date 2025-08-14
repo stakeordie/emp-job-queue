@@ -12,9 +12,24 @@
  */
 
 import fs from 'fs/promises';
+import fsSync from 'fs';
 import path from 'path';
 import { spawn } from 'child_process';
 import chalk from 'chalk';
+import dotenv from 'dotenv';
+
+function loadEnvFile(filePath) {
+  try {
+    if (!fsSync.existsSync(filePath)) {
+      return {};
+    }
+    const result = dotenv.config({ path: filePath });
+    return result.parsed || {};
+  } catch (error) {
+    console.warn(`Failed to load env file ${filePath}:`, error.message);
+    return {};
+  }
+}
 
 const args = process.argv.slice(2);
 
@@ -70,16 +85,37 @@ async function checkEnvironmentFiles(serviceName, envName) {
 
 // Removed symlink creation - services should load profile-specific env files directly
 
-async function runService(serviceName) {
+async function runService(serviceName, envName) {
   console.log(chalk.cyan(`🚀 Starting ${serviceName} development server...\n`));
 
   const serviceDir = path.join(process.cwd(), 'apps', serviceName);
   
   return new Promise((resolve, reject) => {
+    // Load environment variables from the specific env file
+    const envFile = path.join(serviceDir, `.env.${envName}`);
+    const secretFile = path.join(serviceDir, `.env.secret.${envName}`);
+    
+    // Load both public and secret environment variables
+    const publicVars = loadEnvFile(envFile);
+    const secretVars = loadEnvFile(secretFile);
+    const envVars = {
+      ...process.env,
+      ...publicVars,
+      ...secretVars
+    };
+    
+    console.log(chalk.blue(`📁 Loading environment from: .env.${envName}`));
+    console.log(chalk.dim(`   Variables loaded: ${Object.keys(publicVars).length} public, ${Object.keys(secretVars).length} secret`));
+    if (Object.keys(publicVars).length > 0) {
+      console.log(chalk.dim(`   Public vars: ${Object.keys(publicVars).join(', ')}`));
+    }
+    console.log('');
+    
     const child = spawn('pnpm', ['dev'], {
       cwd: serviceDir,
       stdio: 'inherit',
-      shell: true
+      shell: true,
+      env: envVars
     });
 
     child.on('close', (code) => {
@@ -116,7 +152,7 @@ async function main() {
     // Services load profile-specific env files directly - no symlinks needed
 
     // Run the service
-    await runService(serviceName);
+    await runService(serviceName, envName);
 
   } catch (error) {
     console.error(chalk.red('❌ Error:'), error.message);

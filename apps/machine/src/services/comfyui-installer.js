@@ -348,6 +348,7 @@ export default class ComfyUIInstallerService extends BaseService {
       
       // Clone the node repository
       if (nodeConfig.url) {
+        this.logger.info(`Starting git clone for ${nodeName}...`);
         const cloneArgs = ['clone'];
         
         // Add recursive flag if specified
@@ -365,12 +366,20 @@ export default class ComfyUIInstallerService extends BaseService {
         
         cloneArgs.push(cleanUrl, nodePath);
         
+        this.logger.info(`Executing: git ${cloneArgs.join(' ')}`);
+        
         // Add timeout to prevent hanging on slow/dead repositories
-        await execa('git', cloneArgs, {
-          stdio: 'inherit',
-          timeout: 120000, // 2 minute timeout
-          signal: AbortSignal.timeout(120000)
-        });
+        try {
+          await execa('git', cloneArgs, {
+            stdio: 'inherit',
+            timeout: 120000, // 2 minute timeout
+            signal: AbortSignal.timeout(120000)
+          });
+          this.logger.info(`✅ Git clone completed successfully for ${nodeName}`);
+        } catch (cloneError) {
+          this.logger.error(`❌ Git clone failed for ${nodeName}:`, cloneError.message);
+          throw cloneError;
+        }
 
         // Checkout specific branch or commit if specified
         if (nodeConfig.branch) {
@@ -387,6 +396,8 @@ export default class ComfyUIInstallerService extends BaseService {
             timeout: 30000 // 30 second timeout
           });
         }
+      } else {
+        this.logger.warn(`⚠️  Custom node ${nodeName} has no URL field - skipping git clone`, nodeConfig);
       }
 
       // Create .env file if env configuration is provided (unless --skip-env flag is set)

@@ -56,7 +56,7 @@ export class EnvironmentBuilder {
 
     // Write public variables to .env (baked into Docker image)
     const publicContent = Object.entries(publicVars)
-      .map(([key, value]) => `${key}=${value}`)
+      .map(([key, value]) => `${key}=${this.formatEnvValue(value)}`)
       .join('\n');
     await fs.promises.writeFile(serviceEnvPath, publicContent, 'utf8');
 
@@ -66,7 +66,7 @@ export class EnvironmentBuilder {
       // Create secret file path by replacing .env with .env.secret
       const secretPath = serviceEnvPath.replace('.env', '.env.secret');
       const secretContent = Object.entries(secretVars)
-        .map(([key, value]) => `${key}=${value}`)
+        .map(([key, value]) => `${key}=${this.formatEnvValue(value)}`)
         .join('\n');
       await fs.promises.writeFile(secretPath, secretContent, 'utf8');
     }
@@ -708,6 +708,33 @@ export class EnvironmentBuilder {
       console.warn(`Error evaluating condition "${condition}":`, error);
       return true;
     }
+  }
+
+  /**
+   * Format environment variable value with proper quoting
+   */
+  private formatEnvValue(value: string): string {
+    // Ensure value is a string
+    const stringValue = typeof value === 'string' ? value : String(value);
+    
+    // If value is already quoted, return as-is
+    if ((stringValue.startsWith('"') && stringValue.endsWith('"')) || 
+        (stringValue.startsWith("'") && stringValue.endsWith("'"))) {
+      return stringValue;
+    }
+    
+    // If value contains JSON-like content (starts with [ or {), quote it
+    if (stringValue.trim().startsWith('[') || stringValue.trim().startsWith('{')) {
+      return `'${stringValue}'`;
+    }
+    
+    // If value contains spaces, special characters, or commas, quote it
+    if (/[\s,;&|<>(){}[\]$`"'\\]/.test(stringValue)) {
+      return `'${stringValue}'`;
+    }
+    
+    // Simple values don't need quoting
+    return stringValue;
   }
 
   /**

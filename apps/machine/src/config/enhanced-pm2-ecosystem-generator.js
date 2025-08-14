@@ -176,8 +176,7 @@ export class EnhancedPM2EcosystemGenerator {
     // Add health server (no more shared-setup - removed earlier)
     apps.push(this.createHealthServerApp());
     
-    // Add Fluent Bit for structured logging
-    apps.push(this.createFluentBitApp());
+    // Fluent Bit runs as separate process, not through PM2
     
     // Generate apps for each worker specification
     for (const spec of workerSpecs) {
@@ -377,6 +376,9 @@ This container will now exit. Please fix the deployment configuration and restar
         return redisUrl;
       })(),
       MACHINE_ID: process.env.MACHINE_ID || 'unknown',
+      
+      // Disable ConnectorLogger Fluent Bit transport - use file tailing instead
+      DISABLE_FLUENT_BIT_LOGGING: 'true',
       
       // Worker type specification
       CONNECTORS: workerType,

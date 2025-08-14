@@ -26,7 +26,7 @@ FROM pytorch/pytorch:2.7.0-cuda12.8-cudnn9-devel AS ai-base
         nginx ffmpeg libsm6 libxext6 rsync \
         build-essential libgoogle-perftools-dev cmake ninja-build \
         openssh-client sudo cron zstd ca-certificates \
-        python3-pip python3-dev python3-venv && \
+        python3-pip python3-dev python3-venv gettext-base && \
         apt-get clean && \
         rm -rf /var/lib/apt/lists/*
 
@@ -54,14 +54,22 @@ FROM pytorch/pytorch:2.7.0-cuda12.8-cudnn9-devel AS ai-base
         /workspace/fluent-bit \
         /tmp/fluent-bit-buffer
 
-    # Copy Fluent Bit configuration
-    COPY fluent-bit-worker.conf /workspace/fluent-bit/
-    COPY fluent-bit-parsers.conf /workspace/fluent-bit/
+    # Build-time environment variables for Fluent Bit config generation
+    ARG FLUENTD_HOST=host.docker.internal
+    ARG FLUENTD_PORT=8888
+    ARG MACHINE_ID=unknown
     
-    # Set proper permissions for Fluent Bit
-    RUN chmod 644 /workspace/fluent-bit/fluent-bit-worker.conf && \
-        chmod 644 /workspace/fluent-bit/fluent-bit-parsers.conf && \
-        chmod 755 /tmp/fluent-bit-buffer
+    # Set environment variables for envsubst
+    ENV FLUENTD_HOST=${FLUENTD_HOST}
+    ENV FLUENTD_PORT=${FLUENTD_PORT}
+    ENV MACHINE_ID=${MACHINE_ID}
+    
+    # Copy Fluent Bit template and generate static config at build time
+    COPY fluent-bit-worker.conf.template /tmp/fluent-bit-worker.conf.template
+    RUN envsubst < /tmp/fluent-bit-worker.conf.template > /workspace/fluent-bit/fluent-bit-worker.conf && \
+        chmod 644 /workspace/fluent-bit/fluent-bit-worker.conf && \
+        chmod 755 /tmp/fluent-bit-buffer && \
+        rm /tmp/fluent-bit-worker.conf.template
 
 # Stage 3: ComfyUI Base Installation (HEAVY BUT STABLE)
 FROM ai-base AS comfyui-base

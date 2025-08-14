@@ -11,6 +11,8 @@ export const MachineEnvInterface = {
     // Redis connection (used by both machine and workers)
     "HUB_REDIS_URL": "REDIS_URL",
 
+    "EMPROPS_API_URL": "EMPROPS_API_URL",
+
     "WORKER_BUNDLE_MODE": "WORKER_BUNDLE_MODE",
 
     "UNIFIED_MACHINE_STATUS":"WORKER_UNIFIED_MACHINE_STATUS",
@@ -77,7 +79,8 @@ export const MachineEnvInterface = {
     "WORKER_COMFYUI_REMOTE_PASSWORD":"COMFYUI_REMOTE_PASS",
     "AUTH_TOKEN":"API_AUTH_TOKEN",
     "DASH0_API_KEY":"TELEMETRY_DASH0_API_KEY",
-    "DASH0_ENDPOINT":"TELEMETRY_DASH0_ENDPOINT"
+    "DASH0_ENDPOINT":"TELEMETRY_DASH0_ENDPOINT",
+    "EMPROPS_API_AUTH": "EMPROPS_API_AUTH"
   }, 
   
   defaults: {

@@ -265,18 +265,18 @@ class MachineCompose {
       console.log(chalk.dim(`  Environment variables: ${Object.keys(allEnvVars).join(', ')}`));
     }
     
-    // Add working directory
-    cmd.push('-w', '/workspace');
-    
-    // Add image name (based on profile)
-    cmd.push(`emprops/machine:${profile}`);
-    
-    // Add additional flags
+    // Add additional flags (BEFORE image name)
     flags.forEach(flag => {
       if (!flag.startsWith('--')) {
         cmd.push(flag);
       }
     });
+    
+    // Add working directory
+    cmd.push('-w', '/workspace');
+    
+    // Add image name (based on profile)
+    cmd.push(`emprops/machine:${profile}`);
     
     return cmd;
   }

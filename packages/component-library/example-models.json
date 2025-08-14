@@ -1,9 +1,65 @@
 [
   {
+    "name": "4x_NMKD-Siax_200k.pth",
+    "downloadUrl": "https://huggingface.co/Comfy-Org/flux1-kontext-dev_ComfyUI/resolve/main/split_files/diffusion_models/flux1-dev-kontext_fp8_scaled.safetensors",
+    "saveTo": "models/upscale_models/4x_NMKD-Siax_200k.pth",
+    "fileSize": "11.9GB",
+    "isAuthReq": true,
+    "authEnvVar": "HF_TOKEN"
+  },
+  {
+    "name": "4xNomosUniDAT_otf.safetensors",
+    "downloadUrl": "https://huggingface.co/Phips/4xNomosUniDAT_otf/resolve/main/4xNomosUniDAT_otf.safetensors",
+    "saveTo": "models/upscale_models/4xNomosUniDAT_otf.safetensors",
+    "fileSize": "0.2GB",
+    "isAuthReq": true,
+    "authEnvVar": "HF_TOKEN"
+  },
+  {
     "name": "ace_step_v1_3.5b.safetensors",
     "downloadUrl": "https://huggingface.co/Comfy-Org/ACE-Step_ComfyUI_repackaged/resolve/main/all_in_one/ace_step_v1_3.5b.safetensors",
     "saveTo": "models/checkpoints/ace_step_v1_3.5b.safetensors",
     "fileSize": "7.7GB",
+    "isAuthReq": true,
+    "authEnvVar": "HF_TOKEN"
+  },
+  {
+    "name": "ae.safetensors",
+    "downloadUrl": "https://huggingface.co/UmeAiRT/ComfyUI-Auto_installer/resolve/027bd76c3514d062a2190c84c1598a7fb7dd7ebb/models/vae/ae.safetensors",
+    "saveTo": "models/vae/ae.safetensors",
+    "fileSize": "0.3GB",
+    "isAuthReq": true,
+    "authEnvVar": "HF_TOKEN"
+  },
+  {
+    "name": "clip_g_hidream.safetensors",
+    "downloadUrl": "https://huggingface.co/Comfy-Org/HiDream-I1_ComfyUI/resolve/main/split_files/text_encoders/clip_g_hidream.safetensors",
+    "saveTo": "models/text_encoders/clip_g_hidream.safetensors",
+    "fileSize": "1.4GB",
+    "isAuthReq": true,
+    "authEnvVar": "HF_TOKEN"
+  },
+  {
+    "name": "clip_l.safetensors",
+    "downloadUrl": "https://huggingface.co/comfyanonymous/flux_text_encoders/resolve/main/clip_l.safetensors",
+    "saveTo": "models/text_encoders/clip_l.safetensors",
+    "fileSize": "0.2GB",
+    "isAuthReq": true,
+    "authEnvVar": "HF_TOKEN"
+  },
+  {
+    "name": "clip_l_hidream.safetensors",
+    "downloadUrl": "https://huggingface.co/Comfy-Org/HiDream-I1_ComfyUI/resolve/main/split_files/text_encoders/clip_l_hidream.safetensors",
+    "saveTo": "models/text_encoders/clip_l_hidream.safetensors",
+    "fileSize": "0.2GB",
+    "isAuthReq": true,
+    "authEnvVar": "HF_TOKEN"
+  },
+  {
+    "name": "control_v11f1e_sd15_tile_fp16.safetensors",
+    "downloadUrl": "https://huggingface.co/comfyanonymous/ControlNet-v1-1_fp16_safetensors/resolve/main/control_v11f1e_sd15_tile_fp16.safetensors",
+    "saveTo": "models/controlnet/control_v11f1e_sd15_tile_fp16.safetensors",
+    "fileSize": "0.7GB",
     "isAuthReq": true,
     "authEnvVar": "HF_TOKEN"
   },
@@ -16,6 +72,22 @@
     "authEnvVar": "HF_TOKEN"
   },
   {
+    "name": "epicphotogasm_v1.safetensors",
+    "downloadUrl": "https://huggingface.co/Yntec/epiCPhotoGasm/resolve/main/epicphotogasm_v1.safetensors?download=true",
+    "saveTo": "models/checkpoints/epicphotogasm_v1.safetensors",
+    "fileSize": "2.13GB",
+    "isAuthReq": true,
+    "authEnvVar": "HF_TOKEN"
+  },
+  {
+    "name": "flux1-dev-fp8.safetensors",
+    "downloadUrl": "https://huggingface.co/lllyasviel/flux1_dev/resolve/main/flux1-dev-fp8.safetensors",
+    "saveTo": "models/unet/flux1-dev-fp8.safetensors",
+    "fileSize": "17.2GB",
+    "isAuthReq": true,
+    "authEnvVar": "HF_TOKEN"
+  },
+  {
     "name": "flux1-dev-kontext_fp8_scaled.safetensors",
     "downloadUrl": "https://huggingface.co/Comfy-Org/flux1-kontext-dev_ComfyUI/resolve/main/split_files/diffusion_models/flux1-dev-kontext_fp8_scaled.safetensors",
     "saveTo": "models/checkpoints/flux1-dev-kontext_fp8_scaled.safetensors",
@@ -24,10 +96,74 @@
     "authEnvVar": "HF_TOKEN"
   },
   {
+    "name": "flux1-dev-Q8_0.gguf",
+    "downloadUrl": "https://huggingface.co/city96/FLUX.1-dev-gguf/resolve/main/flux1-dev-Q8_0.gguf",
+    "saveTo": "models/unet/flux1-dev-Q8_0.gguf",
+    "fileSize": "12.7GB",
+    "isAuthReq": true,
+    "authEnvVar": "HF_TOKEN"
+  },
+  {
+    "name": "flux1-dev.safetensors",
+    "downloadUrl": "https://huggingface.co/black-forest-labs/FLUX.1-dev/resolve/main/flux1-dev.safetensors",
+    "saveTo": "models/unet/flux1-dev.safetensors",
+    "fileSize": "23.8GB",
+    "isAuthReq": true,
+    "authEnvVar": "HF_TOKEN"
+  },
+  {
     "name": "juggernaut_reborn.safetensors",
     "downloadUrl": "https://huggingface.co/madriss/chkpts/resolve/d9ae35349b0cb67e06aebbeb94316827bcd6be4a/ComfyUI/models/checkpoints/juggernaut_reborn.safetensors",
     "saveTo": "models/checkpoints/juggernaut_reborn.safetensors",
     "fileSize": "2.1GB",
+    "isAuthReq": true,
+    "authEnvVar": "HF_TOKEN"
+  },
+  {
+    "name": "Juggernaut-XI-byRunDiffusion.safetensors",
+    "downloadUrl": "https://huggingface.co/RunDiffusion/Juggernaut-XI-v11/resolve/main/Juggernaut-XI-byRunDiffusion.safetensors",
+    "saveTo": "models/checkpoints/Juggernaut-XI-byRunDiffusion.safetensors",
+    "fileSize": "7.11GB",
+    "isAuthReq": true,
+    "authEnvVar": "HF_TOKEN"
+  },
+  {
+    "name": "JuggernautXL_v8Rundiffusion.safetensors",
+    "downloadUrl": "https://huggingface.co/RunDiffusion/Juggernaut-XL-v8/resolve/main/juggernautXL_v8Rundiffusion.safetensors",
+    "saveTo": "models/checkpoints/JuggernautXL_v8Rundiffusion.safetensors",
+    "fileSize": "7.11GB",
+    "isAuthReq": true,
+    "authEnvVar": "HF_TOKEN"
+  },
+  {
+    "name": "llama_3.1_8b_instruct_fp8_scaled.safetensors",
+    "downloadUrl": "https://huggingface.co/Comfy-Org/HiDream-I1_ComfyUI/resolve/main/split_files/text_encoders/llama_3.1_8b_instruct_fp8_scaled.safetensors",
+    "saveTo": "models/text_encoders/llama_3.1_8b_instruct_fp8_scaled.safetensors",
+    "fileSize": "9.1GB",
+    "isAuthReq": true,
+    "authEnvVar": "HF_TOKEN"
+  },
+  {
+    "name": "realisticVisionV51_v51VAE.safetensors",
+    "downloadUrl": "https://huggingface.co/lllyasviel/fav_models/resolve/main/fav/realisticVisionV51_v51VAE.safetensors",
+    "saveTo": "models/checkpoints/realisticVisionV51_v51VAE.safetensors",
+    "fileSize": "2.0GB",
+    "isAuthReq": true,
+    "authEnvVar": "HF_TOKEN"
+  },
+  {
+    "name": "sd_xl_base_1.0_0.9vae.safetensors",
+    "downloadUrl": "https://huggingface.co/stabilityai/stable-diffusion-xl-base-1.0/resolve/main/sd_xl_base_1.0_0.9vae.safetensors",
+    "saveTo": "models/checkpoints/sd_xl_base_1.0_0.9vae.safetensors",
+    "fileSize": "2.13GB",
+    "isAuthReq": true,
+    "authEnvVar": "HF_TOKEN"
+  },
+  {
+    "name": "sd_xl_refiner_1.0_0.9vae.safetensors",
+    "downloadUrl": "https://huggingface.co/stabilityai/stable-diffusion-xl-refiner-1.0/resolve/main/sd_xl_refiner_1.0_0.9vae.safetensors",
+    "saveTo": "models/checkpoints/sd_xl_refiner_1.0_0.9vae.safetensors",
+    "fileSize": "6.08GB",
     "isAuthReq": true,
     "authEnvVar": "HF_TOKEN"
   },
@@ -48,22 +184,6 @@
     "authEnvVar": "HF_TOKEN"
   },
   {
-    "name": "v1-5-pruned.safetensors",
-    "downloadUrl": "https://huggingface.co/stable-diffusion-v1-5/stable-diffusion-v1-5/resolve/main/v1-5-pruned.safetensors",
-    "saveTo": "models/checkpoints/v1-5-pruned.safetensors",
-    "fileSize": "7.7GB",
-    "isAuthReq": true,
-    "authEnvVar": "HF_TOKEN"
-  },
-  {
-    "name": "v2-1_768-ema-pruned.safetensors",
-    "downloadUrl": "https://huggingface.co/stabilityai/stable-diffusion-2-1/resolve/main/v2-1_768-ema-pruned.safetensors",
-    "saveTo": "models/checkpoints/v2-1_768-ema-pruned.safetensors",
-    "fileSize": "5.2GB",
-    "isAuthReq": true,
-    "authEnvVar": "HF_TOKEN"
-  },
-  {
     "name": "sigclip_vision_patch14_384.safetensors",
     "downloadUrl": "https://huggingface.co/Comfy-Org/sigclip_vision_384/resolve/main/sigclip_vision_patch14_384.safetensors",
     "saveTo": "models/clip_vision/sigclip_vision_patch14_384.safetensors",
@@ -72,42 +192,10 @@
     "authEnvVar": "HF_TOKEN"
   },
   {
-    "name": "control_v11f1e_sd15_tile_fp16.safetensors",
-    "downloadUrl": "https://huggingface.co/comfyanonymous/ControlNet-v1-1_fp16_safetensors/resolve/main/control_v11f1e_sd15_tile_fp16.safetensors",
-    "saveTo": "models/controlnet/control_v11f1e_sd15_tile_fp16.safetensors",
-    "fileSize": "0.7GB",
-    "isAuthReq": true,
-    "authEnvVar": "HF_TOKEN"
-  },
-  {
-    "name": "clip_g_hidream.safetensors",
-    "downloadUrl": "https://huggingface.co/Comfy-Org/HiDream-I1_ComfyUI/resolve/main/split_files/text_encoders/clip_g_hidream.safetensors",
-    "saveTo": "models/text_encoders/clip_g_hidream.safetensors",
-    "fileSize": "1.4GB",
-    "isAuthReq": true,
-    "authEnvVar": "HF_TOKEN"
-  },
-  {
-    "name": "clip_I.safetensors",
-    "downloadUrl": "https://huggingface.co/comfyanonymous/flux_text_encoders/resolve/main/clip_l.safetensors",
-    "saveTo": "models/text_encoders/clip_I.safetensors",
-    "fileSize": "0.2GB",
-    "isAuthReq": true,
-    "authEnvVar": "HF_TOKEN"
-  },
-  {
-    "name": "clip_l_hidream.safetensors",
-    "downloadUrl": "https://huggingface.co/Comfy-Org/HiDream-I1_ComfyUI/resolve/main/split_files/text_encoders/clip_l_hidream.safetensors",
-    "saveTo": "models/text_encoders/clip_l_hidream.safetensors",
-    "fileSize": "0.2GB",
-    "isAuthReq": true,
-    "authEnvVar": "HF_TOKEN"
-  },
-  {
-    "name": "llama_3.1_8b_instruct_fp8_scaled.safetensors",
-    "downloadUrl": "https://huggingface.co/Comfy-Org/HiDream-I1_ComfyUI/resolve/main/split_files/text_encoders/llama_3.1_8b_instruct_fp8_scaled.safetensors",
-    "saveTo": "models/text_encoders/llama_3.1_8b_instruct_fp8_scaled.safetensors",
-    "fileSize": "9.1GB",
+    "name": "t5-v1_1-xxl-encoder-Q8_0.gguf",
+    "downloadUrl": "https://huggingface.co/city96/t5-v1_1-xxl-encoder-gguf/resolve/main/t5-v1_1-xxl-encoder-Q8_0.gguf",
+    "saveTo": "models/unet/t5-v1_1-xxl-encoder-Q8_0.gguf",
+    "fileSize": "5.1GB",
     "isAuthReq": true,
     "authEnvVar": "HF_TOKEN"
   },
@@ -144,50 +232,18 @@
     "authEnvVar": "HF_TOKEN"
   },
   {
-    "name": "flux1-dev-fp8.safetensors",
-    "downloadUrl": "https://huggingface.co/lllyasviel/flux1_dev/resolve/main/flux1-dev-fp8.safetensors",
-    "saveTo": "models/unet/flux1-dev-fp8.safetensors",
-    "fileSize": "17.2GB",
+    "name": "v1-5-pruned.safetensors",
+    "downloadUrl": "https://huggingface.co/stable-diffusion-v1-5/stable-diffusion-v1-5/resolve/main/v1-5-pruned.safetensors",
+    "saveTo": "models/checkpoints/v1-5-pruned.safetensors",
+    "fileSize": "7.7GB",
     "isAuthReq": true,
     "authEnvVar": "HF_TOKEN"
   },
   {
-    "name": "flux1-dev.safetensors",
-    "downloadUrl": "https://huggingface.co/black-forest-labs/FLUX.1-dev/resolve/main/flux1-dev.safetensors",
-    "saveTo": "models/unet/flux1-dev.safetensors",
-    "fileSize": "22.2GB",
-    "isAuthReq": true,
-    "authEnvVar": "HF_TOKEN"
-  },
-  {
-    "name": "t5-v1_1-xxl-encoder-Q8_0.gguf",
-    "downloadUrl": "https://huggingface.co/city96/t5-v1_1-xxl-encoder-gguf/resolve/main/t5-v1_1-xxl-encoder-Q8_0.gguf",
-    "saveTo": "models/unet/t5-v1_1-xxl-encoder-Q8_0.gguf",
-    "fileSize": "5.1GB",
-    "isAuthReq": true,
-    "authEnvVar": "HF_TOKEN"
-  },
-  {
-    "name": "4x_NMKD-Siax_200k.pth",
-    "downloadUrl": "https://huggingface.co/Comfy-Org/flux1-kontext-dev_ComfyUI/resolve/main/split_files/diffusion_models/flux1-dev-kontext_fp8_scaled.safetensors",
-    "saveTo": "models/upscale_models/4x_NMKD-Siax_200k.pth",
-    "fileSize": "11.9GB",
-    "isAuthReq": true,
-    "authEnvVar": "HF_TOKEN"
-  },
-  {
-    "name": "4xNomosUniDAT_otf.safetensors",
-    "downloadUrl": "https://huggingface.co/Phips/4xNomosUniDAT_otf/resolve/main/4xNomosUniDAT_otf.safetensors",
-    "saveTo": "models/upscale_models/4xNomosUniDAT_otf.safetensors",
-    "fileSize": "0.2GB",
-    "isAuthReq": true,
-    "authEnvVar": "HF_TOKEN"
-  },
-  {
-    "name": "ae.safetensors",
-    "downloadUrl": "https://huggingface.co/UmeAiRT/ComfyUI-Auto_installer/resolve/027bd76c3514d062a2190c84c1598a7fb7dd7ebb/models/vae/ae.safetensors",
-    "saveTo": "models/vae/ae.safetensors",
-    "fileSize": "0.3GB",
+    "name": "v2-1_768-ema-pruned.safetensors",
+    "downloadUrl": "https://huggingface.co/stabilityai/stable-diffusion-2-1/resolve/main/v2-1_768-ema-pruned.safetensors",
+    "saveTo": "models/checkpoints/v2-1_768-ema-pruned.safetensors",
+    "fileSize": "5.2GB",
     "isAuthReq": true,
     "authEnvVar": "HF_TOKEN"
   },
@@ -195,15 +251,7 @@
     "name": "wan_2.1_vae.safetensors",
     "downloadUrl": "https://huggingface.co/Comfy-Org/Wan_2.1_ComfyUI_repackaged/blob/main/split_files/vae/wan_2.1_vae.safetensors",
     "saveTo": "models/vae/wan_2.1_vae.safetensors",
-    "fileSize": "0GB",
-    "isAuthReq": true,
-    "authEnvVar": "HF_TOKEN"
-  },
-  {
-    "name": "flux1-dev-Q8_0.gguf",
-    "downloadUrl": "https://huggingface.co/city96/FLUX.1-dev-gguf/resolve/main/flux1-dev-Q8_0.gguf",
-    "saveTo": "models/unet/flux1-dev-Q8_0.gguf",
-    "fileSize": "12.7GB",
+    "fileSize": "0.3GB",
     "isAuthReq": true,
     "authEnvVar": "HF_TOKEN"
   }

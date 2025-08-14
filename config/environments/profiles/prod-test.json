@@ -6,6 +6,10 @@
       "default",
       "local"
     ],
+    "emprops": [
+      "default",
+      "production"
+    ],
     "webhook-service": [
       "default",
       "production"

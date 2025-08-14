@@ -405,6 +405,40 @@ trap 'handle_sigint' SIGINT
 trap 'handle_error ${LINENO}' ERR
 
 # =====================================================
+# Start Fluent Bit (Background Process)
+# =====================================================
+start_fluent_bit() {
+    log_section "Starting Fluent Bit Logger"
+    
+    # Set default environment variables for Fluent Bit
+    export MACHINE_ID=${MACHINE_ID:-unknown}
+    export FLUENTD_HOST=${FLUENTD_HOST:-host.docker.internal}
+    export FLUENTD_PORT=${FLUENTD_PORT:-8888}
+    
+    log_info "Fluent Bit configuration:"
+    log_info "  - Machine ID: ${MACHINE_ID}"
+    log_info "  - Fluentd Host: ${FLUENTD_HOST}:${FLUENTD_PORT}"
+    log_info "  - Config: /workspace/fluent-bit/fluent-bit-worker.conf"
+    
+    # Start Fluent Bit in background
+    /opt/fluent-bit/bin/fluent-bit -c /workspace/fluent-bit/fluent-bit-worker.conf &
+    FLUENT_BIT_PID=$!
+    
+    log_info "✅ Fluent Bit started (PID: $FLUENT_BIT_PID)"
+    
+    # Give it a moment to start
+    sleep 2
+    
+    # Check if it's still running
+    if kill -0 $FLUENT_BIT_PID 2>/dev/null; then
+        log_info "✅ Fluent Bit is running successfully"
+    else
+        log_error "❌ Fluent Bit failed to start"
+        return 1
+    fi
+}
+
+# =====================================================
 # Main Execution
 # =====================================================
 main() {
@@ -419,6 +453,9 @@ main() {
     setup_simulation_environment || exit 1
     setup_service_manager || exit 1
     perform_health_check || log_warn "Health check had warnings but continuing..."
+    
+    # Start Fluent Bit for log collection
+    start_fluent_bit || log_warn "Fluent Bit failed to start but continuing..."
     
     # Start the application
     start_application
