@@ -20,15 +20,11 @@
     Record machine_id ${MACHINE_ID}
     Record source fluent-bit-file-tail
 
-# Send to Fluentd service
+# Send to local nginx proxy (which forwards to Railway with correct Host header)
 [OUTPUT]
     Name http
     Match worker.*
-    Host ${FLUENTD_HOST}
-    Port ${FLUENTD_PORT}
+    Host localhost
+    Port 8889
     URI /worker-logs
     Format json
-    tls ${FLUENTD_SECURE}
-    tls.verify off
-    # Ensure Host header doesn't include port
-    Header Host ${FLUENTD_HOST}

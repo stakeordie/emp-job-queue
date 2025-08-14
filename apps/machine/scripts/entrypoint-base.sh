@@ -202,8 +202,74 @@ perform_health_check() {
 }
 
 # =====================================================
-# Start Fluent Bit (Background Process)
+# Start OpenTelemetry Collector (Background Process)
 # =====================================================
+start_otel_collector() {
+    log_section "Starting OpenTelemetry Collector"
+    
+    # Set default environment variables for OTel Collector
+    export MACHINE_ID=${MACHINE_ID:-unknown}
+    export NODE_ENV=${NODE_ENV:-production}
+    export DASH0_API_KEY=${DASH0_API_KEY:-auth_w8VowQspnZ8whZHWp1pe6azIIehBAAvL}
+    export DASH0_DATASET=${DASH0_DATASET:-${NODE_ENV}}
+    
+    log_info "Generating OTel Collector configuration at runtime..."
+    log_info "  - Machine ID: ${MACHINE_ID}"
+    log_info "  - Environment: ${NODE_ENV}"
+    log_info "  - Dash0 Dataset: ${DASH0_DATASET}"
+    log_info "  - Template: /workspace/otel/otel-collector-machine.yaml.template"
+    log_info "  - Config: /workspace/otel/otel-collector-machine.yaml"
+    
+    # Create otel directory
+    mkdir -p /workspace/otel
+    
+    # Generate OTel Collector config from template at runtime
+    if [ -f "/workspace/otel/otel-collector-machine.yaml.template" ]; then
+        envsubst < /workspace/otel/otel-collector-machine.yaml.template > /workspace/otel/otel-collector-machine.yaml
+        log_info "✅ OTel Collector configuration generated successfully"
+    else
+        log_error "❌ OTel Collector template not found"
+        return 1
+    fi
+    
+    # Start OTel Collector in background
+    otelcol-contrib --config=/workspace/otel/otel-collector-machine.yaml &
+    OTEL_COLLECTOR_PID=$!
+    
+    log_info "✅ OTel Collector started (PID: $OTEL_COLLECTOR_PID)"
+    
+    # Give it a moment to start
+    sleep 2
+    
+    # Check if it's still running
+    if kill -0 $OTEL_COLLECTOR_PID 2>/dev/null; then
+        log_info "✅ OTel Collector is running successfully"
+        # Test collector health
+        if curl -f http://localhost:13133 >/dev/null 2>&1; then
+            log_info "✅ OTel Collector health check passed"
+        else
+            log_warn "⚠️ OTel Collector health check failed but process is running"
+        fi
+    else
+        log_error "❌ OTel Collector failed to start"
+        return 1
+    fi
+}
+
+# =====================================================
+# Start Nginx Proxy (Background Process)
+# =====================================================
+start_nginx_proxy() {
+    log_section "Starting Nginx Proxy for Railway"
+    
+    # Start nginx in background
+    nginx &
+    NGINX_PID=$!
+    
+    log_info "✅ Nginx proxy started (PID: $NGINX_PID)"
+    sleep 1
+}
+
 start_fluent_bit() {
     log_section "Starting Fluent Bit Logger"
     
@@ -211,8 +277,8 @@ start_fluent_bit() {
     export MACHINE_ID=${MACHINE_ID:-unknown}
     export FLUENTD_HOST=${FLUENTD_HOST:-host.docker.internal}
     
-    # Convert true/false to on/off for Fluent Bit
-    if [ "${FLUENTD_SECURE}" = "true" ]; then
+    # Convert true/false to on/off for Fluent Bit (with default)
+    if [ "${FLUENTD_SECURE:-false}" = "true" ]; then
         export FLUENTD_SECURE="on"
         # If secure and no port specified, default to 443
         export FLUENTD_PORT=${FLUENTD_PORT:-443}
@@ -331,7 +397,9 @@ main() {
     setup_service_manager || exit 1
     perform_health_check || log_warn "Health check had warnings but continuing..."
     
-    # Start Fluent Bit for log collection
+    # Start telemetry services
+    start_otel_collector || log_warn "OTel Collector failed to start but continuing..."
+    start_nginx_proxy || log_warn "Nginx proxy failed to start but continuing..."
     start_fluent_bit || log_warn "Fluent Bit failed to start but continuing..."
     
     # Start the application
