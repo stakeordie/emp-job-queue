@@ -108,7 +108,7 @@ export default class ComponentManagerService extends BaseService {
           models: requirements.models.size
         };
       } catch (error) {
-        this.logger.error('Component-based configuration failed:', error);
+        this.logger.error(`Component-based configuration failed: ${error.message}`);
         throw error;
       }
     });
@@ -131,7 +131,7 @@ export default class ComponentManagerService extends BaseService {
         const component = await this.fetchComponent(componentName);
         allComponents.push(component);
       } catch (error) {
-        this.logger.error(`Failed to fetch component ${componentName}:`, error.message);
+        this.logger.error(`Failed to fetch component ${componentName}: ${error.message}`);
         // Continue with other components
       }
     }
@@ -144,7 +144,7 @@ export default class ComponentManagerService extends BaseService {
           allComponents.push(component);
         }
       } catch (error) {
-        this.logger.error(`Failed to fetch collection ${collectionId}:`, error.message);
+        this.logger.error(`Failed to fetch collection ${collectionId}: ${error.message}`);
         // Continue with other collections
       }
     }
@@ -269,7 +269,7 @@ export default class ComponentManagerService extends BaseService {
           models: processedModels.length
         });
       } catch (error) {
-        this.logger.error(`Failed to analyze component ${component.name}:`, error.message);
+        this.logger.error(`Failed to analyze component ${component.name}: ${error.message}`);
         // Continue with other components
       }
     }
@@ -406,7 +406,7 @@ export default class ComponentManagerService extends BaseService {
         this.logger.info('Custom nodes installation completed');
         return { customNodes: customNodes.length };
       } catch (error) {
-        this.logger.error('Custom nodes installation failed:', error);
+        this.logger.error(`Custom nodes installation failed: ${error.message}`);
         throw error;
       }
     });
@@ -429,7 +429,7 @@ export default class ComponentManagerService extends BaseService {
       try {
         await this.downloadModel(model);
       } catch (error) {
-        this.logger.error(`Failed to download model ${model.name}:`, error.message);
+        this.logger.error(`Failed to download model ${model.name}: ${error.message}`);
         // Continue with other models even if one fails
       }
     }
@@ -602,7 +602,7 @@ export default class ComponentManagerService extends BaseService {
         return await fs.readJSON(this.componentConfigPath);
       }
     } catch (error) {
-      this.logger.warn('Failed to read component configuration:', error.message);
+      this.logger.warn(`Failed to read component configuration: ${error.message}`);
     }
     
     return {
