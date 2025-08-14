@@ -1,5 +1,6 @@
 import { trace } from '@opentelemetry/api';
-import { NodeSDK } from '@opentelemetry/auto-instrumentations-node';
+import pkg from '@opentelemetry/auto-instrumentations-node';
+const { NodeSDK } = pkg;
 import { OTLPTraceExporter } from '@opentelemetry/exporter-trace-otlp-http';
 import { Resource } from '@opentelemetry/resources';
 import { SemanticResourceAttributes } from '@opentelemetry/semantic-conventions';
