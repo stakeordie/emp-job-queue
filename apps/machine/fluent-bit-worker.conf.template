@@ -28,3 +28,5 @@
     Port ${FLUENTD_PORT}
     URI /worker-logs
     Format json
+    tls ${FLUENTD_SECURE}
+    tls.verify off

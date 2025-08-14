@@ -211,10 +211,12 @@ start_fluent_bit() {
     export MACHINE_ID=${MACHINE_ID:-unknown}
     export FLUENTD_HOST=${FLUENTD_HOST:-host.docker.internal}
     export FLUENTD_PORT=${FLUENTD_PORT:-8888}
+    export FLUENTD_SECURE=${FLUENTD_SECURE:-false}
     
     log_info "Generating Fluent Bit configuration at runtime..."
     log_info "  - Machine ID: ${MACHINE_ID}"
     log_info "  - Fluentd Host: ${FLUENTD_HOST}:${FLUENTD_PORT}"
+    log_info "  - Secure Connection: ${FLUENTD_SECURE}"
     log_info "  - Template: /workspace/fluent-bit/fluent-bit-worker.conf.template"
     log_info "  - Config: /workspace/fluent-bit/fluent-bit-worker.conf"
     

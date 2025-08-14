@@ -20,8 +20,20 @@ echo "  - Template: /etc/calyptia-fluentd/calyptia-fluentd.conf.template"
 echo "  - Config: /etc/calyptia-fluentd/calyptia-fluentd.conf"
 
 if [ -f "/etc/calyptia-fluentd/calyptia-fluentd.conf.template" ]; then
+    # Debug: Show environment variables before substitution
+    echo "🐛 Debug - Environment variables:"
+    echo "  DASH0_LOGS_ENDPOINT=${DASH0_LOGS_ENDPOINT}"
+    echo "  DASH0_API_KEY=${DASH0_API_KEY:0:10}..." # Only show first 10 chars
+    echo "  DASH0_DATASET=${DASH0_DATASET}"
+    echo "  ENV=${ENV}"
+    
+    # Generate config with envsubst
     envsubst < /etc/calyptia-fluentd/calyptia-fluentd.conf.template > /etc/calyptia-fluentd/calyptia-fluentd.conf
     echo "✅ Fluentd configuration generated successfully"
+    
+    # Debug: Show a snippet of the generated config
+    echo "🐛 Debug - Generated config snippet (endpoint line):"
+    grep -n "endpoint" /etc/calyptia-fluentd/calyptia-fluentd.conf || echo "No endpoint line found"
 else
     echo "❌ Fluentd template not found at /etc/calyptia-fluentd/calyptia-fluentd.conf.template"
     exit 1
