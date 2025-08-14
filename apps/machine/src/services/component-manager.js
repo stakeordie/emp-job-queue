@@ -483,7 +483,8 @@ export default class ComponentManagerService extends BaseService {
       'wget',
       '--continue',                    // Resume partial downloads
       '--progress=bar:force:noscroll', // Show progress bar
-      '--timeout=30',                  // Connection timeout
+      '--timeout=600',                 // 10 minute connection timeout for large models
+      '--read-timeout=600',            // 10 minute read timeout for large models
       '--tries=3',                     // Retry 3 times
       '--user-agent="ComfyUI-Machine/1.0"', // Identify as ComfyUI machine
       `--output-document="${targetPath}"`,   // Target file path
