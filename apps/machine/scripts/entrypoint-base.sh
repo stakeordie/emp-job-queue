@@ -240,11 +240,13 @@ start_otel_collector() {
         return 1
     fi
     
-    # Start OTel Collector in background
-    otelcol-contrib --config=/workspace/otel/otel-collector-machine.yaml &
+    # Start OTel Collector in background with logs to file
+    otelcol-contrib --config=/workspace/otel/otel-collector-machine.yaml \
+        > /workspace/logs/otel-collector.log 2>&1 &
     OTEL_COLLECTOR_PID=$!
     
     log_info "✅ OTel Collector started (PID: $OTEL_COLLECTOR_PID)"
+    log_info "📁 OTel Collector logs: /workspace/logs/otel-collector.log"
     
     # Give it a moment to start
     sleep 2
