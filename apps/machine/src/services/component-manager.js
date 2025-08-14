@@ -572,6 +572,33 @@ export default class ComponentManagerService extends BaseService {
   }
 
   /**
+   * Add downloaded model to local inventory for tracking
+   */
+  async addModelToInventory(model, targetPath, fileSize) {
+    try {
+      // Create basic inventory entry
+      const inventoryEntry = {
+        name: model.name,
+        downloadUrl: model.downloadUrl,
+        modelType: model.modelType,
+        targetPath,
+        fileSize,
+        downloadedAt: new Date().toISOString(),
+        status: 'downloaded'
+      };
+      
+      this.logger.info(`Added model ${model.name} to inventory (${this.formatFileSize(fileSize)})`);
+      
+      // For now, just log the inventory entry
+      // In the future, this could write to a local inventory file or database
+      return inventoryEntry;
+    } catch (error) {
+      this.logger.warn(`Failed to add model ${model.name} to inventory: ${error.message}`);
+      // Don't throw - this is non-critical for model download success
+    }
+  }
+
+  /**
    * Save component configuration for worker capabilities
    */
   async saveComponentConfiguration(components, requirements) {
