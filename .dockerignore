@@ -1,0 +1,72 @@
+# Node modules (will be reinstalled during build)
+node_modules
+**/node_modules
+
+# Build outputs  
+**/dist
+**/build
+
+# Development files
+.git
+.gitignore
+**/logs
+**/*.log
+nohup.out
+dump.rdb
+
+# Test files
+test-*.js
+test-*.cjs
+debug-*.js
+monitor-*.png
+monitor-*.sh
+**/__tests__
+**/test
+
+# Documentation
+docs
+*.md
+CLAUDE.md
+*.txt
+
+# IDE/Editor files
+.vscode
+.idea
+*.swp
+*.swo
+
+# Temporary files
+.cache
+.tmp
+.temp
+
+# Environment files (except needed ones)
+.env*
+!.env.example
+
+# Docker files in subdirectories
+**/Dockerfile*
+**/docker-compose*
+
+# Large apps not needed for API builds
+apps/machine
+apps/monitor
+apps/docs
+
+# Large subdirectories in apps
+**/ComfyUI
+**/workspace  
+**/models
+**/uploads
+**/dist
+**/node_modules
+
+# Backup and plan files
+backups
+plans
+logs
+
+# CI/CD files
+.github
+.railway
+vercel.json
