@@ -1,0 +1,40 @@
+# VAST.ai base image - has all system dependencies, nothing more
+# After this builds and pushes to Docker Hub, VAST.ai pulls it once
+# Then you run build_replication.sh inside for rapid iteration
+
+FROM pytorch/pytorch:2.7.0-cuda12.8-cudnn9-runtime
+
+# Install ALL system dependencies (this layer is cached)
+RUN apt-get clean && \
+    rm -rf /var/lib/apt/lists/* && \
+    apt-get update --allow-releaseinfo-change && \
+    apt-get install -y ca-certificates gnupg curl git vim nano htop && \
+    curl -fsSL https://deb.nodesource.com/setup_18.x | bash - && \
+    apt-get install -y nodejs && \
+    npm install -g pnpm pm2 && \
+    pm2 install pm2-logrotate && \
+    pm2 set pm2-logrotate:max_size 10M && \
+    pm2 set pm2-logrotate:retain 7 && \
+    pm2 set pm2-logrotate:compress true && \
+    apt-get clean && \
+    rm -rf /var/lib/apt/lists/*
+
+# Install GPU monitoring tools
+RUN pip3 install --no-cache-dir \
+    nvidia-ml-py3 \
+    gpustat \
+    py3nvml \
+    psutil
+
+# Create base directories
+RUN mkdir -p /service-manager /workspace /var/log/pm2
+
+# Set working directory
+WORKDIR /service-manager
+
+# Copy ONLY the build replication script
+COPY build_replication.sh /usr/local/bin/
+RUN chmod +x /usr/local/bin/build_replication.sh
+
+# Default command keeps container alive for interactive use
+CMD ["bash", "-c", "echo '🚀 VAST.ai development container ready!'; echo 'Run: build_replication.sh to start'; bash"]

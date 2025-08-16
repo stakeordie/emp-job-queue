@@ -1,0 +1,178 @@
+# Optimized GPU Dockerfile for ComfyUI and AI workloads
+# Focused on runtime GPU monitoring and reduced image size
+
+# Stage 1: GPU-optimized base (using lighter PyTorch runtime image)
+FROM pytorch/pytorch:2.7.0-cuda12.8-cudnn9-runtime AS gpu-base
+
+    # Layer cache bust (separate from version to preserve custom nodes cache)
+    ARG CACHE_BUST=1
+    RUN echo "GPU build cache bust: ${CACHE_BUST}"
+
+    # Fix GPG issues and install Node.js 18 and PM2
+    RUN apt-get clean && \
+        rm -rf /var/lib/apt/lists/* && \
+        apt-get update --allow-releaseinfo-change && \
+        apt-get install -y ca-certificates gnupg curl && \
+        curl -fsSL https://deb.nodesource.com/setup_18.x | bash - && \
+        apt-get install -y nodejs && \
+        npm install -g pnpm pm2 && \
+        pm2 install pm2-logrotate && \
+        pm2 set pm2-logrotate:max_size 10M && \
+        pm2 set pm2-logrotate:retain 7 && \
+        pm2 set pm2-logrotate:compress true && \
+        apt-get clean && \
+        rm -rf /var/lib/apt/lists/*
+
+    # Install essential system dependencies (optimized for AI workloads)
+    RUN apt-get update && \
+        DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
+        git git-lfs wget curl jq tar nano net-tools lsof \
+        ffmpeg libsm6 libxext6 \
+        openssh-client zstd ca-certificates \
+        python3-pip python3-dev gettext-base && \
+        apt-get clean && \
+        rm -rf /var/lib/apt/lists/*
+
+    # Install GPU monitoring tools for runtime GPU info and management
+    RUN pip3 install --no-cache-dir \
+        nvidia-ml-py3 \
+        gpustat \
+        py3nvml \
+        psutil
+
+    # Install Fluent Bit for structured logging
+    RUN FLUENT_BIT_VERSION="3.1.8" && \
+        curl -fsSL "https://packages.fluentbit.io/fluentbit.key" | apt-key add - && \
+        echo "deb https://packages.fluentbit.io/ubuntu/jammy jammy main" | tee /etc/apt/sources.list.d/fluent-bit.list && \
+        apt-get update && \
+        apt-get install -y fluent-bit=${FLUENT_BIT_VERSION}* && \
+        apt-get clean && \
+        rm -rf /var/lib/apt/lists/*
+
+    # Install OpenTelemetry Collector (lightweight)
+    RUN OTEL_VERSION="0.114.0" && \
+        curl -fsSL "https://github.com/open-telemetry/opentelemetry-collector-releases/releases/download/v${OTEL_VERSION}/otelcol-contrib_${OTEL_VERSION}_linux_amd64.tar.gz" | \
+        tar -xzC /usr/local/bin/ && \
+        chmod +x /usr/local/bin/otelcol-contrib
+
+    # Set up workspace structure
+    WORKDIR /workspace
+    RUN mkdir -p \
+        /workspace/logs \
+        /workspace/configs \
+        /workspace/tmp \
+        /workspace/.pm2 \
+        /workspace/scripts \
+        /workspace/fluent-bit \
+        /workspace/otel \
+        /tmp/fluent-bit-buffer
+
+    # Copy configuration templates
+    COPY fluent-bit-worker.conf.template /workspace/fluent-bit/fluent-bit-worker.conf.template
+    COPY otel-collector-machine.yaml.template /workspace/otel/otel-collector-machine.yaml.template
+    RUN chmod 644 /workspace/fluent-bit/fluent-bit-worker.conf.template && \
+        chmod 755 /tmp/fluent-bit-buffer
+
+    # Copy GPU monitoring script
+    COPY scripts/gpu-info.py /usr/local/bin/gpu-info
+    RUN chmod +x /usr/local/bin/gpu-info
+
+    # Create GPU info aliases for easy runtime access
+    RUN echo 'alias gpu-info="python3 /usr/local/bin/gpu-info"' >> /root/.bashrc && \
+        echo 'alias gpu-simple="python3 /usr/local/bin/gpu-info --simple"' >> /root/.bashrc && \
+        echo 'alias gpustat="gpustat --color"' >> /root/.bashrc
+
+# Stage 2: ComfyUI installer stage (optimized for caching)
+FROM gpu-base AS comfyui-installer
+
+    WORKDIR /build
+    RUN npm install -g pnpm
+
+    # Copy minimal files needed for installer
+    COPY package.json pnpm-lock.yaml* ./
+    COPY .workspace-packages/ ./.workspace-packages/
+    RUN sed -i 's/"@emp\/service-config": "workspace:\*"/"@emp\/service-config": "file:.workspace-packages\/service-config"/' package.json && \
+        pnpm install --prod --no-frozen-lockfile --ignore-workspace
+
+    COPY src/services/comfyui-installer-standalone.js ./installer.js
+
+    # Install ComfyUI and essential dependencies
+    RUN cd /workspace && \
+        node /build/installer.js
+
+# Stage 3: Main GPU application stage  
+FROM gpu-base AS gpu-machine
+
+    # Build args for runtime configuration
+    ARG WORKER_SPEC
+    ARG WORKERS  
+    ARG MACHINE_ID
+    ARG ENV_FILE=.env
+    ARG BUILD_TIMESTAMP
+
+    # Convert build args to environment variables
+    ENV WORKERS=${WORKERS}
+    ENV MACHINE_ID=${MACHINE_ID}
+    ENV BUILD_TIMESTAMP=${BUILD_TIMESTAMP}
+
+    # Set working directory first
+    WORKDIR /service-manager
+
+    # Copy workspace packages for service configuration
+    COPY .workspace-packages/ ./.workspace-packages/
+
+    # Copy package files (dependencies will be installed at runtime)
+    COPY package.docker.json ./package.json
+    COPY pnpm-lock.yaml* ./
+
+    # Copy application source
+    COPY src/ /service-manager/src/
+    COPY scripts/ /service-manager/scripts/
+    COPY config_nodes.json /service-manager/config_nodes.json
+    COPY generate-pm2-ecosystem-worker-driven.js /service-manager/generate-pm2-ecosystem-worker-driven.js
+    
+    # Copy pre-encrypted environment variables (encrypted during build prep)
+    # This avoids runtime encryption and preserves Docker cache
+    COPY env.encrypted /workspace/env.encrypted
+    COPY env.encrypted.info /workspace/env.encrypted.info
+
+    # Copy ComfyUI installation from installer stage
+    COPY --from=comfyui-installer /workspace/ComfyUI /workspace/ComfyUI
+
+    # Add build timestamp for debugging
+    RUN echo "GPU image built at: ${BUILD_TIMESTAMP}" > /workspace/BUILD_INFO.txt
+
+    # Set environment for GPU workloads
+    ENV PYTHONPATH=/workspace/ComfyUI:$PYTHONPATH
+    ENV CUDA_VISIBLE_DEVICES=all
+    ENV NVIDIA_VISIBLE_DEVICES=all
+    ENV NVIDIA_DRIVER_CAPABILITIES=compute,utility,video
+
+    # Health check (use health monitoring port instead of NGINX)
+    HEALTHCHECK --interval=30s --timeout=10s --start-period=60s --retries=3 \
+        CMD curl -f http://localhost:9090/health || exit 1
+
+    # Copy entrypoint scripts
+    COPY scripts/entrypoint-base.sh /scripts/entrypoint-base.sh
+    COPY scripts/entrypoint-base-dev.sh /scripts/entrypoint-base-dev.sh
+    RUN chmod +x /scripts/entrypoint-base.sh /scripts/entrypoint-base-dev.sh
+
+    # Set final working directory
+    WORKDIR /service-manager
+
+    # Expose health monitoring port (ComfyUI ports handled by PM2 configs)
+    EXPOSE 9090
+
+    # Use optimized entrypoint
+    ENTRYPOINT ["/scripts/entrypoint-base.sh"]
+    CMD ["node", "src/index-pm2.js"]
+
+# Stage 4: ComfyUI stage (for ComfyUI-specific deployments)
+FROM gpu-machine AS comfyui
+
+    # ComfyUI-specific optimizations can go here
+    # For now, it inherits everything from gpu-machine
+    
+    # Set ComfyUI as the primary service
+    ENV PRIMARY_SERVICE=comfyui
+    ENV COMFYUI_OPTIMIZED=true
