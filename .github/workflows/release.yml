@@ -59,11 +59,11 @@ jobs:
         # Get current date for build timestamp
         BUILD_DATE=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
         
-        # Build API Docker image using simplified CI Dockerfile with version injection
+        # Build API Docker image using unified Dockerfile with version injection
         docker build \
           --build-arg API_VERSION="${{ steps.get_tag.outputs.tag }}" \
           --build-arg BUILD_DATE="${BUILD_DATE}" \
-          -f apps/api/Dockerfile.ci \
+          -f apps/api/Dockerfile \
           -t emprops/emp-job-queue-api:latest \
           -t emprops/emp-job-queue-api:${{ steps.get_tag.outputs.tag }} \
           .
@@ -79,11 +79,11 @@ jobs:
         # Get current date for build timestamp
         BUILD_DATE=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
         
-        # Build Webhook Docker image using simplified CI Dockerfile with version injection
+        # Build Webhook Docker image using unified Dockerfile with version injection
         docker build \
           --build-arg WEBHOOK_VERSION="${{ steps.get_tag.outputs.tag }}" \
           --build-arg BUILD_DATE="${BUILD_DATE}" \
-          -f apps/webhook-service/Dockerfile.ci \
+          -f apps/webhook-service/Dockerfile \
           -t emprops/emp-webhook-service:latest \
           -t emprops/emp-webhook-service:${{ steps.get_tag.outputs.tag }} \
           .
