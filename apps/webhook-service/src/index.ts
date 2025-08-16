@@ -18,20 +18,20 @@ dotenvConfig({ path: envFile });
 const config = {
   port: parseInt(process.env.WEBHOOK_SERVICE_PORT || '3332'),
   redisUrl: (() => {
-    const redisUrl = process.env.REDIS_URL;
+    const redisUrl = process.env.HUB_REDIS_URL;
     if (!redisUrl) {
       const errorMsg = `
-❌ FATAL ERROR: REDIS_URL environment variable is not set!
+❌ FATAL ERROR: HUB_REDIS_URL environment variable is not set!
 
-The webhook service requires a Redis connection to function. Please set the REDIS_URL environment variable.
+The webhook service requires a Redis connection to function. Please set the HUB_REDIS_URL environment variable.
 
 Examples:
-  - Local development: REDIS_URL=redis://localhost:6379
-  - Docker container:  REDIS_URL=redis://host.docker.internal:6379
-  - Production:        REDIS_URL=redis://user:pass@your-redis-host:6379
+  - Local development: HUB_REDIS_URL=redis://localhost:6379
+  - Docker container:  HUB_REDIS_URL=redis://host.docker.internal:6379
+  - Production:        HUB_REDIS_URL=redis://user:pass@your-redis-host:6379
 
 If deploying to Railway, Vast.ai, or other platforms:
-  1. Add REDIS_URL to your environment variables
+  1. Add HUB_REDIS_URL to your environment variables
   2. Ensure it's available BEFORE the container starts
   3. Restart the container after setting the variable
 

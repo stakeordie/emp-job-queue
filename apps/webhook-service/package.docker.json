@@ -18,7 +18,7 @@
     "deploy": "./build-standalone.sh"
   },
   "dependencies": {
-    "@emp/core": "workspace:*",
+    "@emp/core": "file:.workspace-packages/core",
     "cors": "^2.8.5",
     "dotenv": "^16.4.7",
     "express": "^4.21.2",

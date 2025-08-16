@@ -9,7 +9,7 @@ export const WebhookServiceEnvInterface = {
   
   required: {
     // Web server configuration
-    "REDIS_URL": "WEBHOOK_SERVICE_REDIS_URL",
+    "HUB_REDIS_URL": "REDIS_URL",
     "WEBHOOK_SERVICE_PORT": "WEBHOOK_SERVICE_PORT",
     "CORS_ORIGINS": "WEBHOOK_SERVICE_CORS_ORIGINS",
     "NEXT_PUBLIC_APP_URL": "WEBHOOK_SERVICE_URL",
