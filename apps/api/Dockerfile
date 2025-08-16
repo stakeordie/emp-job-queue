@@ -1,63 +1,84 @@
-# Dockerfile for Lightweight API Server
-# Phase 1C - HTTP + WebSocket hybrid API
+# API Dockerfile - Based 100% on minimal-base machine pattern
+FROM ubuntu:22.04
 
-FROM node:20-alpine AS base
+    # Layer cache bust
+    ARG CACHE_BUST=1
+    RUN echo "API cache bust: ${CACHE_BUST}"
 
-# Install dependencies for production
-RUN apk add --no-cache libc6-compat
+    # Install Node.js 18 and essential system packages (matching minimal-base)
+    RUN apt-get clean && \
+        rm -rf /var/lib/apt/lists/* && \
+        apt-get update --allow-releaseinfo-change && \
+        apt-get install -y ca-certificates gnupg curl git wget jq tar nano net-tools lsof && \
+        curl -fsSL https://deb.nodesource.com/setup_18.x | bash - && \
+        apt-get install -y nodejs && \
+        npm install -g pnpm && \
+        apt-get clean && \
+        rm -rf /var/lib/apt/lists/*
 
-WORKDIR /app
+    # Install minimal system dependencies
+    RUN apt-get update && \
+        DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
+        git-lfs openssh-client zstd ca-certificates \
+        python3-pip python3-dev gettext-base && \
+        apt-get clean && \
+        rm -rf /var/lib/apt/lists/*
 
-# Copy package files
-COPY package.json pnpm-lock.yaml ./
-COPY pnpm-workspace.yaml ./
+    # Install Fluent Bit for structured logging (exactly like minimal-base)
+    RUN FLUENT_BIT_VERSION="3.1.8" && \
+        curl -fsSL "https://packages.fluentbit.io/fluentbit.key" | apt-key add - && \
+        echo "deb https://packages.fluentbit.io/ubuntu/jammy jammy main" | tee /etc/apt/sources.list.d/fluent-bit.list && \
+        apt-get update && \
+        apt-get install -y fluent-bit=${FLUENT_BIT_VERSION}* && \
+        apt-get clean && \
+        rm -rf /var/lib/apt/lists/*
 
-# Install pnpm
-RUN npm install -g pnpm@10.10.0
+    # Install OpenTelemetry Collector (lightweight)
+    RUN OTEL_VERSION="0.114.0" && \
+        curl -fsSL "https://github.com/open-telemetry/opentelemetry-collector-releases/releases/download/v${OTEL_VERSION}/otelcol-contrib_${OTEL_VERSION}_linux_amd64.tar.gz" | \
+        tar -xzC /usr/local/bin/ && \
+        chmod +x /usr/local/bin/otelcol-contrib
 
-# Install dependencies
-RUN pnpm install --frozen-lockfile
+    # Set up workspace structure
+    WORKDIR /api-server
+    RUN mkdir -p \
+        /api-server/logs \
+        /api-server/configs \
+        /api-server/tmp \
+        /api-server/scripts \
+        /api-server/fluent-bit \
+        /api-server/otel
 
-# Build stage
-FROM base AS builder
+    # Copy workspace packages for dependencies
+    COPY .workspace-packages/ ./.workspace-packages/
 
-WORKDIR /app
+    # Copy package files (dependencies will be installed at runtime)
+    COPY package.docker.json ./package.json
+    COPY pnpm-lock.yaml ./
 
-# Install all dependencies (including dev)
-RUN pnpm install --frozen-lockfile
+    # Copy application source
+    COPY src/ ./src/
+    COPY dist/ ./dist/
 
-# Copy source code
-COPY . .
+    # Copy configuration templates
+    COPY otel-collector-api.yaml.template ./otel/otel-collector-api.yaml.template
+    COPY fluent-bit-api.conf.template ./fluent-bit/fluent-bit-api.conf.template
 
-# Build core package first
-RUN pnpm --filter=@emp/core build
-# Build API package
-RUN pnpm --filter=api build
+    # Copy entrypoint script
+    COPY entrypoint-api.sh ./entrypoint-api.sh
+    RUN chmod +x ./entrypoint-api.sh
 
-# Production stage
-FROM node:20-alpine AS runner
+    # Set environment
+    ENV NODE_ENV=production \
+        LOG_LEVEL=info \
+        PATH="/api-server/node_modules/.bin:${PATH}"
 
-WORKDIR /app
+    # Expose API port
+    EXPOSE 3001
 
-# Create non-root user
-RUN addgroup -g 1001 -S nodejs
-RUN adduser -S nodejs -u 1001
+    # Health check
+    HEALTHCHECK --interval=30s --timeout=5s --start-period=5s --retries=3 \
+      CMD curl -f http://localhost:3001/health || exit 1
 
-# Copy built application
-COPY --from=builder --chown=nodejs:nodejs /app/apps ./apps
-COPY --from=builder --chown=nodejs:nodejs /app/packages ./packages
-COPY --from=builder --chown=nodejs:nodejs /app/node_modules ./node_modules
-COPY --from=builder --chown=nodejs:nodejs /app/package.json ./package.json
-
-USER nodejs
-
-# Expose API port
-EXPOSE 3001
-
-# Health check
-HEALTHCHECK --interval=30s --timeout=5s --start-period=5s --retries=3 \
-  CMD node -e "require('http').get('http://localhost:3001/health', (res) => process.exit(res.statusCode === 200 ? 0 : 1))"
-
-# Start the lightweight API server
-WORKDIR /app/apps/api
-CMD ["node", "dist/src/index.js"]
+    # Use entrypoint script
+    ENTRYPOINT ["./entrypoint-api.sh"]

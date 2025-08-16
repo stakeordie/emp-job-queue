@@ -21,6 +21,8 @@ import {
   JobCompletedEvent,
   JobFailedEvent,
   WorkerStatusChangedEvent,
+  JobInstrumentation,
+  WorkflowInstrumentation,
 } from '@emp/core';
 import { createRequire } from 'module';
 
@@ -101,6 +103,8 @@ export class LightweightAPIServer {
   private progressSubscriber: Redis;
   // Track which client submitted which job
   private jobToClientMap = new Map<string, string>();
+  // Track workflow trace contexts for multi-step workflows
+  private workflowTraceContexts = new Map<string, { traceId: string; spanId: string; totalSteps: number; startedAt: number }>();
   // Monitor ping/pong tracking
   private monitorData = new Map<
     string,
@@ -2264,6 +2268,50 @@ export class LightweightAPIServer {
       timestamp: completionData.timestamp,
     };
 
+    // Get job details to check for workflow information
+    const jobData = await this.redis.hgetall(`job:${jobId}`);
+    
+    // Handle workflow step completion tracing
+    if (jobData.workflow_id && jobData.step_number && jobData.total_steps) {
+      const workflowId = jobData.workflow_id;
+      const stepNumber = parseInt(jobData.step_number);
+      const totalSteps = parseInt(jobData.total_steps);
+      
+      // Get workflow context
+      const workflowContext = this.workflowTraceContexts.get(workflowId);
+      if (workflowContext) {
+        // Trace workflow step completion
+        await WorkflowInstrumentation.stepComplete({
+          workflowId,
+          stepNumber,
+          totalSteps,
+          jobId,
+          stepType: jobData.service_required || 'unknown',
+        }, {
+          traceId: workflowContext.traceId,
+          spanId: workflowContext.spanId,
+        });
+        
+        // If this was the last step, complete the workflow
+        if (stepNumber === totalSteps) {
+          await WorkflowInstrumentation.complete({
+            workflowId,
+            totalSteps,
+            completedSteps: totalSteps,
+            duration: Date.now() - workflowContext.startedAt,
+            status: 'completed',
+          }, {
+            traceId: workflowContext.traceId,
+            spanId: workflowContext.spanId,
+          });
+          
+          // Clean up workflow context
+          this.workflowTraceContexts.delete(workflowId);
+          logger.info(`🎯 WORKFLOW COMPLETED: ${workflowId} (${totalSteps} steps)`);
+        }
+      }
+    }
+
     // Create completion event for monitors (original format)
     const jobCompletedEvent: JobCompletedEvent = {
       type: 'complete_job',
@@ -2310,6 +2358,73 @@ export class LightweightAPIServer {
     // Use provided job ID (for EmProps compatibility) or generate new one
 
     const jobId = providedJobId || uuidv4();
+    
+    // Handle workflow tracing if this job is part of a workflow
+    let workflowStepSpanContext: { traceId: string; spanId: string } | undefined;
+    let parentSpanContext: { traceId: string; spanId: string } | undefined;
+    
+    if (jobData.workflow_id && jobData.step_number && jobData.total_steps) {
+      const workflowId = jobData.workflow_id as string;
+      const stepNumber = jobData.step_number as number;
+      const totalSteps = jobData.total_steps as number;
+      const workflowType = (jobData.service_required as string) || 'multi_step_workflow';
+      
+      // Check if this is the first step - if so, start the workflow
+      if (stepNumber === 1) {
+        const workflowStartSpanContext = await WorkflowInstrumentation.start({
+          workflowId,
+          totalSteps,
+          userId: jobData.customer_id as string | undefined,
+          workflowType,
+          estimatedDuration: undefined, // Could be calculated from job requirements
+        });
+        
+        // Store workflow context for future steps
+        this.workflowTraceContexts.set(workflowId, {
+          traceId: workflowStartSpanContext.traceId,
+          spanId: workflowStartSpanContext.spanId,
+          totalSteps,
+          startedAt: Date.now(),
+        });
+        
+        parentSpanContext = workflowStartSpanContext;
+      } else {
+        // Use existing workflow context
+        const existingWorkflowContext = this.workflowTraceContexts.get(workflowId);
+        if (existingWorkflowContext) {
+          parentSpanContext = {
+            traceId: existingWorkflowContext.traceId,
+            spanId: existingWorkflowContext.spanId,
+          };
+        }
+      }
+      
+      // Create workflow step submission trace
+      workflowStepSpanContext = await WorkflowInstrumentation.stepSubmit({
+        workflowId,
+        stepNumber,
+        totalSteps,
+        jobId,
+        stepType: (jobData.service_required as string) || 'unknown',
+      }, parentSpanContext);
+      
+      // Use workflow step as parent for job submission
+      parentSpanContext = workflowStepSpanContext;
+    }
+    
+    // Start job submission tracing (either standalone or as child of workflow step)
+    const submitSpanContext = await JobInstrumentation.submit({
+      jobId,
+      jobType: (jobData.service_required as string) || 
+               (jobData.job_type as string) || 
+               (jobData.type as string) || 'unknown',
+      priority: (jobData.priority as number) || 50,
+      queueName: 'default',
+      submittedBy: 'api-server',
+      workflowId: jobData.workflow_id as string | undefined,
+      userId: jobData.customer_id as string | undefined,
+    }, parentSpanContext);
+    
     if (providedJobId) {
       logger.info(`[JOB SUBMIT START] Using provided job ID: ${jobId} (EmProps compatibility)`);
     } else {
@@ -2374,6 +2489,11 @@ export class LightweightAPIServer {
       workflow_datetime: job.workflow_datetime?.toString() || '',
       step_number: job.step_number?.toString() || '',
       total_steps: job.total_steps?.toString() || '',
+      // Trace context for cross-service propagation
+      job_trace_id: submitSpanContext.traceId,
+      job_span_id: submitSpanContext.spanId,
+      workflow_trace_id: workflowStepSpanContext?.traceId || '',
+      workflow_span_id: workflowStepSpanContext?.spanId || '',
     });
 
     // Add to pending queue with workflow-aware scoring
@@ -2401,6 +2521,13 @@ export class LightweightAPIServer {
     logger.info(
       `[JOB SUBMIT] Job ${jobId} added to pending queue - Monitor still connected: ${this.eventBroadcaster.getMonitorCount()} monitors`
     );
+
+    // Trace job save to Redis (after score calculation)
+    await JobInstrumentation.saveToRedis({
+      jobId,
+      redisKey: `job:${jobId}`,
+      queueScore: score,
+    }, submitSpanContext);
 
     // Create job_submitted event for monitors (original format)
     const jobSubmittedEvent: JobSubmittedEvent = {
