@@ -28,6 +28,13 @@ bundled/
 # Environment secrets (never commit real secrets)
 config/environments/secrets/.env.secrets.local
 
+# Workspace packages (generated during Docker build)
+**/.workspace-packages/
+**/package.docker.json
+**/pnpm-lock.yaml
+# Exception: Only allow these in machine directory (they're committed for machine images)
+!apps/machine/package.docker.json
+
 # Docker Compose files - Only exclude generated/dynamic ones
 docker-compose.yml
 docker-compose.yaml
