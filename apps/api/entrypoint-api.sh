@@ -42,8 +42,9 @@ install_dependencies() {
     cd /api-server
     
     if [ -f "package.json" ] && [ -f "pnpm-lock.yaml" ]; then
-        log_info "Installing production dependencies..."
-        pnpm install --prod --no-frozen-lockfile --ignore-workspace
+        log_info "Installing production dependencies (including workspace packages)..."
+        # Remove --ignore-workspace to allow @emp/telemetry and @emp/core workspace dependencies
+        pnpm install --prod --no-frozen-lockfile
         log_info "✅ Dependencies installed successfully"
     else
         log_warn "⚠️  No package.json or pnpm-lock.yaml found, skipping dependency installation"
@@ -183,10 +184,56 @@ start_application() {
 }
 
 # =====================================================
+# Send Direct Fluentd Test Log
+# =====================================================
+send_direct_fluentd_log() {
+    log_section "Sending Direct Fluentd Test Log"
+    
+    local FLUENTD_HOST=${FLUENTD_HOST:-host.docker.internal}
+    local FLUENTD_PORT=${FLUENTD_PORT:-8888}
+    
+    log_info "Sending test log directly to Fluentd at ${FLUENTD_HOST}:${FLUENTD_PORT}"
+    
+    # Create the JSON payload
+    local json_payload="{
+        \"service\": \"api\",
+        \"message\": \"direct log from api\",
+        \"timestamp\": \"$(date -u +%Y-%m-%dT%H:%M:%SZ)\",
+        \"machine_id\": \"${MACHINE_ID:-api-server}\",
+        \"service_name\": \"${SERVICE_NAME:-emp-api-server}\",
+        \"environment\": \"${NODE_ENV:-production}\",
+        \"event_type\": \"container_startup_test\"
+    }"
+    
+    log_info "📋 Fluentd payload: $json_payload"
+    log_info "📋 Fluentd URL: http://${FLUENTD_HOST}:${FLUENTD_PORT}/test"
+    
+    # Send a direct log message to Fluentd via HTTP
+    local response=$(curl -X POST "http://${FLUENTD_HOST}:${FLUENTD_PORT}/test" \
+        -H "Content-Type: application/json" \
+        -d "$json_payload" \
+        -w "HTTP_CODE:%{http_code}" \
+        -s 2>&1)
+    
+    log_info "📋 Fluentd response: $response"
+    
+    if [[ "$response" == *"HTTP_CODE:200"* ]]; then
+        log_info "✅ Fluentd log sent successfully"
+    else
+        log_warn "⚠️ Fluentd response indicates potential issue: $response"
+    fi
+    
+    log_info "✅ Direct Fluentd test log sent"
+}
+
+# =====================================================
 # Main Function
 # =====================================================
 main() {
     log_section "EMP API Server - Starting Up"
+    
+    # Send direct Fluentd test log first thing
+    send_direct_fluentd_log
     
     # Install dependencies
     install_dependencies || exit 1
