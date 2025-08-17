@@ -60,6 +60,13 @@ const coreTarget = path.join(workspacePackagesDir, 'core');
 console.log(`  Copying core: ${coreSource} → ${coreTarget}`);
 fs.cpSync(coreSource, coreTarget, { recursive: true });
 
+// Copy telemetry package
+const telemetrySource = path.join(MONOREPO_ROOT, 'packages/telemetry');
+const telemetryTarget = path.join(workspacePackagesDir, 'telemetry');
+
+console.log(`  Copying telemetry: ${telemetrySource} → ${telemetryTarget}`);
+fs.cpSync(telemetrySource, telemetryTarget, { recursive: true });
+
 // Step 2: Create optimized package.json
 console.log('📋 Creating optimized package.json...');
 
@@ -71,6 +78,9 @@ const originalPackage = JSON.parse(
 const optimizedPackage = { ...originalPackage };
 if (optimizedPackage.dependencies && optimizedPackage.dependencies['@emp/core']) {
   optimizedPackage.dependencies['@emp/core'] = 'file:.workspace-packages/core';
+}
+if (optimizedPackage.dependencies && optimizedPackage.dependencies['@emp/telemetry']) {
+  optimizedPackage.dependencies['@emp/telemetry'] = 'file:.workspace-packages/telemetry';
 }
 
 // Sort for deterministic output
@@ -106,5 +116,6 @@ if (fs.existsSync(lockfileSrc)) {
 console.log('\n🎉 API Docker build preparation complete!');
 console.log('  Files created:');
 console.log('    - .workspace-packages/core/');
+console.log('    - .workspace-packages/telemetry/');
 console.log('    - package.docker.json');
 console.log('    - pnpm-lock.yaml');
