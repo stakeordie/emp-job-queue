@@ -267,6 +267,7 @@ export class TelemetryConnectionManager {
   }
 
   private async sendTestTrace(): Promise<void> {
+    console.log(`🔍 TelemetryConnectionManager: Sending test trace to OTEL collector`);
     const traceId = Array.from({length: 32}, () => Math.floor(Math.random() * 16).toString(16)).join('');
     const spanId = Array.from({length: 16}, () => Math.floor(Math.random() * 16).toString(16)).join('');
     const startTime = Date.now();
@@ -297,15 +298,24 @@ export class TelemetryConnectionManager {
       }]
     };
 
+    console.log(`🔍 TelemetryConnectionManager: OTEL trace endpoint: ${this.config.otel.collectorEndpoint}`);
+    console.log(`🔍 TelemetryConnectionManager: OTEL trace payload size: ${JSON.stringify(traceData).length} bytes`);
+
     const response = await fetch(this.config.otel.collectorEndpoint, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(traceData),
     });
 
+    console.log(`🔍 TelemetryConnectionManager: OTEL trace response status: ${response.status}`);
+    
     if (!response.ok) {
-      throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+      const responseText = await response.text();
+      console.error(`❌ TelemetryConnectionManager: OTEL trace failed: ${response.status} ${response.statusText} - ${responseText}`);
+      throw new Error(`HTTP ${response.status}: ${response.statusText} - ${responseText}`);
     }
+    
+    console.log(`✅ TelemetryConnectionManager: OTEL trace sent successfully`);
   }
 
   private async sendTestLog(): Promise<void> {
