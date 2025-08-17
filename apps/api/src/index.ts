@@ -5,30 +5,48 @@ import { config } from 'dotenv';
 import { createTelemetryClient } from '@emp/telemetry';
 
 async function initializeTelemetry() {
+  console.log('🚀 initializeTelemetry: Starting telemetry initialization for API service');
+  
   try {
     // Generate API server IDs using API_BASE_ID + TELEMETRY_ENV pattern
+    console.log(`🔍 initializeTelemetry: Checking MACHINE_ID environment variable`);
     if (!process.env.MACHINE_ID) {
+      console.log(`🔍 initializeTelemetry: MACHINE_ID not set, generating from API_BASE_ID + TELEMETRY_ENV`);
       const apiBaseId = process.env.API_BASE_ID;
       const telemetryEnv = process.env.TELEMETRY_ENV;
       
+      console.log(`🔍 initializeTelemetry: API_BASE_ID: ${apiBaseId}, TELEMETRY_ENV: ${telemetryEnv}`);
+      
       if (!apiBaseId) {
+        console.error('❌ initializeTelemetry: API_BASE_ID environment variable missing');
         throw new Error('FATAL: API_BASE_ID environment variable is required for API server identification.');
       }
       if (!telemetryEnv) {
+        console.error('❌ initializeTelemetry: TELEMETRY_ENV environment variable missing');
         throw new Error('FATAL: TELEMETRY_ENV environment variable is required for API server identification.');
       }
       
-      process.env.MACHINE_ID = `${apiBaseId}-${telemetryEnv}`;
+      const machineId = `${apiBaseId}-${telemetryEnv}`;
+      process.env.MACHINE_ID = machineId;
+      console.log(`✅ initializeTelemetry: Generated MACHINE_ID: ${machineId}`);
+    } else {
+      console.log(`✅ initializeTelemetry: Using existing MACHINE_ID: ${process.env.MACHINE_ID}`);
     }
     
     if (!process.env.WORKER_ID) {
+      console.log(`🔍 initializeTelemetry: WORKER_ID not set, using MACHINE_ID value`);
       // API doesn't have separate workers, use same as MACHINE_ID
       process.env.WORKER_ID = process.env.MACHINE_ID;
+      console.log(`✅ initializeTelemetry: Set WORKER_ID: ${process.env.WORKER_ID}`);
+    } else {
+      console.log(`✅ initializeTelemetry: Using existing WORKER_ID: ${process.env.WORKER_ID}`);
     }
 
+    console.log('🔧 initializeTelemetry: Creating telemetry client');
     // Create and initialize telemetry client
     const telemetryClient = createTelemetryClient('api');
     
+    console.log('🔧 initializeTelemetry: Starting telemetry client startup');
     // Initialize with full pipeline testing
     const pipelineHealth = await telemetryClient.startup({
       testConnections: true,
@@ -37,13 +55,15 @@ async function initializeTelemetry() {
     });
     
     if (pipelineHealth?.overall === 'failed') {
-      console.warn('⚠️ Telemetry pipeline has failures but continuing API startup...');
+      console.warn('⚠️ initializeTelemetry: Telemetry pipeline has failures but continuing API startup...');
+    } else {
+      console.log('✅ initializeTelemetry: Telemetry client startup completed successfully');
     }
     
     return telemetryClient;
   } catch (error) {
-    console.error('❌ Telemetry initialization failed:', error.message);
-    console.warn('⚠️ Continuing API startup without telemetry...');
+    console.error('❌ initializeTelemetry: Telemetry initialization failed:', error.message);
+    console.warn('⚠️ initializeTelemetry: Continuing API startup without telemetry...');
     return null;
   }
 }

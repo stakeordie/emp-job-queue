@@ -28,23 +28,32 @@ export class TelemetryConnectionManager {
   private healthCache = new Map<string, ConnectionHealth>();
 
   constructor(config: TelemetryConfig) {
+    console.log(`🔧 TelemetryConnectionManager: Instantiating connection manager`);
     this.config = config;
+    console.log(`🔍 TelemetryConnectionManager: OTEL enabled: ${config.otel.enabled}, Logging enabled: ${config.logging.enabled}`);
+    console.log(`🔍 TelemetryConnectionManager: OTEL endpoint: ${config.otel.collectorEndpoint}`);
+    console.log(`🔍 TelemetryConnectionManager: Fluentd endpoint: ${config.logging.fluentdHost}:${config.logging.fluentdPort}`);
+    console.log(`🔍 TelemetryConnectionManager: Dash0 endpoint: ${config.dash0.tracesEndpoint}`);
   }
 
   /**
    * Test connection to OTEL collector
    */
   async testOtelCollector(): Promise<ConnectionHealth> {
+    console.log(`🔍 TelemetryConnectionManager: Testing OTEL collector connection`);
     const startTime = Date.now();
     const endpoint = this.config.otel.collectorEndpoint;
 
     try {
       // OTEL collector health endpoint is typically at :13133
       const healthEndpoint = endpoint.replace(':4318', ':13133').replace('/v1/traces', '');
+      console.log(`🔍 TelemetryConnectionManager: OTEL health endpoint: ${healthEndpoint}`);
       
       const response = await fetch(healthEndpoint, {
         method: 'GET',
       });
+
+      console.log(`🔍 TelemetryConnectionManager: OTEL response status: ${response.status}`);
 
       const latency = Date.now() - startTime;
       const health: ConnectionHealth = {
@@ -57,8 +66,10 @@ export class TelemetryConnectionManager {
       };
 
       this.healthCache.set('otel', health);
+      console.log(`${health.status === 'connected' ? '✅' : '❌'} TelemetryConnectionManager: OTEL test result: ${health.status} (${health.latency}ms)`);
       return health;
     } catch (error) {
+      console.error(`❌ TelemetryConnectionManager: OTEL connection failed: ${error instanceof Error ? error.message : 'Unknown error'}`);
       const health: ConnectionHealth = {
         service: 'otel-collector',
         endpoint,
@@ -77,8 +88,10 @@ export class TelemetryConnectionManager {
    * Test connection to Fluentd
    */
   async testFluentd(): Promise<ConnectionHealth> {
+    console.log(`🔍 TelemetryConnectionManager: Testing Fluentd connection`);
     const startTime = Date.now();
     const endpoint = `http://${this.config.logging.fluentdHost}:${this.config.logging.fluentdPort}`;
+    console.log(`🔍 TelemetryConnectionManager: Fluentd endpoint: ${endpoint}/test`);
 
     try {
       // Send a test message to Fluentd
@@ -95,6 +108,8 @@ export class TelemetryConnectionManager {
         body: JSON.stringify(testPayload),
       });
 
+      console.log(`🔍 TelemetryConnectionManager: Fluentd response status: ${response.status}`);
+
       const latency = Date.now() - startTime;
       const health: ConnectionHealth = {
         service: 'fluentd',
@@ -106,8 +121,10 @@ export class TelemetryConnectionManager {
       };
 
       this.healthCache.set('fluentd', health);
+      console.log(`${health.status === 'connected' ? '✅' : '❌'} TelemetryConnectionManager: Fluentd test result: ${health.status} (${health.latency}ms)`);
       return health;
     } catch (error) {
+      console.error(`❌ TelemetryConnectionManager: Fluentd connection failed: ${error instanceof Error ? error.message : 'Unknown error'}`);
       const health: ConnectionHealth = {
         service: 'fluentd',
         endpoint,
@@ -126,8 +143,10 @@ export class TelemetryConnectionManager {
    * Test direct connection to Dash0 (optional)
    */
   async testDash0Direct(): Promise<ConnectionHealth> {
+    console.log(`🔍 TelemetryConnectionManager: Testing Dash0 direct connection`);
     const startTime = Date.now();
     const endpoint = this.config.dash0.tracesEndpoint;
+    console.log(`🔍 TelemetryConnectionManager: Dash0 endpoint: ${endpoint}`);
 
     try {
       // Simple connectivity test to Dash0
@@ -140,6 +159,8 @@ export class TelemetryConnectionManager {
         body: JSON.stringify({ test: true }),
       });
 
+      console.log(`🔍 TelemetryConnectionManager: Dash0 response status: ${response.status}`);
+
       const latency = Date.now() - startTime;
       const health: ConnectionHealth = {
         service: 'dash0',
@@ -151,8 +172,10 @@ export class TelemetryConnectionManager {
       };
 
       this.healthCache.set('dash0', health);
+      console.log(`${health.status === 'connected' ? '✅' : '❌'} TelemetryConnectionManager: Dash0 test result: ${health.status} (${health.latency}ms)`);
       return health;
     } catch (error) {
+      console.error(`❌ TelemetryConnectionManager: Dash0 connection failed: ${error instanceof Error ? error.message : 'Unknown error'}`);
       const health: ConnectionHealth = {
         service: 'dash0',
         endpoint,

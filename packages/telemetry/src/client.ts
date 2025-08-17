@@ -20,9 +20,12 @@ export class EmpTelemetryClient {
   private config: TelemetryConfig;
 
   constructor(configManager: TelemetryConfigManager) {
+    console.log(`🔧 EmpTelemetryClient: Instantiating telemetry client`);
     this.configManager = configManager;
     this.config = configManager.getConfig();
+    console.log(`✅ EmpTelemetryClient: Configuration retrieved`);
     this.connectionManager = new TelemetryConnectionManager(this.config);
+    console.log(`✅ EmpTelemetryClient: Connection manager created`);
   }
 
   /**
@@ -159,6 +162,9 @@ export class EmpTelemetryClient {
  * Create telemetry client for any service type
  */
 export function createTelemetryClient(serviceType: 'api' | 'webhook' | 'machine' | 'worker'): EmpTelemetryClient {
+  console.log(`🚀 createTelemetryClient: Creating telemetry client for service type: ${serviceType}`);
   const configManager = new TelemetryConfigManager({ serviceType });
-  return new EmpTelemetryClient(configManager);
+  const client = new EmpTelemetryClient(configManager);
+  console.log(`✅ createTelemetryClient: Telemetry client created successfully`);
+  return client;
 }
