@@ -57,17 +57,11 @@ install_dependencies() {
 start_otel_collector() {
     log_section "Starting OpenTelemetry Collector"
     
-    # Set default environment variables for OTel Collector
-    export SERVICE_NAME=${SERVICE_NAME:-emp-api-server}
-    export SERVICE_VERSION=${SERVICE_VERSION:-1.0.0}
-    export NODE_ENV=${NODE_ENV:-production}
-    export DASH0_API_KEY=${DASH0_API_KEY:-auth_w8VowQspnZ8whZHWp1pe6azIIehBAAvL}
-    export DASH0_DATASET=${DASH0_DATASET:-${NODE_ENV}}
+    # Environment variables will be validated by Node.js telemetry client
     
     log_info "Generating OTel Collector configuration at runtime..."
     log_info "  - Service: ${SERVICE_NAME} v${SERVICE_VERSION}"
-    log_info "  - Environment: ${NODE_ENV}"
-    log_info "  - Dash0 Dataset: ${DASH0_DATASET}"
+    log_info "  - Environment: ${TELEMETRY_ENV}"
     log_info "  - Template: /api-server/otel/otel-collector-api.yaml.template"
     log_info "  - Config: /api-server/otel/otel-collector-api.yaml"
     
@@ -115,12 +109,7 @@ start_otel_collector() {
 start_fluent_bit() {
     log_section "Starting Fluent Bit Logger"
     
-    # Set default environment variables for Fluent Bit
-    export SERVICE_NAME=${SERVICE_NAME:-emp-api-server}
-    export SERVICE_VERSION=${SERVICE_VERSION:-1.0.0}
-    export NODE_ENV=${NODE_ENV:-production}
-    export FLUENTD_HOST=${FLUENTD_HOST:-host.docker.internal}
-    export FLUENTD_PORT=${FLUENTD_PORT:-8888}
+    # Environment variables will be validated by Node.js telemetry client
     
     # Convert true/false to on/off for Fluent Bit (with default)
     if [ "${FLUENTD_SECURE:-false}" = "true" ]; then
@@ -131,7 +120,7 @@ start_fluent_bit() {
     
     log_info "Generating Fluent Bit configuration at runtime..."
     log_info "  - Service: ${SERVICE_NAME} v${SERVICE_VERSION}"
-    log_info "  - Environment: ${NODE_ENV}"
+    log_info "  - Environment: ${TELEMETRY_ENV}"
     log_info "  - Fluentd Host: ${FLUENTD_HOST}:${FLUENTD_PORT}"
     log_info "  - Secure Connection: ${FLUENTD_SECURE}"
     log_info "  - Template: /api-server/fluent-bit/fluent-bit-api.conf.template"
@@ -189,19 +178,20 @@ start_application() {
 send_direct_fluentd_log() {
     log_section "Sending Direct Fluentd Test Log"
     
-    local FLUENTD_HOST=${FLUENTD_HOST:-host.docker.internal}
-    local FLUENTD_PORT=${FLUENTD_PORT:-8888}
+    # Environment variables will be validated by Node.js telemetry client
+    local FLUENTD_HOST=${FLUENTD_HOST}
+    local FLUENTD_PORT=${FLUENTD_PORT}
     
     log_info "Sending test log directly to Fluentd at ${FLUENTD_HOST}:${FLUENTD_PORT}"
     
-    # Create the JSON payload
+    # Create the JSON payload  
     local json_payload="{
         \"service\": \"api\",
         \"message\": \"direct log from api\",
         \"timestamp\": \"$(date -u +%Y-%m-%dT%H:%M:%SZ)\",
-        \"machine_id\": \"${MACHINE_ID:-api-server}\",
-        \"service_name\": \"${SERVICE_NAME:-emp-api-server}\",
-        \"environment\": \"${NODE_ENV:-production}\",
+        \"machine_id\": \"${MACHINE_ID}\",
+        \"service_name\": \"${SERVICE_NAME}\",
+        \"environment\": \"${TELEMETRY_ENV}\",
         \"event_type\": \"container_startup_test\"
     }"
     
