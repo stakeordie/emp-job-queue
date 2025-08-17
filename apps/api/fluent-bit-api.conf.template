@@ -20,7 +20,7 @@
     Record service_name ${SERVICE_NAME}
     Record service_version ${SERVICE_VERSION}
     Record service_type api-server
-    Record environment ${NODE_ENV}
+    Record environment ${TELEMETRY_ENV}
     Record source fluent-bit-file-tail
 
 # Send to Fluentd (running on host or external service)

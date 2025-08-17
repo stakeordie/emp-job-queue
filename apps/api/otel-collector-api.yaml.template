@@ -29,7 +29,7 @@ processors:
         value: "api-server"
         action: insert
       - key: deployment.environment
-        value: "${NODE_ENV}"
+        value: "${TELEMETRY_ENV}"
         action: insert
 
 exporters:
@@ -38,7 +38,7 @@ exporters:
     endpoint: "https://ingress.us-west-2.aws.dash0.com:4317"
     headers:
       Authorization: "Bearer ${DASH0_API_KEY}"
-      Dash0-Dataset: "${DASH0_DATASET}"
+      Dash0-Dataset: "${TELEMETRY_ENV}"
   
   # Local debug logging
   debug:

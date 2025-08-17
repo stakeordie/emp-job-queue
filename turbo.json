@@ -40,7 +40,7 @@
     "dev:machine": {
       "cache": false,
       "persistent": true,
-      "env": ["MACHINE_*", "WORKER_*", "DISABLE_PORTS", "COMFYUI_*"]
+      "env": ["MACHINE_*", "WORKER_*", "COMFYUI_*"]
     },
     "format": {
       "outputs": []

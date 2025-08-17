@@ -149,13 +149,16 @@ class WorkerDrivenEnvironmentBuilder {
    * Detect machine resources (simulated - would use actual detection in production)
    */
   detectMachineResources() {
+    // Import env helpers at runtime to avoid import issues
+    const { getRequiredEnvInt, getRequiredEnvBool } = require('../../packages/core/src/utils/env.js');
+    
     // In production, this would detect actual hardware
-    // For now, simulate based on environment or use sensible defaults
+    // For now, require explicit configuration - no fallbacks for hardware specs
     return {
-      gpuCount: parseInt(process.env.MACHINE_GPU_COUNT || '1'),
-      ramGB: parseInt(process.env.MACHINE_RAM_GB || '16'),
-      hasGpu: process.env.MACHINE_HAS_GPU !== 'false',
-      cpuCores: parseInt(process.env.MACHINE_CPU_CORES || '8')
+      gpuCount: getRequiredEnvInt('MACHINE_GPU_COUNT', 'Number of GPUs available on this machine'),
+      ramGB: getRequiredEnvInt('MACHINE_RAM_GB', 'Total RAM in GB available on this machine'),
+      hasGpu: getRequiredEnvBool('MACHINE_HAS_GPU', 'Whether this machine has GPU hardware available'),
+      cpuCores: getRequiredEnvInt('MACHINE_CPU_CORES', 'Number of CPU cores available on this machine')
     };
   }
 }

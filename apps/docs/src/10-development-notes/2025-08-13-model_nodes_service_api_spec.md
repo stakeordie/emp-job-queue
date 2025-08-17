@@ -13,7 +13,61 @@ http://localhost:3000   # Development
 
 ## Dependencies Endpoints
 
-### 1. Collection Dependencies
+### 1. Default Custom Nodes
+
+#### Get Default Custom Nodes
+```http
+GET /custom-nodes/defaults
+```
+
+**Response:**
+```json
+{
+  "data": [
+    {
+      "id": "node-uuid",
+      "name": "comfyui-manager", 
+      "repositoryUrl": "https://github.com/ltdrdata/ComfyUI-Manager",
+      "description": "ComfyUI Manager for node installation",
+      "branch": "main",
+      "commit": null,
+      "recursive": false,
+      "requirements": true,
+      "env": null,
+      "is_default": true,
+      "install_order": 1,
+      "createdAt": "2024-01-01T00:00:00.000Z",
+      "updatedAt": "2024-01-01T00:00:00.000Z"
+    },
+    {
+      "id": "node-uuid-2",
+      "name": "comfyui-controlnet-aux",
+      "repositoryUrl": "https://github.com/Fannovel16/comfyui_controlnet_aux", 
+      "description": "ControlNet auxiliary nodes",
+      "branch": "main",
+      "commit": null,
+      "recursive": false,
+      "requirements": true,
+      "env": {
+        "OPENCV_VERSION": "4.8.0"
+      },
+      "is_default": true,
+      "install_order": 2,
+      "createdAt": "2024-01-01T00:00:00.000Z",
+      "updatedAt": "2024-01-01T00:00:00.000Z"
+    }
+  ],
+  "error": null
+}
+```
+
+**Notes:**
+- Returns all custom nodes marked as `is_default: true`
+- Results are automatically sorted by `install_order` (ascending), then by `name`
+- Nodes with `install_order: null` appear last
+- No authentication required
+
+### 2. Collection Dependencies
 
 #### Analyze Collection Dependencies (Bulk)
 ```http
@@ -54,7 +108,8 @@ Content-Type: application/json
           "env": {
             "PYTHON_VERSION": "3.8"
           },
-          "version": "1.0.0"
+          "is_default": false,
+          "install_order": null
         }
       ]
     }

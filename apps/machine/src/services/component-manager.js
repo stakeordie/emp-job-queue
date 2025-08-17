@@ -67,48 +67,58 @@ export default class ComponentManagerService extends BaseService {
   }
 
   async onStart() {
-    this.logger.info('Starting component-based configuration...');
+    this.logger.info('STEP 15: Component Manager Init - Starting component-based configuration...');
     
     return this.tracer.traceComponentInstallation('component-manager-startup', async () => {
       try {
-        // Step 1: Analyze all components and collections
+        // Step 16: API Discovery - Always get default custom nodes from API first
+        this.logger.info('STEP 16: API Discovery - Fetching default custom nodes from API...');
+        const defaultCustomNodes = await this.empApi.getDefaultCustomNodes();
+        this.logger.info(`STEP 16: API Discovery - Loaded ${defaultCustomNodes.length} default custom nodes from API`);
+        
+        // Step 16 continued: Analyze additional components and collections (if specified)
         const allComponents = await this.gatherAllComponents();
         
-        if (allComponents.length === 0) {
-          this.logger.info('No components specified, skipping component-based configuration');
-          return;
-        }
+        this.logger.info(`STEP 16: API Discovery - Found ${allComponents.length} additional components to configure:`, 
+          allComponents.map(c => c.name));
         
         this.tracer.addAttributes({
-          'components.count': allComponents.length,
-          'components.names': allComponents.map(c => c.name).join(',')
+          'default_nodes.count': defaultCustomNodes.length,
+          'additional_components.count': allComponents.length,
+          'additional_components.names': allComponents.map(c => c.name).join(',')
         });
         
-        this.logger.info(`Found ${allComponents.length} components to configure:`, allComponents.map(c => c.name));
-        
-        // Step 2: Analyze requirements
-        const requirements = await this.analyzeRequirements(allComponents);
+        // Step 16 final: Analyze requirements from all sources (defaults + additional components)
+        const requirements = await this.analyzeRequirements(allComponents, defaultCustomNodes);
         
         this.tracer.addAttributes({
           'requirements.custom_nodes': requirements.customNodes.size,
           'requirements.models': requirements.models.size
         });
         
-        // Step 3: Install missing dependencies
+        this.logger.info(`STEP 16: API Discovery - Total requirements: ${requirements.customNodes.size} custom nodes, ${requirements.models.size} models`);
+        
+        // Step 17 & 18: Install missing dependencies
         await this.installMissingDependencies(requirements);
         
-        // Step 4: Save component configuration for worker capabilities
+        // Save component configuration for worker capabilities
         await this.saveComponentConfiguration(allComponents, requirements);
         
-        this.logger.info('Component-based configuration completed successfully');
+        this.logger.info('STEP 16-18: Component Installation - Completed successfully', {
+          defaultNodes: defaultCustomNodes.length,
+          additionalComponents: allComponents.length,
+          totalCustomNodes: requirements.customNodes.size,
+          totalModels: requirements.models.size
+        });
         
         return {
+          defaultNodes: defaultCustomNodes.length,
           components: allComponents.length,
           customNodes: requirements.customNodes.size,
           models: requirements.models.size
         };
       } catch (error) {
-        this.logger.error(`Component-based configuration failed: ${error.message}`);
+        this.logger.error(`STEP 15-18: Component Manager - FAILED: ${error.message}`);
         throw error;
       }
     });
@@ -216,9 +226,9 @@ export default class ComponentManagerService extends BaseService {
   }
 
   /**
-   * Analyze requirements from all components
+   * Analyze requirements from all components and default custom nodes
    */
-  async analyzeRequirements(components) {
+  async analyzeRequirements(components, defaultCustomNodes = []) {
     this.logger.info('Analyzing component requirements...');
     
     const requirements = {
@@ -227,6 +237,34 @@ export default class ComponentManagerService extends BaseService {
       supportedComponents: []
     };
     
+    // First, add all default custom nodes
+    this.logger.info(`Processing ${defaultCustomNodes.length} default custom nodes...`);
+    for (const defaultNode of defaultCustomNodes) {
+      if (defaultNode.name) {
+        // Convert API response format to internal format
+        const processedNode = {
+          name: defaultNode.name,
+          url: defaultNode.repositoryUrl,
+          gitUrl: defaultNode.repositoryUrl,
+          branch: defaultNode.branch || 'main',
+          commit: defaultNode.commit,
+          recursive: defaultNode.recursive || false,
+          requirements: defaultNode.requirements || false,
+          env: defaultNode.env || {},
+          custom_script: defaultNode.custom_script,
+          install_order: defaultNode.install_order,
+          is_default: true
+        };
+        
+        this.logger.info(`Adding default custom node: ${defaultNode.name}`, { 
+          url: defaultNode.repositoryUrl,
+          install_order: defaultNode.install_order 
+        });
+        requirements.customNodes.set(defaultNode.name, processedNode);
+      }
+    }
+    
+    // Then, process additional components from workflows/collections
     for (const component of components) {
       try {
         // Log what we received from API
@@ -352,15 +390,42 @@ export default class ComponentManagerService extends BaseService {
    * Install missing dependencies
    */
   async installMissingDependencies(requirements) {
-    this.logger.info('Installing missing dependencies...');
+    this.logger.info('STEP 17-18: Installing missing dependencies...');
     
-    // Install custom nodes
-    await this.installCustomNodes(Array.from(requirements.customNodes.values()));
+    // Sort custom nodes by install_order before installation
+    const sortedCustomNodes = Array.from(requirements.customNodes.values()).sort((a, b) => {
+      // Nodes with install_order come first, sorted ascending
+      // Nodes with null/undefined install_order come last, sorted by name
+      if (a.install_order !== null && a.install_order !== undefined && 
+          b.install_order !== null && b.install_order !== undefined) {
+        return a.install_order - b.install_order;
+      }
+      
+      if (a.install_order !== null && a.install_order !== undefined) {
+        return -1; // a comes first
+      }
+      
+      if (b.install_order !== null && b.install_order !== undefined) {
+        return 1; // b comes first
+      }
+      
+      // Both have null/undefined install_order, sort by name
+      return (a.name || '').localeCompare(b.name || '');
+    });
+    
+    this.logger.info(`STEP 17: Custom Nodes Installation Order:`, 
+      sortedCustomNodes.map((node, index) => 
+        `${index + 1}. ${node.name} (order: ${node.install_order || 'null'})`
+      )
+    );
+    
+    // Install custom nodes in correct order
+    await this.installCustomNodes(sortedCustomNodes);
     
     // Install/download models
     await this.installModels(Array.from(requirements.models.values()));
     
-    this.logger.info('Dependency installation completed');
+    this.logger.info('STEP 17-18: Dependency installation completed');
   }
 
   /**
@@ -368,7 +433,7 @@ export default class ComponentManagerService extends BaseService {
    */
   async installCustomNodes(customNodes) {
     if (customNodes.length === 0) {
-      this.logger.info('No custom nodes to install');
+      this.logger.info('STEP 17: Custom Nodes - No custom nodes to install');
       return;
     }
     
@@ -378,7 +443,7 @@ export default class ComponentManagerService extends BaseService {
         'custom_nodes.names': customNodes.map(n => n.name).join(',')
       });
       
-      this.logger.info(`Installing ${customNodes.length} custom nodes...`);
+      this.logger.info(`STEP 17: Custom Nodes - Installing ${customNodes.length} custom nodes...`);
       
       try {
         // Import and use the ComfyUI installer

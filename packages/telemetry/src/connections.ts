@@ -233,11 +233,13 @@ export class TelemetryConnectionManager {
   async sendTestMessage(): Promise<{
     otelSuccess: boolean;
     fluentdSuccess: boolean;
+    metricsSuccess: boolean;
     errors: string[];
   }> {
     const errors: string[] = [];
     let otelSuccess = false;
     let fluentdSuccess = false;
+    let metricsSuccess = false;
 
     // Test OTEL trace
     if (this.config.otel.enabled) {
@@ -248,6 +250,18 @@ export class TelemetryConnectionManager {
       } catch (error) {
         errors.push(`OTEL: ${error instanceof Error ? error.message : 'Unknown error'}`);
         console.log('❌ Failed to send test trace to OTEL collector');
+      }
+    }
+
+    // Test OTEL metrics
+    if (this.config.otel.enabled) {
+      try {
+        await this.sendTestMetric();
+        metricsSuccess = true;
+        console.log('✅ Test metric sent to OTEL collector');
+      } catch (error) {
+        errors.push(`Metrics: ${error instanceof Error ? error.message : 'Unknown error'}`);
+        console.log('❌ Failed to send test metric to OTEL collector');
       }
     }
 
@@ -263,7 +277,7 @@ export class TelemetryConnectionManager {
       }
     }
 
-    return { otelSuccess, fluentdSuccess, errors };
+    return { otelSuccess, fluentdSuccess, metricsSuccess, errors };
   }
 
   private async sendTestTrace(): Promise<void> {
@@ -316,6 +330,60 @@ export class TelemetryConnectionManager {
     }
     
     console.log(`✅ TelemetryConnectionManager: OTEL trace sent successfully`);
+  }
+
+  private async sendTestMetric(): Promise<void> {
+    console.log(`🔍 TelemetryConnectionManager: Sending test metric to OTEL collector`);
+    const timestamp = Date.now();
+
+    const metricData = {
+      resourceMetrics: [{
+        resource: {
+          attributes: [
+            { key: "service.name", value: { stringValue: this.config.serviceName }},
+            { key: "machine.id", value: { stringValue: this.config.machineId }},
+            { key: "test.connection", value: { stringValue: "true" }}
+          ]
+        },
+        scopeMetrics: [{
+          metrics: [{
+            name: 'telemetry.client.connection_test',
+            description: 'Test metric from telemetry client',
+            unit: 'ms',
+            gauge: {
+              dataPoints: [{
+                attributes: [
+                  { key: "test.type", value: { stringValue: "connection_test" }},
+                  { key: "client.version", value: { stringValue: "1.0.0" }}
+                ],
+                timeUnixNano: `${timestamp * 1000000}`,
+                asInt: 1
+              }]
+            }
+          }]
+        }]
+      }]
+    };
+
+    const metricsEndpoint = this.config.otel.collectorEndpoint.replace('/v1/traces', '/v1/metrics');
+    console.log(`🔍 TelemetryConnectionManager: OTEL metrics endpoint: ${metricsEndpoint}`);
+    console.log(`🔍 TelemetryConnectionManager: OTEL metrics payload size: ${JSON.stringify(metricData).length} bytes`);
+
+    const response = await fetch(metricsEndpoint, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(metricData),
+    });
+
+    console.log(`🔍 TelemetryConnectionManager: OTEL metrics response status: ${response.status}`);
+    
+    if (!response.ok) {
+      const responseText = await response.text();
+      console.error(`❌ TelemetryConnectionManager: OTEL metrics failed: ${response.status} ${response.statusText} - ${responseText}`);
+      throw new Error(`HTTP ${response.status}: ${response.statusText} - ${responseText}`);
+    }
+    
+    console.log(`✅ TelemetryConnectionManager: OTEL metric sent successfully`);
   }
 
   private async sendTestLog(): Promise<void> {

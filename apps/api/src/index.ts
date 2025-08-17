@@ -85,8 +85,27 @@ export * from './hybrid-client.js';
 
 // Main execution when run directly
 async function main() {
+  const startupTime = Date.now();
+  
   // Initialize telemetry first
   telemetryClient = await initializeTelemetry();
+  
+  // Demonstrate clean telemetry API
+  if (telemetryClient) {
+    console.log('📁 Setting up application log file monitoring...');
+    await telemetryClient.log.addFile('/api-server/logs/application.log', 'api-app');
+    
+    // Write some test logs to demonstrate the pipeline
+    await telemetryClient.log.info('API server startup initiated', {
+      startup_time_ms: Date.now() - startupTime,
+      environment: process.env.TELEMETRY_ENV
+    });
+
+    // Send a test metric
+    await telemetryClient.otel.gauge('api.startup.phase.telemetry_complete', Date.now() - startupTime, {
+      environment: process.env.TELEMETRY_ENV || 'unknown'
+    }, 'ms');
+  }
   
   // CRITICAL: API_PORT must be explicitly set - NO FALLBACKS
   if (!process.env.API_PORT) {
@@ -154,8 +173,33 @@ ${Object.keys(process.env).filter(k => k.includes('REDIS')).map(k => `  - ${k}=$
   try {
     await server.start();
     logger.info('API server started successfully');
+    
+    // Log startup completion through telemetry
+    if (telemetryClient) {
+      const totalStartupTime = Date.now() - startupTime;
+      await telemetryClient.log.info('API server startup completed successfully', {
+        total_startup_time_ms: totalStartupTime,
+        port: config.port,
+        environment: process.env.TELEMETRY_ENV,
+        server_ready: true
+      });
+      
+      await telemetryClient.otel.gauge('api.startup.total_duration', totalStartupTime, {
+        environment: process.env.TELEMETRY_ENV || 'unknown',
+        status: 'success'
+      }, 'ms');
+    }
   } catch (error) {
     logger.error('Failed to start API server:', error);
+    
+    // Log startup failure through telemetry
+    if (telemetryClient) {
+      await telemetryClient.log.error('API server startup failed', {
+        error: error.message,
+        environment: process.env.TELEMETRY_ENV
+      });
+    }
+    
     process.exit(1);
   }
 }

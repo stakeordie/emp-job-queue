@@ -1,6 +1,8 @@
 // Universal OpenTelemetry Client - Simple functions to send traces and metrics from anywhere
 // No SDK required - sends directly to local OTel Collector
 
+import { getRequiredEnv } from '../utils/env.js';
+
 /**
  * Send a trace span to the local OTel Collector
  * @param name - The span name (e.g., 'api.job.submit', 'worker.processing')
@@ -18,7 +20,7 @@ export async function sendTrace(
     parent_span_id?: string;
   } = {}
 ): Promise<{ traceId: string; spanId: string }> {
-  const collectorEndpoint = process.env.OTEL_EXPORTER_OTLP_TRACES_ENDPOINT || 'http://localhost:4318/v1/traces';
+  const collectorEndpoint = getRequiredEnv('OTEL_EXPORTER_OTLP_TRACES_ENDPOINT', 'Must specify OTEL collector traces endpoint');
   
   // Generate IDs
   const traceId = options.parent_trace_id || generateTraceId();
@@ -31,11 +33,11 @@ export async function sendTrace(
     resourceSpans: [{
       resource: {
         attributes: [
-          { key: 'service.name', value: { stringValue: process.env.SERVICE_NAME || 'emp-service' } },
-          { key: 'service.version', value: { stringValue: process.env.SERVICE_VERSION || '1.0.0' } },
-          { key: 'deployment.environment', value: { stringValue: process.env.ENV || 'development' } },
-          { key: 'machine.id', value: { stringValue: process.env.MACHINE_ID || 'unknown' } },
-          { key: 'worker.id', value: { stringValue: process.env.WORKER_ID || 'unknown' } }
+          { key: 'service.name', value: { stringValue: getRequiredEnv('SERVICE_NAME', 'Service name for telemetry') } },
+          { key: 'service.version', value: { stringValue: getRequiredEnv('SERVICE_VERSION', 'Service version for telemetry') } },
+          { key: 'telemetry.dataset', value: { stringValue: getRequiredEnv('DASH0_DATASET', 'Dash0 dataset (development/production)') } },
+          { key: 'machine.id', value: { stringValue: getRequiredEnv('MACHINE_ID', 'Unique machine identifier') } },
+          { key: 'worker.id', value: { stringValue: getRequiredEnv('WORKER_ID', 'Unique worker identifier') } }
         ]
       },
       scopeSpans: [{
@@ -116,7 +118,7 @@ export async function sendMetric(
         attributes: [
           { key: 'service.name', value: { stringValue: process.env.SERVICE_NAME || 'emp-service' } },
           { key: 'service.version', value: { stringValue: process.env.SERVICE_VERSION || '1.0.0' } },
-          { key: 'deployment.environment', value: { stringValue: process.env.ENV || 'development' } },
+          { key: 'telemetry.dataset', value: { stringValue: process.env.DASH0_DATASET || 'development' } },
           { key: 'machine.id', value: { stringValue: process.env.MACHINE_ID || 'unknown' } }
         ]
       },

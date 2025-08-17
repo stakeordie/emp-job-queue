@@ -68,9 +68,15 @@ FROM ubuntu:22.04
     COPY entrypoint-api.sh ./entrypoint-api.sh
     RUN chmod +x ./entrypoint-api.sh
 
+    # Build-time metadata
+    ARG BUILD_DATE
+    RUN echo "BUILD_DATE=${BUILD_DATE}" >> .version
+    ENV BUILD_DATE=${BUILD_DATE}
+
     # Set environment
     ENV NODE_ENV=production \
         LOG_LEVEL=info \
+        LOG_DIR=/api-server/logs \
         PATH="/api-server/node_modules/.bin:${PATH}"
 
     # Expose API port

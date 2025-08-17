@@ -202,10 +202,56 @@ cleanup() {
 trap cleanup SIGTERM SIGINT
 
 # =====================================================
+# Send Direct Fluentd Test Log
+# =====================================================
+send_direct_fluentd_log() {
+    log_section "Sending Direct Fluentd Test Log"
+    
+    local FLUENTD_HOST=${FLUENTD_HOST:-host.docker.internal}
+    local FLUENTD_PORT=${FLUENTD_PORT:-8888}
+    
+    log_info "Sending test log directly to Fluentd at ${FLUENTD_HOST}:${FLUENTD_PORT}"
+    
+    # Create the JSON payload
+    local json_payload="{
+        \"service\": \"webhook\",
+        \"message\": \"direct log from webhook\",
+        \"timestamp\": \"$(date -u +%Y-%m-%dT%H:%M:%SZ)\",
+        \"machine_id\": \"${MACHINE_ID:-webhook-server}\",
+        \"service_name\": \"${SERVICE_NAME:-emp-webhook-service}\",
+        \"environment\": \"${NODE_ENV:-production}\",
+        \"event_type\": \"container_startup_test\"
+    }"
+    
+    log_info "📋 Fluentd payload: $json_payload"
+    log_info "📋 Fluentd URL: http://${FLUENTD_HOST}:${FLUENTD_PORT}/test"
+    
+    # Send a direct log message to Fluentd via HTTP
+    local response=$(curl -X POST "http://${FLUENTD_HOST}:${FLUENTD_PORT}/test" \
+        -H "Content-Type: application/json" \
+        -d "$json_payload" \
+        -w "HTTP_CODE:%{http_code}" \
+        -s 2>&1)
+    
+    log_info "📋 Fluentd response: $response"
+    
+    if [[ "$response" == *"HTTP_CODE:200"* ]]; then
+        log_info "✅ Fluentd log sent successfully"
+    else
+        log_warn "⚠️ Fluentd response indicates potential issue: $response"
+    fi
+    
+    log_info "✅ Direct Fluentd test log sent"
+}
+
+# =====================================================
 # Main execution
 # =====================================================
 main() {
     log_section "Initializing Webhook Service"
+    
+    # Send direct Fluentd test log first thing
+    send_direct_fluentd_log
     
     # Install dependencies first
     install_dependencies

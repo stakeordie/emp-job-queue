@@ -140,7 +140,11 @@ export class LightweightAPIServer {
 
   private isValidToken(token: string): boolean {
     // Use environment variable for token validation, fallback to hardcoded for dev
-    const validToken = process.env.AUTH_TOKEN || '3u8sdj5389fj3kljsf90u';
+    // CRITICAL: AUTH_TOKEN must be explicitly set - NO FALLBACKS
+    if (!process.env.AUTH_TOKEN) {
+      throw new Error('FATAL: AUTH_TOKEN environment variable is required. No defaults allowed.');
+    }
+    const validToken = process.env.AUTH_TOKEN;
     return token === validToken;
   }
 
@@ -288,8 +292,20 @@ export class LightweightAPIServer {
         arch: process.arch,
         uptime_seconds: Math.floor(process.uptime()),
         timestamp: new Date().toISOString(),
-        environment: process.env.NODE_ENV || 'unknown',
-        build_date: process.env.BUILD_DATE || 'unknown',
+        // CRITICAL: NODE_ENV must be explicitly set - NO FALLBACKS
+        environment: (() => {
+          if (!process.env.NODE_ENV) {
+            throw new Error('FATAL: NODE_ENV environment variable is required. No defaults allowed.');
+          }
+          return process.env.NODE_ENV;
+        })(),
+        // CRITICAL: BUILD_DATE must be explicitly set - NO FALLBACKS
+        build_date: (() => {
+          if (!process.env.BUILD_DATE) {
+            throw new Error('FATAL: BUILD_DATE environment variable is required. No defaults allowed.');
+          }
+          return process.env.BUILD_DATE;
+        })(),
       };
       res.json(versionInfo);
     });

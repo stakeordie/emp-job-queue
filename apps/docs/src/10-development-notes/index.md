@@ -9,6 +9,7 @@ This section serves as a development journal and technical analysis feed, docume
 
 ## Recent Entries
 
+- **[2025-08-17 19:30] - [Unified Telemetry Client Architecture](./2025-08-17-unified-telemetry-client-architecture.md)** - Plan to consolidate scattered telemetry logic across API, webhook, machine, and worker services into a single "just works" client
 - **[2025-01-11 20:45] - [Service Mapping System Debug Debrief](./2025-01-11-service-mapping-system-debug-debrief.md)** - Complete analysis of service mapping inconsistencies that broke job processing and UI display
 - **[2025-01-09 11:45] - TODO: Job Recovery on Machine Shutdown** - When machine is shut down mid active job, the job needs to be released back to the pending jobs queue
 - **[2025-01-08 21:15] - Delegated Job Visibility Architecture Issue** - Event-driven monitor cannot see workflow jobs despite Redis state existence

@@ -584,21 +584,15 @@ export default class ComfyUIInstallerService extends BaseService {
    * Handle component-based configuration
    */
   async handleComponentConfiguration() {
-    // Check if component-based configuration is requested
-    const hasComponents = process.env.COMPONENTS || process.env.COLLECTIONS;
+    // ALWAYS run component manager to get default custom nodes from API
+    // Additional components/collections are optional on top of defaults
     
     // Debug environment variables
     this.logger.info('🔍 Environment variable debug:');
     this.logger.info(`   COMPONENTS: "${process.env.COMPONENTS}"`);
     this.logger.info(`   COLLECTIONS: "${process.env.COLLECTIONS}"`);
-    this.logger.info(`   hasComponents: ${hasComponents}`);
     
-    if (!hasComponents) {
-      this.logger.info('No component-based configuration requested');
-      return;
-    }
-    
-    this.logger.info('Component-based configuration detected, starting component manager...');
+    this.logger.info('STEP 14: ComfyUI Installer - Component Manager required for default custom nodes from API...');
     
     try {
       // Import and start component manager

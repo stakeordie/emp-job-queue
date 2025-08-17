@@ -2,6 +2,7 @@
   "workers": {
     "comfyui": {
       "services": ["comfyui"],
+      "is_gpu_bound": true,
       "job_service_required_map": [
         {
           "job_service_required": "comfyui",
@@ -12,6 +13,7 @@
 
     "comfyui-remote": {
       "services": ["comfyui-remote"],
+      "is_gpu_bound": false,
       "job_service_required_map": [
         {
           "job_service_required": "comfyui",
@@ -22,6 +24,7 @@
     
     "simulation-websocket": {
       "services": ["simulation-websocket"],
+      "is_gpu_bound": true,
       "job_service_required_map": [
         {
           "job_service_required": "simulation",
@@ -32,6 +35,7 @@
 
     "simulation-http": {
       "services": ["simulation-http"],
+      "is_gpu_bound": true,
       "job_service_required_map": [
         {
           "job_service_required": "simulation",
@@ -42,6 +46,7 @@
     
     "openai": {
       "services": ["openai-text", "openai-image", "openai-img2img"],
+      "is_gpu_bound": false,
       "required_env": ["OPENAI_API_KEY", "OPENAI_IMAGE_MODEL", "CLOUD_STORAGE_PROVIDER"],
       "job_service_required_map": [
         {
@@ -129,7 +134,7 @@
       "type": "internal",
       "installer": "ComfyUIInstallerService",
       "installer_filename": "./services/comfyui-installer.js",
-      "resource_binding": "${COMFYUI_RESOURCE_BINDING:-gpu}",
+      "is_gpu_bound": true,
       "build_stage": "comfyui",
       "service_instances_per_gpu": "${COMFYUI_INSTANCES_PER_GPU:-1}",
       "ports": ["${COMFYUI_BASE_PORT:-8188}"],
@@ -149,7 +154,7 @@
       "type": "external",
       "installer": null,
       "installer_filename": null,
-      "resource_binding": "shared",
+      "is_gpu_bound": false,
       "build_stage": "base",
       "description": "Remote ComfyUI WebSocket connector - connects to external ComfyUI instance"
     },
@@ -159,7 +164,7 @@
       "type": "internal",
       "installer": null,
       "installer_filename": null,
-      "resource_binding": "mock_gpu",
+      "is_gpu_bound": true,
       "build_stage": "simulation",
       "service_instances_per_machine": "${SIMULATION_INSTANCES_PER_MACHINE:-10}",
       "ports": ["${SIMULATION_BASE_PORT:-8299}"],
@@ -177,7 +182,7 @@
       "type": "internal",
       "installer": null,
       "installer_filename": null,
-      "resource_binding": "mock_gpu",
+      "is_gpu_bound": true,
       "build_stage": "simulation",
       "service_instances_per_machine": "${SIMULATION_WS_INSTANCES_PER_MACHINE:-10}",
       "ports": ["${SIMULATION_WS_BASE_PORT:-8399}"],
@@ -195,7 +200,7 @@
       "type": "external",
       "installer": null,
       "installer_filename": null,
-      "resource_binding": "shared",
+      "is_gpu_bound": false,
       "build_stage": "base",
       "required_env": ["OPENAI_API_KEY"],
       "description": "OpenAI text generation API connector",
@@ -212,7 +217,7 @@
       "type": "external",
       "installer": null,
       "installer_filename": null,
-      "resource_binding": "shared",
+      "is_gpu_bound": false,
       "build_stage": "base",
       "required_env": ["OPENAI_API_KEY", "OPENAI_IMAGE_MODEL", "CLOUD_STORAGE_PROVIDER"],
       "description": "OpenAI image generation API connector",
@@ -229,7 +234,7 @@
       "type": "external",
       "installer": null,
       "installer_filename": null,
-      "resource_binding": "shared", 
+      "is_gpu_bound": false, 
       "build_stage": "base",
       "required_env": ["OPENAI_API_KEY", "OPENAI_IMAGE_MODEL", "CLOUD_STORAGE_PROVIDER"],
       "description": "OpenAI image-to-image generation API connector",
@@ -239,30 +244,6 @@
         "max_retries": "${OPENAI_MAX_RETRIES:-3}",
         "image_models": "${OPENAI_IMAGE_MODELS:-dall-e-3,dall-e-2}"
       }
-    }
-  },
-  
-  "resource_bindings": {
-    "gpu": {
-      "description": "Bind to specific GPU device",
-      "scaling": "per_gpu",
-      "exclusive": true
-    },
-    "cpu": {
-      "description": "Bind to CPU cores",
-      "scaling": "per_machine", 
-      "exclusive": false
-    },
-    "shared": {
-      "description": "Shared resources for API-only services",
-      "scaling": "unlimited",
-      "exclusive": false
-    },
-    "mock_gpu": {
-      "description": "Mock GPU mode - simulates GPU scaling but uses CPU",
-      "scaling": "per_gpu",
-      "exclusive": true,
-      "force_cpu": true
     }
   },
   

@@ -18,21 +18,27 @@ export default class ComfyUIService extends BaseService {
     this.argsFile = path.join(this.workDir, `comfyui-gpu${this.gpu}.args`);
     this.logFile = path.join(this.workDir, 'logs', `output-gpu${this.gpu}.log`);
     this.testMode = process.env.TEST_MODE === 'true';
-    this.mockGpu = process.env.MOCK_GPU === '1'; // Legacy support
     
-    // Auto-detect CPU mode: check if NVIDIA GPU is available
-    this.cpuMode = process.env.COMFYUI_CPU_MODE === 'true';
-    if (!this.cpuMode) {
-      // Try to detect if GPU is available
-      try {
-        const { execaSync } = require('execa');
-        execaSync('nvidia-smi', { timeout: 1000 });
-        this.logger.info('NVIDIA GPU detected, running in GPU mode');
-      } catch (error) {
-        this.logger.info('No NVIDIA GPU detected, enabling CPU mode automatically');
-        this.cpuMode = true;
-      }
-    }
+    // GPU_MODE system: "actual" (real GPU) or "mock" (CPU mode)
+    const gpuMode = process.env.GPU_MODE || 'actual';
+    this.isGpuModeActual = gpuMode === 'actual';
+    this.isGpuModeMock = gpuMode === 'mock';
+    
+    // Legacy support for old environment variables
+    this.mockGpu = process.env.MOCK_GPU === '1'; 
+    const legacyCpuMode = process.env.COMFYUI_CPU_MODE === 'true';
+    
+    // CPU mode logic: mock GPU mode OR legacy settings OR test mode always uses CPU
+    this.cpuMode = this.isGpuModeMock || legacyCpuMode || this.testMode || this.mockGpu;
+    
+    this.logger.info(`🎮 GPU Mode Configuration:`, {
+      GPU_MODE: gpuMode,
+      isActual: this.isGpuModeActual,
+      isMock: this.isGpuModeMock,
+      cpuMode: this.cpuMode,
+      testMode: this.testMode,
+      gpu: this.gpu
+    });
     
     this.comfyArgs = process.env.COMFY_ARGS || '';
   }
@@ -182,8 +188,8 @@ export default class ComfyUIService extends BaseService {
       PYTHONUNBUFFERED: '1'
     };
 
-    // Add GPU settings if not in mock mode
-    if (!this.mockGpu) {
+    // Add GPU settings if not in CPU mode (i.e., actual GPU mode)
+    if (!this.cpuMode) {
       env.CUDA_VISIBLE_DEVICES = this.gpu.toString();
     }
 
@@ -349,7 +355,8 @@ export default class ComfyUIService extends BaseService {
   }
 
   async saveMetadataFiles() {
-    await fs.writeFile(this.mockFile, this.mockGpu ? '1' : '0');
+    // Save GPU mode metadata (consistent with new GPU_MODE system)
+    await fs.writeFile(this.mockFile, this.cpuMode ? '1' : '0');
     if (this.comfyArgs) {
       await fs.writeFile(this.argsFile, this.comfyArgs);
     }
@@ -428,6 +435,11 @@ export default class ComfyUIService extends BaseService {
       gpu: this.gpu,
       port: this.port,
       workDir: this.workDir,
+      gpuMode: process.env.GPU_MODE || 'actual',
+      cpuMode: this.cpuMode,
+      isGpuModeActual: this.isGpuModeActual,
+      isGpuModeMock: this.isGpuModeMock,
+      // Legacy fields for compatibility
       mockGpu: this.mockGpu,
       comfyArgs: this.comfyArgs,
       pid: this.process ? this.process.pid : null,

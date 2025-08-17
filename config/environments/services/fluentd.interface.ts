@@ -5,9 +5,10 @@ export const FluentdEnvInterface = {
   
   required: {
     // Web server configuration
+    "TELEMETRY_ENV":"TELEMETRY_DASH0_DATASET",
     "DASH0_DATASET": "TELEMETRY_DASH0_DATASET",
     "DASH0_API_KEY": "TELEMETRY_DASH0_API_KEY",
-    "REDIS_URL": "REDIS_URL",
+    "HUB_REDIS_URL": "REDIS_URL",
     "DASH0_LOGS_ENDPOINT": "TELEMETRY_DASH0_LOGS_ENDPOINT"
   },
   optional: {

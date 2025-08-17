@@ -54,12 +54,12 @@ FROM ubuntu:22.04
     RUN mkdir -p /webhook-server/.workspace-packages
 
     # Build args for configuration
-    ARG BUILD_TIMESTAMP
+    ARG BUILD_DATE
     ARG MACHINE_ID=webhook-local
     ARG ENV_FILE=.env.local-dev
 
     # Convert build args to environment variables
-    ENV BUILD_TIMESTAMP=${BUILD_TIMESTAMP}
+    ENV BUILD_DATE=${BUILD_DATE}
     ENV MACHINE_ID=${MACHINE_ID}
 
     # Copy Fluent Bit configuration template
@@ -86,6 +86,7 @@ FROM ubuntu:22.04
     # Set environment
     ENV NODE_ENV=production \
         LOG_LEVEL=info \
+        LOG_DIR=/webhook-server/logs \
         PATH="/webhook-server/node_modules/.bin:${PATH}"
 
     # Expose webhook service port

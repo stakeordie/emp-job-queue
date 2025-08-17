@@ -29,6 +29,10 @@ COPY calyptia-fluentd.conf.template /etc/calyptia-fluentd/calyptia-fluentd.conf.
 COPY entrypoint.sh /entrypoint.sh
 RUN chmod +x /entrypoint.sh
 
+# Build-time metadata
+ARG BUILD_DATE
+ENV BUILD_DATE=${BUILD_DATE}
+
 # Expose ports
 # 8888 - HTTP input 
 # 24220 - Monitoring

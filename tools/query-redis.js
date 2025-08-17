@@ -9,11 +9,12 @@
 import Redis from 'ioredis';
 import chalk from 'chalk';
 import dotenv from 'dotenv';
+import { getRequiredEnv } from '../packages/core/src/utils/env.js';
 
 // Load environment variables
 dotenv.config();
 
-const REDIS_URL = process.env.REDIS_URL || 'redis://localhost:6379';
+const REDIS_URL = getRequiredEnv('REDIS_URL', 'Redis connection URL for querying machine events');
 
 console.log(chalk.blue.bold('🔍 REDIS QUERY - Machine Startup Events'));
 console.log(chalk.blue('═'.repeat(50)));

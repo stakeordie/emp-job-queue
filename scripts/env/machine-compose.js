@@ -204,6 +204,31 @@ class MachineCompose {
   }
 
   /**
+   * Parse EXPOSED_PORTS from environment and add to port mappings
+   */
+  parseExposedPorts(envName) {
+    if (!envName) return [];
+    
+    const allEnvVars = this.loadAllEnvVars(envName);
+    const exposedPorts = allEnvVars.EXPOSED_PORTS;
+    
+    if (!exposedPorts || exposedPorts.trim() === '') {
+      return []; // No EXPOSED_PORTS - ignore completely
+    }
+    
+    const portMappings = exposedPorts
+      .split(',')
+      .map(p => p.trim())
+      .filter(p => p && /^\d+:\d+$/.test(p));
+    
+    if (portMappings.length > 0) {
+      console.log(chalk.blue(`🔌 Found EXPOSED_PORTS in environment: ${portMappings.join(', ')}`));
+    }
+    
+    return portMappings;
+  }
+
+  /**
    * Show help information
    */
   showHelp() {
@@ -365,9 +390,8 @@ class MachineCompose {
       env = { ...env, RUNTIME_PORTS: portMappings.join(',') };
       console.log(chalk.dim(`  Set runtime port mappings: ${portMappings.join(', ')}`));
     } else {
-      // Disable all ports by default in local profile
-      env = { ...env, DISABLE_PORTS: 'true' };
-      console.log(chalk.dim(`  Disabled all port exposures (use --open to enable specific ports)`));
+      // No ports by default
+      console.log(chalk.dim(`  No ports exposed (use --open to enable specific ports)`));
     }
 
     // PRODUCTION-STYLE: Inject environment variables into process environment (for 'up' commands)
@@ -482,7 +506,7 @@ class MachineCompose {
     
     try {
       await new Promise((resolve, reject) => {
-        const process = spawn('node', ['scripts/generate-docker-compose-ports.js'], {
+        const process = spawn('node', ['scripts/port-manager.js', 'generate'], {
           stdio: 'inherit',
           cwd: MACHINE_DIR,
           env: env
@@ -651,13 +675,21 @@ class MachineCompose {
    */
   async run() {
     try {
-      const { command, profile, portMappings, flags } = this.parseArgs();
+      const { command, profile, portMappings: cmdLinePortMappings, flags } = this.parseArgs();
       
       // Get environment from profile configuration
       let envName = null;
       if (profile) {
         envName = this.getEnvironmentFromProfile(profile);
         console.log(chalk.dim(`📋 Profile '${profile}' → Environment '${envName}'`));
+      }
+      
+      // Combine command line --open flags with EXPOSED_PORTS from environment
+      const exposedPortMappings = this.parseExposedPorts(envName);
+      const portMappings = [...cmdLinePortMappings, ...exposedPortMappings];
+      
+      if (exposedPortMappings.length > 0) {
+        console.log(chalk.dim(`🔌 Combined ports: ${cmdLinePortMappings.length} from --open + ${exposedPortMappings.length} from EXPOSED_PORTS`));
       }
       
       // Always bundle worker first for build command

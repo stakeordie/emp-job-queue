@@ -312,6 +312,36 @@ export class EMPApiClient {
   }
 
   /**
+   * Get default custom nodes
+   * Returns all custom nodes marked as is_default: true
+   */
+  async getDefaultCustomNodes() {
+    this.logger.info('STEP 16: API Call - Fetching default custom nodes from /custom-nodes/defaults');
+    
+    try {
+      const result = await this.makeRequest('/custom-nodes/defaults');
+      
+      if (result.error) {
+        throw new Error(result.error);
+      }
+      
+      if (!result.data) {
+        throw new Error('No default custom nodes data returned from API');
+      }
+      
+      const defaultNodes = result.data;
+      this.logger.info(`STEP 16: API Response - Successfully fetched ${defaultNodes.length} default custom nodes`, {
+        nodeNames: defaultNodes.map(n => n.name).join(', ')
+      });
+      
+      return defaultNodes;
+    } catch (error) {
+      this.logger.error('STEP 16: API Call - FAILED to fetch default custom nodes:', error.message);
+      throw error;
+    }
+  }
+
+  /**
    * Health check - verify API connectivity
    */
   async healthCheck() {

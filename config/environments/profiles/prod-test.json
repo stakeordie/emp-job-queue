@@ -15,7 +15,8 @@
       "production"
     ],
     "machine": [
-      "default"
+      "default",
+      "production"
     ],
     "worker": [
       "default",

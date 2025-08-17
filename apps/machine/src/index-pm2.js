@@ -94,7 +94,7 @@ function analyzeServiceRequirements(workerConnectors) {
  * Main application entry point - PM2 mode
  */
 async function main() {
-  logger.info('Starting Basic Machine in PM2 mode...', {
+  logger.info('STEP 1-5: Container & Environment - Starting Basic Machine in PM2 mode...', {
     version: '0.1.0',
     nodeVersion: process.version,
     gpuCount: config.machine.gpu.count,
@@ -107,7 +107,8 @@ async function main() {
   // Clean up any existing PM2 processes before starting
   await cleanupExistingPM2Processes();
 
-  // Generate PM2 ecosystem config based on current configuration
+  // Step 6-10: PM2 Ecosystem Generation
+  logger.info('STEP 6-10: PM2 Ecosystem Generation - Starting...');
   await generatePM2EcosystemConfig();
 
   startTime = Date.now();
@@ -122,25 +123,26 @@ async function main() {
       logger.warn('Not running under PM2, but PM2 mode is enabled');
     }
 
-    // Start PM2 services from ecosystem config
-    logger.info('Starting PM2 services from ecosystem config...');
+    // Step 11-13: Service Startup
+    logger.info('STEP 11-13: Service Startup - Starting PM2 services from ecosystem config...');
     await startPM2Services();
     
     // Verify services are running and healthy  
     await verifyPM2Services();
 
-    // Start health check server
+    // Step 12: Health Server Start
+    logger.info('STEP 12: Health Server - Starting health check server...');
     await startHealthServer();
     
     // Signal to status aggregator that machine is fully ready
     await statusAggregator.machineReady();
     
-    // Machine is now ready - status aggregator will handle all reporting
+    // Step 21: Machine Ready
     const startupTime = Date.now() - startTime;
-    logger.info(`Basic Machine ready in PM2 mode (${startupTime}ms)`);
+    logger.info(`STEP 21: Machine Ready - Basic Machine ready in PM2 mode (${startupTime}ms)`);
 
   } catch (error) {
-    logger.error('Failed to start Basic Machine:', error);
+    logger.error('STEP 1-21: Startup FAILED - Basic Machine startup error:', error);
     // Status aggregator will automatically report machine error state
     process.exit(1);
   }
@@ -272,9 +274,9 @@ async function startPM2Services() {
       
       // Start the service instances
       if (serviceInstances.length > 0) {
-        logger.info(`🚀 Starting service instances: ${serviceInstances.join(', ')}`);
+        logger.info(`STEP 19: ComfyUI Server - Starting ${serviceName} service instances: ${serviceInstances.join(', ')}`);
         await pm2Manager.pm2Exec(`start /workspace/pm2-ecosystem.config.cjs --only ${serviceInstances.join(',')}`);
-        logger.info(`✅ ${serviceName} service instances started successfully`);
+        logger.info(`STEP 19: ComfyUI Server - ${serviceName} service instances started successfully`);
         
         // Wait for services to initialize (ComfyUI needs more time)
         const waitTime = serviceName.includes('comfyui') ? 5000 : 3000;
@@ -288,7 +290,7 @@ async function startPM2Services() {
     }
     
     // Worker-driven mode: Start all worker processes from the ecosystem config
-    logger.info('Starting worker processes from ecosystem config...');
+    logger.info('STEP 20: Worker Connection - Starting worker processes from ecosystem config...');
     try {
       // Parse ecosystem config to find worker processes
       if (fs.existsSync(configPath)) {
@@ -304,11 +306,11 @@ async function startPM2Services() {
             .map(app => app.name);
           
           if (workerProcesses.length > 0) {
-            logger.info(`Found ${workerProcesses.length} worker processes: ${workerProcesses.join(', ')}`);
+            logger.info(`STEP 20: Worker Connection - Found ${workerProcesses.length} worker processes: ${workerProcesses.join(', ')}`);
             
             // Start all worker processes
             await pm2Manager.pm2Exec(`start ${configPath} --only ${workerProcesses.join(',')}`);
-            logger.info(`✅ Started ${workerProcesses.length} worker processes`);
+            logger.info(`STEP 20: Worker Connection - Started ${workerProcesses.length} worker processes successfully`);
           } else {
             logger.warn('No worker processes found in ecosystem config');
           }

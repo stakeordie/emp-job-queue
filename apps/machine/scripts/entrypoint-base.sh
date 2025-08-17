@@ -395,12 +395,58 @@ trap 'handle_sigint' SIGINT
 trap 'handle_error ${LINENO}' ERR
 
 # =====================================================
+# Send Direct Fluentd Test Log
+# =====================================================
+send_direct_fluentd_log() {
+    log_section "Sending Direct Fluentd Test Log"
+    
+    local FLUENTD_HOST=${FLUENTD_HOST:-host.docker.internal}
+    local FLUENTD_PORT=${FLUENTD_PORT:-8888}
+    
+    log_info "Sending test log directly to Fluentd at ${FLUENTD_HOST}:${FLUENTD_PORT}"
+    
+    # Create the JSON payload
+    local json_payload="{
+        \"service\": \"machine\",
+        \"message\": \"direct log from machine\",
+        \"timestamp\": \"$(date -u +%Y-%m-%dT%H:%M:%SZ)\",
+        \"machine_id\": \"${MACHINE_ID:-machine-server}\",
+        \"service_name\": \"${SERVICE_NAME:-emp-machine}\",
+        \"environment\": \"${NODE_ENV:-production}\",
+        \"event_type\": \"container_startup_test\"
+    }"
+    
+    log_info "📋 Fluentd payload: $json_payload"
+    log_info "📋 Fluentd URL: http://${FLUENTD_HOST}:${FLUENTD_PORT}/test"
+    
+    # Send a direct log message to Fluentd via HTTP
+    local response=$(curl -X POST "http://${FLUENTD_HOST}:${FLUENTD_PORT}/test" \
+        -H "Content-Type: application/json" \
+        -d "$json_payload" \
+        -w "HTTP_CODE:%{http_code}" \
+        -s 2>&1)
+    
+    log_info "📋 Fluentd response: $response"
+    
+    if [[ "$response" == *"HTTP_CODE:200"* ]]; then
+        log_info "✅ Fluentd log sent successfully"
+    else
+        log_warn "⚠️ Fluentd response indicates potential issue: $response"
+    fi
+    
+    log_info "✅ Direct Fluentd test log sent"
+}
+
+# =====================================================
 # Main Execution
 # =====================================================
 main() {
     log_section "EMP Machine Starting - Base Profile"
     log_info "Entrypoint script version: 2.0.0-base"
     log_info "Date: $(date '+%Y-%m-%d %H:%M:%S')"
+    
+    # Send direct Fluentd test log first thing
+    send_direct_fluentd_log
     
     # Execute setup steps (minimal for base profile)
     setup_environment || exit 1

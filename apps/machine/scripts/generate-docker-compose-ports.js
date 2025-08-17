@@ -92,12 +92,6 @@ class DockerComposePortGenerator {
   generatePortMappings(workerConfig) {
     const portMappings = [];
     
-    // Check if ports are disabled
-    if (process.env.DISABLE_PORTS === 'true') {
-      this.logger.log('All ports disabled by DISABLE_PORTS flag - NO PORTS will be exposed');
-      // Return empty array - no ports at all, not even health port
-      return portMappings;
-    }
     
     // Legacy behavior - calculate health port based on machine instance
     const machineInstance = parseInt(process.env.MACHINE_INSTANCE || '0');

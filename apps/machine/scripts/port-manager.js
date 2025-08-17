@@ -8,7 +8,6 @@
  * 
  * Environment Variables:
  * - RUNTIME_PORTS: Comma-separated list of port mappings (e.g. "3000:3000,8080:8080")
- * - DISABLE_PORTS: Set to 'true' to disable all port mappings
  * - DEBUG_MODE: Set to 'true' to automatically expose debug port 9229
  * - DOCKER_COMPOSE_PROFILES: Target profile for port generation
  */
@@ -42,12 +41,6 @@ class PortManager {
       .filter(p => p.includes(':'));
   }
 
-  /**
-   * Determine if ports should be disabled
-   */
-  shouldDisablePorts() {
-    return process.env.DISABLE_PORTS === 'true';
-  }
 
   /**
    * Check if debug mode is enabled
@@ -77,13 +70,11 @@ class PortManager {
    */
   generateOverride() {
     const profile = process.env.DOCKER_COMPOSE_PROFILES;
-    const disablePorts = this.shouldDisablePorts();
     const isDebug = this.isDebugMode();
 
     console.log(`⚙️  Port Manager Configuration:`);
     console.log(`   Profile: ${profile || 'default'}`);
     console.log(`   Debug Mode: ${isDebug}`);
-    console.log(`   Disable Ports: ${disablePorts}`);
     console.log(`   Runtime Ports: ${process.env.RUNTIME_PORTS || 'none'}`);
 
     const override = {
@@ -92,7 +83,7 @@ class PortManager {
     };
 
     // Generate port mappings based on profile
-    if (profile && !disablePorts) {
+    if (profile) {
       const serviceName = profile; // Profile name matches service name
       const portMappings = this.generatePortMappings(serviceName, { debug: isDebug });
 

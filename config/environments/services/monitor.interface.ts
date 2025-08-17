@@ -11,7 +11,7 @@ export const MonitorEnvInterface = {
     // Web server configuration
     "PORT": "MONITOR_PORT",
     "HOST": "MONITOR_HOST",
-    
+    "TELEMETRY_ENV":"TELEMETRY_DASH0_DATASET",
     // Connection presets for UI (JSON string)
     "NEXT_PUBLIC_CONNECTIONS": "MONITOR_CONNECTION",
     "WEBHOOK_SERVICE_URL": "WEBHOOK_SERVICE_URL",

@@ -6,19 +6,13 @@ export interface ConnectorConfig {
   type: 'internal' | 'external';
   service: string | null;
   installer: string | null;
-  resource_binding: 'gpu' | 'cpu' | 'shared';
+  is_gpu_bound: boolean;
   service_instances_per_gpu?: number;
   service_instances_per_machine?: number;
   ports?: number[];
   port_increment?: number;
   required_env?: string[];
   description: string;
-}
-
-export interface ResourceBinding {
-  description: string;
-  scaling: 'per_gpu' | 'per_machine' | 'unlimited';
-  exclusive: boolean;
 }
 
 export interface ServiceType {
@@ -30,7 +24,6 @@ export interface ServiceType {
 
 export interface ServiceMappingConfig {
   connectors: Record<string, ConnectorConfig>;
-  resource_bindings: Record<string, ResourceBinding>;
   service_types: Record<string, ServiceType>;
 }
 
@@ -172,12 +165,6 @@ export class ServiceMappingHelper {
     return connectorName in this.config.connectors;
   }
   
-  /**
-   * Get resource binding configuration
-   */
-  getResourceBinding(bindingType: 'gpu' | 'cpu' | 'shared'): ResourceBinding | null {
-    return this.config.resource_bindings[bindingType] || null;
-  }
   
   /**
    * Get service type configuration

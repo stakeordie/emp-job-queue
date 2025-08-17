@@ -10,6 +10,7 @@ import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import { HardwareDetector } from './hardware-detector.js';
+// import { getRequiredEnvInt } from '@emp/core/utils';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -132,31 +133,48 @@ export class EnhancedPM2EcosystemGenerator {
         continue;
       }
       
-      // Handle 'auto' count for automatic hardware detection
+      // Handle 'auto' count with GPU_MODE logic
       let count;
       if (countStr && countStr.toLowerCase() === 'auto') {
         const workerConfig = this.serviceMapping.workers[type];
-        const resourceBinding = workerConfig.resource_binding;
+        const isGpuBound = workerConfig.is_gpu_bound;
+        const gpuMode = process.env.GPU_MODE || 'actual';
         
-        if (resourceBinding === 'gpu') {
-          // For GPU workers, use detected GPU count
-          count = this.hardwareResources?.gpuCount || parseInt(process.env.MACHINE_NUM_GPUS || '1');
-          this.logger.log(`🔍 Auto-resolved ${type} GPU workers to ${count} (detected GPUs)`);
-        } else if (resourceBinding === 'mock_gpu') {
-          // For mock GPU, use a sensible default since there's no hardware constraint
-          count = parseInt(process.env.MOCK_GPU_NUM || '2');
-          this.logger.log(`🔍 Auto-resolved ${type} mock GPU workers to ${count} (from MOCK_GPU_NUM or default)`);
-        } else if (resourceBinding === 'cpu') {
-          // For CPU workers, use CPU core count
-          count = this.hardwareResources?.cpuCount || parseInt(process.env.MACHINE_NUM_CPUS || '4');
-          this.logger.log(`🔍 Auto-resolved ${type} CPU workers to ${count} (detected CPUs)`);
+        if (isGpuBound) {
+          if (gpuMode === 'mock') {
+            // GPU-bound workers in mock mode: auto = 1
+            count = 1;
+            this.logger.log(`🔍 Auto-resolved ${type} GPU workers to ${count} (GPU_MODE=mock: auto=1)`);
+          } else {
+            // GPU-bound workers in actual mode: auto = detected GPU count
+            count = this.hardwareResources.gpuCount;
+            this.logger.log(`🔍 Auto-resolved ${type} GPU workers to ${count} (GPU_MODE=actual: auto=detected GPUs)`);
+          }
         } else {
-          // Default for other resource bindings
+          // Non-GPU-bound workers: auto = 1
           count = 1;
-          this.logger.log(`🔍 Auto-resolved ${type} workers to ${count} (default for ${resourceBinding} binding)`);
+          this.logger.log(`🔍 Auto-resolved ${type} workers to ${count} (non-GPU-bound: auto=1)`);
         }
       } else {
-        count = parseInt(countStr) || 1;
+        // For specific numbers, apply GPU_MODE constraints
+        const requestedCount = parseInt(countStr) || 1;
+        const workerConfig = this.serviceMapping.workers[type];
+        const isGpuBound = workerConfig.is_gpu_bound;
+        const gpuMode = process.env.GPU_MODE || 'actual';
+        
+        if (isGpuBound && gpuMode === 'actual') {
+          // GPU-bound workers in actual mode: limit to detected GPU count
+          count = Math.min(requestedCount, this.hardwareResources.gpuCount);
+          if (count < requestedCount) {
+            this.logger.log(`🔍 Limited ${type} workers from ${requestedCount} to ${count} (GPU_MODE=actual: limited by available GPUs)`);
+          } else {
+            this.logger.log(`🔍 Using ${type} workers: ${count} (GPU_MODE=actual: within available GPUs)`);
+          }
+        } else {
+          // GPU-bound workers in mock mode OR non-GPU-bound workers: use requested count
+          count = requestedCount;
+          this.logger.log(`🔍 Using ${type} workers: ${count} (GPU_MODE=mock or non-GPU-bound: use requested count)`);
+        }
       }
       
       workerSpecs.push({ type, count });
@@ -220,37 +238,25 @@ export class EnhancedPM2EcosystemGenerator {
   }
 
   /**
-   * Calculate actual instance count based on resource binding and hardware
+   * Calculate actual instance count based on GPU binding and hardware
    */
   calculateInstanceCount(workerConfig, requestedCount) {
-    const resourceBinding = workerConfig.resource_binding || 'shared';
-    const binding = this.serviceMapping.resource_bindings[resourceBinding];
+    const isGpuBound = workerConfig.is_gpu_bound;
     
-    if (!binding) {
-      this.logger.warn(`Unknown resource binding: ${resourceBinding}, using requested count`);
+    if (!isGpuBound) {
+      // Non-GPU-bound workers: use requested count
       return requestedCount;
     }
     
-    switch (binding.scaling) {
-      case 'per_gpu':
-        // For mock_gpu binding, use worker config count; otherwise use actual GPU count
-        let gpuCount;
-        if (resourceBinding === 'mock_gpu') {
-          // Count workers from machine config instead of env var
-          gpuCount = requestedCount; // Use the actual worker count from config
-        } else {
-          gpuCount = this.hardwareResources?.gpuCount || parseInt(process.env.MACHINE_NUM_GPUS || '1');
-        }
-        return Math.min(requestedCount, gpuCount);
-        
-      case 'per_machine':
-        return 1; // One instance per machine regardless of request
-        
-      case 'unlimited':
-        return requestedCount; // Use requested count for API services
-        
-      default:
-        return requestedCount;
+    // GPU-bound workers: apply GPU_MODE logic
+    const gpuMode = process.env.GPU_MODE || 'actual';
+    
+    if (gpuMode === 'mock') {
+      // Mock mode: use requested count (no hardware limits)
+      return requestedCount;
+    } else {
+      // Actual mode: limit to detected GPU count (hardware detector handles detection)
+      return Math.min(requestedCount, this.hardwareResources.gpuCount);
     }
   }
 
@@ -329,8 +335,7 @@ export class EnhancedPM2EcosystemGenerator {
     this.logger.log(`🔴 [PM2-GENERATOR-DEBUG] - index: ${index}`);
     this.logger.log(`🔴 [PM2-GENERATOR-DEBUG] - MACHINE_ID env: "${process.env.MACHINE_ID}"`);
     
-    const resourceBinding = workerConfig.resource_binding || 'shared';
-    const isGpuBound = resourceBinding === 'gpu' || resourceBinding === 'mock_gpu';
+    const isGpuBound = workerConfig.is_gpu_bound;
     
     const generatedWorkerId = `${process.env.MACHINE_ID || 'unknown-machine'}-worker-${workerType}-${index}`;
     this.logger.log(`🔴 [PM2-GENERATOR-DEBUG] Generated WORKER_ID: "${generatedWorkerId}"`);
@@ -452,11 +457,10 @@ This container will now exit. Please fix the deployment configuration and restar
         apps.push(this.createComfyUIApp(serviceName, i));
       }
     } else if (connectorType === 'simulationhttp' || connectorType === 'simulation') {
-      // Check if we're in mock_gpu mode to decide instance count
-      const resourceBinding = serviceConfig.resource_binding || 'shared';
-      const isMockGpu = resourceBinding === 'mock_gpu';
+      // Check if service is GPU-bound to decide instance count
+      const isGpuBound = serviceConfig.is_gpu_bound;
       
-      if (isMockGpu) {
+      if (isGpuBound) {
         // Create per-GPU simulation instances (like ComfyUI)
         for (let i = 0; i < instanceCount; i++) {
           apps.push(this.createSimulationApp(serviceName, i));
@@ -467,10 +471,9 @@ This container will now exit. Please fix the deployment configuration and restar
       }
     } else if (connectorType === 'simulationwebsocket') {
       // WebSocket simulation service
-      const resourceBinding = serviceConfig.resource_binding || 'shared';
-      const isMockGpu = resourceBinding === 'mock_gpu';
+      const isGpuBound = serviceConfig.is_gpu_bound;
       
-      if (isMockGpu) {
+      if (isGpuBound) {
         // Create per-GPU WebSocket simulation instances (like ComfyUI)
         for (let i = 0; i < instanceCount; i++) {
           apps.push(this.createSimulationWebSocketApp(serviceName, i));
