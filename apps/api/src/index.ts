@@ -1,5 +1,56 @@
 // API Server Entry Point
 import { config } from 'dotenv';
+
+// Initialize unified telemetry client
+import { createTelemetryClient } from '@emp/telemetry';
+
+async function initializeTelemetry() {
+  try {
+    // Generate API server IDs using API_BASE_ID + TELEMETRY_ENV pattern
+    if (!process.env.MACHINE_ID) {
+      const apiBaseId = process.env.API_BASE_ID;
+      const telemetryEnv = process.env.TELEMETRY_ENV;
+      
+      if (!apiBaseId) {
+        throw new Error('FATAL: API_BASE_ID environment variable is required for API server identification.');
+      }
+      if (!telemetryEnv) {
+        throw new Error('FATAL: TELEMETRY_ENV environment variable is required for API server identification.');
+      }
+      
+      process.env.MACHINE_ID = `${apiBaseId}-${telemetryEnv}`;
+    }
+    
+    if (!process.env.WORKER_ID) {
+      // API doesn't have separate workers, use same as MACHINE_ID
+      process.env.WORKER_ID = process.env.MACHINE_ID;
+    }
+
+    // Create and initialize telemetry client
+    const telemetryClient = createTelemetryClient('api');
+    
+    // Initialize with full pipeline testing
+    const pipelineHealth = await telemetryClient.startup({
+      testConnections: true,
+      logConfiguration: true,
+      sendStartupPing: true,
+    });
+    
+    if (pipelineHealth?.overall === 'failed') {
+      console.warn('⚠️ Telemetry pipeline has failures but continuing API startup...');
+    }
+    
+    return telemetryClient;
+  } catch (error) {
+    console.error('❌ Telemetry initialization failed:', error.message);
+    console.warn('⚠️ Continuing API startup without telemetry...');
+    return null;
+  }
+}
+
+// Store telemetry client globally for use in main()
+let telemetryClient: any = null;
+
 import { LightweightAPIServer } from './lightweight-api-server.js';
 import { logger } from '@emp/core';
 
@@ -14,8 +65,16 @@ export * from './hybrid-client.js';
 
 // Main execution when run directly
 async function main() {
+  // Initialize telemetry first
+  telemetryClient = await initializeTelemetry();
+  
+  // CRITICAL: API_PORT must be explicitly set - NO FALLBACKS
+  if (!process.env.API_PORT) {
+    throw new Error('FATAL: API_PORT environment variable is required. No defaults allowed.');
+  }
+
   const config = {
-    port: parseInt(process.env.API_PORT || '3331'),
+    port: parseInt(process.env.API_PORT),
     redisUrl: (() => {
       const redisUrl = process.env.REDIS_URL;
       if (!redisUrl) {

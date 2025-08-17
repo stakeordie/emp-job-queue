@@ -267,6 +267,8 @@ const config = defineConfig({
           text: '10. Development Notes',
           items: [
             { text: 'Overview', link: '/10-development-notes/' },
+            { text: 'ComfyUI Startup Flow ✨', link: '/10-development-notes/comfyui-startup-flow' },
+            { text: '[2025-08-17] Unified Telemetry Client Architecture', link: '/10-development-notes/2025-08-17-unified-telemetry-client-architecture' },
             { text: '[2025-01-08] Architecture Audit & Refactoring Plan', link: '/10-development-notes/2025-01-08-architecture-audit' },
             { text: '[2025-01-08] Error Handling Architecture Analysis', link: '/10-development-notes/2025-01-08-error-handling-architecture-analysis' },
             { text: '[2025-01-08] Active Jobs Display Bug Fix', link: '/10-development-notes/2025-01-08-active-jobs-display-bug-fix' }
