@@ -2,8 +2,10 @@
  * Telemetry Configuration Manager
  * 
  * Validates environment variables and provides service-specific defaults
- * NO FALLBACKS - fails fast with descriptive errors
+ * NO FALLBACKS - fails fast with descriptive errors using @emp/core getRequiredEnv
  */
+
+import { getRequiredEnv, getRequiredEnvInt, getRequiredEnvBool } from '@emp/core';
 
 export interface TelemetryConfig {
   // Service Identity
@@ -66,65 +68,42 @@ export class TelemetryConfigManager {
   private buildConfig(options: ConfigOptions): TelemetryConfig {
     console.log(`🔍 TelemetryConfigManager: Building configuration for ${options.serviceType}`);
     
-    // Required environment variables (NO FALLBACKS)
-    const requiredVars = [
-      'MACHINE_ID',
-      'SERVICE_NAME',
-      'SERVICE_VERSION', 
-      'TELEMETRY_ENV',
-      'DASH0_API_KEY',
-      ...(options.required || [])
-    ];
-
-    console.log(`🔍 TelemetryConfigManager: Checking required vars: ${requiredVars.join(', ')}`);
-
-    // Validate required variables exist
-    const missing = requiredVars.filter(varName => !process.env[varName]);
-    if (missing.length > 0) {
-      console.error(`❌ TelemetryConfigManager: Missing environment variables: ${missing.join(', ')}`);
-      console.error(`🔍 TelemetryConfigManager: Available env vars: ${Object.keys(process.env).filter(k => k.includes('TELEMETRY') || k.includes('DASH0') || k.includes('SERVICE') || k.includes('MACHINE')).join(', ')}`);
-      throw new Error(
-        `FATAL: Missing required telemetry environment variables: ${missing.join(', ')}. ` +
-        `These must be set by deployment configuration.`
-      );
-    }
-
-    console.log(`✅ TelemetryConfigManager: All required variables present`);
+    // Use @emp/core getRequiredEnv for validation (NO FALLBACKS)
 
     // Build configuration with service-specific defaults
     const serviceDefaults = this.getServiceDefaults(options.serviceType);
     console.log(`🔍 TelemetryConfigManager: Using service defaults: ${JSON.stringify(serviceDefaults)}`);
     
     const config = {
-      // Service Identity
-      serviceName: process.env.SERVICE_NAME!,
+      // Service Identity (using getRequiredEnv)
+      serviceName: getRequiredEnv('SERVICE_NAME', 'Service name for telemetry identification'),
       serviceType: options.serviceType,
-      machineId: process.env.MACHINE_ID!,
-      workerId: process.env.WORKER_ID,
-      environment: process.env.TELEMETRY_ENV!,
-      buildDate: process.env.BUILD_DATE,
+      machineId: getRequiredEnv('MACHINE_ID', 'Machine/container identifier for telemetry'),
+      workerId: process.env.WORKER_ID, // Optional
+      environment: getRequiredEnv('TELEMETRY_ENV', 'Deployment environment (development/staging/production)'),
+      buildDate: process.env.BUILD_DATE, // Optional
 
-      // OTEL Configuration
+      // OTEL Configuration (using getRequiredEnv where needed)
       otel: {
         enabled: process.env.OTEL_ENABLED !== 'false',
         collectorEndpoint: process.env.OTEL_COLLECTOR_TRACES_ENDPOINT || serviceDefaults.otelEndpoint,
-        serviceName: process.env.SERVICE_NAME!,
-        serviceVersion: process.env.SERVICE_VERSION!,
+        serviceName: getRequiredEnv('SERVICE_NAME', 'Service name for OTEL traces'),
+        serviceVersion: getRequiredEnv('SERVICE_VERSION', 'Service version for OTEL traces'),
       },
 
-      // Logging Configuration
+      // Logging Configuration (using getRequiredEnv)
       logging: {
         enabled: process.env.FLUENT_BIT_ENABLED !== 'false',
-        fluentdHost: process.env.FLUENTD_HOST || serviceDefaults.fluentdHost,
-        fluentdPort: parseInt(process.env.FLUENTD_PORT || serviceDefaults.fluentdPort.toString()),
+        fluentdHost: getRequiredEnv('FLUENTD_HOST', 'Fluentd server hostname for log forwarding'),
+        fluentdPort: getRequiredEnvInt('FLUENTD_PORT', 'Fluentd server port for log forwarding'),
         fluentdSecure: process.env.FLUENTD_SECURE === 'true',
-        logDir: process.env.LOG_DIR,
+        logDir: process.env.LOG_DIR, // Optional
       },
 
-      // Dash0 Configuration
+      // Dash0 Configuration (using getRequiredEnv)
       dash0: {
-        apiKey: process.env.DASH0_API_KEY!,
-        dataset: process.env.TELEMETRY_ENV!,
+        apiKey: getRequiredEnv('DASH0_API_KEY', 'Dash0 API key for telemetry ingestion'),
+        dataset: getRequiredEnv('TELEMETRY_ENV', 'Dash0 dataset name (matches environment)'),
         tracesEndpoint: process.env.DASH0_TRACES_ENDPOINT || 'https://ingress.us-west-2.aws.dash0.com:4317',
         metricsEndpoint: process.env.DASH0_METRICS_ENDPOINT || 'https://ingress.us-west-2.aws.dash0.com:4317',
         logsEndpoint: process.env.DASH0_LOGS_ENDPOINT || 'https://ingress.us-west-2.aws.dash0.com/logs/json',
