@@ -222,8 +222,8 @@ send_direct_fluentd_log() {
 main() {
     log_section "EMP API Server - Starting Up"
     
-    # Send direct Fluentd test log first thing
-    send_direct_fluentd_log
+    # Skip direct Fluentd test - let Node.js telemetry client handle all telemetry
+    # send_direct_fluentd_log
     
     # Install dependencies
     install_dependencies || exit 1
