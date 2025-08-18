@@ -58,10 +58,10 @@ install_system_deps() {
 install_nginx() {
     log_section "Installing nginx with Stream Module"
     
-    log_info "Installing nginx-full (includes stream module for Forward protocol proxy)..."
-    DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends nginx-full
+    log_info "Installing nginx-extras (includes stream module for Forward protocol proxy)..."
+    DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends nginx-extras
     
-    log_info "✅ nginx-full installed with stream module support"
+    log_info "✅ nginx-extras installed with stream module support"
     log_info "📋 nginx can now proxy Forward protocol: localhost:24224 → production Fluentd"
 }
 
