@@ -56,10 +56,11 @@ FROM ubuntu:22.04
     COPY dist/ /webhook-server/dist/
     COPY src/ /webhook-server/src/
 
-    # Copy entrypoint script and telemetry functions
-    COPY telemetry-entrypoint-functions.sh ./scripts/telemetry-entrypoint-functions.sh
-    COPY entrypoint-webhook.sh ./entrypoint-webhook.sh
-    RUN chmod +x ./scripts/telemetry-entrypoint-functions.sh ./entrypoint-webhook.sh
+    # Copy inheritance-based entrypoint system
+    COPY scripts/entrypoint-base-common.sh /scripts/entrypoint-base-common.sh
+    COPY scripts/entrypoint-apiwebhook-base.sh /scripts/entrypoint-apiwebhook-base.sh
+    COPY entrypoint-webhook-final.sh /scripts/entrypoint-webhook-final.sh
+    RUN chmod +x /scripts/*.sh
 
     # Set environment
     ENV NODE_ENV=production \
@@ -74,5 +75,5 @@ FROM ubuntu:22.04
     HEALTHCHECK --interval=30s --timeout=5s --start-period=5s --retries=3 \
       CMD curl -f http://localhost:3332/health || exit 1
 
-    # Use entrypoint script
-    ENTRYPOINT ["./entrypoint-webhook.sh"]
+    # Use inheritance-based entrypoint script
+    ENTRYPOINT ["/scripts/entrypoint-webhook-final.sh"]

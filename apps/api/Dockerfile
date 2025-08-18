@@ -42,10 +42,11 @@ FROM ubuntu:22.04
     COPY fluent-bit-api.conf.template ./fluent-bit/fluent-bit-api.conf.template
     COPY fluent-bit-api-forward.conf.template ./fluent-bit-api-forward.conf.template
 
-    # Copy unified entrypoint and service hooks
-    COPY ../scripts/unified-entrypoint-base.sh /scripts/unified-entrypoint-base.sh
-    COPY hooks/ ./hooks/
-    RUN chmod +x /scripts/unified-entrypoint-base.sh ./hooks/*.sh
+    # Copy inheritance-based entrypoint system
+    COPY scripts/entrypoint-base-common.sh /scripts/entrypoint-base-common.sh
+    COPY scripts/entrypoint-apiwebhook-base.sh /scripts/entrypoint-apiwebhook-base.sh
+    COPY entrypoint-api-final.sh /scripts/entrypoint-api-final.sh
+    RUN chmod +x /scripts/*.sh
 
     # Build-time metadata
     ARG BUILD_DATE
@@ -65,6 +66,6 @@ FROM ubuntu:22.04
     HEALTHCHECK --interval=30s --timeout=5s --start-period=5s --retries=3 \
       CMD curl -f http://localhost:3001/health || exit 1
 
-    # Use unified entrypoint script
+    # Use inheritance-based entrypoint script
     ENV SERVICE_TYPE=api
-    ENTRYPOINT ["/scripts/unified-entrypoint-base.sh"]
+    ENTRYPOINT ["/scripts/entrypoint-api-final.sh"]

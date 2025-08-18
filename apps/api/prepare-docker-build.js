@@ -113,9 +113,37 @@ if (fs.existsSync(lockfileSrc)) {
   console.log('⚠️ pnpm-lock.yaml not found in monorepo root');
 }
 
+// Step 4: Copy inheritance-based entrypoint scripts
+console.log('📋 Copying entrypoint scripts...');
+const scriptsDir = path.join(APP_ROOT, 'scripts');
+
+if (fs.existsSync(scriptsDir)) {
+  fs.rmSync(scriptsDir, { recursive: true, force: true });
+}
+fs.mkdirSync(scriptsDir, { recursive: true });
+
+// Copy entrypoint scripts from project root
+const entrypointScripts = [
+  'entrypoint-base-common.sh',
+  'entrypoint-apiwebhook-base.sh'
+];
+
+for (const script of entrypointScripts) {
+  const srcPath = path.join(MONOREPO_ROOT, 'scripts', script);
+  const destPath = path.join(scriptsDir, script);
+  
+  if (fs.existsSync(srcPath)) {
+    fs.copyFileSync(srcPath, destPath);
+    console.log(`  Copied ${script}`);
+  } else {
+    console.log(`  ⚠️ ${script} not found at ${srcPath}`);
+  }
+}
+
 console.log('\n🎉 API Docker build preparation complete!');
 console.log('  Files created:');
 console.log('    - .workspace-packages/core/');
 console.log('    - .workspace-packages/telemetry/');
 console.log('    - package.docker.json');
 console.log('    - pnpm-lock.yaml');
+console.log('    - scripts/entrypoint-*.sh');
