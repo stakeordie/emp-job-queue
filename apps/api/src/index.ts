@@ -96,9 +96,11 @@ async function main() {
     await telemetryClient.log.addFile('/api-server/logs/application.log', 'api-app');
     
     // Write some test logs to demonstrate the pipeline
-    await telemetryClient.log.info('API server startup initiated', {
+    await telemetryClient.log.info('🔍 VALIDATION: API server startup initiated', {
       startup_time_ms: Date.now() - startupTime,
-      environment: process.env.TELEMETRY_ENV
+      environment: process.env.TELEMETRY_ENV,
+      validation_type: 'api_startup',
+      expected_pipeline: 'application.log → fluent-bit → fluentd → dash0'
     });
 
     // Send a test metric
@@ -177,11 +179,13 @@ ${Object.keys(process.env).filter(k => k.includes('REDIS')).map(k => `  - ${k}=$
     // Log startup completion through telemetry
     if (telemetryClient) {
       const totalStartupTime = Date.now() - startupTime;
-      await telemetryClient.log.info('API server startup completed successfully', {
+      await telemetryClient.log.info('✅ VALIDATION: API server startup completed successfully', {
         total_startup_time_ms: totalStartupTime,
         port: config.port,
         environment: process.env.TELEMETRY_ENV,
-        server_ready: true
+        server_ready: true,
+        validation_type: 'api_ready',
+        expected_result: 'API is now accepting requests and logs are flowing to Dash0'
       });
       
       await telemetryClient.otel.gauge('api.startup.total_duration', totalStartupTime, {

@@ -68,15 +68,17 @@ export class TelemetryConfigManager {
   private buildConfig(options: ConfigOptions): TelemetryConfig {
     console.log(`🔍 TelemetryConfigManager: Building configuration for ${options.serviceType}`);
     
-    // Use @emp/core getRequiredEnv for validation (NO FALLBACKS)
-
+    // Generate specific service name based on type and base ID
+    const serviceName = this.generateServiceName(options.serviceType);
+    console.log(`🔍 TelemetryConfigManager: Generated service name: ${serviceName}`);
+    
     // Build configuration with service-specific defaults
     const serviceDefaults = this.getServiceDefaults(options.serviceType);
     console.log(`🔍 TelemetryConfigManager: Using service defaults: ${JSON.stringify(serviceDefaults)}`);
     
     const config = {
-      // Service Identity (using getRequiredEnv)
-      serviceName: getRequiredEnv('SERVICE_NAME', 'Service name for telemetry identification'),
+      // Service Identity (highly specific naming)
+      serviceName,
       serviceType: options.serviceType,
       machineId: getRequiredEnv('MACHINE_ID', 'Machine/container identifier for telemetry'),
       workerId: process.env.WORKER_ID, // Optional
@@ -119,27 +121,47 @@ export class TelemetryConfigManager {
     return config;
   }
 
+  /**
+   * Generate highly specific service name for clear telemetry identification
+   * Uses MACHINE_ID as the primary identifier with service type for clarity
+   */
+  private generateServiceName(serviceType: string): string {
+    // Use MACHINE_ID as primary identifier, fall back to service type
+    const machineId = process.env.MACHINE_ID;
+    const environment = process.env.TELEMETRY_ENV || 'unknown';
+    
+    if (machineId) {
+      // MACHINE_ID already includes service context (e.g., "webhook-service-development")
+      return machineId;
+    }
+    
+    // Fallback if MACHINE_ID not set
+    const serviceName = `emp-${serviceType}-${environment}`;
+    console.warn(`⚠️  TelemetryConfigManager: MACHINE_ID not set, using generated name: ${serviceName}`);
+    return serviceName;
+  }
+
   private getServiceDefaults(serviceType: string) {
     const defaults = {
       api: {
         otelEndpoint: 'http://localhost:4318/v1/traces',
-        fluentdHost: 'host.docker.internal',
-        fluentdPort: 8888,
+        fluentdHost: 'host.docker.internal',  // Default for containers in development
+        fluentdPort: 24224,
       },
       webhook: {
         otelEndpoint: 'http://localhost:4318/v1/traces', 
-        fluentdHost: 'host.docker.internal',
-        fluentdPort: 8888,
+        fluentdHost: 'host.docker.internal',  // Default for containers in development
+        fluentdPort: 24224,
       },
       machine: {
         otelEndpoint: 'http://localhost:4318/v1/traces',
-        fluentdHost: 'host.docker.internal', 
-        fluentdPort: 8888,
+        fluentdHost: 'host.docker.internal',  // Default for containers in development
+        fluentdPort: 24224,
       },
       worker: {
         otelEndpoint: 'http://localhost:4318/v1/traces',
-        fluentdHost: 'host.docker.internal',
-        fluentdPort: 8888,
+        fluentdHost: 'host.docker.internal',  // Default for containers in development
+        fluentdPort: 24224,
       }
     };
 

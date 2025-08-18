@@ -21,6 +21,7 @@ services:
     # Port mapping: host:container
     ports:
       - "8888:8888"   # HTTP input endpoint
+      - "24224:24224" # Forward protocol input (for Fluent Bit)
       - "24220:24220" # Monitoring endpoint
     
     # Load environment variables from local env file

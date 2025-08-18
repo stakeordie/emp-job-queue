@@ -19,6 +19,7 @@
   },
   "dependencies": {
     "@emp/core": "file:.workspace-packages/core",
+    "@emp/telemetry": "file:.workspace-packages/telemetry",
     "cors": "^2.8.5",
     "dotenv": "^16.4.7",
     "express": "^4.21.2",

@@ -383,18 +383,30 @@ export default class ComfyUIInstallerService extends BaseService {
 
         // Checkout specific branch or commit if specified
         if (nodeConfig.branch) {
-          await execa('git', ['checkout', nodeConfig.branch], {
-            cwd: nodePath,
-            stdio: 'inherit',
-            timeout: 30000 // 30 second timeout
-          });
+          try {
+            await execa('git', ['checkout', nodeConfig.branch], {
+              cwd: nodePath,
+              stdio: 'inherit',
+              timeout: 30000 // 30 second timeout
+            });
+            this.logger.info(`✅ Git checkout to branch ${nodeConfig.branch} completed for ${nodeName}`);
+          } catch (checkoutError) {
+            this.logger.error(`❌ Git checkout failed for ${nodeName} branch ${nodeConfig.branch}: ${checkoutError.message}`);
+            throw new Error(`Git checkout failed for branch ${nodeConfig.branch}: ${checkoutError.message}`);
+          }
         }
         if (nodeConfig.commit) {
-          await execa('git', ['reset', '--hard', nodeConfig.commit], {
-            cwd: nodePath,
-            stdio: 'inherit',
-            timeout: 30000 // 30 second timeout
-          });
+          try {
+            await execa('git', ['reset', '--hard', nodeConfig.commit], {
+              cwd: nodePath,
+              stdio: 'inherit',
+              timeout: 30000 // 30 second timeout
+            });
+            this.logger.info(`✅ Git reset to commit ${nodeConfig.commit} completed for ${nodeName}`);
+          } catch (resetError) {
+            this.logger.error(`❌ Git reset failed for ${nodeName} commit ${nodeConfig.commit}: ${resetError.message}`);
+            throw new Error(`Git reset failed for commit ${nodeConfig.commit}: ${resetError.message}`);
+          }
         }
       } else {
         this.logger.warn(`⚠️  Custom node ${nodeName} has no URL field - skipping git clone`, nodeConfig);

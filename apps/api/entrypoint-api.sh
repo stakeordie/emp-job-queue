@@ -1,5 +1,5 @@
 #!/bin/bash
-set -euo pipefail
+set -eo pipefail
 
 # =====================================================
 # EMP API Server Entrypoint - Following Machine Pattern
@@ -123,15 +123,23 @@ start_fluent_bit() {
     log_info "  - Environment: ${TELEMETRY_ENV}"
     log_info "  - Fluentd Host: ${FLUENTD_HOST}:${FLUENTD_PORT}"
     log_info "  - Secure Connection: ${FLUENTD_SECURE}"
-    log_info "  - Template: /api-server/fluent-bit/fluent-bit-api.conf.template"
+    log_info "  - Template: /api-server/fluent-bit-api-forward.conf.template (Forward Protocol)"
     log_info "  - Config: /api-server/fluent-bit/fluent-bit-api.conf"
     
     # Generate Fluent Bit config from template at runtime (keeps credentials secure)
-    if [ -f "/api-server/fluent-bit/fluent-bit-api.conf.template" ]; then
-        envsubst < /api-server/fluent-bit/fluent-bit-api.conf.template > /api-server/fluent-bit/fluent-bit-api.conf
-        log_info "✅ Fluent Bit configuration generated successfully"
+    # Try Forward protocol template first (more reliable), fallback to HTTP
+    if [ -f "/api-server/fluent-bit-api-forward.conf.template" ]; then
+        envsubst < /api-server/fluent-bit-api-forward.conf.template > /api-server/fluent-bit/fluent-bit-api.conf
+        log_info "✅ Fluent Bit configuration generated successfully (Forward Protocol)"
+        log_info "📁 Fluent Bit will monitor: /api-server/logs/*.log files"
+        log_info "🔍 Expected connection: Forward protocol to port 24224"
+    elif [ -f "/api-server/fluent-bit-api.conf.template" ]; then
+        envsubst < /api-server/fluent-bit-api.conf.template > /api-server/fluent-bit/fluent-bit-api.conf
+        log_info "✅ Fluent Bit configuration generated successfully (HTTP fallback)"
+        log_info "📁 Fluent Bit will monitor: /api-server/logs/*.log files"
+        log_info "🔍 Expected connection: HTTP protocol to port ${FLUENTD_PORT}"
     else
-        log_error "❌ Fluent Bit template not found"
+        log_error "❌ No Fluent Bit template found"
         return 1
     fi
     
@@ -149,6 +157,14 @@ start_fluent_bit() {
     # Check if it's still running
     if kill -0 $FLUENT_BIT_PID 2>/dev/null; then
         log_info "✅ Fluent Bit is running successfully"
+    
+    # Show which files Fluent Bit is monitoring
+    log_info "📋 Fluent Bit monitoring status:"
+    log_info "  - Watching directory: /api-server/logs/*.log"
+    log_info "  - Current files in directory:"
+    ls -la /api-server/logs/ 2>/dev/null | while read line; do
+        log_info "    $line"
+    done || log_info "    (directory will be created by Node.js)"
     else
         log_error "❌ Fluent Bit failed to start"
         return 1
@@ -173,6 +189,25 @@ start_application() {
 }
 
 # =====================================================
+# Configure nginx using TelemetryClient
+# =====================================================
+prepare_nginx() {
+    log_section "Preparing nginx for TelemetryClient"
+    
+    # Create nginx directories for TelemetryClient to use
+    mkdir -p /api-server/nginx /var/log/nginx
+    
+    log_info "✅ nginx directories created"
+    log_info "📋 TelemetryClient will configure and start nginx during Node.js startup"
+    log_info "📋 nginx will proxy localhost:24224 → production Fluentd"
+}
+
+# =====================================================
+# Start nginx proxy
+# =====================================================
+# nginx startup is now handled by TelemetryClient in Node.js
+
+# =====================================================
 # Send Direct Fluentd Test Log
 # =====================================================
 send_direct_fluentd_log() {
@@ -184,12 +219,15 @@ send_direct_fluentd_log() {
     
     log_info "Sending test log directly to Fluentd at ${FLUENTD_HOST}:${FLUENTD_PORT}"
     
+    # Generate MACHINE_ID if not set (same logic as Node.js)
+    local MACHINE_ID_VALUE="${MACHINE_ID:-${API_BASE_ID:-api-unknown}-${TELEMETRY_ENV:-unknown}}"
+    
     # Create the JSON payload  
     local json_payload="{
         \"service\": \"api\",
         \"message\": \"direct log from api\",
         \"timestamp\": \"$(date -u +%Y-%m-%dT%H:%M:%SZ)\",
-        \"machine_id\": \"${MACHINE_ID}\",
+        \"machine_id\": \"${MACHINE_ID_VALUE}\",
         \"service_name\": \"${SERVICE_NAME}\",
         \"environment\": \"${TELEMETRY_ENV}\",
         \"event_type\": \"container_startup_test\"
@@ -222,19 +260,67 @@ send_direct_fluentd_log() {
 main() {
     log_section "EMP API Server - Starting Up"
     
-    # Skip direct Fluentd test - let Node.js telemetry client handle all telemetry
-    # send_direct_fluentd_log
+    # Debug environment variables
+    log_info "🔍 Environment check:"
+    log_info "  - API_BASE_ID: ${API_BASE_ID:-not set}"
+    log_info "  - TELEMETRY_ENV: ${TELEMETRY_ENV:-not set}"
+    log_info "  - SERVICE_NAME: ${SERVICE_NAME:-not set}"
+    log_info "  - MACHINE_ID: ${MACHINE_ID:-not set (will be generated)}"
     
-    # Install dependencies
+    # Direct Fluentd test for pipeline validation
+    # send_direct_fluentd_log  # Disabled: Using Forward protocol (port 24224), not HTTP
+    
+    # Use reusable telemetry functions
+    prepare_telemetry || log_warn "Telemetry preparation failed but continuing..."
     install_dependencies || exit 1
-    
-    # Start telemetry services (background)
     start_otel_collector || log_warn "OTel Collector failed to start but continuing..."
     start_fluent_bit || log_warn "Fluent Bit failed to start but continuing..."
+    # nginx will be started by TelemetryClient during Node.js startup
     
     # Start the API server (foreground)
     start_application
 }
+
+# =====================================================
+# Cleanup function
+# =====================================================
+cleanup() {
+    log_warn "Received shutdown signal, cleaning up..."
+    
+    # Stop Node.js service first
+    if [ -n "${NODE_PID:-}" ] && kill -0 $NODE_PID 2>/dev/null; then
+        log_info "Stopping API service..."
+        kill -TERM $NODE_PID 2>/dev/null || true
+        wait $NODE_PID 2>/dev/null || true
+    fi
+    
+    # Stop nginx
+    if [ -n "${NGINX_PID:-}" ] && kill -0 $NGINX_PID 2>/dev/null; then
+        log_info "Stopping nginx..."
+        kill -TERM $NGINX_PID 2>/dev/null || true
+        wait $NGINX_PID 2>/dev/null || true
+    fi
+    
+    # Stop Fluent Bit
+    if [ -n "${FLUENT_BIT_PID:-}" ] && kill -0 $FLUENT_BIT_PID 2>/dev/null; then
+        log_info "Stopping Fluent Bit..."
+        kill -TERM $FLUENT_BIT_PID 2>/dev/null || true
+        wait $FLUENT_BIT_PID 2>/dev/null || true
+    fi
+    
+    # Stop OTEL Collector
+    if [ -n "${OTEL_COLLECTOR_PID:-}" ] && kill -0 $OTEL_COLLECTOR_PID 2>/dev/null; then
+        log_info "Stopping OTEL Collector..."
+        kill -TERM $OTEL_COLLECTOR_PID 2>/dev/null || true
+        wait $OTEL_COLLECTOR_PID 2>/dev/null || true
+    fi
+    
+    log_info "Cleanup complete"
+    exit 0
+}
+
+# Set up signal handlers
+trap cleanup SIGTERM SIGINT
 
 # Run main function
 main "$@"

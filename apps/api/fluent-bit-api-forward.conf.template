@@ -1,4 +1,4 @@
-# Fluent Bit Configuration for API Server
+# Fluent Bit Configuration for API Server - Forward Protocol (RECOMMENDED)
 [SERVICE]
     Flush 5
     Log_Level info
@@ -23,14 +23,11 @@
     Record environment ${TELEMETRY_ENV}
     Record source fluent-bit-file-tail
 
-# Send to Fluentd via HTTP with proper format (running on host or external service)
+# Send to Fluentd via Forward Protocol (RECOMMENDED - more reliable than HTTP)
 [OUTPUT]
-    Name http
+    Name forward
     Match api.*
     Host ${FLUENTD_HOST}
-    Port ${FLUENTD_PORT}
-    URI /
-    Header Content-Type application/json
+    Port 24224
     tls ${FLUENTD_SECURE}
     tls.verify off
-    Format json

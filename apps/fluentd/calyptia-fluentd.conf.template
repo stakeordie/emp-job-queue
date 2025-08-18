@@ -21,9 +21,17 @@
   
   # CORS for web clients
   add_http_headers true
-  cors_allow_origins ["*"]
-  cors_allow_methods ["POST", "PUT"]
-  cors_allow_headers ["Content-Type", "Authorization", "X-Trace-ID", "X-Machine-ID"]
+  cors_allow_origins *
+  cors_allow_methods POST,PUT
+  cors_allow_headers Content-Type,Authorization,X-Trace-ID,X-Machine-ID
+</source>
+
+# Input: Forward protocol for Fluent Bit (RECOMMENDED)
+<source>
+  @type forward
+  @id forward_input
+  port 24224
+  bind 0.0.0.0
 </source>
 
 # Input: Health check and monitoring

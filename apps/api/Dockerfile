@@ -16,38 +16,15 @@ FROM ubuntu:22.04
         apt-get clean && \
         rm -rf /var/lib/apt/lists/*
 
-    # Install minimal system dependencies
-    RUN apt-get update && \
-        DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
-        git-lfs openssh-client zstd ca-certificates \
-        python3-pip python3-dev gettext-base && \
-        apt-get clean && \
-        rm -rf /var/lib/apt/lists/*
-
-    # Install Fluent Bit for structured logging (exactly like minimal-base)
-    RUN FLUENT_BIT_VERSION="3.1.8" && \
-        curl -fsSL "https://packages.fluentbit.io/fluentbit.key" | apt-key add - && \
-        echo "deb https://packages.fluentbit.io/ubuntu/jammy jammy main" | tee /etc/apt/sources.list.d/fluent-bit.list && \
-        apt-get update && \
-        apt-get install -y fluent-bit=${FLUENT_BIT_VERSION}* && \
-        apt-get clean && \
-        rm -rf /var/lib/apt/lists/*
-
-    # Install OpenTelemetry Collector (lightweight)
-    RUN OTEL_VERSION="0.114.0" && \
-        curl -fsSL "https://github.com/open-telemetry/opentelemetry-collector-releases/releases/download/v${OTEL_VERSION}/otelcol-contrib_${OTEL_VERSION}_linux_amd64.tar.gz" | \
-        tar -xzC /usr/local/bin/ && \
-        chmod +x /usr/local/bin/otelcol-contrib
+    # Copy and run telemetry stack installation script
+    COPY scripts/install-telemetry-stack.sh /tmp/install-telemetry-stack.sh
+    RUN chmod +x /tmp/install-telemetry-stack.sh && \
+        SERVICE_TYPE=api SERVICE_DIR=/api-server /tmp/install-telemetry-stack.sh && \
+        rm /tmp/install-telemetry-stack.sh
 
     # Set up workspace structure
     WORKDIR /api-server
-    RUN mkdir -p \
-        /api-server/logs \
-        /api-server/configs \
-        /api-server/tmp \
-        /api-server/scripts \
-        /api-server/fluent-bit \
-        /api-server/otel
+    # Directories already created by install-telemetry-stack.sh
 
     # Copy workspace packages for dependencies
     COPY .workspace-packages/ ./.workspace-packages/
@@ -63,10 +40,12 @@ FROM ubuntu:22.04
     # Copy configuration templates
     COPY otel-collector-api.yaml.template ./otel/otel-collector-api.yaml.template
     COPY fluent-bit-api.conf.template ./fluent-bit/fluent-bit-api.conf.template
+    COPY fluent-bit-api-forward.conf.template ./fluent-bit-api-forward.conf.template
 
-    # Copy entrypoint script
+    # Copy entrypoint script and telemetry functions
+    COPY scripts/telemetry-entrypoint-functions.sh ./scripts/telemetry-entrypoint-functions.sh
     COPY entrypoint-api.sh ./entrypoint-api.sh
-    RUN chmod +x ./entrypoint-api.sh
+    RUN chmod +x ./scripts/telemetry-entrypoint-functions.sh ./entrypoint-api.sh
 
     # Build-time metadata
     ARG BUILD_DATE

@@ -70,7 +70,7 @@
     "d:fluentd:push": "docker push emprops/fluentd:latest",
     "d:fluentd:build:push": "pnpm d:fluentd:build && pnpm d:fluentd:push",
     "d:fluentd:pull": "docker pull emprops/fluentd:latest",
-    "d:fluentd:run": "cd apps/fluentd && docker run --rm --name fluentd-service -p 8888:8888 -p 24220:24220 --env-file .env.local-dev emprops/fluentd:latest",
+    "d:fluentd:run": "cd apps/fluentd && docker run --rm --name fluentd-service -p 8888:8888 -p 24224:24224 -p 24220:24220 --env-file .env.local-dev emprops/fluentd:latest",
     "d:fluentd:pull:run": "pnpm d:fluentd:pull && pnpm d:fluentd:run",
     "d:fluentd:status": "curl -s http://localhost:24220/api/plugins | jq || echo '❌ Fluentd health check failed'",
     "d:machine:up": "node scripts/env/machine-compose.js up",

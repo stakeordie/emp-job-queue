@@ -56,42 +56,54 @@ if (!fs.existsSync(workspacePackagesDir)) {
   fs.mkdirSync(workspacePackagesDir, { recursive: true });
 }
 
-// Copy core package
-const coreSourceDir = path.join(__dirname, '../../packages/core');
-const coreTargetDir = path.join(workspacePackagesDir, 'core');
+// Copy required workspace packages (matching API pattern)
+const copyWorkspacePackage = (packageName) => {
+  const sourceDir = path.join(__dirname, '../../packages', packageName);
+  const targetDir = path.join(workspacePackagesDir, packageName);
 
-if (fs.existsSync(coreSourceDir)) {
-  // Create target directory
-  if (!fs.existsSync(coreTargetDir)) {
-    fs.mkdirSync(coreTargetDir, { recursive: true });
-  }
-  
-  // Copy package.json
-  const corePackageJson = JSON.parse(fs.readFileSync(path.join(coreSourceDir, 'package.json'), 'utf8'));
-  fs.writeFileSync(path.join(coreTargetDir, 'package.json'), JSON.stringify(corePackageJson, null, 2));
-  
-  // Copy dist directory if it exists
-  const coreDistDir = path.join(coreSourceDir, 'dist');
-  if (fs.existsSync(coreDistDir)) {
-    const copyRecursive = (src, dest) => {
-      const stat = fs.statSync(src);
-      if (stat.isDirectory()) {
-        if (!fs.existsSync(dest)) {
-          fs.mkdirSync(dest, { recursive: true });
-        }
-        fs.readdirSync(src).forEach(file => {
-          copyRecursive(path.join(src, file), path.join(dest, file));
-        });
-      } else {
-        fs.copyFileSync(src, dest);
-      }
-    };
+  if (fs.existsSync(sourceDir)) {
+    // Create target directory
+    if (!fs.existsSync(targetDir)) {
+      fs.mkdirSync(targetDir, { recursive: true });
+    }
     
-    const targetDistDir = path.join(coreTargetDir, 'dist');
-    copyRecursive(coreDistDir, targetDistDir);
-    console.log('✅ Copied @emp/core package');
+    // Copy package.json
+    const packageJsonPath = path.join(sourceDir, 'package.json');
+    if (fs.existsSync(packageJsonPath)) {
+      const packageJsonContent = JSON.parse(fs.readFileSync(packageJsonPath, 'utf8'));
+      fs.writeFileSync(path.join(targetDir, 'package.json'), JSON.stringify(packageJsonContent, null, 2));
+    }
+    
+    // Copy dist directory if it exists
+    const distDir = path.join(sourceDir, 'dist');
+    if (fs.existsSync(distDir)) {
+      const copyRecursive = (src, dest) => {
+        const stat = fs.statSync(src);
+        if (stat.isDirectory()) {
+          if (!fs.existsSync(dest)) {
+            fs.mkdirSync(dest, { recursive: true });
+          }
+          fs.readdirSync(src).forEach(file => {
+            copyRecursive(path.join(src, file), path.join(dest, file));
+          });
+        } else {
+          fs.copyFileSync(src, dest);
+        }
+      };
+      
+      const targetDistDir = path.join(targetDir, 'dist');
+      copyRecursive(distDir, targetDistDir);
+    }
+    
+    console.log(`✅ Copied @emp/${packageName} package`);
+  } else {
+    console.warn(`⚠️ Package not found: ${sourceDir}`);
   }
-}
+};
+
+// Copy both core and telemetry packages
+copyWorkspacePackage('core');
+copyWorkspacePackage('telemetry');
 
 // Step 3: Copy pnpm-lock.yaml from monorepo root (matching API pattern)
 console.log('📋 Copying pnpm-lock.yaml...');
