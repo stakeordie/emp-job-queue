@@ -24,6 +24,7 @@ echo -e "${YELLOW}Building required workspace packages...${NC}"
 cd "$ROOT_DIR"
 pnpm --filter @emp/service-config build
 pnpm --filter @emp/custom-nodes build
+pnpm --filter @emp/telemetry build
 
 # Change to machine directory for workspace packages
 cd "$MACHINE_DIR"
@@ -36,6 +37,7 @@ mkdir -p .workspace-packages
 # Copy built workspace packages to Docker context
 cp -r "$ROOT_DIR/packages/service-config" .workspace-packages/
 cp -r "$ROOT_DIR/packages/custom-nodes" .workspace-packages/
+cp -r "$ROOT_DIR/packages/telemetry" .workspace-packages/
 
 echo -e "${GREEN}✓ Workspace packages prepared successfully${NC}"
 echo "Location: $MACHINE_DIR/.workspace-packages"
