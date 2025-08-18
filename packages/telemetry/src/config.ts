@@ -53,12 +53,13 @@ export class TelemetryConfigManager {
   private config: TelemetryConfig;
 
   constructor(options: ConfigOptions) {
-    console.log(`🔧 TelemetryConfigManager: Instantiating for service type: ${options.serviceType}`);
+    const enableLogs = process.env.TELEMETRY_LOGS !== 'false';
+    if (enableLogs) console.log(`🔧 TelemetryConfigManager: Instantiating for service type: ${options.serviceType}`);
     try {
       this.config = this.buildConfig(options);
-      console.log(`✅ TelemetryConfigManager: Configuration built successfully`);
+      if (enableLogs) console.log(`✅ TelemetryConfigManager: Configuration built successfully`);
       this.validate();
-      console.log(`✅ TelemetryConfigManager: Configuration validation passed`);
+      if (enableLogs) console.log(`✅ TelemetryConfigManager: Configuration validation passed`);
     } catch (error) {
       console.error(`❌ TelemetryConfigManager: Failed during initialization - ${error.message}`);
       throw error;

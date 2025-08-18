@@ -55,23 +55,7 @@ FROM pytorch/pytorch:2.7.0-cuda12.8-cudnn9-devel AS ai-base
     # TelemetryClient will generate all configs at runtime
     # Removed static template files - using unified TelemetryClient instead
 
-# Stage 3: Bundle standalone installer (no longer needs ComfyUI base)
-FROM ai-base AS installer-builder
-    WORKDIR /build
-    RUN npm install -g pnpm
-
-    # Copy minimal files needed for installer
-    COPY package.json pnpm-lock.yaml* ./
-    COPY .workspace-packages/ ./.workspace-packages/
-    RUN sed -i 's/"@emp\/service-config": "workspace:\*"/"@emp\/service-config": "file:.workspace-packages\/service-config"/' package.json && \
-        sed -i 's/"@emp\/custom-nodes": "workspace:\*"/"@emp\/custom-nodes": "file:.workspace-packages\/custom-nodes"/' package.json && \
-        pnpm install --prod --no-frozen-lockfile --ignore-workspace
-
-    COPY src/services/comfyui-installer-standalone.js ./installer.js
-    RUN echo '{"type": "module"}' > installer-package.json && \
-        cat installer.js | sed '1{/^#!/d;}' > installer-bundle.js && \
-        sed -i '1i#!/usr/bin/env node' installer-bundle.js && \
-        chmod +x installer-bundle.js
+# Stage 3: Removed standalone installer - using runtime installation via ComfyUIManagementClient
 
 # Stage 4: Base Machine - COMPLETE APPLICATION RUNTIME
 FROM ai-base AS base-machine
@@ -173,8 +157,7 @@ ENV WORKERS=${WORKERS}
 ENV MACHINE_ID=${MACHINE_ID}
 
 # Copy installer tools for runtime custom node installation
-COPY --from=installer-builder /build/installer-bundle.js /service-manager/installer-bundle.js
-COPY --from=installer-builder /build/node_modules /service-manager/node_modules
+# Removed installer-builder copying - using runtime ComfyUIManagementClient instead
 
 # Copy environment file (inherits everything else from base-machine)
 COPY ${ENV_FILE} /service-manager/.env

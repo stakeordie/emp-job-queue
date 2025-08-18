@@ -1,3 +1,5 @@
+import { createSafeLogger } from '../utils/safe-logger.js';
+
 /**
  * EMP API Client
  * 
@@ -13,7 +15,7 @@ export class EMPApiClient {
       throw new Error('EMPROPS_API_URL environment variable is required');
     }
     
-    this.logger = options.logger || console;
+    this.logger = createSafeLogger('emp-api-client');
     
     this.logger.info('EMP API Client initialized', {
       baseUrl: this.baseUrl,
@@ -330,9 +332,8 @@ export class EMPApiClient {
       }
       
       const defaultNodes = result.data;
-      this.logger.info(`STEP 16: API Response - Successfully fetched ${defaultNodes.length} default custom nodes`, {
-        nodeNames: defaultNodes.map(n => n.name).join(', ')
-      });
+      this.logger.info(`STEP 16: API Response - Successfully fetched ${defaultNodes.length} default custom nodes`);
+      this.logger.info(`STEP 16: API Response - Node names: ${defaultNodes.map(n => n.name).join(', ')}`);
       
       return defaultNodes;
     } catch (error) {

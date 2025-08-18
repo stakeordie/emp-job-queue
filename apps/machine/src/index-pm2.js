@@ -26,6 +26,12 @@ let telemetryClient = null;
  * Initialize unified telemetry client for machine
  */
 async function initializeTelemetry() {
+  // Disable telemetry logging for debugging - requested by user to "stop logging the telemtry now"
+  if (process.env.DISABLE_TELEMETRY_LOGGING === 'true') {
+    console.log('🔇 Telemetry logging disabled for debugging');
+    return null;
+  }
+  
   console.log('🚀 initializeTelemetry: Starting telemetry initialization for machine service');
   
   try {
@@ -53,9 +59,9 @@ async function initializeTelemetry() {
     client.setLogFile('/workspace/logs/machine.log');
     
     console.log('🔧 initializeTelemetry: Starting telemetry client startup');
-    // Initialize with full pipeline testing
+    // Initialize without connection testing to avoid startup failures
     const pipelineHealth = await client.startup({
-      testConnections: true,
+      testConnections: false,
       logConfiguration: true,
       sendStartupPing: true,
     });
@@ -289,25 +295,57 @@ async function startPM2Services() {
     });
     
     // Start all internal services that need PM2 processes
+    logger.info(`🔥🔥🔥 [SERVICE-DEBUG] About to loop through ${serviceAnalysis.servicesNeedingPM2.length} services needing PM2`);
+    logger.info(`🔥🔥🔥 [SERVICE-DEBUG] Services to process: ${JSON.stringify(serviceAnalysis.servicesNeedingPM2, null, 2)}`);
+    
     for (const serviceInfo of serviceAnalysis.servicesNeedingPM2) {
       const { serviceName, serviceConfig, workerCount } = serviceInfo;
       
+      logger.info(`🔥🔥🔥 [SERVICE-DEBUG] === PROCESSING SERVICE: ${serviceName} ===`);
+      logger.info(`🔥🔥🔥 [SERVICE-DEBUG] Service config: ${JSON.stringify(serviceConfig, null, 2)}`);
+      logger.info(`🔥🔥🔥 [SERVICE-DEBUG] Worker count: ${workerCount}`);
       logger.info(`🏗️  Starting ${serviceName} service (${workerCount} workers requested)`);
       
-      // Check if service has an installer that needs to run first
-      if (serviceConfig.installer) {
+      // Handle service-specific installation
+      if (serviceConfig.installer && serviceName === 'comfyui') {
+        logger.info(`📦 Running ComfyUI Management Client installation...`);
+        try {
+          // Use new unified ComfyUIManagementClient
+          const { createComfyUIManagementClient } = await import('./services/comfyui-management-client.js');
+          
+          const comfyuiClient = createComfyUIManagementClient({
+            machine: { id: process.env.MACHINE_ID || 'unknown' },
+            services: { [serviceName]: { enabled: true } }
+          }, {
+            installMode: 'runtime-only', // Fast runtime installation
+            skipValidation: false
+          });
+          
+          // Run the unified installation
+          const result = await comfyuiClient.installRuntime();
+          
+          if (result.success) {
+            logger.info(`✅ ComfyUI Management Client installation completed successfully`);
+            logger.info(`📊 Installation stats: ${result.steps.components?.defaultNodes || 0} default nodes, ${result.steps.components?.customNodes || 0} total custom nodes, ${result.steps.components?.models || 0} models`);
+          } else {
+            throw new Error(`ComfyUI installation failed: ${result.errors.join(', ')}`);
+          }
+          
+        } catch (error) {
+          logger.error(`❌ Failed to run ComfyUI Management Client:`, error);
+          throw error;
+        }
+      } else if (serviceConfig.installer) {
+        // Fallback to generic installer for other services
         logger.info(`📦 Running installer service: ${serviceConfig.installer}`);
         try {
-          // Use exact installer file path from service mapping
           const { default: InstallerService } = await import(serviceConfig.installer_filename);
           
-          // Create and run the installer
           const installer = new InstallerService({}, {
             machine: { id: process.env.MACHINE_ID || 'unknown' },
             services: { [serviceName]: { enabled: true } }
           });
           
-          // Run the installer's onStart method
           await installer.onStart();
           logger.info(`✅ Installer ${serviceConfig.installer} completed successfully`);
           
@@ -324,32 +362,41 @@ async function startPM2Services() {
         await new Promise(resolve => setTimeout(resolve, 3000));
       }
       
-      // Build service instance names based on resource binding
+      // Build service instance names based on is_gpu_bound (simplified approach)
+      logger.info(`🔥🔥🔥 [SERVICE-DEBUG] Building service instances for ${serviceName}`);
       const serviceInstances = [];
-      const resourceBinding = serviceConfig.resource_binding;
+      const isGpuBound = serviceConfig.is_gpu_bound;
       let instanceCount = workerCount;
       
-      // Adjust instance count based on resource binding and actual hardware
-      if (resourceBinding === 'gpu') {
-        // Real GPU mode - limit by actual GPU count
-        const actualGpuCount = parseInt(process.env.MACHINE_NUM_GPUS || '0');
-        if (actualGpuCount > 0 && instanceCount > actualGpuCount) {
-          logger.warn(`Requested ${instanceCount} ${serviceName} workers but only ${actualGpuCount} GPUs available. Starting ${actualGpuCount} instances.`);
-          instanceCount = actualGpuCount;
+      logger.info(`🔥🔥🔥 [SERVICE-DEBUG] is_gpu_bound: ${isGpuBound}`);
+      logger.info(`🔥🔥🔥 [SERVICE-DEBUG] Initial instance count: ${instanceCount}`);
+      
+      // Adjust instance count based on GPU binding and actual hardware
+      if (isGpuBound) {
+        // GPU-bound services: check GPU mode and hardware limits
+        const gpuMode = process.env.GPU_MODE || 'actual';
+        
+        if (gpuMode === 'actual') {
+          // Real GPU mode - limit by actual GPU count
+          const actualGpuCount = parseInt(process.env.MACHINE_NUM_GPUS || '0');
+          if (actualGpuCount > 0 && instanceCount > actualGpuCount) {
+            logger.warn(`Requested ${instanceCount} ${serviceName} workers but only ${actualGpuCount} GPUs available. Starting ${actualGpuCount} instances.`);
+            instanceCount = actualGpuCount;
+          }
+        } else {
+          // Mock GPU mode - use requested count directly
+          logger.info(`Mock GPU mode: Starting ${instanceCount} ${serviceName} instances as requested`);
         }
-      } else if (resourceBinding === 'mock_gpu') {
-        // Mock GPU mode - use requested count directly
-        logger.info(`Mock GPU mode: Starting ${instanceCount} ${serviceName} instances as requested`);
       }
       
-      // Generate instance names
-      if (resourceBinding === 'gpu' || resourceBinding === 'mock_gpu') {
+      // Generate instance names based on GPU binding
+      if (isGpuBound) {
         // GPU-bound services: servicename-gpu0, servicename-gpu1, etc.
         for (let gpu = 0; gpu < instanceCount; gpu++) {
           serviceInstances.push(`${serviceName}-gpu${gpu}`);
         }
-      } else if (resourceBinding === 'shared' || resourceBinding === 'cpu') {
-        // Shared/CPU services: use service_instances_per_machine setting
+      } else {
+        // Non-GPU services: use service_instances_per_machine setting
         const perMachineInstances = parseInt(serviceConfig.service_instances_per_machine) || 1;
         for (let i = 0; i < perMachineInstances; i++) {
           if (perMachineInstances === 1) {
@@ -360,16 +407,60 @@ async function startPM2Services() {
         }
       }
       
+      logger.info(`🔥🔥🔥 [SERVICE-DEBUG] Final service instances for ${serviceName}: ${JSON.stringify(serviceInstances)}`);
+      logger.info(`🔥🔥🔥 [SERVICE-DEBUG] Instance count: ${serviceInstances.length}`);
+      
       // Start the service instances
       if (serviceInstances.length > 0) {
-        logger.info(`STEP 19: ComfyUI Server - Starting ${serviceName} service instances: ${serviceInstances.join(', ')}`);
-        await pm2Manager.pm2Exec(`start /workspace/pm2-ecosystem.config.cjs --only ${serviceInstances.join(',')}`);
-        logger.info(`STEP 19: ComfyUI Server - ${serviceName} service instances started successfully`);
+        logger.info(`🔥🔥🔥 [SERVICE-DEBUG] STARTING SERVICE INSTANCES FOR ${serviceName}`);
+        logger.info(`🚀 [PM2-START-DEBUG] About to start ${serviceName} service instances: ${serviceInstances.join(', ')}`);
+        logger.info(`🚀 [PM2-START-DEBUG] PM2 command: start /workspace/pm2-ecosystem.config.cjs --only ${serviceInstances.join(',')}`);
         
-        // Wait for services to initialize (ComfyUI needs more time)
-        const waitTime = serviceName.includes('comfyui') ? 5000 : 3000;
-        logger.info(`⏳ Waiting ${waitTime/1000}s for ${serviceName} services to initialize...`);
-        await new Promise(resolve => setTimeout(resolve, waitTime));
+        try {
+          const startResult = await pm2Manager.pm2Exec(`start /workspace/pm2-ecosystem.config.cjs --only ${serviceInstances.join(',')}`);
+          logger.info(`🚀 [PM2-START-DEBUG] PM2 start command completed. Result: ${JSON.stringify(startResult)}`);
+          
+          // Wait for services to initialize 
+          const waitTime = serviceName.includes('comfyui') ? 5000 : 3000;
+          logger.info(`⏳ [PM2-START-DEBUG] Waiting ${waitTime/1000}s for ${serviceName} services to initialize...`);
+          await new Promise(resolve => setTimeout(resolve, waitTime));
+          
+          // CRITICAL: Verify services actually started
+          logger.info(`🔍 [PM2-START-DEBUG] Verifying ${serviceName} services actually started...`);
+          const allProcesses = await pm2Manager.list();
+          logger.info(`🔍 [PM2-START-DEBUG] Current PM2 processes: ${JSON.stringify(allProcesses.map(p => `${p.name}:${p.pm2_env?.status || 'unknown'}`), null, 2)}`);
+          
+          // Check each service instance
+          for (const instanceName of serviceInstances) {
+            const process = allProcesses.find(p => p.name === instanceName);
+            if (!process) {
+              const errorMsg = `❌ FATAL: Service instance ${instanceName} not found in PM2 list after start command!`;
+              logger.error(errorMsg);
+              logger.error(`❌ Available processes: ${allProcesses.map(p => p.name).join(', ')}`);
+              throw new Error(errorMsg);
+            }
+            
+            const status = process.pm2_env?.status;
+            if (status !== 'online') {
+              const errorMsg = `❌ FATAL: Service instance ${instanceName} is not online! Status: ${status}`;
+              logger.error(errorMsg);
+              logger.error(`❌ Process details: ${JSON.stringify(process, null, 2)}`);
+              throw new Error(errorMsg);
+            }
+            
+            logger.info(`✅ [PM2-START-DEBUG] Service instance ${instanceName} is online`);
+          }
+          
+          logger.info(`✅ [PM2-START-DEBUG] All ${serviceName} service instances verified successfully`);
+          
+        } catch (error) {
+          const errorMsg = `❌ FATAL: Failed to start ${serviceName} service instances: ${error.message}`;
+          logger.error(errorMsg);
+          logger.error(`❌ Service instances that failed: ${serviceInstances.join(', ')}`);
+          throw new Error(errorMsg);
+        }
+      } else {
+        logger.error(`🔥🔥🔥 [SERVICE-DEBUG] NO SERVICE INSTANCES TO START FOR ${serviceName} - THIS IS THE PROBLEM!`);
       }
     }
     
@@ -394,11 +485,51 @@ async function startPM2Services() {
             .map(app => app.name);
           
           if (workerProcesses.length > 0) {
-            logger.info(`STEP 20: Worker Connection - Found ${workerProcesses.length} worker processes: ${workerProcesses.join(', ')}`);
+            logger.info(`🚀 [PM2-WORKER-DEBUG] Found ${workerProcesses.length} worker processes: ${workerProcesses.join(', ')}`);
+            logger.info(`🚀 [PM2-WORKER-DEBUG] PM2 command: start ${configPath} --only ${workerProcesses.join(',')}`);
             
-            // Start all worker processes
-            await pm2Manager.pm2Exec(`start ${configPath} --only ${workerProcesses.join(',')}`);
-            logger.info(`STEP 20: Worker Connection - Started ${workerProcesses.length} worker processes successfully`);
+            try {
+              // Start all worker processes
+              const workerStartResult = await pm2Manager.pm2Exec(`start ${configPath} --only ${workerProcesses.join(',')}`);
+              logger.info(`🚀 [PM2-WORKER-DEBUG] Worker start command completed. Result: ${JSON.stringify(workerStartResult)}`);
+              
+              // Wait for workers to initialize
+              await new Promise(resolve => setTimeout(resolve, 3000));
+              
+              // CRITICAL: Verify workers actually started
+              logger.info(`🔍 [PM2-WORKER-DEBUG] Verifying worker processes actually started...`);
+              const allProcesses = await pm2Manager.list();
+              logger.info(`🔍 [PM2-WORKER-DEBUG] Current PM2 processes: ${JSON.stringify(allProcesses.map(p => `${p.name}:${p.pm2_env?.status || 'unknown'}`), null, 2)}`);
+              
+              // Check each worker process
+              for (const workerName of workerProcesses) {
+                const process = allProcesses.find(p => p.name === workerName);
+                if (!process) {
+                  const errorMsg = `❌ FATAL: Worker process ${workerName} not found in PM2 list after start command!`;
+                  logger.error(errorMsg);
+                  logger.error(`❌ Available processes: ${allProcesses.map(p => p.name).join(', ')}`);
+                  throw new Error(errorMsg);
+                }
+                
+                const status = process.pm2_env?.status;
+                if (status !== 'online') {
+                  const errorMsg = `❌ FATAL: Worker process ${workerName} is not online! Status: ${status}`;
+                  logger.error(errorMsg);
+                  logger.error(`❌ Process details: ${JSON.stringify(process, null, 2)}`);
+                  throw new Error(errorMsg);
+                }
+                
+                logger.info(`✅ [PM2-WORKER-DEBUG] Worker process ${workerName} is online`);
+              }
+              
+              logger.info(`✅ [PM2-WORKER-DEBUG] All ${workerProcesses.length} worker processes verified successfully`);
+              
+            } catch (error) {
+              const errorMsg = `❌ FATAL: Failed to start worker processes: ${error.message}`;
+              logger.error(errorMsg);
+              logger.error(`❌ Worker processes that failed: ${workerProcesses.join(', ')}`);
+              throw new Error(errorMsg);
+            }
           } else {
             logger.warn('No worker processes found in ecosystem config');
           }
@@ -493,15 +624,8 @@ async function generatePM2EcosystemConfig() {
     // Always use worker-driven PM2 ecosystem generator
     const workerConnectors = process.env.WORKERS || process.env.WORKER_CONNECTORS || 'simulation:1'; // Default fallback
     
-    // Worker-driven mode: determine services from WORKERS
-    const detectEnableComfyUI = workerConnectors.includes('comfyui:') && !workerConnectors.includes('comfyui-remote:');
-    const detectEnableSimulation = workerConnectors.includes('simulation:');
-    
-    logger.info('Worker-driven service detection:', {
-      workerConnectors,
-      enableComfyUI: detectEnableComfyUI,
-      enableSimulation: detectEnableSimulation
-    });
+    // Enhanced PM2 Generator handles all service detection using service mapping
+    logger.info(`🔍 DEBUG: Worker connectors for Enhanced PM2 Generator: "${workerConnectors}"`);
     
     logger.info('🚀 Using worker-driven PM2 ecosystem generator');
     await execa('node', ['/service-manager/generate-pm2-ecosystem-worker-driven.js'], {

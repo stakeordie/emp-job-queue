@@ -1,5 +1,5 @@
 import { EventEmitter } from 'events';
-import { createLogger } from '../utils/logger.js';
+import { createSafeLogger } from '../utils/safe-logger.js';
 
 export const ServiceStatus = {
   STOPPED: 'stopped',
@@ -19,7 +19,7 @@ export class BaseService extends EventEmitter {
     this.startTime = null;
     this.restartCount = 0;
     this.lastError = null;
-    this.logger = createLogger(name, { gpu: options.gpu });
+    this.logger = createSafeLogger(name);
   }
 
   /**

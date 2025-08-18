@@ -24,11 +24,8 @@ const serviceModules = {
   'shared-setup': './shared-setup-service.js',
   'port-cleanup': './port-cleanup-service.js',
   'comfyui': './comfyui-service.js',
-  'comfyui-installer': './comfyui-installer.js',
-  'comfyui-env-creator': './comfyui-env-creator.js',
   'simulation': './simulation-service.js',
-  'simulation-websocket': './simulation-websocket-service.js',
-  'runtime-env-creator': './runtime-env-creator.js'
+  'simulation-websocket': './simulation-websocket-service.js'
 };
 
 async function runStandaloneService() {
@@ -183,7 +180,7 @@ ${Object.keys(process.env).filter(k => k.includes('HUB') || k.includes('REDIS'))
     logger.info(`${serviceName} started successfully in standalone mode`);
 
     // One-time setup services should exit after completion
-    const oneTimeServices = ['shared-setup', 'comfyui-env-creator', 'port-cleanup'];
+    const oneTimeServices = ['shared-setup', 'port-cleanup'];
     if (oneTimeServices.includes(serviceName)) {
       logger.info(`${serviceName} is a one-time setup service, exiting after completion`);
       process.exit(0);

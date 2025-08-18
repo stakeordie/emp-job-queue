@@ -132,8 +132,8 @@
     "comfyui": {
       "connector": "ComfyUIWebSocketConnector",
       "type": "internal",
-      "installer": "ComfyUIInstallerService",
-      "installer_filename": "./services/comfyui-installer.js",
+      "installer": "ComfyUIManagementClient",
+      "installer_filename": "./services/comfyui-management-client.js",
       "is_gpu_bound": true,
       "build_stage": "comfyui",
       "service_instances_per_gpu": "${COMFYUI_INSTANCES_PER_GPU:-1}",

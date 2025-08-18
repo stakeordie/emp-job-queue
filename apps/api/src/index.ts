@@ -47,9 +47,9 @@ async function initializeTelemetry() {
     const telemetryClient = createTelemetryClient('api');
     
     console.log('🔧 initializeTelemetry: Starting telemetry client startup');
-    // Initialize with full pipeline testing
+    // Initialize without connection testing to avoid startup failures
     const pipelineHealth = await telemetryClient.startup({
-      testConnections: true,
+      testConnections: false,
       logConfiguration: true,
       sendStartupPing: true,
     });

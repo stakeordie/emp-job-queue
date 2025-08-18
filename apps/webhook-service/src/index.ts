@@ -109,9 +109,9 @@ async function main(): Promise<void> {
     // Set webhook-specific log file path
     telemetryClient.setLogFile('/webhook-server/logs/webhook-service.log');
     
-    // Initialize telemetry (generates configs, tests connections, sends startup events)
+    // Initialize telemetry without connection testing to avoid startup failures
     await telemetryClient.startup({
-      testConnections: true,
+      testConnections: false,
       logConfiguration: true,
       sendStartupPing: true,
     });

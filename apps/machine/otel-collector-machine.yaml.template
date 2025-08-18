@@ -39,12 +39,6 @@ exporters:
     headers:
       Authorization: "Bearer ${DASH0_API_KEY}"
       Dash0-Dataset: "${DASH0_DATASET}"
-  
-  # Local debug logging
-  debug:
-    verbosity: detailed
-    sampling_initial: 5
-    sampling_thereafter: 1
 
 extensions:
   health_check:
@@ -56,12 +50,12 @@ service:
     traces:
       receivers: [otlp]
       processors: [batch, resource]
-      exporters: [otlp/dash0, debug]
+      exporters: [otlp/dash0]
     metrics:
       receivers: [otlp]
       processors: [batch, resource] 
-      exporters: [otlp/dash0, debug]
+      exporters: [otlp/dash0]
     logs:
       receivers: [otlp]
       processors: [batch, resource]
-      exporters: [otlp/dash0, debug]
+      exporters: [otlp/dash0]
