@@ -17,7 +17,7 @@ FROM ubuntu:22.04
         rm -rf /var/lib/apt/lists/*
 
     # Copy and run telemetry stack installation script
-    COPY scripts/install-telemetry-stack.sh /tmp/install-telemetry-stack.sh
+    COPY ../../scripts/install-telemetry-stack.sh /tmp/install-telemetry-stack.sh
     RUN chmod +x /tmp/install-telemetry-stack.sh && \
         SERVICE_TYPE=api SERVICE_DIR=/api-server /tmp/install-telemetry-stack.sh && \
         rm /tmp/install-telemetry-stack.sh
@@ -43,7 +43,7 @@ FROM ubuntu:22.04
     COPY fluent-bit-api-forward.conf.template ./fluent-bit-api-forward.conf.template
 
     # Copy entrypoint script and telemetry functions
-    COPY scripts/telemetry-entrypoint-functions.sh ./scripts/telemetry-entrypoint-functions.sh
+    COPY ../../scripts/telemetry-entrypoint-functions.sh ./scripts/telemetry-entrypoint-functions.sh
     COPY entrypoint-api.sh ./entrypoint-api.sh
     RUN chmod +x ./scripts/telemetry-entrypoint-functions.sh ./entrypoint-api.sh
 
