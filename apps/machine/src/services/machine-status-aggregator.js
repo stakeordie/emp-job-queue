@@ -2,7 +2,6 @@ import Redis from 'ioredis';
 import { exec } from 'child_process';
 import { promisify } from 'util';
 import { createLogger } from '../utils/logger.js';
-import { TelemetryBroadcasterDash0 } from './telemetry-broadcaster-dash0.js';
 import fs from 'fs';
 import path from 'path';
 
@@ -18,7 +17,7 @@ const logger = createLogger('machine-status-aggregator');
  * - Single Redis channel: machine:status:${machine_id}
  */
 export class MachineStatusAggregator {
-  constructor(config) {
+  constructor(config, telemetryClient = null) {
     console.info('[MachineStatusAggregator] Constructor called');
     this.config = config;
     this.machineId = config.machine.id;
@@ -27,6 +26,7 @@ export class MachineStatusAggregator {
     this.statusInterval = null;
     this.startTime = Date.now();
     this.serviceMapping = null;
+    this.telemetryClient = telemetryClient;
     
     // Status update frequency from env var
     this.updateIntervalSeconds = parseInt(
@@ -37,11 +37,9 @@ export class MachineStatusAggregator {
     this.structure = null;
     this.currentStatus = null;
     
-    // Initialize direct Dash0 telemetry broadcaster
-    this.telemetryBroadcaster = new TelemetryBroadcasterDash0(this.machineId);
-    
     console.info(`[MachineStatusAggregator] Machine Status Aggregator initialized for ${this.machineId}`);
     console.info(`[MachineStatusAggregator] Update interval: ${this.updateIntervalSeconds}s`);
+    console.info(`[MachineStatusAggregator] Telemetry client: ${telemetryClient ? 'enabled' : 'disabled'}`);
     logger.info(`Machine Status Aggregator initialized for ${this.machineId}`);
     logger.info(`Update interval: ${this.updateIntervalSeconds}s`);
   }
@@ -819,8 +817,8 @@ export class MachineStatusAggregator {
       
       const subscribers = await this.redis.publish(channel, message);
       
-      // ALSO broadcast directly to Dash0 (alongside Redis, doesn't replace it)
-      this.telemetryBroadcaster.broadcastMachineStatus(statusMessage);
+      // Send machine metrics via TelemetryClient (alongside Redis, doesn't replace it)
+      await this.broadcastMachineMetrics(statusMessage);
       
       logger.debug(`Published ${updateType} status to ${subscribers} subscribers`, {
         machine_id: this.machineId,
@@ -830,6 +828,54 @@ export class MachineStatusAggregator {
       
     } catch (error) {
       logger.error('Failed to publish status:', error);
+    }
+  }
+
+  /**
+   * Broadcast machine metrics via TelemetryClient (replaces custom Dash0 broadcaster)
+   */
+  async broadcastMachineMetrics(statusMessage) {
+    if (!this.telemetryClient) {
+      return; // No telemetry client available
+    }
+    
+    try {
+      const machineStatus = statusMessage.status?.machine;
+      const workers = statusMessage.status?.workers || {};
+      const services = statusMessage.status?.services || {};
+      
+      // Common labels for all metrics
+      const labels = {
+        machine_id: this.machineId,
+        update_type: statusMessage.update_type,
+        machine_phase: machineStatus?.phase || 'unknown'
+      };
+      
+      // Machine uptime metric
+      if (machineStatus?.uptime_ms) {
+        await this.telemetryClient.otel.gauge('machine.uptime_ms', machineStatus.uptime_ms, labels);
+      }
+      
+      // Worker counts
+      const workerList = Object.values(workers);
+      const activeWorkerCount = workerList.filter(w => w.status === 'busy').length;
+      const totalWorkerCount = workerList.length;
+      
+      await this.telemetryClient.otel.gauge('machine.workers.active', activeWorkerCount, labels);
+      await this.telemetryClient.otel.gauge('machine.workers.total', totalWorkerCount, labels);
+      
+      // Service counts
+      const serviceList = Object.values(services);
+      const healthyServiceCount = serviceList.filter(s => s.health === 'healthy').length;
+      const totalServiceCount = serviceList.length;
+      
+      await this.telemetryClient.otel.gauge('machine.services.healthy', healthyServiceCount, labels);
+      await this.telemetryClient.otel.gauge('machine.services.total', totalServiceCount, labels);
+      
+      logger.debug(`📊 Sent machine metrics: ${totalWorkerCount} workers (${activeWorkerCount} active), ${healthyServiceCount}/${totalServiceCount} services healthy`);
+      
+    } catch (error) {
+      logger.error('Error broadcasting machine metrics via TelemetryClient:', error);
     }
   }
 
@@ -847,8 +893,7 @@ export class MachineStatusAggregator {
     this.currentStatus.machine.phase = 'shutdown';
     await this.publishStatus('shutdown');
     
-    // Shutdown telemetry broadcaster
-    await this.telemetryBroadcaster.shutdown();
+    // TelemetryClient doesn't need explicit shutdown - handled by main process
     
     if (this.redis) {
       await this.redis.quit();

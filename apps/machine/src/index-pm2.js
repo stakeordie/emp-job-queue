@@ -7,6 +7,7 @@
 import { createLogger } from './utils/logger.js';
 import config from './config/environment.js';
 import PM2ServiceManager from './lib/pm2-manager.cjs';
+import { createTelemetryClient } from '@emp/telemetry';
 console.log("🔥🔥🔥 TOTALLY NEW VERSION LOADED - NO CACHE 🔥🔥🔥");
 import fs from 'fs';
 import http from 'http';
@@ -17,8 +18,61 @@ const logger = createLogger('main-pm2');
 
 // PM2 manager instance
 const pm2Manager = new PM2ServiceManager();
-const statusAggregator = new MachineStatusAggregator(config);
+let statusAggregator = null; // Will be created after telemetry initialization
 let startTime = null;
+let telemetryClient = null;
+
+/**
+ * Initialize unified telemetry client for machine
+ */
+async function initializeTelemetry() {
+  console.log('🚀 initializeTelemetry: Starting telemetry initialization for machine service');
+  
+  try {
+    // Generate machine IDs - MACHINE_ID should already be set by environment
+    console.log(`🔍 initializeTelemetry: Checking MACHINE_ID environment variable`);
+    if (!process.env.MACHINE_ID) {
+      console.error('❌ initializeTelemetry: MACHINE_ID environment variable missing');
+      throw new Error('FATAL: MACHINE_ID environment variable is required for machine identification.');
+    }
+    
+    console.log(`✅ initializeTelemetry: Using MACHINE_ID: ${process.env.MACHINE_ID}`);
+    
+    // Set WORKER_ID if not already set (machines can have multiple workers)
+    if (!process.env.WORKER_ID) {
+      console.log(`🔍 initializeTelemetry: WORKER_ID not set, using MACHINE_ID value`);
+      process.env.WORKER_ID = process.env.MACHINE_ID;
+      console.log(`✅ initializeTelemetry: Set WORKER_ID: ${process.env.WORKER_ID}`);
+    }
+
+    console.log('🔧 initializeTelemetry: Creating telemetry client');
+    // Create and initialize telemetry client
+    const client = createTelemetryClient('machine');
+    
+    // Set machine-specific log file path
+    client.setLogFile('/workspace/logs/machine.log');
+    
+    console.log('🔧 initializeTelemetry: Starting telemetry client startup');
+    // Initialize with full pipeline testing
+    const pipelineHealth = await client.startup({
+      testConnections: true,
+      logConfiguration: true,
+      sendStartupPing: true,
+    });
+    
+    if (pipelineHealth?.overall === 'failed') {
+      console.warn('⚠️ initializeTelemetry: Telemetry pipeline has failures but continuing machine startup...');
+    } else {
+      console.log('✅ initializeTelemetry: Telemetry client startup completed successfully');
+    }
+    
+    return client;
+  } catch (error) {
+    console.error('❌ initializeTelemetry: Telemetry initialization failed:', error.message);
+    console.warn('⚠️ initializeTelemetry: Continuing machine startup without telemetry...');
+    return null;
+  }
+}
 
 /**
  * Load service mapping and analyze which services need PM2 processes
@@ -101,6 +155,12 @@ async function main() {
     pm2Mode: true
   });
 
+  // Initialize telemetry first
+  telemetryClient = await initializeTelemetry();
+
+  // Initialize machine status aggregator with telemetry client
+  statusAggregator = new MachineStatusAggregator(config, telemetryClient);
+
   // Check if health server is already running (indicates previous instance)
   await checkForExistingInstance();
 
@@ -141,8 +201,36 @@ async function main() {
     const startupTime = Date.now() - startTime;
     logger.info(`STEP 21: Machine Ready - Basic Machine ready in PM2 mode (${startupTime}ms)`);
 
+    // Log machine ready through telemetry
+    if (telemetryClient) {
+      await telemetryClient.log.info('✅ VALIDATION: Machine startup completed successfully', {
+        total_startup_time_ms: startupTime,
+        machine_id: config.machine.id,
+        gpu_count: config.machine.gpu.count,
+        pm2_mode: true,
+        services_count: (await pm2Manager.getAllServicesStatus()).length,
+        validation_type: 'machine_ready',
+        expected_result: 'Machine is now accepting jobs and telemetry is flowing to Dash0'
+      });
+      
+      await telemetryClient.otel.gauge('machine.startup.total_duration', startupTime, {
+        machine_id: config.machine.id,
+        gpu_count: config.machine.gpu.count.toString(),
+        status: 'success'
+      }, 'ms');
+    }
+
   } catch (error) {
     logger.error('STEP 1-21: Startup FAILED - Basic Machine startup error:', error);
+    
+    // Log startup failure through telemetry
+    if (telemetryClient) {
+      await telemetryClient.log.error('Machine startup failed', {
+        error: error.message,
+        machine_id: config.machine.id
+      });
+    }
+    
     // Status aggregator will automatically report machine error state
     process.exit(1);
   }

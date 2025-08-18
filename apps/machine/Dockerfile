@@ -30,19 +30,11 @@ FROM pytorch/pytorch:2.7.0-cuda12.8-cudnn9-devel AS ai-base
         apt-get clean && \
         rm -rf /var/lib/apt/lists/*
 
-    # Install Fluent Bit for structured logging
-    RUN curl -fsSL https://packages.fluentbit.io/fluentbit.key | sudo gpg --dearmor -o /usr/share/keyrings/fluentbit-keyring.gpg && \
-        echo "deb [signed-by=/usr/share/keyrings/fluentbit-keyring.gpg] https://packages.fluentbit.io/ubuntu/jammy jammy main" | sudo tee /etc/apt/sources.list.d/fluent-bit.list && \
-        apt-get update && \
-        apt-get install -y fluent-bit && \
-        apt-get clean && \
-        rm -rf /var/lib/apt/lists/*
-
-    # Install OpenTelemetry Collector Contrib for telemetry aggregation
-    RUN OTEL_VERSION="0.114.0" && \
-        curl -fsSL "https://github.com/open-telemetry/opentelemetry-collector-releases/releases/download/v${OTEL_VERSION}/otelcol-contrib_${OTEL_VERSION}_linux_amd64.tar.gz" | \
-        tar -xzC /usr/local/bin/ && \
-        chmod +x /usr/local/bin/otelcol-contrib
+    # Install unified telemetry stack (nginx-extras, Fluent Bit, OTEL Collector)
+    COPY install-telemetry-stack.sh /tmp/install-telemetry-stack.sh
+    RUN chmod +x /tmp/install-telemetry-stack.sh && \
+        SERVICE_TYPE=machine SERVICE_DIR=/workspace /tmp/install-telemetry-stack.sh && \
+        rm /tmp/install-telemetry-stack.sh
 
     # Set up working directory
     WORKDIR /workspace
@@ -65,19 +57,8 @@ FROM pytorch/pytorch:2.7.0-cuda12.8-cudnn9-devel AS ai-base
         /workspace/fluent-bit \
         /tmp/fluent-bit-buffer
 
-    # Copy Fluent Bit template for runtime config generation
-    COPY fluent-bit-worker.conf.template /workspace/fluent-bit/fluent-bit-worker.conf.template
-    RUN chmod 644 /workspace/fluent-bit/fluent-bit-worker.conf.template && \
-        chmod 755 /tmp/fluent-bit-buffer
-    
-    # Copy nginx proxy config for Railway Host header workaround
-    COPY nginx-proxy.conf /etc/nginx/sites-available/fluentd-proxy
-    RUN ln -sf /etc/nginx/sites-available/fluentd-proxy /etc/nginx/sites-enabled/fluentd-proxy && \
-        rm -f /etc/nginx/sites-enabled/default
-
-    # Copy OpenTelemetry Collector configuration template
-    RUN mkdir -p /workspace/otel
-    COPY otel-collector-machine.yaml.template /workspace/otel/otel-collector-machine.yaml.template
+    # TelemetryClient will generate all configs at runtime
+    # Removed static template files - using unified TelemetryClient instead
 
 # Stage 3: ComfyUI Base Installation (HEAVY BUT STABLE)
 FROM ai-base AS comfyui-base
