@@ -20,7 +20,7 @@ export async function sendTrace(
     parent_span_id?: string;
   } = {}
 ): Promise<{ traceId: string; spanId: string }> {
-  const collectorEndpoint = getRequiredEnv('OTEL_EXPORTER_OTLP_TRACES_ENDPOINT', 'Must specify OTEL collector traces endpoint');
+  const collectorEndpoint = getRequiredEnv('OTEL_COLLECTOR_TRACES_ENDPOINT', 'Must specify OTEL collector traces endpoint');
   
   // Generate IDs
   const traceId = options.parent_trace_id || generateTraceId();

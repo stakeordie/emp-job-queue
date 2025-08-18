@@ -966,7 +966,7 @@ export const useMonitorStore = create<MonitorStore>()(
                   capabilities,
                   current_jobs: statusInfo?.current_job_id ? [statusInfo.current_job_id] : [],
                   connected_at: new Date().toISOString(),
-                  last_heartbeat: statusInfo?.last_activity ? new Date(statusInfo.last_activity).toISOString() : new Date().toISOString(),
+                  last_heartbeat: statusInfo?.last_activity && typeof statusInfo.last_activity === 'number' ? new Date(statusInfo.last_activity).toISOString() : new Date().toISOString(),
                   total_jobs_completed: 0,
                   total_jobs_failed: 0,
                   average_processing_time: 0, // Required fields
@@ -989,7 +989,7 @@ export const useMonitorStore = create<MonitorStore>()(
                     }
                   },
                   current_jobs: statusInfo?.current_job_id ? [statusInfo.current_job_id] : [],
-                  last_heartbeat: statusInfo?.last_activity ? new Date(statusInfo.last_activity).toISOString() : existingWorker.last_heartbeat
+                  last_heartbeat: statusInfo?.last_activity && typeof statusInfo.last_activity === 'number' ? new Date(statusInfo.last_activity).toISOString() : existingWorker.last_heartbeat
                 };
                 console.log(`[Store] Updating existing worker ${workerId} with version:`, {
                   version: updates.capabilities.metadata?.version,

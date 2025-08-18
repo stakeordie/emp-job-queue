@@ -39,11 +39,6 @@ FROM pytorch/pytorch:2.7.0-cuda12.8-cudnn9-devel AS ai-base
     # Set up working directory
     WORKDIR /workspace
     
-    # Add build timestamp for debugging
-    ARG BUILD_TIMESTAMP
-    ENV BUILD_TIMESTAMP=${BUILD_TIMESTAMP}
-    RUN echo "Image built at: ${BUILD_TIMESTAMP}" > /workspace/BUILD_INFO.txt
-
     # Create necessary directories
     RUN mkdir -p \
         /workspace/logs \
@@ -60,18 +55,8 @@ FROM pytorch/pytorch:2.7.0-cuda12.8-cudnn9-devel AS ai-base
     # TelemetryClient will generate all configs at runtime
     # Removed static template files - using unified TelemetryClient instead
 
-# Stage 3: ComfyUI Base Installation (HEAVY BUT STABLE)
-FROM ai-base AS comfyui-base
-
-    # Install ComfyUI base - this layer caches until ComfyUI repo changes
-    RUN echo "Installing ComfyUI base..." && \
-        git clone -b forward https://github.com/stakeordie/ComfyUI.git /workspace/ComfyUI && \
-        cd /workspace/ComfyUI && \
-        pip install -r requirements.txt && \
-        echo "ComfyUI base installation complete"
-
-# Stage 4: Bundle standalone installer
-FROM comfyui-base AS installer-builder
+# Stage 3: Bundle standalone installer (no longer needs ComfyUI base)
+FROM ai-base AS installer-builder
     WORKDIR /build
     RUN npm install -g pnpm
 
@@ -88,7 +73,7 @@ FROM comfyui-base AS installer-builder
         sed -i '1i#!/usr/bin/env node' installer-bundle.js && \
         chmod +x installer-bundle.js
 
-# Stage 5: Base Machine - COMPLETE APPLICATION RUNTIME (BUILT AFTER COMFYUI CACHING)
+# Stage 4: Base Machine - COMPLETE APPLICATION RUNTIME
 FROM ai-base AS base-machine
 
     # Install dependencies first (better caching)
@@ -100,16 +85,7 @@ FROM ai-base AS base-machine
     WORKDIR /service-manager
     RUN pnpm install --prod --no-frozen-lockfile --ignore-workspace
 
-    # Inject machine version and build info
-    ARG MACHINE_VERSION=latest
-    ARG BUILD_DATE
-    RUN sed -i "s/\"version\": \"[^\"]*\"/\"version\": \"${MACHINE_VERSION}\"/" package.json && \
-        echo "MACHINE_VERSION=${MACHINE_VERSION}" > .version && \
-        echo "BUILD_DATE=${BUILD_DATE}" >> .version
-
-    # Set environment variables for runtime
-    ENV MACHINE_VERSION=${MACHINE_VERSION}
-    ENV BUILD_DATE=${BUILD_DATE}
+    # Version injection will be moved to end to preserve cache
 
     # Copy all application files
     COPY src/ /service-manager/src/
@@ -169,11 +145,22 @@ ENV MACHINE_ID=${MACHINE_ID}
 COPY --from=base-machine /service-manager/worker-bundled /service-manager/worker-bundled
 COPY ${ENV_FILE} /service-manager/.env
 
+# Add build metadata at the very end to preserve Docker cache
+ARG BUILD_TIMESTAMP
+ARG MACHINE_VERSION=latest
+ARG BUILD_DATE
+ENV BUILD_TIMESTAMP=${BUILD_TIMESTAMP}
+ENV MACHINE_VERSION=${MACHINE_VERSION}
+ENV BUILD_DATE=${BUILD_DATE}
+RUN echo "Image built at: ${BUILD_TIMESTAMP}" > /workspace/BUILD_INFO.txt && \
+    echo "MACHINE_VERSION=${MACHINE_VERSION}" > /service-manager/.version && \
+    echo "BUILD_DATE=${BUILD_DATE}" >> /service-manager/.version
+
 # Use base-specific entrypoint
 ENTRYPOINT ["/scripts/entrypoint-base.sh"]
 
-# Profile: comfyui - Internal ComfyUI connectors (NOW USES RUNTIME COMPONENT INSTALLATION)
-FROM comfyui-base AS comfyui
+# Profile: comfyui - Internal ComfyUI connectors (PURE RUNTIME INSTALLATION)
+FROM base-machine AS comfyui
 
 # Accept build args from compose generator
 ARG WORKER_SPEC
@@ -185,43 +172,25 @@ ARG ENV_FILE=.env
 ENV WORKERS=${WORKERS}
 ENV MACHINE_ID=${MACHINE_ID}
 
-# Copy application runtime from base-machine
-COPY --from=base-machine /service-manager /service-manager
-
 # Copy installer tools for runtime custom node installation
 COPY --from=installer-builder /build/installer-bundle.js /service-manager/installer-bundle.js
 COPY --from=installer-builder /build/node_modules /service-manager/node_modules
 
-# Set up environment (copied from base-machine)
-ENV NODE_ENV=production \
-    LOG_LEVEL=info \
-    SERVICE_MANAGER_PATH=/service-manager \
-    WORKSPACE_PATH=/workspace \
-    PM2_HOME=/workspace/.pm2 \
-    PATH="/service-manager/node_modules/.bin:${PATH}"
-
-# Worker bundle mode
-ENV WORKER_BUNDLE_MODE=${WORKER_BUNDLE_MODE}
-
-# Create worker-bundled directory and copy worker files
-RUN mkdir -p /workspace/worker-bundled
-COPY worker-bundled/ /service-manager/worker-bundled/
-
-# Copy PM2 ecosystem config to workspace (needed by PM2)
-RUN cp /service-manager/scripts/pm2-ecosystem.config.cjs /workspace/pm2-ecosystem.config.cjs
-
-# Copy environment file
+# Copy environment file (inherits everything else from base-machine)
 COPY ${ENV_FILE} /service-manager/.env
 
-# Copy entrypoint scripts
-COPY scripts/entrypoint-*.sh /scripts/
-RUN chmod +x /scripts/entrypoint-*.sh
+# Add build metadata at the very end to preserve Docker cache
+ARG BUILD_TIMESTAMP
+ARG MACHINE_VERSION=latest
+ARG BUILD_DATE
+ENV BUILD_TIMESTAMP=${BUILD_TIMESTAMP}
+ENV MACHINE_VERSION=${MACHINE_VERSION}
+ENV BUILD_DATE=${BUILD_DATE}
+RUN echo "Image built at: ${BUILD_TIMESTAMP}" > /workspace/BUILD_INFO.txt && \
+    echo "MACHINE_VERSION=${MACHINE_VERSION}" > /service-manager/.version && \
+    echo "BUILD_DATE=${BUILD_DATE}" >> /service-manager/.version
 
-# Health check (use health monitoring port instead of NGINX)
-HEALTHCHECK --interval=30s --timeout=10s --start-period=5m --retries=3 \
-    CMD curl -f http://localhost:9090/health || exit 1
-
-# Use base entrypoint (service manager handles ComfyUI-specific logic)
+# Use base entrypoint (service manager handles ComfyUI-specific logic at runtime)
 ENTRYPOINT ["/scripts/entrypoint-base.sh"]
 
 
@@ -242,6 +211,17 @@ ENV MACHINE_ID=${MACHINE_ID}
 # Add: Any simulation-specific setup here if needed
 COPY --from=base-machine /service-manager/worker-bundled /service-manager/worker-bundled
 COPY ${ENV_FILE} /service-manager/.env
+
+# Add build metadata at the very end to preserve Docker cache
+ARG BUILD_TIMESTAMP
+ARG MACHINE_VERSION=latest
+ARG BUILD_DATE
+ENV BUILD_TIMESTAMP=${BUILD_TIMESTAMP}
+ENV MACHINE_VERSION=${MACHINE_VERSION}
+ENV BUILD_DATE=${BUILD_DATE}
+RUN echo "Image built at: ${BUILD_TIMESTAMP}" > /workspace/BUILD_INFO.txt && \
+    echo "MACHINE_VERSION=${MACHINE_VERSION}" > /service-manager/.version && \
+    echo "BUILD_DATE=${BUILD_DATE}" >> /service-manager/.version
 
 # Use simulation-specific entrypoint
 ENTRYPOINT ["/scripts/entrypoint-base.sh"]

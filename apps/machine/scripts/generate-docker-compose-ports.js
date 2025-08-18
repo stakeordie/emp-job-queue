@@ -9,6 +9,7 @@ import path from 'path';
 import { fileURLToPath } from 'url';
 import { WorkerConfigurationParser } from '../src/config/worker-config-parser.js';
 import { HardwareDetector } from '../src/config/hardware-detector.js';
+import { getRequiredEnv } from '@emp/core';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -153,20 +154,20 @@ class DockerComposePortGenerator {
   async updateDockerCompose(portMappings) {
     const overridePath = path.join(__dirname, '..', 'docker-compose.override.yml');
     
+    // Determine the service name from environment - NO FALLBACKS!
+    const serviceName = getRequiredEnv('DOCKER_COMPOSE_PROFILES', 'Set to the service name you are building (e.g., sim-test-local-dev)');
+    
     // Create override file to preserve original docker-compose.yml profiles
     let overrideContent = 'services:\n';
+    overrideContent += `  ${serviceName}:\n`;
     
     // Handle the case where there are no port mappings
     if (portMappings.length === 0) {
-      // Create minimal override that doesn't add ports
-      overrideContent += '  # No additional port mappings needed\n';
-      this.logger.log('✅ No port mappings needed - creating minimal override');
+      // Create service entry without ports but still valid YAML
+      overrideContent += '    # No additional port mappings needed\n';
+      this.logger.log(`✅ Created override for service '${serviceName}' with no port mappings`);
     } else {
-      // Determine the service name from environment or use default
-      const serviceName = process.env.COMPOSE_PROFILES || 'base-machine';
-      
-      // Create override for the specific service
-      overrideContent += `  ${serviceName}:\n`;
+      // Add port mappings
       overrideContent += '    ports:\n';
       
       // Add generated port mappings (which already include health port)

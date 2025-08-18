@@ -207,52 +207,6 @@ prepare_nginx() {
 # =====================================================
 # nginx startup is now handled by TelemetryClient in Node.js
 
-# =====================================================
-# Send Direct Fluentd Test Log
-# =====================================================
-send_direct_fluentd_log() {
-    log_section "Sending Direct Fluentd Test Log"
-    
-    # Environment variables will be validated by Node.js telemetry client
-    local FLUENTD_HOST=${FLUENTD_HOST}
-    local FLUENTD_PORT=${FLUENTD_PORT}
-    
-    log_info "Sending test log directly to Fluentd at ${FLUENTD_HOST}:${FLUENTD_PORT}"
-    
-    # Generate MACHINE_ID if not set (same logic as Node.js)
-    local MACHINE_ID_VALUE="${MACHINE_ID:-${API_BASE_ID:-api-unknown}-${TELEMETRY_ENV:-unknown}}"
-    
-    # Create the JSON payload  
-    local json_payload="{
-        \"service\": \"api\",
-        \"message\": \"direct log from api\",
-        \"timestamp\": \"$(date -u +%Y-%m-%dT%H:%M:%SZ)\",
-        \"machine_id\": \"${MACHINE_ID_VALUE}\",
-        \"service_name\": \"${SERVICE_NAME}\",
-        \"environment\": \"${TELEMETRY_ENV}\",
-        \"event_type\": \"container_startup_test\"
-    }"
-    
-    log_info "📋 Fluentd payload: $json_payload"
-    log_info "📋 Fluentd URL: http://${FLUENTD_HOST}:${FLUENTD_PORT}/test"
-    
-    # Send a direct log message to Fluentd via HTTP
-    local response=$(curl -X POST "http://${FLUENTD_HOST}:${FLUENTD_PORT}/test" \
-        -H "Content-Type: application/json" \
-        -d "$json_payload" \
-        -w "HTTP_CODE:%{http_code}" \
-        -s 2>&1)
-    
-    log_info "📋 Fluentd response: $response"
-    
-    if [[ "$response" == *"HTTP_CODE:200"* ]]; then
-        log_info "✅ Fluentd log sent successfully"
-    else
-        log_warn "⚠️ Fluentd response indicates potential issue: $response"
-    fi
-    
-    log_info "✅ Direct Fluentd test log sent"
-}
 
 # =====================================================
 # Main Function
@@ -267,15 +221,15 @@ main() {
     log_info "  - SERVICE_NAME: ${SERVICE_NAME:-not set}"
     log_info "  - MACHINE_ID: ${MACHINE_ID:-not set (will be generated)}"
     
-    # Direct Fluentd test for pipeline validation
-    # send_direct_fluentd_log  # Disabled: Using Forward protocol (port 24224), not HTTP
-    
-    # Use reusable telemetry functions
-    prepare_telemetry || log_warn "Telemetry preparation failed but continuing..."
+    # Install dependencies only
     install_dependencies || exit 1
-    start_otel_collector || log_warn "OTel Collector failed to start but continuing..."
-    start_fluent_bit || log_warn "Fluent Bit failed to start but continuing..."
-    # nginx will be started by TelemetryClient during Node.js startup
+    
+    # Enhanced TelemetryClient will handle ALL telemetry processes during Node.js startup:
+    # - nginx proxy for Forward protocol
+    # - OTEL Collector process
+    # - Fluent Bit process
+    log_info "🔧 Enhanced TelemetryClient will start ALL telemetry processes during Node.js startup"
+    log_info "🔧 This includes: nginx proxy + OTEL Collector + Fluent Bit"
     
     # Start the API server (foreground)
     start_application

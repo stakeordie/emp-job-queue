@@ -476,6 +476,17 @@ class MachineCompose {
   }
 
   /**
+   * Clean up override file for build commands (not needed during build)
+   */
+  cleanupOverrideFile() {
+    const overridePath = path.join(MACHINE_DIR, 'docker-compose.override.yml');
+    if (fs.existsSync(overridePath)) {
+      console.log(chalk.gray('🧹 Removing docker-compose.override.yml (not needed for build)'));
+      fs.unlinkSync(overridePath);
+    }
+  }
+
+  /**
    * Generate port configuration using the new port manager
    */
   async generatePorts(portMappings, profile, isDebug) {
@@ -692,8 +703,11 @@ class MachineCompose {
         console.log(chalk.dim(`🔌 Combined ports: ${cmdLinePortMappings.length} from --open + ${exposedPortMappings.length} from EXPOSED_PORTS`));
       }
       
-      // Always bundle worker first for build command
+      // Always build workspace packages and bundle worker first for build command
       if (command === 'build' || command === 'build:push') {
+        console.log(chalk.blue('📦 Building workspace packages...'));
+        await this.executeCommand(['bash', '../../scripts/build-workspace-packages.sh'], false, [], null);
+        
         console.log(chalk.blue('📦 Bundling worker...'));
         await this.executeCommand(['pnpm', '-w', 'worker:bundle'], false, [], null);
         console.log(chalk.green('✅ Worker bundled successfully\n'));
@@ -709,10 +723,13 @@ class MachineCompose {
       // Check if debug mode is enabled
       const isDebug = flags.includes('--debug') || process.env.DEBUG_MODE === 'true';
       
-      // Generate ports before running docker-compose (for 'up' commands)
+      // Generate ports before running docker-compose (for 'up' commands only)
       if (command === 'up') {
         console.log(chalk.blue('⚙️  Generating port configuration...'));
         await this.generatePorts(portMappings, profile, isDebug);
+      } else if (command === 'build' || command === 'build:push') {
+        // Remove any existing override file for build commands (not needed)
+        this.cleanupOverrideFile();
       }
       
       let cmd;

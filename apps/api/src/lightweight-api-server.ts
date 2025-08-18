@@ -1214,6 +1214,13 @@ export class LightweightAPIServer {
 
           // Note: Job submission event will be broadcasted from submitJob method with proper JobSubmittedEvent format
         } catch (error) {
+          logger.error(`🔍 [WS_HANDLER_DEBUG] CAUGHT ERROR in submit_job handler:`, error);
+          logger.error(`🔍 [WS_HANDLER_DEBUG] Error details:`, {
+            message: error instanceof Error ? error.message : 'Unknown error',
+            stack: error instanceof Error ? error.stack : 'No stack trace',
+            name: error instanceof Error ? error.name : 'Unknown error type'
+          });
+          
           ws.send(
             JSON.stringify({
               type: 'error',
@@ -2373,7 +2380,12 @@ export class LightweightAPIServer {
     // Submit job directly to Redis (no hub orchestration)
     // Use provided job ID (for EmProps compatibility) or generate new one
 
+    logger.info(`🔍 [SUBMIT_JOB_DEBUG] Starting submitJob method`);
+    logger.info(`🔍 [SUBMIT_JOB_DEBUG] Received jobData keys: ${Object.keys(jobData)}`);
+    logger.info(`🔍 [SUBMIT_JOB_DEBUG] ProvidedJobId: ${providedJobId}`);
+
     const jobId = providedJobId || uuidv4();
+    logger.info(`🔍 [SUBMIT_JOB_DEBUG] Using jobId: ${jobId}`);
     
     // Handle workflow tracing if this job is part of a workflow
     let workflowStepSpanContext: { traceId: string; spanId: string } | undefined;
@@ -2489,7 +2501,10 @@ export class LightweightAPIServer {
     logger.info(
       `[JOB SUBMIT] Storing job ${jobId} in Redis - Monitor still connected: ${this.eventBroadcaster.getMonitorCount()} monitors`
     );
-    await this.redis.hmset(`job:${jobId}`, {
+    logger.info(`🔍 [SUBMIT_JOB_DEBUG] About to call redis.hmset for job:${jobId}`);
+    
+    try {
+      await this.redis.hmset(`job:${jobId}`, {
       id: job.id,
       service_required: job.service_required,
       priority: job.priority.toString(),
@@ -2511,6 +2526,11 @@ export class LightweightAPIServer {
       workflow_trace_id: workflowStepSpanContext?.traceId || '',
       workflow_span_id: workflowStepSpanContext?.spanId || '',
     });
+    logger.info(`🔍 [SUBMIT_JOB_DEBUG] Successfully stored job in Redis hash`);
+    } catch (error) {
+      logger.error(`🔍 [SUBMIT_JOB_DEBUG] FAILED to store job in Redis hash:`, error);
+      throw error;
+    }
 
     // Add to pending queue with workflow-aware scoring
     // In Redis sorted sets, HIGHER scores come FIRST (ZREVRANGE)
@@ -2533,17 +2553,33 @@ export class LightweightAPIServer {
       `Job ${jobId} scoring: priority=${job.priority}, workflow_priority=${job.workflow_priority}, effective_priority=${effectivePriority}, timestamp=${new Date(effectiveDateTime).toISOString()}, score=${score.toExponential(2)} (${priorityComponent.toExponential(2)} - ${timeComponent})`
     );
 
-    await this.redis.zadd('jobs:pending', score, jobId);
-    logger.info(
-      `[JOB SUBMIT] Job ${jobId} added to pending queue - Monitor still connected: ${this.eventBroadcaster.getMonitorCount()} monitors`
-    );
+    logger.info(`🔍 [SUBMIT_JOB_DEBUG] About to add job to pending queue with score: ${score}`);
+    
+    try {
+      await this.redis.zadd('jobs:pending', score, jobId);
+      logger.info(`🔍 [SUBMIT_JOB_DEBUG] Successfully added job to pending queue`);
+      logger.info(
+        `[JOB SUBMIT] Job ${jobId} added to pending queue - Monitor still connected: ${this.eventBroadcaster.getMonitorCount()} monitors`
+      );
+    } catch (error) {
+      logger.error(`🔍 [SUBMIT_JOB_DEBUG] FAILED to add job to pending queue:`, error);
+      throw error;
+    }
 
     // Trace job save to Redis (after score calculation)
-    await JobInstrumentation.saveToRedis({
-      jobId,
-      redisKey: `job:${jobId}`,
-      queueScore: score,
-    }, submitSpanContext);
+    logger.info(`🔍 [SUBMIT_JOB_DEBUG] About to call JobInstrumentation.saveToRedis`);
+    
+    try {
+      await JobInstrumentation.saveToRedis({
+        jobId,
+        redisKey: `job:${jobId}`,
+        queueScore: score,
+      }, submitSpanContext);
+      logger.info(`🔍 [SUBMIT_JOB_DEBUG] Successfully completed JobInstrumentation.saveToRedis`);
+    } catch (error) {
+      logger.error(`🔍 [SUBMIT_JOB_DEBUG] FAILED JobInstrumentation.saveToRedis:`, error);
+      throw error;
+    }
 
     // Create job_submitted event for monitors (original format)
     const jobSubmittedEvent: JobSubmittedEvent = {
@@ -2577,6 +2613,8 @@ export class LightweightAPIServer {
     this.eventBroadcaster.broadcast(jobSubmittedEvent);
 
     // ALSO publish job_submitted event to Redis for webhook notifications
+    logger.info(`🔍 [SUBMIT_JOB_DEBUG] About to create submission event and publish to Redis`);
+    
     const submissionEvent = {
       job_id: jobId,
       service_required: job.service_required,
@@ -2594,11 +2632,19 @@ export class LightweightAPIServer {
       step_number: job.step_number,
       total_steps: job.total_steps,
     };
-    await this.redis.publish('job_submitted', JSON.stringify(submissionEvent));
+    
+    try {
+      await this.redis.publish('job_submitted', JSON.stringify(submissionEvent));
+      logger.info(`🔍 [SUBMIT_JOB_DEBUG] Successfully published job_submitted event to Redis`);
+    } catch (error) {
+      logger.error(`🔍 [SUBMIT_JOB_DEBUG] FAILED to publish job_submitted event:`, error);
+      throw error;
+    }
 
     logger.info(`📢 [DEBUG] Broadcasted job_submitted event for ${jobId}`);
     logger.info(`📢 [DEBUG] Published job_submitted to Redis for webhooks: ${jobId}`);
 
+    logger.info(`🔍 [SUBMIT_JOB_DEBUG] submitJob method completed successfully`);
     logger.info(`Job ${jobId} submitted via lightweight API (${job.service_required})`);
     return jobId;
   }

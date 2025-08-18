@@ -311,12 +311,15 @@ start_application() {
 main() {
     log_section "Initializing Webhook Service"
     
-    # Use reusable telemetry functions
-    prepare_telemetry || log_warn "Telemetry preparation failed but continuing..."
+    # Install dependencies only
     install_dependencies || exit 1
-    start_otel_collector || log_warn "OTel Collector failed to start but continuing..."
-    start_fluent_bit || log_warn "Fluent Bit failed to start but continuing..."
-    # nginx will be started by TelemetryClient during Node.js startup
+    
+    # Enhanced TelemetryClient will handle ALL telemetry processes during Node.js startup:
+    # - nginx proxy for Forward protocol
+    # - OTEL Collector process
+    # - Fluent Bit process
+    log_info "🔧 Enhanced TelemetryClient will start ALL telemetry processes during Node.js startup"
+    log_info "🔧 This includes: nginx proxy + OTEL Collector + Fluent Bit"
     
     # Start the webhook service (foreground)
     start_application

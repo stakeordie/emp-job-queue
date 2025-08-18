@@ -290,40 +290,6 @@ export class EnhancedPM2EcosystemGenerator {
     };
   }
 
-  /**
-   * Create Fluent Bit PM2 app for structured logging
-   */
-  createFluentBitApp() {
-    return {
-      name: 'fluent-bit',
-      script: '/opt/fluent-bit/bin/fluent-bit',
-      args: ['-c', '/workspace/fluent-bit/fluent-bit-worker.conf'],
-      cwd: '/workspace',
-      instances: 1,
-      exec_mode: 'fork_mode',
-      interpreter: 'none',
-      autorestart: true,
-      max_restarts: 10,
-      min_uptime: '10s',
-      max_memory_restart: '256M',
-      restart_delay: 3000,
-      error_file: '/workspace/logs/fluent-bit-error.log',
-      out_file: '/workspace/logs/fluent-bit-out.log',
-      log_file: '/workspace/logs/fluent-bit-combined.log',
-      merge_logs: true,
-      env: {
-        MACHINE_ID: process.env.MACHINE_ID || 'unknown',
-        WORKER_ID: 'fluent-bit-logger',
-        SERVICE_TYPE: 'logging',
-        CONNECTOR_ID: 'fluent-bit',
-        DEPLOYMENT_ENV: process.env.RAILWAY_ENVIRONMENT || 'development',
-        RAILWAY_REGION: process.env.RAILWAY_REGION || 'unknown',
-        RAILWAY_SERVICE_INSTANCE_ID: process.env.RAILWAY_SERVICE_INSTANCE_ID || 'unknown',
-        FLUENTD_HOST: process.env.FLUENTD_HOST || 'host.docker.internal',
-        FLUENTD_PORT: process.env.FLUENTD_PORT || '8888'
-      }
-    };
-  }
 
   /**
    * Create Redis worker PM2 app

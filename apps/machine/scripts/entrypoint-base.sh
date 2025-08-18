@@ -47,6 +47,13 @@ setup_environment() {
     export NODE_ENV=${NODE_ENV:-production}
     export LOG_LEVEL=${LOG_LEVEL:-info}
     
+    # Telemetry environment variables (required by unified telemetry client)
+    export SERVICE_NAME=${SERVICE_NAME:-machine-service}
+    export SERVICE_VERSION=${SERVICE_VERSION:-1.0.0}
+    export FLUENTD_HOST=${FLUENTD_HOST:-localhost}
+    export FLUENTD_PORT=${FLUENTD_PORT:-24224}
+    export FLUENTD_SECURE=${FLUENTD_SECURE:-off}
+    
     # Source .env file if it exists
     if [ -f "/service-manager/.env" ]; then
         log_info "Loading environment from /service-manager/.env"
@@ -73,6 +80,10 @@ setup_environment() {
     log_info "  - WORKERS: ${WORKERS:-not set}"
     log_info "  - MACHINE_ID: ${MACHINE_ID:-not set}"
     log_info "  - HUB_REDIS_URL: ${HUB_REDIS_URL:-not set}"
+    log_info "  - SERVICE_NAME: ${SERVICE_NAME}"
+    log_info "  - SERVICE_VERSION: ${SERVICE_VERSION}"
+    log_info "  - FLUENTD_HOST: ${FLUENTD_HOST}"
+    log_info "  - FLUENTD_PORT: ${FLUENTD_PORT}"
 }
 
 # =====================================================
@@ -209,130 +220,10 @@ perform_health_check() {
     fi
 }
 
-# =====================================================
-# Start OpenTelemetry Collector (Background Process)
-# =====================================================
-start_otel_collector() {
-    log_section "Starting OpenTelemetry Collector"
-    
-    # Set default environment variables for OTel Collector
-    export MACHINE_ID=${MACHINE_ID:-unknown}
-    export NODE_ENV=${NODE_ENV:-production}
-    export DASH0_API_KEY=${DASH0_API_KEY:-auth_w8VowQspnZ8whZHWp1pe6azIIehBAAvL}
-    export DASH0_DATASET=${DASH0_DATASET:-${NODE_ENV}}
-    
-    log_info "Generating OTel Collector configuration at runtime..."
-    log_info "  - Machine ID: ${MACHINE_ID}"
-    log_info "  - Environment: ${NODE_ENV}"
-    log_info "  - Dash0 Dataset: ${DASH0_DATASET}"
-    log_info "  - Template: /workspace/otel/otel-collector-machine.yaml.template"
-    log_info "  - Config: /workspace/otel/otel-collector-machine.yaml"
-    
-    # Create otel directory
-    mkdir -p /workspace/otel
-    
-    # Generate OTel Collector config from template at runtime
-    if [ -f "/workspace/otel/otel-collector-machine.yaml.template" ]; then
-        envsubst < /workspace/otel/otel-collector-machine.yaml.template > /workspace/otel/otel-collector-machine.yaml
-        log_info "✅ OTel Collector configuration generated successfully"
-    else
-        log_error "❌ OTel Collector template not found"
-        return 1
-    fi
-    
-    # Start OTel Collector in background with logs to file
-    otelcol-contrib --config=/workspace/otel/otel-collector-machine.yaml \
-        > /workspace/logs/otel-collector.log 2>&1 &
-    OTEL_COLLECTOR_PID=$!
-    
-    log_info "✅ OTel Collector started (PID: $OTEL_COLLECTOR_PID)"
-    log_info "📁 OTel Collector logs: /workspace/logs/otel-collector.log"
-    
-    # Give it a moment to start
-    sleep 2
-    
-    # Check if it's still running
-    if kill -0 $OTEL_COLLECTOR_PID 2>/dev/null; then
-        log_info "✅ OTel Collector is running successfully"
-        # Test collector health
-        if curl -f http://localhost:13133 >/dev/null 2>&1; then
-            log_info "✅ OTel Collector health check passed"
-        else
-            log_warn "⚠️ OTel Collector health check failed but process is running"
-        fi
-    else
-        log_error "❌ OTel Collector failed to start"
-        return 1
-    fi
-}
 
-# =====================================================
-# Start Nginx Proxy (Background Process)
-# =====================================================
-start_nginx_proxy() {
-    log_section "Starting Nginx Proxy for Railway"
-    
-    # Start nginx in background
-    nginx &
-    NGINX_PID=$!
-    
-    log_info "✅ Nginx proxy started (PID: $NGINX_PID)"
-    sleep 1
-}
 
-start_fluent_bit() {
-    log_section "Starting Fluent Bit Logger"
-    
-    # Set default environment variables for Fluent Bit
-    export MACHINE_ID=${MACHINE_ID:-unknown}
-    export FLUENTD_HOST=${FLUENTD_HOST:-host.docker.internal}
-    
-    # Convert true/false to on/off for Fluent Bit (with default)
-    if [ "${FLUENTD_SECURE:-false}" = "true" ]; then
-        export FLUENTD_SECURE="on"
-        # If secure and no port specified, default to 443
-        export FLUENTD_PORT=${FLUENTD_PORT:-443}
-    else
-        export FLUENTD_SECURE="off"
-        # If not secure and no port specified, default to 8888
-        export FLUENTD_PORT=${FLUENTD_PORT:-8888}
-    fi
-    
-    log_info "Generating Fluent Bit configuration at runtime..."
-    log_info "  - Machine ID: ${MACHINE_ID}"
-    log_info "  - Fluentd Host: ${FLUENTD_HOST}:${FLUENTD_PORT}"
-    log_info "  - Secure Connection: ${FLUENTD_SECURE}"
-    log_info "  - Template: /workspace/fluent-bit/fluent-bit-worker.conf.template"
-    log_info "  - Config: /workspace/fluent-bit/fluent-bit-worker.conf"
-    
-    # Generate Fluent Bit config from template at runtime (keeps credentials secure)
-    if [ -f "/workspace/fluent-bit/fluent-bit-worker.conf.template" ]; then
-        envsubst < /workspace/fluent-bit/fluent-bit-worker.conf.template > /workspace/fluent-bit/fluent-bit-worker.conf
-        log_info "✅ Fluent Bit configuration generated successfully"
-    else
-        log_error "❌ Fluent Bit template not found"
-        return 1
-    fi
-    
-    # Start Fluent Bit in background with logs to file
-    /opt/fluent-bit/bin/fluent-bit -c /workspace/fluent-bit/fluent-bit-worker.conf \
-        > /workspace/logs/fluent-bit.log 2>&1 &
-    FLUENT_BIT_PID=$!
-    
-    log_info "✅ Fluent Bit started (PID: $FLUENT_BIT_PID)"
-    log_info "📁 Fluent Bit logs: /workspace/logs/fluent-bit.log"
-    
-    # Give it a moment to start
-    sleep 2
-    
-    # Check if it's still running
-    if kill -0 $FLUENT_BIT_PID 2>/dev/null; then
-        log_info "✅ Fluent Bit is running successfully"
-    else
-        log_error "❌ Fluent Bit failed to start"
-        return 1
-    fi
-}
+
+# Telemetry functions removed - handled by enhanced TelemetryClient in Node.js
 
 # =====================================================
 # Start Application
@@ -377,16 +268,52 @@ handle_error() {
 }
 
 # =====================================================
-# Signal Handlers
+# Signal Handlers with Telemetry Cleanup
 # =====================================================
 handle_sigterm() {
     log_warn "Received SIGTERM signal, initiating graceful shutdown..."
+    cleanup_telemetry_processes
     exit 0
 }
 
 handle_sigint() {
     log_warn "Received SIGINT signal, initiating graceful shutdown..."
+    cleanup_telemetry_processes
     exit 0
+}
+
+cleanup_telemetry_processes() {
+    log_warn "Cleaning up telemetry processes..."
+    
+    # Stop Node.js service first
+    if [ -n "${NODE_PID:-}" ] && kill -0 $NODE_PID 2>/dev/null; then
+        log_info "Stopping Node.js service..."
+        kill -TERM $NODE_PID 2>/dev/null || true
+        wait $NODE_PID 2>/dev/null || true
+    fi
+    
+    # Stop nginx (managed by TelemetryClient)
+    if pgrep -f "nginx.*daemon off" >/dev/null; then
+        log_info "Stopping nginx..."
+        pkill -TERM -f "nginx.*daemon off" 2>/dev/null || true
+        sleep 2
+    fi
+    
+    # Stop Fluent Bit
+    if [ -n "${FLUENT_BIT_PID:-}" ] && kill -0 $FLUENT_BIT_PID 2>/dev/null; then
+        log_info "Stopping Fluent Bit..."
+        kill -TERM $FLUENT_BIT_PID 2>/dev/null || true
+        wait $FLUENT_BIT_PID 2>/dev/null || true
+    fi
+    
+    # Stop OTEL Collector
+    if [ -n "${OTEL_COLLECTOR_PID:-}" ] && kill -0 $OTEL_COLLECTOR_PID 2>/dev/null; then
+        log_info "Stopping OTEL Collector..."
+        kill -TERM $OTEL_COLLECTOR_PID 2>/dev/null || true
+        wait $OTEL_COLLECTOR_PID 2>/dev/null || true
+    fi
+    
+    log_info "Telemetry cleanup complete"
 }
 
 # Register signal handlers
@@ -394,59 +321,14 @@ trap 'handle_sigterm' SIGTERM
 trap 'handle_sigint' SIGINT
 trap 'handle_error ${LINENO}' ERR
 
-# =====================================================
-# Send Direct Fluentd Test Log
-# =====================================================
-send_direct_fluentd_log() {
-    log_section "Sending Direct Fluentd Test Log"
-    
-    local FLUENTD_HOST=${FLUENTD_HOST:-host.docker.internal}
-    local FLUENTD_PORT=${FLUENTD_PORT:-8888}
-    
-    log_info "Sending test log directly to Fluentd at ${FLUENTD_HOST}:${FLUENTD_PORT}"
-    
-    # Create the JSON payload
-    local json_payload="{
-        \"service\": \"machine\",
-        \"message\": \"direct log from machine\",
-        \"timestamp\": \"$(date -u +%Y-%m-%dT%H:%M:%SZ)\",
-        \"machine_id\": \"${MACHINE_ID:-machine-server}\",
-        \"service_name\": \"${SERVICE_NAME:-emp-machine}\",
-        \"environment\": \"${NODE_ENV:-production}\",
-        \"event_type\": \"container_startup_test\"
-    }"
-    
-    log_info "📋 Fluentd payload: $json_payload"
-    log_info "📋 Fluentd URL: http://${FLUENTD_HOST}:${FLUENTD_PORT}/test"
-    
-    # Send a direct log message to Fluentd via HTTP
-    local response=$(curl -X POST "http://${FLUENTD_HOST}:${FLUENTD_PORT}/test" \
-        -H "Content-Type: application/json" \
-        -d "$json_payload" \
-        -w "HTTP_CODE:%{http_code}" \
-        -s 2>&1)
-    
-    log_info "📋 Fluentd response: $response"
-    
-    if [[ "$response" == *"HTTP_CODE:200"* ]]; then
-        log_info "✅ Fluentd log sent successfully"
-    else
-        log_warn "⚠️ Fluentd response indicates potential issue: $response"
-    fi
-    
-    log_info "✅ Direct Fluentd test log sent"
-}
 
 # =====================================================
 # Main Execution
 # =====================================================
 main() {
     log_section "EMP Machine Starting - Base Profile"
-    log_info "Entrypoint script version: 2.0.0-base"
+    log_info "Entrypoint script version: 3.1.0-telemetry-client-enhanced"
     log_info "Date: $(date '+%Y-%m-%d %H:%M:%S')"
-    
-    # Send direct Fluentd test log first thing
-    send_direct_fluentd_log
     
     # Execute setup steps (minimal for base profile)
     setup_environment || exit 1
@@ -455,10 +337,9 @@ main() {
     setup_service_manager || exit 1
     perform_health_check || log_warn "Health check had warnings but continuing..."
     
-    # Start telemetry services
-    start_otel_collector || log_warn "OTel Collector failed to start but continuing..."
-    start_nginx_proxy || log_warn "Nginx proxy failed to start but continuing..."
-    start_fluent_bit || log_warn "Fluent Bit failed to start but continuing..."
+    # Telemetry will be handled by enhanced TelemetryClient in Node.js 
+    log_info "🔧 Enhanced TelemetryClient will start ALL telemetry processes for machine services"
+    log_info "🔧 This includes: nginx proxy + OTEL Collector + Fluent Bit"
     
     # Start the application
     start_application

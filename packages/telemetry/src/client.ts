@@ -62,6 +62,14 @@ export class EmpTelemetryClient {
       // Start nginx proxy for Forward protocol
       await this.startNginxProxy();
       
+      // For machine services, also start OTEL Collector and Fluent Bit processes
+      if (this.config.serviceType === 'machine') {
+        console.log('🔧 TelemetryClient: Machine service - starting OTEL Collector and Fluent Bit processes');
+        await this.startOtelCollector();
+        await this.startFluentBit();
+        console.log('✅ TelemetryClient: All telemetry processes started for machine service');
+      }
+      
       console.log('📋 TelemetryClient: Fluent Bit will send to localhost:24224');
       console.log('📋 TelemetryClient: nginx will proxy to', `${this.config.logging.fluentdHost}:${this.config.logging.fluentdPort}`);
     } catch (error) {
@@ -216,6 +224,122 @@ stream {
     Host localhost
     Port 24224
     tls off`;
+  }
+
+  /**
+   * Start OTEL Collector process using generated config
+   */
+  private async startOtelCollector(): Promise<void> {
+    console.log('🔧 TelemetryClient: Starting OTEL Collector process');
+    
+    const configFile = '/tmp/telemetry/otel-collector.yaml';
+    
+    try {
+      // Import spawn for running OTEL Collector
+      const { spawn } = await import('child_process');
+      
+      // Start OTEL Collector with the generated configuration
+      const otelProcess = spawn('otelcol-contrib', [
+        '--config', configFile
+      ], {
+        stdio: ['ignore', 'pipe', 'pipe'],
+        detached: false
+      });
+      
+      // Log OTEL Collector output
+      if (otelProcess.stdout) {
+        otelProcess.stdout.on('data', (data) => {
+          console.log('📋 OTEL Collector stdout:', data.toString().trim());
+        });
+      }
+      
+      if (otelProcess.stderr) {
+        otelProcess.stderr.on('data', (data) => {
+          console.log('📋 OTEL Collector stderr:', data.toString().trim());
+        });
+      }
+      
+      // Handle OTEL Collector process events
+      otelProcess.on('error', (error) => {
+        console.error('❌ TelemetryClient: OTEL Collector process error:', error);
+      });
+      
+      otelProcess.on('exit', (code, signal) => {
+        if (code !== 0) {
+          console.error(`❌ TelemetryClient: OTEL Collector exited with code ${code}, signal ${signal}`);
+        } else {
+          console.log('✅ TelemetryClient: OTEL Collector process exited normally');
+        }
+      });
+      
+      // Give OTEL Collector a moment to start
+      await new Promise(resolve => setTimeout(resolve, 3000));
+      
+      console.log('✅ TelemetryClient: OTEL Collector started successfully');
+      console.log('📋 TelemetryClient: OTEL Collector listening on localhost:4318');
+      
+    } catch (error) {
+      console.error('❌ TelemetryClient: Failed to start OTEL Collector:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Start Fluent Bit process using generated config
+   */
+  private async startFluentBit(): Promise<void> {
+    console.log('🔧 TelemetryClient: Starting Fluent Bit process');
+    
+    const configFile = '/tmp/telemetry/fluent-bit.conf';
+    
+    try {
+      // Import spawn for running Fluent Bit
+      const { spawn } = await import('child_process');
+      
+      // Start Fluent Bit with the generated configuration
+      const fluentBitProcess = spawn('/opt/fluent-bit/bin/fluent-bit', [
+        '-c', configFile
+      ], {
+        stdio: ['ignore', 'pipe', 'pipe'],
+        detached: false
+      });
+      
+      // Log Fluent Bit output
+      if (fluentBitProcess.stdout) {
+        fluentBitProcess.stdout.on('data', (data) => {
+          console.log('📋 Fluent Bit stdout:', data.toString().trim());
+        });
+      }
+      
+      if (fluentBitProcess.stderr) {
+        fluentBitProcess.stderr.on('data', (data) => {
+          console.log('📋 Fluent Bit stderr:', data.toString().trim());
+        });
+      }
+      
+      // Handle Fluent Bit process events
+      fluentBitProcess.on('error', (error) => {
+        console.error('❌ TelemetryClient: Fluent Bit process error:', error);
+      });
+      
+      fluentBitProcess.on('exit', (code, signal) => {
+        if (code !== 0) {
+          console.error(`❌ TelemetryClient: Fluent Bit exited with code ${code}, signal ${signal}`);
+        } else {
+          console.log('✅ TelemetryClient: Fluent Bit process exited normally');
+        }
+      });
+      
+      // Give Fluent Bit a moment to start
+      await new Promise(resolve => setTimeout(resolve, 2000));
+      
+      console.log('✅ TelemetryClient: Fluent Bit started successfully');
+      console.log('📋 TelemetryClient: Fluent Bit monitoring log files and sending to nginx proxy');
+      
+    } catch (error) {
+      console.error('❌ TelemetryClient: Failed to start Fluent Bit:', error);
+      throw error;
+    }
   }
 
   /**

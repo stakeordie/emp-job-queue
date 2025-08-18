@@ -47,31 +47,27 @@ export default class ComfyUIInstallerService extends BaseService {
   }
 
   async onStart() {
-    this.logger.info('Starting ComfyUI installation process...');
+    this.logger.info('Starting ComfyUI pure runtime installation...');
     
     try {
-      // Check if ComfyUI is already installed
-      if (await this.isComfyUIInstalled()) {
-        this.logger.info('ComfyUI is already installed, validating installation...');
-        await this.validateInstallation();
-        
-        // Check for component-based configuration
-        await this.handleComponentConfiguration();
-        
-        this.logger.info('ComfyUI installation validation completed');
-        return;
-      }
+      // Always clone fresh (fast) - ensures we have latest code for the environment
+      await this.cloneRepository();
 
-      // Full installation sequence
-      await this.installComfyUI();
-      await this.validateInstallation();
-      
-      // Handle component-based configuration
+      // Always pip install (ensures correct dependencies for actual runtime environment)
+      await this.installPythonDependencies();
+
+      // Setup EmProps custom nodes from monorepo
+      await this.setupEmpropsCustomNodes();
+
+      // Custom nodes based on API/components (calls EmProps API at runtime)
       await this.handleComponentConfiguration();
       
-      this.logger.info('ComfyUI installation completed successfully');
+      // Setup model symlinks if available
+      await this.setupModelSymlinks();
+      
+      this.logger.info('ComfyUI pure runtime installation completed successfully');
     } catch (error) {
-      this.logger.error('ComfyUI installation failed:', error);
+      this.logger.error('ComfyUI runtime installation failed:', error);
       throw error;
     }
   }

@@ -16,6 +16,7 @@ import fs from 'fs';
 import path from 'path';
 import yaml from 'js-yaml';
 import { fileURLToPath } from 'url';
+import { getRequiredEnv } from '@emp/core';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -69,11 +70,12 @@ class PortManager {
    * Generate docker-compose override configuration
    */
   generateOverride() {
-    const profile = process.env.DOCKER_COMPOSE_PROFILES;
+    // NO FALLBACKS! Require DOCKER_COMPOSE_PROFILES
+    const profile = getRequiredEnv('DOCKER_COMPOSE_PROFILES', 'Set to the service name you are building (e.g., sim-test-local-dev)');
     const isDebug = this.isDebugMode();
 
     console.log(`⚙️  Port Manager Configuration:`);
-    console.log(`   Profile: ${profile || 'default'}`);
+    console.log(`   Profile: ${profile}`);
     console.log(`   Debug Mode: ${isDebug}`);
     console.log(`   Runtime Ports: ${process.env.RUNTIME_PORTS || 'none'}`);
 
@@ -83,27 +85,28 @@ class PortManager {
     };
 
     // Generate port mappings based on profile
-    if (profile) {
-      const serviceName = profile; // Profile name matches service name
-      const portMappings = this.generatePortMappings(serviceName, { debug: isDebug });
+    const serviceName = profile; // Profile name matches service name
+    const portMappings = this.generatePortMappings(serviceName, { debug: isDebug });
 
-      if (portMappings.length > 0) {
-        override.services[serviceName] = {
-          ports: portMappings
-        };
+    // Always create the service entry, even with no ports
+    override.services[serviceName] = {};
 
-        // Add debug environment if needed
-        if (isDebug) {
-          override.services[serviceName].environment = {
-            DEBUG_ENTRYPOINT: 'true'
-          };
-        }
+    if (portMappings.length > 0) {
+      override.services[serviceName].ports = portMappings;
 
-        console.log(`✅ Generated port mappings for ${serviceName}:`);
-        portMappings.forEach(mapping => {
-          console.log(`   - ${mapping}`);
-        });
-      }
+      console.log(`✅ Generated port mappings for ${serviceName}:`);
+      portMappings.forEach(mapping => {
+        console.log(`   - ${mapping}`);
+      });
+    } else {
+      console.log(`✅ Created override for ${serviceName} with no port mappings`);
+    }
+
+    // Add debug environment if needed
+    if (isDebug) {
+      override.services[serviceName].environment = {
+        DEBUG_ENTRYPOINT: 'true'
+      };
     }
 
     return override;
