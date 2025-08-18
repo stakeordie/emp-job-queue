@@ -3,7 +3,7 @@ import fs from 'fs-extra';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import EMPApiClient from './emp-api-client.js';
-import TelemetryTracerDash0 from './telemetry-tracer-dash0.js';
+import { createSafeLogger } from '../utils/safe-logger.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -21,6 +21,8 @@ export default class ComponentManagerService extends BaseService {
   constructor(options, config) {
     super('component-manager', options);
     this.config = config;
+    
+    // Inherits SafeLogger from BaseService
     this.workspacePath = process.env.WORKSPACE_PATH || '/workspace';
     this.comfyuiPath = path.join(this.workspacePath, 'ComfyUI');
     this.componentConfigPath = path.join(this.workspacePath, 'component-config.json');
@@ -36,12 +38,11 @@ export default class ComponentManagerService extends BaseService {
     this.components = this.parseComponentConfig();
     this.collections = this.parseCollectionConfig();
     
-    // Initialize telemetry tracer
-    this.tracer = new TelemetryTracerDash0(process.env.MACHINE_ID || 'unknown');
+    // Note: Telemetry is handled by TelemetryClient at the service level
 
     this.logger.info('Component manager initialized', {
-      components: this.components,
-      collections: this.collections,
+      components: this.components.length,
+      collections: this.collections.length,
       workspacePath: this.workspacePath
     });
   }
@@ -69,59 +70,46 @@ export default class ComponentManagerService extends BaseService {
   async onStart() {
     this.logger.info('STEP 15: Component Manager Init - Starting component-based configuration...');
     
-    return this.tracer.traceComponentInstallation('component-manager-startup', async () => {
-      try {
-        // Step 16: API Discovery - Always get default custom nodes from API first
-        this.logger.info('STEP 16: API Discovery - Fetching default custom nodes from API...');
-        const defaultCustomNodes = await this.empApi.getDefaultCustomNodes();
-        this.logger.info(`STEP 16: API Discovery - Loaded ${defaultCustomNodes.length} default custom nodes from API`);
-        
-        // Step 16 continued: Analyze additional components and collections (if specified)
-        const allComponents = await this.gatherAllComponents();
-        
-        this.logger.info(`STEP 16: API Discovery - Found ${allComponents.length} additional components to configure:`, 
-          allComponents.map(c => c.name));
-        
-        this.tracer.addAttributes({
-          'default_nodes.count': defaultCustomNodes.length,
-          'additional_components.count': allComponents.length,
-          'additional_components.names': allComponents.map(c => c.name).join(',')
-        });
-        
-        // Step 16 final: Analyze requirements from all sources (defaults + additional components)
-        const requirements = await this.analyzeRequirements(allComponents, defaultCustomNodes);
-        
-        this.tracer.addAttributes({
-          'requirements.custom_nodes': requirements.customNodes.size,
-          'requirements.models': requirements.models.size
-        });
-        
-        this.logger.info(`STEP 16: API Discovery - Total requirements: ${requirements.customNodes.size} custom nodes, ${requirements.models.size} models`);
-        
-        // Step 17 & 18: Install missing dependencies
-        await this.installMissingDependencies(requirements);
-        
-        // Save component configuration for worker capabilities
-        await this.saveComponentConfiguration(allComponents, requirements);
-        
-        this.logger.info('STEP 16-18: Component Installation - Completed successfully', {
-          defaultNodes: defaultCustomNodes.length,
-          additionalComponents: allComponents.length,
-          totalCustomNodes: requirements.customNodes.size,
-          totalModels: requirements.models.size
-        });
-        
-        return {
-          defaultNodes: defaultCustomNodes.length,
-          components: allComponents.length,
-          customNodes: requirements.customNodes.size,
-          models: requirements.models.size
-        };
-      } catch (error) {
-        this.logger.error(`STEP 15-18: Component Manager - FAILED: ${error.message}`);
-        throw error;
-      }
-    });
+    try {
+      // Step 16: API Discovery - Always get default custom nodes from API first
+      this.logger.info('STEP 16: API Discovery - Fetching default custom nodes from API...');
+      const defaultCustomNodes = await this.empApi.getDefaultCustomNodes();
+      this.logger.info(`STEP 16: API Discovery - Loaded ${defaultCustomNodes.length} default custom nodes from API`);
+      
+      // Step 16 continued: Analyze additional components and collections (if specified)
+      const allComponents = await this.gatherAllComponents();
+      
+      this.logger.info(`STEP 16: API Discovery - Found ${allComponents.length} additional components to configure:`, 
+        allComponents.map(c => c.name));
+      
+      // Step 16 final: Analyze requirements from all sources (defaults + additional components)
+      const requirements = await this.analyzeRequirements(allComponents, defaultCustomNodes);
+      
+      this.logger.info(`STEP 16: API Discovery - Total requirements: ${requirements.customNodes.size} custom nodes, ${requirements.models.size} models`);
+      
+      // Step 17 & 18: Install missing dependencies
+      await this.installMissingDependencies(requirements);
+      
+      // Save component configuration for worker capabilities
+      await this.saveComponentConfiguration(allComponents, requirements);
+      
+      this.logger.info('STEP 16-18: Component Installation - Completed successfully', {
+        defaultNodes: defaultCustomNodes.length,
+        additionalComponents: allComponents.length,
+        totalCustomNodes: requirements.customNodes.size,
+        totalModels: requirements.models.size
+      });
+      
+      return {
+        defaultNodes: defaultCustomNodes.length,
+        components: allComponents.length,
+        customNodes: requirements.customNodes.size,
+        models: requirements.models.size
+      };
+    } catch (error) {
+      this.logger.error(`STEP 15-18: Component Manager - FAILED: ${error.message}`);
+      throw error;
+    }
   }
 
   async onStop() {
@@ -246,7 +234,7 @@ export default class ComponentManagerService extends BaseService {
           name: defaultNode.name,
           url: defaultNode.repositoryUrl,
           gitUrl: defaultNode.repositoryUrl,
-          branch: defaultNode.branch || 'main',
+          branch: defaultNode.branch, // NO FALLBACK - let git use repo default
           commit: defaultNode.commit,
           recursive: defaultNode.recursive || false,
           requirements: defaultNode.requirements || false,
@@ -256,7 +244,7 @@ export default class ComponentManagerService extends BaseService {
           is_default: true
         };
         
-        this.logger.info(`Adding default custom node: ${defaultNode.name}`, { 
+        this.logger.info(`📦 Adding API default custom node: ${defaultNode.name}`, { 
           url: defaultNode.repositoryUrl,
           install_order: defaultNode.install_order 
         });
@@ -280,7 +268,7 @@ export default class ComponentManagerService extends BaseService {
         const processedNodes = this.processCustomNodes(rawCustomNodes);
         for (const node of processedNodes) {
           if (node.name) {
-            this.logger.info(`Adding custom node: ${node.name}`, { url: node.url });
+            this.logger.info(`Adding custom node: ${node.name}`, JSON.stringify({ url: node.url }));
             requirements.customNodes.set(node.name, node);
           }
         }
@@ -290,7 +278,7 @@ export default class ComponentManagerService extends BaseService {
         const processedModels = this.processModels(rawModels);
         for (const model of processedModels) {
           if (model.name) {
-            this.logger.info(`Adding model: ${model.name}`, { url: model.url });
+            this.logger.info(`Adding model: ${model.name}`, JSON.stringify({ url: model.url }));
             requirements.models.set(model.name, model);
           }
         }
@@ -437,44 +425,133 @@ export default class ComponentManagerService extends BaseService {
       return;
     }
     
-    return this.tracer.traceComponentInstallation('custom-nodes-batch', async () => {
-      this.tracer.addAttributes({
-        'custom_nodes.count': customNodes.length,
-        'custom_nodes.names': customNodes.map(n => n.name).join(',')
-      });
+    this.logger.info(`STEP 17: Custom Nodes - Installing ${customNodes.length} custom nodes...`);
+    
+    try {
+      // Install custom nodes directly using extracted logic from ComfyUIInstallerService
+      const customNodesPath = path.join(this.comfyuiPath, 'custom_nodes');
+      await fs.ensureDir(customNodesPath);
       
-      this.logger.info(`STEP 17: Custom Nodes - Installing ${customNodes.length} custom nodes...`);
+      for (const nodeConfig of customNodes) {
+        this.logger.info(`Installing custom node: ${nodeConfig.name}`);
+        await this.installSingleCustomNode(nodeConfig, customNodesPath);
+      }
+    
+      this.logger.info('Custom nodes installation completed');
+      return { customNodes: customNodes.length };
+    } catch (error) {
+      this.logger.error(`Custom nodes installation failed: ${error.message}`);
+      throw error;
+    }
+  }
+
+  /**
+   * Install a single custom node (extracted from ComfyUIInstallerService logic)
+   */
+  async installSingleCustomNode(nodeConfig, customNodesPath) {
+    const { execa } = await import('execa');
+    const nodeName = nodeConfig.name;
+    const nodePath = path.join(customNodesPath, nodeName);
+    
+    this.logger.info(`Installing custom node: ${nodeName}`);
+    
+    // Clone repository if URL provided
+    if (nodeConfig.url || nodeConfig.gitUrl) {
+      const repoUrl = nodeConfig.url || nodeConfig.gitUrl;
+      const cloneArgs = ['clone'];
+      
+      if (nodeConfig.recursive === true) {
+        cloneArgs.push('--recursive');
+      }
+      
+      // Clean URL (remove 'git clone ' prefix if present)
+      let cleanUrl = repoUrl.trim();
+      if (cleanUrl.startsWith('git clone ')) {
+        cleanUrl = cleanUrl.substring('git clone '.length).trim();
+      }
+      
+      cloneArgs.push(cleanUrl, nodePath);
       
       try {
-        // Import and use the ComfyUI installer
-        const ComfyUIInstallerService = (await import('./comfyui-installer.js')).default;
-        const installer = new ComfyUIInstallerService({}, this.config);
+        await execa('git', cloneArgs, {
+          stdio: 'inherit',
+          timeout: 120000 // 2 minute timeout
+        });
         
-        // Install each custom node
-        const customNodesPath = path.join(this.comfyuiPath, 'custom_nodes');
-        await fs.ensureDir(customNodesPath);
-        
-        for (const nodeConfig of customNodes) {
-          // Each custom node gets its own trace span
-          await this.tracer.traceComponentInstallation(`custom-node-${nodeConfig.name}`, async () => {
-            this.tracer.addAttributes({
-              'custom_node.name': nodeConfig.name,
-              'custom_node.url': nodeConfig.url || nodeConfig.gitUrl,
-              'custom_node.type': nodeConfig.url ? 'url' : 'git'
-            });
-            
-            await installer.installCustomNode(nodeConfig.name, nodeConfig, customNodesPath);
-            return { name: nodeConfig.name };
+        // Handle branch/commit checkout - only if explicitly specified (not null)
+        if (nodeConfig.branch !== null && nodeConfig.branch !== undefined && nodeConfig.branch.trim() !== '') {
+          await execa('git', ['checkout', nodeConfig.branch], {
+            cwd: nodePath,
+            stdio: 'inherit'
           });
         }
-      
-        this.logger.info('Custom nodes installation completed');
-        return { customNodes: customNodes.length };
+        
+        if (nodeConfig.commit !== null && nodeConfig.commit !== undefined && nodeConfig.commit.trim() !== '') {
+          await execa('git', ['reset', '--hard', nodeConfig.commit], {
+            cwd: nodePath,
+            stdio: 'inherit'
+          });
+        }
       } catch (error) {
-        this.logger.error(`Custom nodes installation failed: ${error.message}`);
-        throw error;
+        throw new Error(`Failed to clone ${nodeName}: ${error.message}`);
       }
-    });
+    }
+    
+    // Install requirements if specified
+    if (nodeConfig.requirements === true) {
+      const requirementsPath = path.join(nodePath, 'requirements.txt');
+      if (await fs.pathExists(requirementsPath)) {
+        try {
+          await execa('python3', ['-m', 'pip', 'install', '-r', 'requirements.txt'], {
+            cwd: nodePath,
+            stdio: 'inherit',
+            timeout: 300000 // 5 minute timeout
+          });
+        } catch (error) {
+          this.logger.warn(`Failed to install requirements for ${nodeName}: ${error.message}`);
+        }
+      }
+    }
+    
+    // Create environment file if env config provided
+    if (nodeConfig.env) {
+      await this.createNodeEnvFile(nodeName, nodeConfig.env, nodePath);
+    }
+    
+    // Run custom script if provided
+    if (nodeConfig.custom_script) {
+      try {
+        await execa('bash', ['-c', nodeConfig.custom_script], {
+          cwd: nodePath,
+          stdio: 'inherit'
+        });
+      } catch (error) {
+        this.logger.warn(`Custom script failed for ${nodeName}: ${error.message}`);
+      }
+    }
+  }
+
+  /**
+   * Create environment file for custom node
+   */
+  async createNodeEnvFile(nodeName, envConfig, nodePath) {
+    const envLines = [];
+    
+    for (const [envKey, envVarTemplate] of Object.entries(envConfig)) {
+      let envVarName = envVarTemplate;
+      if (typeof envVarTemplate === 'string' && envVarTemplate.startsWith('${') && envVarTemplate.endsWith('}')) {
+        envVarName = envVarTemplate.slice(2, -1);
+      }
+      
+      const envValue = process.env[envVarName];
+      envLines.push(`${envKey}=${envValue || ''}`);
+    }
+    
+    if (envLines.length > 0) {
+      const envFilePath = path.join(nodePath, '.env');
+      await fs.writeFile(envFilePath, envLines.join('\n') + '\n');
+      this.logger.info(`Created .env file for ${nodeName} with ${envLines.length} variables`);
+    }
   }
 
   /**
@@ -508,23 +585,16 @@ export default class ComponentManagerService extends BaseService {
   async downloadModel(model) {
     const { name, downloadUrl, modelType } = model;
     
-    return this.tracer.traceModelDownload(name, downloadUrl, async () => {
-      if (!downloadUrl) {
-        this.logger.warn(`No download URL for model ${name}, skipping`);
-        return;
-      }
+    if (!downloadUrl) {
+      this.logger.warn(`No download URL for model ${name}, skipping`);
+      return;
+    }
 
-      // Determine target directory based on model type and file extension
-      const targetDir = this.getModelDirectory(name, modelType);
-      const targetPath = `${targetDir}/${name}`;
-      
-      this.tracer.addAttributes({
-        'model.type': modelType,
-        'model.target_path': targetPath,
-        'model.target_dir': targetDir
-      });
-      
-      this.logger.info(`Downloading model ${name} to ${targetPath}`);
+    // Determine target directory based on model type and file extension
+    const targetDir = this.getModelDirectory(name, modelType);
+    const targetPath = `${targetDir}/${name}`;
+    
+    this.logger.info(`Downloading model ${name} to ${targetPath}`);
     
     // Create target directory if it doesn't exist
     const { execSync } = await import('child_process');
@@ -590,7 +660,6 @@ export default class ComponentManagerService extends BaseService {
       
       throw new Error(`wget failed: ${error.message}`);
     }
-    });
   }
 
   /**

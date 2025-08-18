@@ -62,12 +62,21 @@ export class EmpTelemetryClient {
       // Start nginx proxy for Forward protocol
       await this.startNginxProxy();
       
-      // For machine services, also start OTEL Collector and Fluent Bit processes
-      if (this.config.serviceType === 'machine') {
-        console.log('🔧 TelemetryClient: Machine service - starting OTEL Collector and Fluent Bit processes');
-        await this.startOtelCollector();
+      // For all services using enhanced TelemetryClient, start OTEL Collector and Fluent Bit processes
+      if (this.config.serviceType === 'machine' || this.config.serviceType === 'api' || this.config.serviceType === 'webhook') {
+        console.log(`🔧 TelemetryClient: ${this.config.serviceType} service - starting telemetry processes`);
+        
+        console.log(`🔍 TelemetryClient DEBUG: OTEL_ENABLED=${process.env.OTEL_ENABLED}, config.otel.enabled=${this.config.otel.enabled}`);
+        
+        if (this.config.otel.enabled) {
+          await this.startOtelCollector();
+          console.log(`✅ TelemetryClient: OTEL Collector started - THIS IS THE NEW CODE!`);
+        } else {
+          console.log(`⚠️  TelemetryClient: OTEL Collector disabled (OTEL_ENABLED=false) - THIS IS THE NEW CODE!`);
+        }
+        
         await this.startFluentBit();
-        console.log('✅ TelemetryClient: All telemetry processes started for machine service');
+        console.log(`✅ TelemetryClient: Telemetry processes started for ${this.config.serviceType} service`);
       }
       
       console.log('📋 TelemetryClient: Fluent Bit will send to localhost:24224');
@@ -454,20 +463,21 @@ exporters:
       "Dash0-Dataset": "${this.config.dash0.dataset}"
     tls:
       insecure: false
-  
-  debug:
-    verbosity: detailed
 
 service:
   pipelines:
     traces:
       receivers: [otlp]
       processors: [resource, batch]
-      exporters: [otlp, debug]
+      exporters: [otlp]
     metrics:
       receivers: [otlp]
       processors: [resource, batch]
-      exporters: [otlp, debug]`;
+      exporters: [otlp]
+    logs:
+      receivers: [otlp]
+      processors: [resource, batch]
+      exporters: [otlp]`;
   }
 
   /**
