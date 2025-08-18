@@ -92,15 +92,13 @@ FROM comfyui-base AS installer-builder
 FROM ai-base AS base-machine
 
     # Install dependencies first (better caching)
-    COPY package.json pnpm-lock.yaml* /service-manager/
     COPY .workspace-packages/ /service-manager/.workspace-packages/
+    COPY package.docker.json /service-manager/package.json
+    COPY pnpm-lock.yaml* /service-manager/
 
     # Install dependencies
     WORKDIR /service-manager
-    RUN sed -i 's/"@emp\/service-config": "workspace:\*"/"@emp\/service-config": "file:.workspace-packages\/service-config"/' package.json && \
-        sed -i 's/"@emp\/custom-nodes": "workspace:\*"/"@emp\/custom-nodes": "file:.workspace-packages\/custom-nodes"/' package.json && \
-        sed -i 's/"@emp\/telemetry": "workspace:\*"/"@emp\/telemetry": "file:.workspace-packages\/telemetry"/' package.json && \
-        pnpm install --prod --no-frozen-lockfile --ignore-workspace
+    RUN pnpm install --prod --no-frozen-lockfile --ignore-workspace
 
     # Inject machine version and build info
     ARG MACHINE_VERSION=latest
