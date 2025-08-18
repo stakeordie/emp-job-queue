@@ -17,7 +17,7 @@ FROM ubuntu:22.04
         rm -rf /var/lib/apt/lists/*
 
     # Copy and run telemetry stack installation script
-    COPY ../../scripts/install-telemetry-stack.sh /tmp/install-telemetry-stack.sh
+    COPY install-telemetry-stack.sh /tmp/install-telemetry-stack.sh
     RUN chmod +x /tmp/install-telemetry-stack.sh && \
         SERVICE_TYPE=webhook SERVICE_DIR=/webhook-server /tmp/install-telemetry-stack.sh && \
         rm /tmp/install-telemetry-stack.sh
@@ -57,7 +57,7 @@ FROM ubuntu:22.04
     COPY src/ /webhook-server/src/
 
     # Copy entrypoint script and telemetry functions
-    COPY ../../scripts/telemetry-entrypoint-functions.sh ./scripts/telemetry-entrypoint-functions.sh
+    COPY telemetry-entrypoint-functions.sh ./scripts/telemetry-entrypoint-functions.sh
     COPY entrypoint-webhook.sh ./entrypoint-webhook.sh
     RUN chmod +x ./scripts/telemetry-entrypoint-functions.sh ./entrypoint-webhook.sh
 
