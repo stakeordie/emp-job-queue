@@ -46,6 +46,12 @@ decrypt_environment() {
     local encrypted_file="/service-manager/env.encrypted"
     local target_env_file="/service-manager/.env"
     
+    # Check if encryption is disabled
+    if [ "${DISABLE_ENV_ENCRYPTION:-false}" = "true" ]; then
+        log_info "Environment encryption disabled via DISABLE_ENV_ENCRYPTION=true"
+        return 0
+    fi
+    
     # Check if encrypted file exists
     if [ ! -f "$encrypted_file" ]; then
         log_warn "No encrypted environment file found at $encrypted_file"
@@ -56,6 +62,7 @@ decrypt_environment() {
     if [ -z "${EMP_ENV_DECRYPT_KEY:-}" ]; then
         log_error "❌ EMP_ENV_DECRYPT_KEY environment variable is required for decryption"
         log_error "💡 Set EMP_ENV_DECRYPT_KEY in your Docker run command or compose file"
+        log_error "💡 Or set DISABLE_ENV_ENCRYPTION=true to skip decryption"
         return 1
     fi
     
