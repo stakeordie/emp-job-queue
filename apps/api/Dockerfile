@@ -60,11 +60,11 @@ FROM ubuntu:22.04
         PATH="/api-server/node_modules/.bin:${PATH}"
 
     # Expose API port
-    EXPOSE 3001
+    EXPOSE 3331
 
     # Health check
     HEALTHCHECK --interval=30s --timeout=5s --start-period=5s --retries=3 \
-      CMD curl -f http://localhost:3001/health || exit 1
+      CMD curl -f http://localhost:3331/health || exit 1
 
     # Use inheritance-based entrypoint script
     ENV SERVICE_TYPE=api

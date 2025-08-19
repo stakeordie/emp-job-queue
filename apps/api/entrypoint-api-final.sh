@@ -30,7 +30,7 @@ setup_environment() {
     log_info "Setting up API-specific environment..."
     
     # API-specific configuration
-    export API_PORT=${API_PORT:-3001}
+    export API_PORT=${API_PORT:-3331}
     
     log_info "✅ API environment configured"
 }
