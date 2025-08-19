@@ -184,6 +184,11 @@ export default function WebhookManagementPage() {
         // Enhance delivery data with webhook information
         const enhancedDeliveries = deliveriesData.data.map((delivery: Record<string, unknown>) => {
           const webhook = webhookMap.get(delivery.webhook_id);
+          
+          // Debug: Log the raw delivery data to see what fields are available
+          console.log('Raw delivery data:', delivery);
+          console.log('delivery.event_type:', delivery.event_type);
+          
           return {
             ...delivery,
             id: `${delivery.webhook_id}_${delivery.event_id}_${delivery.attempt_number}`,
