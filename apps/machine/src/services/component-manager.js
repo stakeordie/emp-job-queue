@@ -367,6 +367,7 @@ export default class ComponentManagerService extends BaseService {
         type: model.type,
         modelType: model.modelType || model.type,
         downloadUrl: model.downloadUrl || model.url || model.download_url,
+        saveTo: model.saveTo, // Include API-provided save path
         isRequired: model.isRequired !== false,
         size: model.size,
         hash: model.hash
@@ -583,21 +584,29 @@ export default class ComponentManagerService extends BaseService {
    * Download a single model using wget
    */
   async downloadModel(model) {
-    const { name, downloadUrl, modelType } = model;
+    const { name, downloadUrl, modelType, saveTo } = model;
     
     if (!downloadUrl) {
       this.logger.warn(`No download URL for model ${name}, skipping`);
       return;
     }
 
-    // Determine target directory based on model type and file extension
-    const targetDir = this.getModelDirectory(name, modelType);
-    const targetPath = `${targetDir}/${name}`;
+    // Use API-provided saveTo path if available, otherwise fallback to directory mapping
+    let targetPath;
+    if (saveTo) {
+      // API provides full path like "models/vae/ae.safetensors"
+      targetPath = `/workspace/ComfyUI/${saveTo}`;
+    } else {
+      // Fallback to old directory mapping logic
+      const targetDir = this.getModelDirectory(name, modelType);
+      targetPath = `${targetDir}/${name}`;
+    }
     
     this.logger.info(`Downloading model ${name} to ${targetPath}`);
     
     // Create target directory if it doesn't exist
     const { execSync } = await import('child_process');
+    const targetDir = path.dirname(targetPath);
     try {
       execSync(`mkdir -p "${targetDir}"`, { encoding: 'utf8' });
     } catch (error) {
