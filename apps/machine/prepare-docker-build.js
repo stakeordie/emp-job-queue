@@ -52,7 +52,9 @@ try {
   await runCommand('pnpm', ['--filter', '@emp/telemetry', 'build'], MONOREPO_ROOT);
   console.log('✅ All workspace packages built successfully');
 } catch (error) {
-  console.log('⚠️ Some workspace packages failed to build, using existing dist/');
+  console.error('❌ Workspace package build failed:', error.message);
+  console.error('💡 Fix the workspace package build errors before continuing with Docker build');
+  process.exit(1);
 }
 
 // Track what changed (for final output)
@@ -289,6 +291,17 @@ const copyWorkspacePackage = (packageName) => {
     const packageJsonPath = path.join(sourceDir, 'package.json');
     if (fs.existsSync(packageJsonPath)) {
       const packageJsonContent = JSON.parse(fs.readFileSync(packageJsonPath, 'utf8'));
+      
+      // Convert workspace dependencies to file references
+      if (packageJsonContent.dependencies) {
+        Object.keys(packageJsonContent.dependencies).forEach(key => {
+          if (packageJsonContent.dependencies[key].startsWith('workspace:')) {
+            const packageName = key.replace('@emp/', '');
+            packageJsonContent.dependencies[key] = `file:../${packageName}`;
+          }
+        });
+      }
+      
       fs.writeFileSync(path.join(targetDir, 'package.json'), JSON.stringify(packageJsonContent, null, 2));
     }
     

@@ -720,11 +720,8 @@ class MachineCompose {
         console.log(chalk.dim(`🔌 Combined ports: ${cmdLinePortMappings.length} from --open + ${exposedPortMappings.length} from EXPOSED_PORTS`));
       }
       
-      // Always build workspace packages and bundle worker first for build command
+      // Bundle worker for build command (workspace packages already built by prepare-docker-build.js)
       if (command === 'build' || command === 'build:push') {
-        console.log(chalk.blue('📦 Building workspace packages...'));
-        await this.executeCommand(['bash', '../../scripts/build-workspace-packages.sh'], false, [], null);
-        
         console.log(chalk.blue('📦 Bundling worker...'));
         await this.executeCommand(['pnpm', '-w', 'worker:bundle'], false, [], null);
         console.log(chalk.green('✅ Worker bundled successfully\n'));

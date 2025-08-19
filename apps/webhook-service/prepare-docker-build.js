@@ -40,7 +40,9 @@ try {
   await runCommand('pnpm', ['build'], __dirname);
   console.log('✅ Webhook service built successfully');
 } catch (error) {
-  console.log('⚠️ Webhook service build failed, using existing dist/');
+  console.error('❌ Webhook service build failed:', error.message);
+  console.error('💡 Fix the webhook service build errors before continuing with Docker build');
+  process.exit(1);
 }
 
 // Read the current package.json
@@ -129,6 +131,30 @@ const copyWorkspacePackage = (packageName) => {
     console.warn(`⚠️ Package not found: ${sourceDir}`);
   }
 };
+
+// Validate workspace packages are built before copying
+console.log('🔍 Validating workspace packages...');
+const requiredPackages = ['core', 'telemetry'];
+for (const pkg of requiredPackages) {
+  const pkgPath = path.join(__dirname, '../../packages', pkg);
+  const distPath = path.join(pkgPath, 'dist');
+  const indexPath = path.join(distPath, 'index.js');
+  
+  if (!fs.existsSync(distPath)) {
+    console.error(`❌ Package @emp/${pkg} dist/ directory missing at ${distPath}`);
+    console.error(`💡 Run: pnpm --filter @emp/${pkg} build`);
+    process.exit(1);
+  }
+  
+  if (!fs.existsSync(indexPath)) {
+    console.error(`❌ Package @emp/${pkg} missing index.js at ${indexPath}`);
+    console.error(`💡 Run: pnpm --filter @emp/${pkg} build`);
+    process.exit(1);
+  }
+  
+  console.log(`  ✅ @emp/${pkg} build validated`);
+}
+console.log('✅ All workspace packages validated');
 
 // Copy both core and telemetry packages
 copyWorkspacePackage('core');

@@ -41,7 +41,9 @@ try {
   await runCommand('pnpm', ['build'], APP_ROOT);
   console.log('✅ API built successfully');
 } catch (error) {
-  console.log('⚠️ API build failed, using existing dist/');
+  console.error('❌ API build failed:', error.message);
+  console.error('💡 Fix the API build errors before continuing with Docker build');
+  process.exit(1);
 }
 
 // Step 1: Create workspace packages directory
@@ -52,6 +54,30 @@ if (fs.existsSync(workspacePackagesDir)) {
   fs.rmSync(workspacePackagesDir, { recursive: true, force: true });
 }
 fs.mkdirSync(workspacePackagesDir, { recursive: true });
+
+// Step 1.5: Validate workspace packages are built
+console.log('🔍 Validating workspace packages...');
+const requiredPackages = ['core', 'telemetry'];
+for (const pkg of requiredPackages) {
+  const pkgPath = path.join(MONOREPO_ROOT, 'packages', pkg);
+  const distPath = path.join(pkgPath, 'dist');
+  const indexPath = path.join(distPath, 'index.js');
+  
+  if (!fs.existsSync(distPath)) {
+    console.error(`❌ Package @emp/${pkg} dist/ directory missing at ${distPath}`);
+    console.error(`💡 Run: pnpm --filter @emp/${pkg} build`);
+    process.exit(1);
+  }
+  
+  if (!fs.existsSync(indexPath)) {
+    console.error(`❌ Package @emp/${pkg} missing index.js at ${indexPath}`);
+    console.error(`💡 Run: pnpm --filter @emp/${pkg} build`);
+    process.exit(1);
+  }
+  
+  console.log(`  ✅ @emp/${pkg} build validated`);
+}
+console.log('✅ All workspace packages validated');
 
 // Copy core package
 const coreSource = path.join(MONOREPO_ROOT, 'packages/core');
