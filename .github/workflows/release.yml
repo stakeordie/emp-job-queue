@@ -197,6 +197,5 @@ jobs:
 
         # Redeploy API service from Docker Hub  
         railway redeploy --service comfyui-remote-machine --yes
-
-        env:
+      env:
         RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
