@@ -140,6 +140,34 @@ for (const script of entrypointScripts) {
   }
 }
 
+// Step 5: Ensure other required files exist
+console.log('📋 Checking for required Docker build files...');
+
+// These files should already exist in the API directory
+const requiredFiles = [
+  'entrypoint-api-final.sh',
+  'install-telemetry-stack.sh',
+  'fluent-bit-api.conf.template',
+  'fluent-bit-api-forward.conf.template',
+  'otel-collector-api.yaml.template'
+];
+
+let allFilesExist = true;
+for (const file of requiredFiles) {
+  const filePath = path.join(APP_ROOT, file);
+  if (fs.existsSync(filePath)) {
+    console.log(`  ✅ ${file} exists`);
+  } else {
+    console.log(`  ❌ ${file} is MISSING!`);
+    allFilesExist = false;
+  }
+}
+
+if (!allFilesExist) {
+  console.error('\n❌ Some required files are missing! Docker build will fail.');
+  process.exit(1);
+}
+
 console.log('\n🎉 API Docker build preparation complete!');
 console.log('  Files created:');
 console.log('    - .workspace-packages/core/');

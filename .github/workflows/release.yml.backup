@@ -1,4 +1,4 @@
-name: Release Worker Bundle
+name: Release Worker Assets
 
 on:
   push:
@@ -29,6 +29,12 @@ jobs:
         
     - name: Enable Corepack for pnpm
       run: corepack enable
+      
+    - name: Log in to Docker Hub
+      uses: docker/login-action@v3
+      with:
+        username: ${{ secrets.DOCKERHUB_USERNAME }}
+        password: ${{ secrets.DOCKERHUB_TOKEN }}
         
     - name: Get release tag
       id: get_tag
@@ -38,6 +44,89 @@ jobs:
         else
           echo "tag=${GITHUB_REF#refs/tags/}" >> $GITHUB_OUTPUT
         fi
+        
+    - name: Debug repository structure
+      run: |
+        echo "Repository structure:"
+        ls -la
+        echo "Packages directory:"
+        ls -la packages/ || echo "packages directory not found"
+        echo "Apps directory:"
+        ls -la apps/
+        
+    - name: Install dependencies for build preparation
+      run: |
+        # Enable corepack and install dependencies needed for prepare scripts
+        corepack enable
+        pnpm install --no-frozen-lockfile
+        
+    - name: Build and push API Docker image
+      run: |
+        # Get current date for build timestamp
+        BUILD_DATE=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
+        
+        # Prepare API for Docker build (build workspace packages and convert dependencies)
+        cd apps/api
+        node prepare-docker-build.js
+        cd ../..
+        
+        # Build API Docker image using unified Dockerfile with version injection
+        docker build \
+          --build-arg API_VERSION="${{ steps.get_tag.outputs.tag }}" \
+          --build-arg BUILD_DATE="${BUILD_DATE}" \
+          -f apps/api/Dockerfile \
+          -t emprops/emp-job-queue-api:latest \
+          -t emprops/emp-job-queue-api:${{ steps.get_tag.outputs.tag }} \
+          .
+        
+        # Push both tags
+        docker push emprops/emp-job-queue-api:latest
+        docker push emprops/emp-job-queue-api:${{ steps.get_tag.outputs.tag }}
+
+
+
+    - name: Build and push WEBHOOK Docker image
+      run: |
+        # Get current date for build timestamp
+        BUILD_DATE=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
+        
+        # Prepare webhook for Docker build (build workspace packages and convert dependencies)
+        cd apps/webhook-service
+        node prepare-docker-build.js
+        cd ../..
+        
+        # Build Webhook Docker image using unified Dockerfile with version injection
+        docker build \
+          --build-arg WEBHOOK_VERSION="${{ steps.get_tag.outputs.tag }}" \
+          --build-arg BUILD_DATE="${BUILD_DATE}" \
+          -f apps/webhook-service/Dockerfile \
+          -t emprops/emp-webhook-service:latest \
+          -t emprops/emp-webhook-service:${{ steps.get_tag.outputs.tag }} \
+          .
+        
+        # Push both tags
+        docker push emprops/emp-webhook-service:latest
+        docker push emprops/emp-webhook-service:${{ steps.get_tag.outputs.tag }}
+
+    - name: Build and push FLUENTD Docker image
+      run: |
+        # Get current date for build timestamp
+        BUILD_DATE=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
+        
+        # Build Fluentd Docker image for log aggregation with production config
+        docker build \
+          --build-arg ENV=prod \
+          --build-arg DASH0_API_KEY="${{ secrets.DASH0_API_KEY }}" \
+          --build-arg DASH0_DATASET="production" \
+          --build-arg DASH0_LOGS_ENDPOINT="https://ingress.us-west-2.aws.dash0.com/logs/json" \
+          -f apps/fluentd/Dockerfile \
+          -t emprops/fluentd:latest \
+          -t emprops/fluentd:${{ steps.get_tag.outputs.tag }} \
+          apps/fluentd/
+        
+        # Push both tags
+        docker push emprops/fluentd:latest
+        docker push emprops/fluentd:${{ steps.get_tag.outputs.tag }}
 
     - name: Build and package worker
       run: |
@@ -139,37 +228,77 @@ jobs:
         tag_name: ${{ steps.get_tag.outputs.tag }}
         name: Release ${{ steps.get_tag.outputs.tag }}
         body: |
-          ## EmProps Job Queue Worker Release ${{ steps.get_tag.outputs.tag }}
+          ## EmProps Job Queue Release ${{ steps.get_tag.outputs.tag }}
           
-          ### 📦 Worker Bundle (emp-job-queue-worker.tar.gz)
+          This release contains the **worker bundle** and **API container** for the EmProps GPU job queue system.
           
-          **Contents:**
-          - `redis-direct-worker.js` - Single bundled executable (all dependencies included)
+          ### What's Included
+          
+          **📦 Worker Bundle (emp-job-queue-worker.tar.gz):**
+          - `redis-direct-worker.js` - **Single bundled executable** (all dependencies included)
           - `package.json` - Package metadata
           - `README.md` - Usage instructions
           
-          ### Installation
+          **🐳 Docker Images:**
+          - `emprops/emp-job-queue-api:${{ steps.get_tag.outputs.tag }}` - **API server container**
+          - `emprops/emp-webhook-service:${{ steps.get_tag.outputs.tag }}` - **Webhook service container**
+          - `emprops/fluentd:${{ steps.get_tag.outputs.tag }}` - **Fluentd log aggregation container**
+          - `emprops/basic-machine:${{ steps.get_tag.outputs.tag }}` - **GPU machine container** (built separately)
           
+          ### Installation Options
+          
+          **Option 1: Worker Bundle (Standalone)**
           1. Download `emp-job-queue-worker.tar.gz`
           2. Extract: `tar -xzf emp-job-queue-worker.tar.gz`
           3. Run: `node redis-direct-worker.js`
           
+          **Option 2: Docker Containers**
+          ```bash
+          # API server (built by CI/CD)
+          docker pull emprops/emp-job-queue-api:${{ steps.get_tag.outputs.tag }}
+          
+          # Webhook service (built by CI/CD)
+          docker pull emprops/emp-webhook-service:${{ steps.get_tag.outputs.tag }}
+          
+          # Fluentd log aggregation (built by CI/CD)
+          docker pull emprops/emp-fluentd:${{ steps.get_tag.outputs.tag }}
+          
+          # GPU machine with ComfyUI + worker (built separately)
+          docker pull emprops/basic-machine:${{ steps.get_tag.outputs.tag }}
+          ```
+          
           ### Features
           
+          **Worker Features:**
           - **Zero dependencies** - Single bundled file with everything included
           - **Multi-connector support** - ComfyUI, A1111, and simulation modes
           - **Direct Redis connection** - No WebSocket hub dependency
           - **Multi-GPU ready** - Use CUDA_VISIBLE_DEVICES for GPU assignment
           - **TypeScript-based** - Modern, type-safe worker implementation
           
-          ### Environment Variables
+          **Machine Container Features:**
+          - **ComfyUI WebSocket Connector** - Native WebSocket job submission with stakeordie/ComfyUI fork
+          - **Health Check System** - Unified failure recovery across all services
+          - **Version Tracking** - Built-in version info at `/version` endpoint
+          - **PM2 Service Management** - Per-GPU ComfyUI instances with automatic restart
+          - **64 Custom Nodes** - Pre-installed ComfyUI extensions
           
-          - `HUB_REDIS_URL` - Redis connection URL
-          - `WORKER_ID` - Unique worker identifier  
-          - `WORKER_CONNECTORS` - Comma-separated list (e.g., "comfyui,a1111,simulation")
-          - `CUDA_VISIBLE_DEVICES` - GPU index for this worker
-          - `GPU_MEMORY_GB` - Available GPU memory
-          - `GPU_MODEL` - GPU model name
+          ### Changes
+          - Single bundled executable using esbuild (no more import errors!)
+          - All @emp/core dependencies bundled inline
+          - Compatible with existing basic_machine and base_machine infrastructure
+          - Replaces Python worker from emp-redis
+          
+          ### Release Process
+          Machine containers are now built locally for faster iteration with Docker layer caching:
+          ```bash
+          # 1. Build and push machine container locally
+          pnpm machines:basic:prod ${{ steps.get_tag.outputs.tag }} emprops basic-machine --push
+          
+          # 2. Create release (API + worker bundle built by CI/CD)
+          git tag ${{ steps.get_tag.outputs.tag }}
+          git push origin ${{ steps.get_tag.outputs.tag }}
+          ```
           
         files: |
           emp-job-queue-worker.tar.gz
