@@ -133,7 +133,9 @@ ENV MACHINE_ID=${MACHINE_ID}
 # Inherits: Complete application runtime including entrypoint, PM2, service manager
 # No additional installations - for external API connectors like comfyui-remote
 COPY --from=base-machine /service-manager/worker-bundled /service-manager/worker-bundled
-COPY ${ENV_FILE} /service-manager/.env
+# Copy encrypted environment file and decryption script
+COPY env.encrypted /service-manager/env.encrypted
+COPY env.encrypted.info /service-manager/env.encrypted.info
 
 # Add build metadata at the very end to preserve Docker cache
 ARG BUILD_TIMESTAMP
@@ -165,8 +167,9 @@ ENV MACHINE_ID=${MACHINE_ID}
 # Copy installer tools for runtime custom node installation
 # Removed installer-builder copying - using runtime ComfyUIManagementClient instead
 
-# Copy environment file (inherits everything else from base-machine)
-COPY ${ENV_FILE} /service-manager/.env
+# Copy encrypted environment file and decryption script
+COPY env.encrypted /service-manager/env.encrypted
+COPY env.encrypted.info /service-manager/env.encrypted.info
 
 # Add build metadata at the very end to preserve Docker cache
 ARG BUILD_TIMESTAMP
@@ -199,7 +202,9 @@ ENV MACHINE_ID=${MACHINE_ID}
 # Inherits: Complete application runtime including entrypoint, PM2, service manager
 # Add: Any simulation-specific setup here if needed
 COPY --from=base-machine /service-manager/worker-bundled /service-manager/worker-bundled
-COPY ${ENV_FILE} /service-manager/.env
+# Copy encrypted environment file and decryption script
+COPY env.encrypted /service-manager/env.encrypted
+COPY env.encrypted.info /service-manager/env.encrypted.info
 
 # Add build metadata at the very end to preserve Docker cache
 ARG BUILD_TIMESTAMP

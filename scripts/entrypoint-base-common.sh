@@ -38,10 +38,108 @@ log_section() {
 }
 
 # =====================================================
+# Environment Decryption (for Docker containers)
+# =====================================================
+decrypt_environment() {
+    log_section "Environment Decryption"
+    
+    local encrypted_file="/service-manager/env.encrypted"
+    local target_env_file="/service-manager/.env"
+    
+    # Check if encrypted file exists
+    if [ ! -f "$encrypted_file" ]; then
+        log_warn "No encrypted environment file found at $encrypted_file"
+        return 0
+    fi
+    
+    # Check if decryption key is provided
+    if [ -z "${EMP_ENV_DECRYPT_KEY:-}" ]; then
+        log_error "❌ EMP_ENV_DECRYPT_KEY environment variable is required for decryption"
+        log_error "💡 Set EMP_ENV_DECRYPT_KEY in your Docker run command or compose file"
+        return 1
+    fi
+    
+    log_info "Decrypting environment variables..."
+    
+    # Use Node.js for decryption (matches prepare-docker-build.js encryption)
+    node -e "
+    const crypto = require('crypto');
+    const zlib = require('zlib');
+    const fs = require('fs');
+    
+    try {
+        // Read encrypted data
+        const encryptedData = fs.readFileSync('$encrypted_file', 'utf8');
+        const encryptedBuffer = Buffer.from(encryptedData, 'base64');
+        
+        // Get decryption key and hash it to 32 bytes (matches encryption)
+        const keyString = process.env.EMP_ENV_DECRYPT_KEY;
+        let keyBuffer;
+        try {
+            keyBuffer = Buffer.from(keyString, 'base64');
+            if (keyBuffer.length !== 32) throw new Error('Invalid key length');
+        } catch (e) {
+            keyBuffer = crypto.createHash('sha256').update(keyString).digest();
+        }
+        
+        // Extract encrypted data and HMAC (last 32 bytes)
+        const encrypted = encryptedBuffer.slice(0, -32);
+        const receivedHmac = encryptedBuffer.slice(-32);
+        
+        // Verify HMAC
+        const hmac = crypto.createHmac('sha256', keyBuffer);
+        hmac.update(encrypted);
+        const computedHmac = hmac.digest();
+        
+        if (!crypto.timingSafeEqual(receivedHmac, computedHmac)) {
+            throw new Error('HMAC verification failed - invalid decryption key');
+        }
+        
+        // Extract IV and encrypted data
+        const iv = encrypted.slice(0, 16);
+        const ciphertext = encrypted.slice(16);
+        
+        // Decrypt with AES-256-CBC
+        const decipher = crypto.createDecipheriv('aes-256-cbc', keyBuffer, iv);
+        const compressedData = Buffer.concat([
+            decipher.update(ciphertext),
+            decipher.final()
+        ]);
+        
+        // Decompress
+        const jsonString = zlib.gunzipSync(compressedData).toString('utf8');
+        const envVars = JSON.parse(jsonString);
+        
+        // Convert to .env format
+        let envContent = '';
+        for (const [key, value] of Object.entries(envVars)) {
+            envContent += \`\${key}=\${value}\n\`;
+        }
+        
+        // Write decrypted .env file
+        fs.writeFileSync('$target_env_file', envContent);
+        console.log(\`✅ Decrypted \${Object.keys(envVars).length} environment variables\`);
+        
+    } catch (error) {
+        console.error('❌ Decryption failed:', error.message);
+        process.exit(1);
+    }
+    " || {
+        log_error "❌ Environment decryption failed"
+        return 1
+    }
+    
+    log_info "✅ Environment variables decrypted to $target_env_file"
+}
+
+# =====================================================
 # Common Environment Setup
 # =====================================================
 base_setup_environment() {
     log_section "Base Environment Setup"
+    
+    # First, try to decrypt environment if encrypted file exists
+    decrypt_environment || return 1
     
     # Core environment variables (from machine gold standard)
     export NODE_ENV=${NODE_ENV:-production}
@@ -51,6 +149,16 @@ base_setup_environment() {
     export TELEMETRY_ENV=${TELEMETRY_ENV:-development}
     export SERVICE_NAME=${SERVICE_NAME:-emp-service}
     export SERVICE_VERSION=${SERVICE_VERSION:-1.0.0}
+    
+    # Load decrypted environment variables
+    if [ -f "/service-manager/.env" ]; then
+        log_info "Loading environment from /service-manager/.env"
+        set -a
+        . /service-manager/.env
+        set +a
+    else
+        log_warn "No .env file found after decryption"
+    fi
     
     log_info "✅ Base environment configured"
 }
