@@ -13,11 +13,15 @@
  *   pnpm machine:pull <profile> [instance] # Pull images
  *   pnpm machine:logs <profile> [instance] # View logs
  * 
+ * Flags:
+ *   --test-decryption                       # Test mode: Only pass decryption key to test env.encrypted
+ * 
  * Examples:
  *   pnpm machine:up:build comfy-remote     # Instance 0 (default)
  *   pnpm machine:up:build comfy-remote 1   # Instance 1 (ports +10)
  *   pnpm machine:down comfy-remote 2       # Instance 2 (ports +20)
  *   pnpm machine:logs openai 0             # Instance 0
+ *   pnpm d:machine:run comfyui --test-decryption # Test environment decryption
  */
 
 import { spawn } from 'child_process';
@@ -300,13 +304,33 @@ class MachineCompose {
     
     // Add environment variables as -e flags (production hosting style)
     if (envName) {
-      const allEnvVars = this.loadAllEnvVars(envName);
-      Object.entries(allEnvVars).forEach(([key, value]) => {
-        cmd.push('-e', `${key}=${value}`);
-      });
+      // Check for decryption test mode
+      const testDecryption = flags.includes('--test-decryption');
       
-      console.log(chalk.blue(`🌐 Added ${Object.keys(allEnvVars).length} environment variables as -e flags`));
-      console.log(chalk.dim(`  Environment variables: ${Object.keys(allEnvVars).join(', ')}`));
+      if (testDecryption) {
+        // Test mode: Only pass the decryption key to test encrypted environment
+        const allEnvVars = this.loadAllEnvVars(envName);
+        const decryptKey = allEnvVars.ENV_ENCRYPT_KEY;
+        
+        if (decryptKey) {
+          cmd.push('-e', `EMP_ENV_DECRYPT_KEY=${decryptKey}`);
+          console.log(chalk.yellow(`🔐 DECRYPTION TEST MODE: Only passing EMP_ENV_DECRYPT_KEY`));
+          console.log(chalk.dim(`  Container will attempt to decrypt env.encrypted file`));
+          console.log(chalk.dim(`  This tests the production decryption flow`));
+        } else {
+          console.log(chalk.red(`❌ No ENV_ENCRYPT_KEY found in ${envName} environment`));
+          process.exit(1);
+        }
+      } else {
+        // Normal mode: Pass all environment variables
+        const allEnvVars = this.loadAllEnvVars(envName);
+        Object.entries(allEnvVars).forEach(([key, value]) => {
+          cmd.push('-e', `${key}=${value}`);
+        });
+        
+        console.log(chalk.blue(`🌐 Added ${Object.keys(allEnvVars).length} environment variables as -e flags`));
+        console.log(chalk.dim(`  Environment variables: ${Object.keys(allEnvVars).join(', ')}`));
+      }
     }
     
     // Add additional flags (BEFORE image name)
