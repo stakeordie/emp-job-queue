@@ -9,8 +9,7 @@ set -euo pipefail
 # =====================================================
 
 # Source the base common directly (NOT apiwebhook-base)
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-source "$SCRIPT_DIR/../../../scripts/entrypoint-base-common.sh"
+source "/scripts/entrypoint-base-common.sh"
 
 # =====================================================
 # Machine-Specific Environment Setup (Override)

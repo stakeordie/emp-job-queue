@@ -81,6 +81,10 @@ mkdir -p .workspace-packages
 cp -r "$ROOT_DIR/packages/service-config" .workspace-packages/
 cp -r "$ROOT_DIR/packages/custom-nodes" .workspace-packages/
 
+# Copy required entrypoint scripts to local scripts directory
+echo -e "${YELLOW}Copying required entrypoint scripts...${NC}"
+cp "$ROOT_DIR/scripts/entrypoint-base-common.sh" scripts/
+
 # Build the Docker image with workspace packages
 echo -e "${GREEN}Building Docker image...${NC}"
 BUILD_DATE=$(date -u +"%Y-%m-%dT%H:%M:%SZ")

@@ -2,9 +2,10 @@
   "author": "EmProps",
   "dependencies": {
     "@azure/storage-blob": "^12.27.0",
-    "@emp/custom-nodes": "workspace:*",
+    "@emp/core": "file:.workspace-packages/core",
+    "@emp/custom-nodes": "file:.workspace-packages/custom-nodes",
     "@emp/service-config": "file:.workspace-packages/service-config",
-    "@emp/telemetry": "workspace:*",
+    "@emp/telemetry": "file:.workspace-packages/telemetry",
     "axios": "^1.6.8",
     "dotenv": "^16.4.5",
     "execa": "^8.0.1",

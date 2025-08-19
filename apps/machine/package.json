@@ -24,6 +24,7 @@
   },
   "dependencies": {
     "@azure/storage-blob": "^12.27.0",
+    "@emp/core": "workspace:*",
     "@emp/custom-nodes": "workspace:*",
     "@emp/service-config": "workspace:*",
     "@emp/telemetry": "workspace:*",

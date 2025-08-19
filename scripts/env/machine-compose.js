@@ -288,6 +288,7 @@ class MachineCompose {
     const cmd = ['docker', 'run'];
     
     // Add common docker run flags
+    cmd.push('--platform', 'linux/amd64'); // Force x86_64 architecture
     cmd.push('--rm'); // Remove container when it exits
     cmd.push('--name', profile); // Container name
     cmd.push('--hostname', profile); // Hostname

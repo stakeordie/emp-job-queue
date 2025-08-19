@@ -108,7 +108,8 @@ FROM ai-base AS base-machine
 
     # Copy entrypoint scripts
     COPY scripts/entrypoint-*.sh /scripts/
-    RUN chmod +x /scripts/entrypoint-*.sh
+    COPY scripts/entrypoint-base-common.sh /scripts/
+    RUN chmod +x /scripts/entrypoint-*.sh /scripts/entrypoint-base-common.sh
 
     # Health check (use health monitoring port instead of NGINX)
     HEALTHCHECK --interval=30s --timeout=10s --start-period=5m --retries=3 \

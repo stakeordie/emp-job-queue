@@ -21,6 +21,40 @@ const encryptKey = args.find(arg => arg.startsWith('--key='))?.split('=')[1] || 
 
 console.log('🔧 Preparing Docker build files...\n');
 
+// Step 0: Build workspace packages first
+console.log('🏗️ Building workspace packages...');
+import { spawn } from 'child_process';
+
+function runCommand(cmd, args, cwd = process.cwd()) {
+  return new Promise((resolve, reject) => {
+    const process = spawn(cmd, args, {
+      stdio: 'inherit',
+      cwd,
+      shell: true
+    });
+    
+    process.on('close', (code) => {
+      if (code === 0) {
+        resolve();
+      } else {
+        reject(new Error(`Command failed with exit code ${code}`));
+      }
+    });
+  });
+}
+
+const MONOREPO_ROOT = path.join(__dirname, '../..');
+
+try {
+  await runCommand('pnpm', ['--filter', '@emp/core', 'build'], MONOREPO_ROOT);
+  await runCommand('pnpm', ['--filter', '@emp/service-config', 'build'], MONOREPO_ROOT);
+  await runCommand('pnpm', ['--filter', '@emp/custom-nodes', 'build'], MONOREPO_ROOT);
+  await runCommand('pnpm', ['--filter', '@emp/telemetry', 'build'], MONOREPO_ROOT);
+  console.log('✅ All workspace packages built successfully');
+} catch (error) {
+  console.log('⚠️ Some workspace packages failed to build, using existing dist/');
+}
+
 // Track what changed (for final output)
 let packageChanged = false;
 let encryptedChanged = false;
@@ -43,9 +77,15 @@ function sortObject(obj) {
 // Process main package.json for GPU Dockerfile
 const packageJson = JSON.parse(fs.readFileSync(path.join(__dirname, 'package.json'), 'utf8'));
 
-// Replace workspace references with file references
-if (packageJson.dependencies && packageJson.dependencies['@emp/service-config']) {
-  packageJson.dependencies['@emp/service-config'] = 'file:.workspace-packages/service-config';
+// Replace workspace references with file references (webhook pattern)
+if (packageJson.dependencies) {
+  Object.keys(packageJson.dependencies).forEach(key => {
+    if (packageJson.dependencies[key].startsWith('workspace:')) {
+      // Map workspace dependencies to .workspace-packages
+      const packageName = key.replace('@emp/', '');
+      packageJson.dependencies[key] = `file:.workspace-packages/${packageName}`;
+    }
+  });
 }
 
 const sortedPackageJson = sortObject(packageJson);
@@ -72,9 +112,15 @@ if (packageChanged) {
 // Process package.minimal.json for minimal Dockerfile
 const minimalPackageJson = JSON.parse(fs.readFileSync(path.join(__dirname, 'package.minimal.json'), 'utf8'));
 
-// Replace workspace references with file references
-if (minimalPackageJson.dependencies && minimalPackageJson.dependencies['@emp/service-config']) {
-  minimalPackageJson.dependencies['@emp/service-config'] = 'file:.workspace-packages/service-config';
+// Replace workspace references with file references (webhook pattern)
+if (minimalPackageJson.dependencies) {
+  Object.keys(minimalPackageJson.dependencies).forEach(key => {
+    if (minimalPackageJson.dependencies[key].startsWith('workspace:')) {
+      // Map workspace dependencies to .workspace-packages
+      const packageName = key.replace('@emp/', '');
+      minimalPackageJson.dependencies[key] = `file:.workspace-packages/${packageName}`;
+    }
+  });
 }
 
 const sortedMinimalPackageJson = sortObject(minimalPackageJson);
@@ -223,6 +269,81 @@ try {
   process.exit(1);
 }
 
+// Step 3: Copy workspace packages (webhook pattern)
+console.log('\n📦 Copying workspace packages...');
+
+const workspacePackagesDir = path.join(__dirname, '.workspace-packages');
+if (!fs.existsSync(workspacePackagesDir)) {
+  fs.mkdirSync(workspacePackagesDir, { recursive: true });
+}
+
+const copyWorkspacePackage = (packageName) => {
+  const sourceDir = path.join(__dirname, '../../packages', packageName);
+  const targetDir = path.join(workspacePackagesDir, packageName);
+
+  if (fs.existsSync(sourceDir)) {
+    if (!fs.existsSync(targetDir)) {
+      fs.mkdirSync(targetDir, { recursive: true });
+    }
+    
+    const packageJsonPath = path.join(sourceDir, 'package.json');
+    if (fs.existsSync(packageJsonPath)) {
+      const packageJsonContent = JSON.parse(fs.readFileSync(packageJsonPath, 'utf8'));
+      fs.writeFileSync(path.join(targetDir, 'package.json'), JSON.stringify(packageJsonContent, null, 2));
+    }
+    
+    const distDir = path.join(sourceDir, 'dist');
+    if (fs.existsSync(distDir)) {
+      const copyRecursive = (src, dest) => {
+        const stat = fs.statSync(src);
+        if (stat.isDirectory()) {
+          if (!fs.existsSync(dest)) {
+            fs.mkdirSync(dest, { recursive: true });
+          }
+          fs.readdirSync(src).forEach(file => {
+            copyRecursive(path.join(src, file), path.join(dest, file));
+          });
+        } else {
+          fs.copyFileSync(src, dest);
+        }
+      };
+      
+      const targetDistDir = path.join(targetDir, 'dist');
+      copyRecursive(distDir, targetDistDir);
+    }
+    
+    console.log(`✅ Copied @emp/${packageName} package`);
+  } else {
+    console.warn(`⚠️ Package not found: ${sourceDir}`);
+  }
+};
+
+copyWorkspacePackage('core');
+copyWorkspacePackage('service-config');
+copyWorkspacePackage('custom-nodes');
+copyWorkspacePackage('telemetry');
+
+// Step 4: Copy entrypoint scripts (webhook pattern)
+console.log('\n📋 Copying entrypoint scripts...');
+const scriptsDir = path.join(__dirname, 'scripts');
+
+if (!fs.existsSync(scriptsDir)) {
+  fs.mkdirSync(scriptsDir, { recursive: true });
+}
+
+const entrypointScripts = ['entrypoint-base-common.sh'];
+for (const script of entrypointScripts) {
+  const srcPath = path.join(__dirname, '../../scripts', script);
+  const destPath = path.join(scriptsDir, script);
+  
+  if (fs.existsSync(srcPath)) {
+    fs.copyFileSync(srcPath, destPath);
+    console.log(`  Copied ${script}`);
+  } else {
+    console.log(`  ⚠️ ${script} not found at ${srcPath}`);
+  }
+}
+
 console.log('\n🎉 Docker build preparation complete!');
 if (packageChanged || encryptedChanged) {
   console.log('  Files updated:');
@@ -231,6 +352,8 @@ if (packageChanged || encryptedChanged) {
     console.log('    - package.minimal.docker.json');
   }
   if (encryptedChanged) console.log('    - env.encrypted');
+  console.log('    - .workspace-packages/');
+  console.log('    - scripts/entrypoint-*.sh');
   console.log('  Docker cache will be invalidated for changed layers');
 } else {
   console.log('  ✨ No files changed - Docker cache will be fully utilized!');
