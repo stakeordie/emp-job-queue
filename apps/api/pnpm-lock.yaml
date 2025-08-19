@@ -688,6 +688,9 @@ importers:
 
   packages/telemetry:
     dependencies:
+      '@emp/core':
+        specifier: workspace:*
+        version: link:../core
       node-fetch:
         specifier: ^3.3.2
         version: 3.3.2
