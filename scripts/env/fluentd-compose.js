@@ -69,6 +69,17 @@ class FluentdCompose {
       process.exit(0);
     }
 
+    // Check for generate_args command
+    if (args[0] === 'generate_args') {
+      const envName = args[1];
+      if (!envName) {
+        console.error(chalk.red('❌ Environment name required for generate_args'));
+        console.log('Usage: pnpm d:fluentd:env_gen <env>');
+        process.exit(1);
+      }
+      return { mode: 'generate_args', envName };
+    }
+
     // Check if we're in compose mode via --compose-mode flag
     const isComposeMode = args.includes('--compose-mode');
     if (isComposeMode) {
@@ -102,13 +113,99 @@ class FluentdCompose {
   }
 
   /**
+   * Generate deployment arguments for hosting platforms
+   */
+  generateDeploymentArgs(envName, outputDir = 'deployment-files') {
+    console.log(chalk.cyan('🚀 Generating Fluentd Deployment Files'));
+    console.log(chalk.blue(`🌐 Environment: ${envName}`));
+    console.log();
+
+    // Load environment variables
+    const envPath = path.join(FLUENTD_DIR, `.env.${envName}`);
+    if (!fs.existsSync(envPath)) {
+      throw new Error(`Environment file not found: .env.${envName}`);
+    }
+
+    const envVars = dotenv.parse(fs.readFileSync(envPath));
+    const envCount = Object.keys(envVars).length;
+
+    // Create output directory
+    const deployDir = path.join(FLUENTD_DIR, outputDir);
+    if (!fs.existsSync(deployDir)) {
+      fs.mkdirSync(deployDir, { recursive: true });
+    }
+
+    console.log(chalk.blue(`📁 Output directory: ${deployDir}`));
+    console.log(chalk.blue(`🌐 Found ${envCount} environment variables`));
+    console.log();
+
+    const serviceName = 'fluentd';
+
+    // 1. Railway deployment file (.env format)
+    const railwayFile = path.join(deployDir, `${serviceName}-${envName}.railway.env`);
+    const railwayContent = Object.entries(envVars)
+      .map(([key, value]) => `${key}=${value}`)
+      .join('\n');
+    fs.writeFileSync(railwayFile, railwayContent);
+    console.log(chalk.green(`✅ Railway: ${railwayFile}`));
+
+    // 2. Docker run command file
+    const dockerFile = path.join(deployDir, `${serviceName}-${envName}.docker-run.sh`);
+    const dockerContent = [
+      '#!/bin/bash',
+      '# Docker Run Command for Fluentd',
+      `# Environment: ${envName}`,
+      `# Generated: ${new Date().toISOString()}`,
+      '',
+      'docker run --rm \\',
+      `  --name emp-fluentd \\`,
+      `  -p 8888:8888 \\`,  // HTTP input
+      `  -p 24220:24220 \\`, // Monitoring
+      `  -p 24224:24224 \\`, // Forward input
+      ...Object.entries(envVars).map(([key, value]) => `  -e ${key}="${value}" \\`),
+      `  emprops/fluentd:latest`
+    ].join('\n');
+    fs.writeFileSync(dockerFile, dockerContent);
+    fs.chmodSync(dockerFile, '755');
+    console.log(chalk.green(`✅ Docker Run: ${dockerFile}`));
+
+    // 3. Kubernetes ConfigMap
+    const k8sFile = path.join(deployDir, `${serviceName}-${envName}.k8s.yaml`);
+    const k8sContent = [
+      'apiVersion: v1',
+      'kind: ConfigMap',
+      'metadata:',
+      `  name: fluentd-config-${envName}`,
+      'data:',
+      ...Object.entries(envVars).map(([key, value]) => `  ${key}: "${value}"`)
+    ].join('\n');
+    fs.writeFileSync(k8sFile, k8sContent);
+    console.log(chalk.green(`✅ Kubernetes: ${k8sFile}`));
+
+    // 4. Environment list
+    const envListFile = path.join(deployDir, `${serviceName}-${envName}.env-list.txt`);
+    const envListContent = Object.entries(envVars)
+      .map(([key, value]) => `${key}="${value}"`)
+      .join('\n');
+    fs.writeFileSync(envListFile, envListContent);
+    console.log(chalk.green(`✅ Environment List: ${envListFile}`));
+
+    console.log('\n📋 Deployment Files Summary:');
+    console.log('  Railway:    Upload .railway.env to Railway environment variables');
+    console.log('  Docker:     Execute .docker-run.sh locally');
+    console.log('  Kubernetes: kubectl apply -f .k8s.yaml');
+    console.log('  Manual:     Copy variables from .env-list.txt');
+  }
+
+  /**
    * Show help information
    */
   showHelp() {
     console.log(chalk.cyan('fluentd-compose - Fluentd Docker wrapper with environment injection\n'));
     console.log('Usage:');
     console.log('  pnpm fluentd:run <env> [docker-run-args...]     # Production style (docker run -e)');
-    console.log('  pnpm fluentd:compose <env> <command> [args...]  # Development style (docker compose)\n');
+    console.log('  pnpm fluentd:compose <env> <command> [args...]  # Development style (docker compose)');
+    console.log('  pnpm d:fluentd:env_gen <env>                    # Generate deployment files\n');
     console.log('Docker Run Mode (Production/Railway style):');
     console.log('  Runs single container with -e environment flags');
     console.log('  Examples:');
@@ -120,6 +217,8 @@ class FluentdCompose {
     console.log('    pnpm fluentd:compose local-dev up --build');
     console.log('    pnpm fluentd:compose local-dev down');
     console.log('    pnpm fluentd:compose local-dev logs -f');
+    console.log('\nDeployment File Generation:');
+    console.log('  pnpm d:fluentd:env_gen production');
     console.log('\nEnvironments:');
     console.log('  local-dev     Local development');
     console.log('  production    Production deployment');
@@ -291,7 +390,10 @@ class FluentdCompose {
   async run() {
     const parsed = this.parseArgs();
     
-    if (parsed.mode === 'compose') {
+    if (parsed.mode === 'generate_args') {
+      this.generateDeploymentArgs(parsed.envName);
+      process.exit(0);
+    } else if (parsed.mode === 'compose') {
       await this.executeComposeCommand(parsed.envName, parsed.command, parsed.dockerArgs);
     } else {
       await this.executeRunCommand(parsed.envName, parsed.dockerArgs);
