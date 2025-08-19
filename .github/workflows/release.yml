@@ -54,10 +54,21 @@ jobs:
         echo "Apps directory:"
         ls -la apps/
         
+    - name: Install dependencies for build preparation
+      run: |
+        # Enable corepack and install dependencies needed for prepare scripts
+        corepack enable
+        pnpm install --no-frozen-lockfile
+        
     - name: Build and push API Docker image
       run: |
         # Get current date for build timestamp
         BUILD_DATE=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
+        
+        # Prepare API for Docker build (build workspace packages and convert dependencies)
+        cd apps/api
+        node prepare-docker-build.js
+        cd ../..
         
         # Build API Docker image using unified Dockerfile with version injection
         docker build \
@@ -78,6 +89,11 @@ jobs:
       run: |
         # Get current date for build timestamp
         BUILD_DATE=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
+        
+        # Prepare webhook for Docker build (build workspace packages and convert dependencies)
+        cd apps/webhook-service
+        node prepare-docker-build.js
+        cd ../..
         
         # Build Webhook Docker image using unified Dockerfile with version injection
         docker build \
