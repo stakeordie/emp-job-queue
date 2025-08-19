@@ -195,3 +195,6 @@ test-*.py
 !docs/**/*.jpg
 !apps/monitor/public/**
 .vercel
+
+
+nohup.out
