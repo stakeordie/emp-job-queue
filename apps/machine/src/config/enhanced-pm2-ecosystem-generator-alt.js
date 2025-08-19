@@ -17,11 +17,18 @@ const __dirname = path.dirname(__filename);
 
 export class EnhancedPM2EcosystemGenerator {
   constructor() {
-    console.log(`🚀🚀🚀 [BUILD-VERIFICATION] NEW PM2 ECOSYSTEM GENERATOR BUILD ACTIVE - ${new Date().toISOString()}`);
+    const BUILD_TIMESTAMP = '2025-08-18T23:01:30.000Z';
+    const FILE_VERSION = 'ENHANCED-ALT-v2';
+    
+    console.log(`🔥🔥🔥 [EXTREME-ALT-ENHANCED] === ALTERNATE PM2 ECOSYSTEM GENERATOR ACTIVE ===`);
+    console.log(`🔥🔥🔥 [EXTREME-ALT-ENHANCED] BUILD TIMESTAMP: ${BUILD_TIMESTAMP}`);
+    console.log(`🔥🔥🔥 [EXTREME-ALT-ENHANCED] FILE VERSION: ${FILE_VERSION}`);
+    console.log(`🔥🔥🔥 [EXTREME-ALT-ENHANCED] Current Time: ${new Date().toISOString()}`);
+    console.log(`🔥🔥🔥 [EXTREME-ALT-ENHANCED] THIS IS THE ALTERNATE ENHANCED GENERATOR FILE!`);
     this.logger = {
-      log: (msg) => console.log(`[Enhanced PM2 Generator] ${msg}`),
-      warn: (msg) => console.warn(`[Enhanced PM2 Generator] ${msg}`),
-      error: (msg) => console.error(`[Enhanced PM2 Generator] ${msg}`)
+      log: (msg) => console.log(`[🔥 ALT Enhanced PM2 Generator] ${msg}`),
+      warn: (msg) => console.warn(`[🔥 ALT Enhanced PM2 Generator] ${msg}`),
+      error: (msg) => console.error(`[🔥 ALT Enhanced PM2 Generator] ${msg}`)
     };
     
     this.hardwareDetector = new HardwareDetector();
@@ -35,8 +42,8 @@ export class EnhancedPM2EcosystemGenerator {
    */
   async generateEcosystem() {
     try {
-      this.logger.log('⭐⭐⭐ [ECOSYSTEM-TRACE] === STARTING generateEcosystem ===');
-      this.logger.log('⭐⭐⭐ [ECOSYSTEM-TRACE] 🚀 Starting enhanced PM2 ecosystem generation...');
+      this.logger.log('🔥🔥🔥 [ALT-ECOSYSTEM-TRACE] === STARTING generateEcosystem ===');
+      this.logger.log('🔥🔥🔥 [ALT-ECOSYSTEM-TRACE] 🚀 Starting ALTERNATE enhanced PM2 ecosystem generation...');
 
       // Load service mapping configuration
       this.logger.log('⭐⭐⭐ [ECOSYSTEM-TRACE] Loading service mapping...');
@@ -310,6 +317,29 @@ export class EnhancedPM2EcosystemGenerator {
   }
 
   /**
+   * Parse instances per GPU from service config string
+   */
+  parseInstancesPerGpu(instancesPerGpuStr) {
+    if (!instancesPerGpuStr) return 1;
+    
+    console.log(`🔍 [FIXED-PARSE-DEBUG ${new Date().toISOString()}] Parsing instancesPerGpu: "${instancesPerGpuStr}"`);
+    
+    // Handle environment variable syntax: ${COMFYUI_INSTANCES_PER_GPU:-1}
+    const match = instancesPerGpuStr.match(/\${.*:-(\d+)}/);
+    if (match) {
+      const parsed = parseInt(match[1]);
+      console.log(`✅ [FIXED-PARSE-DEBUG ${new Date().toISOString()}] Parsed from env syntax: ${parsed}`);
+      return parsed;
+    }
+    
+    // Handle direct number
+    const parsed = parseInt(instancesPerGpuStr);
+    const result = isNaN(parsed) ? 1 : parsed;
+    console.log(`✅ [FIXED-PARSE-DEBUG ${new Date().toISOString()}] Parsed as direct number: ${result}`);
+    return result;
+  }
+
+  /**
    * Calculate actual instance count based on GPU binding and hardware
    */
   calculateInstanceCount(workerConfig, requestedCount) {
@@ -484,51 +514,51 @@ This container will now exit. Please fix the deployment configuration and restar
   async generateServiceApps(workerType, instanceCount, workerConfig, serviceConfig, actualServiceName) {
     const apps = [];
     
-    this.logger.log(`🔍 [SERVICE-DEBUG] generateServiceApps called:`);
-    this.logger.log(`🔍 [SERVICE-DEBUG] - workerType: "${workerType}"`);
-    this.logger.log(`🔍 [SERVICE-DEBUG] - instanceCount: ${instanceCount}`);
-    this.logger.log(`🔍 [SERVICE-DEBUG] - actualServiceName: "${actualServiceName}"`);
-    this.logger.log(`🔍 [SERVICE-DEBUG] - serviceConfig: ${JSON.stringify(serviceConfig)}`);
+    console.log(`🔍 [FIXED-SERVICE-DEBUG ${new Date().toISOString()}] generateServiceApps called:`);
+    console.log(`🔍 [FIXED-SERVICE-DEBUG ${new Date().toISOString()}] - workerType: "${workerType}"`);
+    console.log(`🔍 [FIXED-SERVICE-DEBUG ${new Date().toISOString()}] - instanceCount: ${instanceCount}`);
+    console.log(`🔍 [FIXED-SERVICE-DEBUG ${new Date().toISOString()}] - actualServiceName: "${actualServiceName}"`);
+    console.log(`🔍 [FIXED-SERVICE-DEBUG ${new Date().toISOString()}] - serviceConfig.installer: "${serviceConfig.installer}"`);
+    console.log(`🔍 [FIXED-SERVICE-DEBUG ${new Date().toISOString()}] - serviceConfig.type: "${serviceConfig.type}"`);
+    console.log(`🔍 [FIXED-SERVICE-DEBUG ${new Date().toISOString()}] - serviceConfig.is_gpu_bound: ${serviceConfig.is_gpu_bound}`);
     
-    // Use the actual service name from service mapping instead of deriving from connector
-    const serviceName = actualServiceName;
-    
-    // Check connector type to determine service implementation  
-    const connectorType = serviceConfig.connector.replace('Connector', '').toLowerCase();
-    this.logger.log(`🔍 [SERVICE-DEBUG] - connectorType: "${connectorType}"`);
-    
-    if (connectorType === 'comfyui') {
-      for (let i = 0; i < instanceCount; i++) {
-        apps.push(this.createComfyUIApp(serviceName, i));
-      }
-    } else if (connectorType === 'simulationhttp' || connectorType === 'simulation') {
-      // Check if service is GPU-bound to decide instance count
-      const isGpuBound = serviceConfig.is_gpu_bound;
+    // FIXED: Simple logic - if it's internal, create apps based on installer
+    if (serviceConfig.type === 'internal') {
+      console.log(`✅ [FIXED-SERVICE-DEBUG ${new Date().toISOString()}] Service type is 'internal', proceeding with app creation`);
       
-      if (isGpuBound) {
-        // Create per-GPU simulation instances (like ComfyUI)
-        for (let i = 0; i < instanceCount; i++) {
-          apps.push(this.createSimulationApp(serviceName, i));
-        }
-      } else {
-        // Single simulation service for the machine
-        apps.push(this.createSimulationApp(serviceName));
-      }
-    } else if (connectorType === 'simulationwebsocket') {
-      // WebSocket simulation service
-      const isGpuBound = serviceConfig.is_gpu_bound;
+      // Calculate actual instance count based on GPU binding and hardware
+      const instancesPerGpuStr = serviceConfig.service_instances_per_gpu || '1';
+      const instancesPerGpu = this.parseInstancesPerGpu(instancesPerGpuStr);
+      const gpuCount = this.hardwareResources?.gpuCount || 1;
+      const totalInstances = serviceConfig.is_gpu_bound ? instancesPerGpu * gpuCount : instancesPerGpu;
       
-      if (isGpuBound) {
-        // Create per-GPU WebSocket simulation instances (like ComfyUI)
-        for (let i = 0; i < instanceCount; i++) {
-          apps.push(this.createSimulationWebSocketApp(serviceName, i));
+      console.log(`🔍 [FIXED-SERVICE-DEBUG ${new Date().toISOString()}] Instance calculation:`);
+      console.log(`🔍 [FIXED-SERVICE-DEBUG ${new Date().toISOString()}] - instancesPerGpuStr: "${instancesPerGpuStr}"`);
+      console.log(`🔍 [FIXED-SERVICE-DEBUG ${new Date().toISOString()}] - instancesPerGpu: ${instancesPerGpu}`);
+      console.log(`🔍 [FIXED-SERVICE-DEBUG ${new Date().toISOString()}] - gpuCount: ${gpuCount}`);
+      console.log(`🔍 [FIXED-SERVICE-DEBUG ${new Date().toISOString()}] - is_gpu_bound: ${serviceConfig.is_gpu_bound}`);
+      console.log(`🔍 [FIXED-SERVICE-DEBUG ${new Date().toISOString()}] - totalInstances: ${totalInstances}`);
+      
+      for (let i = 0; i < totalInstances; i++) {
+        console.log(`🔍 [FIXED-SERVICE-DEBUG ${new Date().toISOString()}] Creating app ${i+1}/${totalInstances} for installer: "${serviceConfig.installer}"`);
+        
+        // FIXED: Use installer field instead of hardcoded connector parsing
+        if (serviceConfig.installer === 'ComfyUIManagementClient') {
+          console.log(`✅ [FIXED-SERVICE-DEBUG ${new Date().toISOString()}] Creating ComfyUI app for instance ${i}`);
+          apps.push(this.createComfyUIApp(actualServiceName, i));
+        } else if (serviceConfig.installer === 'SimulationService') {
+          console.log(`✅ [FIXED-SERVICE-DEBUG ${new Date().toISOString()}] Creating Simulation app for instance ${i}`);
+          apps.push(this.createSimulationApp(actualServiceName, i));
+        } else {
+          console.error(`❌ [FIXED-SERVICE-DEBUG ${new Date().toISOString()}] Unknown service installer: "${serviceConfig.installer}"`);
+          throw new Error(`Unknown service installer: ${serviceConfig.installer}. Add support in generateServiceApps.`);
         }
-      } else {
-        // Single WebSocket simulation service for the machine
-        apps.push(this.createSimulationWebSocketApp(serviceName));
       }
+    } else {
+      console.log(`❌ [FIXED-SERVICE-DEBUG ${new Date().toISOString()}] Service type is '${serviceConfig.type}', not 'internal'. Skipping app creation.`);
     }
     
+    console.log(`🎉 [FIXED-SERVICE-DEBUG ${new Date().toISOString()}] generateServiceApps returning ${apps.length} apps for "${actualServiceName}"`);
     return apps;
   }
 

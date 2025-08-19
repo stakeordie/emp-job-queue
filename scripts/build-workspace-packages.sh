@@ -35,11 +35,33 @@ echo -e "${YELLOW}Preparing workspace packages for Docker build...${NC}"
 rm -rf .workspace-packages
 mkdir -p .workspace-packages
 
-# Copy built workspace packages to Docker context
-cp -r "$ROOT_DIR/packages/core" .workspace-packages/
-cp -r "$ROOT_DIR/packages/service-config" .workspace-packages/
-cp -r "$ROOT_DIR/packages/custom-nodes" .workspace-packages/
-cp -r "$ROOT_DIR/packages/telemetry" .workspace-packages/
+# Copy ONLY the package files (not entire repo) to Docker context
+# Only copy package.json, dist/, src/, and essential files - NOT apps/ or logs/
+mkdir -p .workspace-packages/core
+mkdir -p .workspace-packages/service-config  
+mkdir -p .workspace-packages/custom-nodes
+mkdir -p .workspace-packages/telemetry
+
+# Copy core package files only (exclude apps/, logs/, etc.)
+cp "$ROOT_DIR/packages/core/package.json" .workspace-packages/core/
+cp -r "$ROOT_DIR/packages/core/dist" .workspace-packages/core/ 2>/dev/null || true
+cp -r "$ROOT_DIR/packages/core/src" .workspace-packages/core/ 2>/dev/null || true
+
+# Copy other packages selectively (exclude large unnecessary directories)
+# Service-config: exclude shared-configs (111MB) and node_modules
+cp "$ROOT_DIR/packages/service-config/package.json" .workspace-packages/service-config/
+cp -r "$ROOT_DIR/packages/service-config/dist" .workspace-packages/service-config/ 2>/dev/null || true
+cp -r "$ROOT_DIR/packages/service-config/src" .workspace-packages/service-config/ 2>/dev/null || true
+cp -r "$ROOT_DIR/packages/service-config/comfy-nodes" .workspace-packages/service-config/ 2>/dev/null || true
+
+# Custom-nodes and telemetry: copy normally but exclude node_modules
+cp "$ROOT_DIR/packages/custom-nodes/package.json" .workspace-packages/custom-nodes/
+cp -r "$ROOT_DIR/packages/custom-nodes/dist" .workspace-packages/custom-nodes/ 2>/dev/null || true  
+cp -r "$ROOT_DIR/packages/custom-nodes/src" .workspace-packages/custom-nodes/ 2>/dev/null || true
+
+cp "$ROOT_DIR/packages/telemetry/package.json" .workspace-packages/telemetry/
+cp -r "$ROOT_DIR/packages/telemetry/dist" .workspace-packages/telemetry/ 2>/dev/null || true
+cp -r "$ROOT_DIR/packages/telemetry/src" .workspace-packages/telemetry/ 2>/dev/null || true
 
 echo -e "${GREEN}✓ Workspace packages prepared successfully${NC}"
 echo "Location: $MACHINE_DIR/.workspace-packages"

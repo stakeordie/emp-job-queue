@@ -6,18 +6,19 @@ FROM pytorch/pytorch:2.7.0-cuda12.8-cudnn9-devel AS ai-base
     ARG CACHE_BUST=2
     RUN echo "Cache bust: ${CACHE_BUST}"
 
-    # Install Node.js 18 and PM2
+    # Install Node.js 18 and PM2 (without starting daemon processes)
     RUN apt-get update && \
         apt-get install -y curl && \
         curl -fsSL https://deb.nodesource.com/setup_18.x | bash - && \
         apt-get install -y nodejs && \
         npm install -g pnpm pm2 && \
-        pm2 install pm2-logrotate && \
-        pm2 set pm2-logrotate:max_size 10M && \
-        pm2 set pm2-logrotate:retain 7 && \
-        pm2 set pm2-logrotate:compress true && \
+        PM2_SILENT=true pm2 install pm2-logrotate && \
+        PM2_SILENT=true pm2 set pm2-logrotate:max_size 10M && \
+        PM2_SILENT=true pm2 set pm2-logrotate:retain 7 && \
+        PM2_SILENT=true pm2 set pm2-logrotate:compress true && \
+        PM2_SILENT=true pm2 kill && \
         apt-get clean && \
-        rm -rf /var/lib/apt/lists/*
+        rm -rf /var/lib/apt/lists/* ~/.pm2
 
     # Install system dependencies
     RUN apt-get update && \
@@ -71,10 +72,14 @@ FROM ai-base AS base-machine
 
     # Version injection will be moved to end to preserve cache
 
-    # Copy all application files
+    # Copy all application files FIRST
     COPY src/ /service-manager/src/
     COPY scripts/ /service-manager/scripts/
-    COPY generate-pm2-ecosystem-worker-driven.js /service-manager/generate-pm2-ecosystem-worker-driven.js
+    
+    # FORCE COPY ALTERNATE FILES TO BREAK CACHE - EXPLICIT PATHS
+    COPY generate-pm2-ecosystem-worker-driven-alt.js /service-manager/generate-pm2-ecosystem-worker-driven.js
+    COPY src/config/enhanced-pm2-ecosystem-generator-alt.js /service-manager/src/config/enhanced-pm2-ecosystem-generator-alt.js
+    COPY src/config/enhanced-pm2-ecosystem-generator-alt.js /service-manager/src/config/enhanced-pm2-ecosystem-generator.js
 
     # Set up environment
     ENV NODE_ENV=production \
@@ -140,8 +145,8 @@ RUN echo "Image built at: ${BUILD_TIMESTAMP}" > /workspace/BUILD_INFO.txt && \
     echo "MACHINE_VERSION=${MACHINE_VERSION}" > /service-manager/.version && \
     echo "BUILD_DATE=${BUILD_DATE}" >> /service-manager/.version
 
-# Use base-specific entrypoint
-ENTRYPOINT ["/scripts/entrypoint-base.sh"]
+# Use machine-final entrypoint
+ENTRYPOINT ["/scripts/entrypoint-machine-final.sh"]
 
 # Profile: comfyui - Internal ComfyUI connectors (PURE RUNTIME INSTALLATION)
 FROM base-machine AS comfyui
@@ -173,8 +178,8 @@ RUN echo "Image built at: ${BUILD_TIMESTAMP}" > /workspace/BUILD_INFO.txt && \
     echo "MACHINE_VERSION=${MACHINE_VERSION}" > /service-manager/.version && \
     echo "BUILD_DATE=${BUILD_DATE}" >> /service-manager/.version
 
-# Use base entrypoint (service manager handles ComfyUI-specific logic at runtime)
-ENTRYPOINT ["/scripts/entrypoint-base.sh"]
+# Use machine-final entrypoint (service manager handles ComfyUI-specific logic at runtime)
+ENTRYPOINT ["/scripts/entrypoint-machine-final.sh"]
 
 
 # Profile: simulation - Testing and simulation  
@@ -206,5 +211,5 @@ RUN echo "Image built at: ${BUILD_TIMESTAMP}" > /workspace/BUILD_INFO.txt && \
     echo "MACHINE_VERSION=${MACHINE_VERSION}" > /service-manager/.version && \
     echo "BUILD_DATE=${BUILD_DATE}" >> /service-manager/.version
 
-# Use simulation-specific entrypoint
-ENTRYPOINT ["/scripts/entrypoint-base.sh"]
+# Use machine-final entrypoint
+ENTRYPOINT ["/scripts/entrypoint-machine-final.sh"]

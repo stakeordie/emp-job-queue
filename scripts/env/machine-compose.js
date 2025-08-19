@@ -118,6 +118,21 @@ class MachineCompose {
   }
 
   /**
+   * Remove .env symlink after Docker operation
+   */
+  cleanupEnvironmentSymlink() {
+    const envSymlink = path.join(MACHINE_DIR, '.env');
+    try {
+      if (fs.existsSync(envSymlink)) {
+        fs.unlinkSync(envSymlink);
+        console.log(chalk.dim(`  🗑️  Removed .env symlink`));
+      }
+    } catch (error) {
+      console.warn(chalk.yellow(`⚠️ Failed to remove .env symlink: ${error.message}`));
+    }
+  }
+
+  /**
    * Get environment name from profile's env_file configuration
    */
   getEnvironmentFromProfile(profile) {
@@ -685,6 +700,7 @@ class MachineCompose {
    * Main execution
    */
   async run() {
+    let symlinkCreated = false;
     try {
       const { command, profile, portMappings: cmdLinePortMappings, flags } = this.parseArgs();
       
@@ -716,6 +732,7 @@ class MachineCompose {
       // For both build and up commands, create symlink so Docker Compose can resolve ${VARIABLES}
       if ((command === 'build' || command === 'build:push' || command === 'up') && envName) {
         await this.createEnvironmentSymlink(envName);
+        symlinkCreated = true;
       }
       
       this.displayInfo(command, profile, envName, portMappings, flags);
@@ -742,6 +759,9 @@ class MachineCompose {
         }
         
         this.generateDeploymentArgs(profile, envName);
+        if (symlinkCreated) {
+          this.cleanupEnvironmentSymlink();
+        }
         return; // Don't execute docker commands
         
       } else if (command === 'build:push') {
@@ -759,6 +779,9 @@ class MachineCompose {
         await this.executeCommand(pushCmd, false, [], envName);
         
         console.log(chalk.green('✅ Build and push completed successfully!'));
+        if (symlinkCreated) {
+          this.cleanupEnvironmentSymlink();
+        }
         return; // Done
         
       } else if (command === 'pull:run') {
@@ -816,7 +839,16 @@ class MachineCompose {
       
       await this.executeCommand(cmd, injectEnvVars, portMappings, envName);
       
+      // Clean up symlink after successful execution
+      if (symlinkCreated) {
+        this.cleanupEnvironmentSymlink();
+      }
+      
     } catch (error) {
+      // Clean up symlink on error too
+      if (symlinkCreated) {
+        this.cleanupEnvironmentSymlink();
+      }
       console.error(chalk.red('❌ Error:'), error.message);
       process.exit(1);
     }

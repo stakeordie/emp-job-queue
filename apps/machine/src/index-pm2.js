@@ -628,6 +628,25 @@ async function generatePM2EcosystemConfig() {
     logger.info(`🔍 DEBUG: Worker connectors for Enhanced PM2 Generator: "${workerConnectors}"`);
     
     logger.info('🚀 Using worker-driven PM2 ecosystem generator');
+    logger.info(`🔥🔥🔥 [INDEX-PM2-VERIFICATION] About to call generator at: ${new Date().toISOString()}`);
+    logger.info(`🔥🔥🔥 [INDEX-PM2-VERIFICATION] Generator path: /service-manager/generate-pm2-ecosystem-worker-driven.js`);
+    
+    // LOG THE ACTUAL FILE CONTENTS TO PROVE WHICH VERSION WE'RE USING
+    logger.info(`🔥🔥🔥 [INDEX-PM2-FILE-VERIFICATION] Reading generator file contents...`);
+    try {
+      const fs = await import('fs');
+      const generatorPath = '/service-manager/generate-pm2-ecosystem-worker-driven.js';
+      const fileContents = fs.readFileSync(generatorPath, 'utf8');
+      const firstLines = fileContents.split('\n').slice(0, 20).join('\n');
+      logger.info(`🔥🔥🔥 [INDEX-PM2-FILE-VERIFICATION] First 20 lines of generator file:`);
+      logger.info(`🔥🔥🔥 [INDEX-PM2-FILE-VERIFICATION] ========================================`);
+      console.log(firstLines); // Use console.log for direct output
+      logger.info(`🔥🔥🔥 [INDEX-PM2-FILE-VERIFICATION] ========================================`);
+    } catch (readError) {
+      logger.error(`🔥🔥🔥 [INDEX-PM2-FILE-VERIFICATION] ERROR reading generator file: ${readError.message}`);
+    }
+    
+    
     await execa('node', ['/service-manager/generate-pm2-ecosystem-worker-driven.js'], {
       cwd: '/workspace',
       env: {
@@ -638,12 +657,29 @@ async function generatePM2EcosystemConfig() {
     
     logger.info('PM2 ecosystem config generated successfully');
     
-    // Log the generated config file contents for debugging
+    // Log the generated config file contents for debugging (truncated)
     try {
       const fs = await import('fs');
       const configContent = fs.readFileSync('/workspace/pm2-ecosystem.config.cjs', 'utf8');
-      logger.info('Generated ecosystem config contents:');
-      console.log(configContent);
+      
+      // Parse and summarize the config instead of dumping massive env vars
+      const configLines = configContent.split('\n');
+      const appNames = [];
+      configLines.forEach(line => {
+        const nameMatch = line.match(/"name":\s*"([^"]+)"/);
+        if (nameMatch) appNames.push(nameMatch[1]);
+      });
+      
+      logger.info(`Generated ecosystem config summary: ${appNames.length} apps - ${appNames.join(', ')}`);
+      
+      // Only log first 50 lines and last 10 lines to avoid massive env dumps
+      const truncatedConfig = [
+        ...configLines.slice(0, 50),
+        `... [TRUNCATED - ${configLines.length - 60} lines of env vars] ...`,
+        ...configLines.slice(-10)
+      ].join('\n');
+      
+      console.log(truncatedConfig);
     } catch (error) {
       logger.error('Failed to read generated ecosystem config:', error);
     }
