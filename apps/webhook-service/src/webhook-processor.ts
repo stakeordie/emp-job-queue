@@ -82,6 +82,7 @@ export class WebhookProcessor extends EventEmitter {
       steps: Map<number, string>; // step_number -> job_id mapping
       completedSteps: Set<number>; // completed step numbers (1-indexed)
       failedSteps: Set<number>; // failed step numbers (1-indexed)
+      stepErrors: Map<number, string>; // step_number -> error message for failed steps
       totalSteps?: number; // total steps in workflow (from job submission)
       startTime: number;
       lastUpdate: number;
@@ -334,6 +335,7 @@ export class WebhookProcessor extends EventEmitter {
         steps: new Map(),
         completedSteps: new Set(),
         failedSteps: new Set(),
+        stepErrors: new Map(),
         startTime: now,
         lastUpdate: now,
       };
@@ -375,6 +377,11 @@ export class WebhookProcessor extends EventEmitter {
     } else if (event.type === 'job_failed' && !wasFailed) {
       workflow.failedSteps.add(stepNumber);
       workflow.completedSteps.delete(stepNumber); // Remove from completed if it was there
+      
+      // Store the error message for this step
+      const errorMessage = (event as any).error || 'Unknown error';
+      workflow.stepErrors.set(stepNumber, errorMessage);
+      
       logger.info(
         `❌ WORKFLOW-TRACK: Step ${stepNumber} failed for workflow ${workflowId} (${workflow.failedSteps.size} failed)`
       );
@@ -384,7 +391,8 @@ export class WebhookProcessor extends EventEmitter {
         stepNumber: event.step_number,
         totalSteps: event.total_steps,
         hasWorkflowMetadata: !!(event.workflow_id && event.step_number),
-        eventKeys: Object.keys(event)
+        eventKeys: Object.keys(event),
+        errorMessage: errorMessage
       });
     }
 
@@ -488,6 +496,7 @@ export class WebhookProcessor extends EventEmitter {
             job_id: jobId,
             completed: workflow.completedSteps.has(stepNum),
             failed: workflow.failedSteps.has(stepNum),
+            ...(workflow.stepErrors.has(stepNum) && { error: workflow.stepErrors.get(stepNum) }),
           })),
         },
       } as MonitorEvent;
