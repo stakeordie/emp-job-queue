@@ -2,6 +2,7 @@ import Joi from 'joi';
 import dotenv from 'dotenv';
 import crypto from 'crypto';
 import { createLogger } from '../utils/logger.js';
+import { HardwareDetector } from './hardware-detector.js';
 
 const logger = createLogger('config');
 
@@ -95,8 +96,8 @@ function generateShortUUID() {
 }
 
 // Build configuration from environment variables
-// GPU configuration will be auto-detected at runtime
-function buildConfig() {
+// GPU configuration will be auto-detected at runtime using nvidia-smi
+async function buildConfig() {
   // Generate unique machine ID with short UUID suffix
   const baseId = process.env.MACHINE_ID || process.env.CONTAINER_NAME || 'basic-machine';
   const machineId = baseId.includes('-') ? `${baseId}-${generateShortUUID()}` : `${baseId}-${generateShortUUID()}`;
@@ -104,14 +105,74 @@ function buildConfig() {
   // Update environment variable so PM2 ecosystem generator uses the unique machine ID
   process.env.MACHINE_ID = machineId;
   
+  // Check if any requested workers are GPU-bound before doing hardware detection
+  const workersEnv = process.env.WORKERS || 'simulation:1';
+  const gpuBoundServices = ['comfyui', 'a1111']; // Services that require GPU detection
+  const requestedWorkers = workersEnv.split(',').map(w => w.split(':')[0].trim());
+  const gpuMode = process.env.GPU_MODE || 'actual';
+  const needsGpuDetection = gpuMode === 'actual' && requestedWorkers.some(worker => gpuBoundServices.includes(worker));
+  
+  console.log('');
+  console.log('🔍🔍🔍🔍🔍🔍🔍🔍🔍🔍🔍🔍🔍🔍🔍🔍🔍🔍🔍🔍🔍🔍🔍🔍🔍🔍🔍🔍🔍🔍');
+  console.log('🔍 CONFIGURATION: CHECKING WORKER REQUIREMENTS');
+  console.log(`🔍 WORKERS: ${workersEnv}`);
+  console.log(`🔍 REQUESTED WORKER TYPES: ${requestedWorkers.join(', ')}`);
+  console.log(`🔍 GPU-BOUND SERVICES: ${gpuBoundServices.join(', ')}`);
+  console.log(`🔍 GPU_MODE: ${gpuMode}`);
+  console.log(`🔍 NEEDS GPU DETECTION: ${needsGpuDetection ? 'YES' : 'NO'}`);
+  console.log('🔍🔍🔍🔍🔍🔍🔍🔍🔍🔍🔍🔍🔍🔍🔍🔍🔍🔍🔍🔍🔍🔍🔍🔍🔍🔍🔍🔍🔍🔍');
+  console.log('');
+  
+  let hardwareResources;
+  if (needsGpuDetection) {
+    // FORCE GPU DETECTION USING nvidia-smi (not environment variables)
+    console.log('');
+    console.log('🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀');
+    console.log('🚀 CONFIGURATION: FORCING GPU DETECTION VIA nvidia-smi');
+    console.log('🚀 This will IGNORE environment variables and use actual hardware detection');
+    console.log('🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀');
+    console.log('');
+    
+    const hardwareDetector = new HardwareDetector();
+    hardwareResources = await hardwareDetector.detectResources();
+    
+    console.log('');
+    console.log('🎯🎯🎯🎯🎯🎯🎯🎯🎯🎯🎯🎯🎯🎯🎯🎯🎯🎯🎯🎯🎯🎯🎯🎯🎯🎯🎯🎯🎯🎯');
+    console.log('🎯 CONFIGURATION: HARDWARE DETECTION COMPLETE');
+    console.log(`🎯 DETECTED GPU COUNT: ${hardwareResources.gpuCount}`);
+    console.log(`🎯 DETECTED GPU MODEL: ${hardwareResources.gpuModel}`);
+    console.log(`🎯 DETECTED GPU MEMORY: ${hardwareResources.gpuMemoryGB}GB`);
+    console.log(`🎯 DETECTED GPU VENDOR: ${hardwareResources.gpuVendor}`);
+    console.log('🎯 This GPU configuration will be used instead of environment variables');
+    console.log('🎯🎯🎯🎯🎯🎯🎯🎯🎯🎯🎯🎯🎯🎯🎯🎯🎯🎯🎯🎯🎯🎯🎯🎯🎯🎯🎯🎯🎯🎯');
+    console.log('');
+  } else {
+    // Skip GPU detection for CPU-only workers
+    console.log('');
+    console.log('💡💡💡💡💡💡💡💡💡💡💡💡💡💡💡💡💡💡💡💡💡💡💡💡💡💡💡💡💡💡');
+    console.log('💡 CONFIGURATION: SKIPPING GPU DETECTION');
+    console.log('💡 No GPU-bound workers requested - using CPU-only configuration');
+    console.log('💡 Workers like openai, simulation, comfyui-remote do not require GPU detection');
+    console.log('💡💡💡💡💡💡💡💡💡💡💡💡💡💡💡💡💡💡💡💡💡💡💡💡💡💡💡💡💡💡');
+    console.log('');
+    
+    hardwareResources = {
+      gpuCount: 0,
+      gpuMemoryGB: 0,
+      gpuModel: 'CPU-only',
+      gpuVendor: 'none',
+      hasGpu: false
+    };
+  }
+  
   const config = {
     machine: {
       id: machineId,
       testMode: process.env.TEST_MODE === 'true',
       gpu: {
-        count: parseInt(process.env.MACHINE_NUM_GPUS || '2'),
-        memoryGB: parseInt(process.env.MACHINE_GPU_MEMORY_GB || '16'),
-        model: process.env.MACHINE_GPU_MODEL || 'Unknown'
+        count: hardwareResources.gpuCount,
+        memoryGB: hardwareResources.gpuMemoryGB,
+        model: hardwareResources.gpuModel
       }
     },
     redis: {
@@ -170,32 +231,40 @@ function buildConfig() {
 
 // Validate and export configuration
 let config;
-try {
-  const rawConfig = buildConfig();
-  console.log('DEBUG: Raw config workers section:', rawConfig.workers);
-  
-  const { error, value } = schema.validate(rawConfig, { 
-    abortEarly: false,
-    stripUnknown: true 
-  });
-  
-  console.log('DEBUG: Validation error:', error);
-  console.log('DEBUG: Validated config workers section:', value?.workers);
-  
-  if (error) {
-    logger.error('Configuration validation failed:', error.details);
-    throw new Error(`Invalid configuration: ${error.message}`);
+
+async function loadConfiguration() {
+  try {
+    const rawConfig = await buildConfig();
+    console.log('DEBUG: Raw config workers section:', rawConfig.workers);
+    
+    const { error, value } = schema.validate(rawConfig, { 
+      abortEarly: false,
+      stripUnknown: true 
+    });
+    
+    console.log('DEBUG: Validation error:', error);
+    console.log('DEBUG: Validated config workers section:', value?.workers);
+    
+    if (error) {
+      logger.error('Configuration validation failed:', error.details);
+      throw new Error(`Invalid configuration: ${error.message}`);
+    }
+    
+    config = value;
+    logger.info('Configuration loaded successfully', {
+      gpuCount: config.machine.gpu.count,
+      workers: config.workers?.connectors || 'not configured',
+      bundleMode: config.workers?.bundleMode || 'not configured'
+    });
+    
+    return config;
+  } catch (error) {
+    logger.error('Failed to load configuration:', error);
+    process.exit(1);
   }
-  
-  config = value;
-  logger.info('Configuration loaded successfully', {
-    gpuCount: config.machine.gpu.count,
-    workers: config.workers?.connectors || 'not configured',
-    bundleMode: config.workers?.bundleMode || 'not configured'
-  });
-} catch (error) {
-  logger.error('Failed to load configuration:', error);
-  process.exit(1);
 }
+
+// Load configuration asynchronously
+config = await loadConfiguration();
 
 export default config;

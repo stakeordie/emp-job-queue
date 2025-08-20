@@ -20,6 +20,14 @@ export class HardwareDetector {
    * Detect all machine resources
    */
   async detectResources() {
+    console.log('');
+    console.log('🟡🟡🟡🟡🟡🟡🟡🟡🟡🟡🟡🟡🟡🟡🟡🟡🟡🟡🟡🟡🟡🟡🟡🟡🟡🟡🟡🟡🟡🟡');
+    console.log('🟡 HARDWARE DETECTOR: detectResources() CALLED');
+    console.log('🟡 If you see this, hardware detection is running');
+    console.log('🟡 If you DON\'T see this, hardware detection is being bypassed');
+    console.log('🟡🟡🟡🟡🟡🟡🟡🟡🟡🟡🟡🟡🟡🟡🟡🟡🟡🟡🟡🟡🟡🟡🟡🟡🟡🟡🟡🟡🟡🟡');
+    console.log('');
+    
     try {
       this.logger.log('🔍 Detecting machine hardware resources...');
 
@@ -41,6 +49,20 @@ export class HardwareDetector {
         detectedAt: new Date().toISOString()
       };
 
+      // SUPER PROMINENT GPU DETECTION RESULT
+      const gpuMode = process.env.GPU_MODE || 'actual';
+      const gpuModeDisplay = gpuMode === 'mock' ? 'MOCK' : 'REAL';
+      const gpuDisplayText = resources.gpuCount === 0 
+        ? 'NO GPUs'
+        : `${resources.gpuCount} ${gpuModeDisplay} GPU${resources.gpuCount > 1 ? 's' : ''}`;
+      
+      console.log('');
+      console.log('🚨🚨🚨🚨🚨🚨🚨🚨🚨🚨🚨🚨🚨🚨🚨🚨🚨🚨🚨🚨🚨🚨🚨🚨🚨🚨');
+      console.log(`🎯 GPU DETECTION RESULT: ${gpuDisplayText}`);
+      console.log(`🎯 GPU_MODE=${gpuMode.toUpperCase()} | VENDOR=${resources.gpuVendor || 'none'}`);
+      console.log('🚨🚨🚨🚨🚨🚨🚨🚨🚨🚨🚨🚨🚨🚨🚨🚨🚨🚨🚨🚨🚨🚨🚨🚨🚨🚨');
+      console.log('');
+
       this.logger.log(`✅ Hardware detection completed:`);
       this.logger.log(`   - GPUs: ${resources.gpuCount} (${resources.hasGpu ? 'available' : 'none'})`);
       this.logger.log(`   - CPU: ${resources.cpuCores} cores`);
@@ -59,7 +81,26 @@ export class HardwareDetector {
    * Detect GPU information
    */
   async detectGPUs() {
+    console.log('');
+    console.log('🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀');
+    console.log('🚀 GPU DETECTION FUNCTION CALLED');
+    console.log('🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀');
+    console.log('');
+    
     try {
+      // Check GPU_MODE - if mock, use environment variables instead of hardware detection
+      const gpuMode = process.env.GPU_MODE || 'actual';
+      
+      console.log('');
+      console.log('🔍🔍🔍🔍🔍🔍🔍🔍🔍🔍🔍🔍🔍🔍🔍🔍🔍🔍🔍🔍🔍🔍🔍🔍🔍🔍🔍🔍🔍🔍');
+      console.log(`🔍 GPU_MODE = "${gpuMode}"`);
+      console.log('🔍🔍🔍🔍🔍🔍🔍🔍🔍🔍🔍🔍🔍🔍🔍🔍🔍🔍🔍🔍🔍🔍🔍🔍🔍🔍🔍🔍🔍🔍');
+      console.log('');
+      
+      // FORCE HARDWARE DETECTION FIRST (per user requirement)
+      console.log('⚡ FORCING HARDWARE DETECTION PATH (nvidia-smi --list-gpus)');
+      this.logger.log('🔍 Attempting nvidia-smi hardware detection (ignoring GPU_MODE for actual hardware)');
+      
       // First try nvidia-smi for NVIDIA GPUs
       const nvidiaGpus = await this.detectNvidiaGPUs();
       if (nvidiaGpus.gpuCount > 0) {
@@ -72,7 +113,23 @@ export class HardwareDetector {
         return otherGpus;
       }
 
-      // No GPUs detected
+      // No GPUs detected via hardware detection
+      console.log('');
+      console.log('❌❌❌❌❌❌❌❌❌❌❌❌❌❌❌❌❌❌❌❌❌❌❌❌❌❌❌❌❌❌');
+      console.log('❌ NO GPUs DETECTED VIA HARDWARE DETECTION');
+      console.log('❌ nvidia-smi and other hardware detection methods failed');
+      console.log('❌❌❌❌❌❌❌❌❌❌❌❌❌❌❌❌❌❌❌❌❌❌❌❌❌❌❌❌❌❌');
+      console.log('');
+      
+      // Check if we're in mock mode as fallback
+      if (gpuMode === 'mock') {
+        console.log('🎭 FALLING BACK TO MOCK MODE - USING ENVIRONMENT VARIABLES');
+        this.logger.log('🎭 Hardware detection failed, falling back to GPU_MODE=mock with environment variables');
+        return this.getGPUFromEnvironment();
+      }
+      
+      // For actual mode, return no GPUs if detection fails
+      this.logger.error('❌ CRITICAL: No GPUs detected via hardware detection in actual mode');
       return {
         hasGpu: false,
         gpuCount: 0,
@@ -82,7 +139,14 @@ export class HardwareDetector {
       };
 
     } catch (error) {
-      this.logger.warn(`GPU detection failed: ${error.message}`);
+      console.log('');
+      console.log('💥💥💥💥💥💥💥💥💥💥💥💥💥💥💥💥💥💥💥💥💥💥💥💥💥💥💥💥💥💥');
+      console.log('💥 GPU DETECTION EXCEPTION CAUGHT');
+      console.log(`💥 ERROR: ${error.message}`);
+      console.log('💥💥💥💥💥💥💥💥💥💥💥💥💥💥💥💥💥💥💥💥💥💥💥💥💥💥💥💥💥💥');
+      console.log('');
+      
+      this.logger.error(`❌ CRITICAL: GPU detection failed with exception: ${error.message}`);
       return this.getGPUFromEnvironment();
     }
   }
@@ -92,6 +156,13 @@ export class HardwareDetector {
    */
   async detectNvidiaGPUs() {
     return new Promise((resolve) => {
+      console.log('');
+      console.log('⚡⚡⚡⚡⚡⚡⚡⚡⚡⚡⚡⚡⚡⚡⚡⚡⚡⚡⚡⚡⚡⚡⚡⚡⚡⚡⚡⚡⚡⚡');
+      console.log('🔍 RUNNING GPU DETECTION COMMAND');
+      console.log('🔍 COMMAND: nvidia-smi --list-gpus');
+      console.log('⚡⚡⚡⚡⚡⚡⚡⚡⚡⚡⚡⚡⚡⚡⚡⚡⚡⚡⚡⚡⚡⚡⚡⚡⚡⚡⚡⚡⚡⚡');
+      console.log('');
+      
       this.logger.log('🔍 Using nvidia-smi --list-gpus for GPU detection (updated detection method)');
       const nvidia = spawn('nvidia-smi', ['--list-gpus']);
       let stdout = '';
@@ -106,29 +177,76 @@ export class HardwareDetector {
       });
 
       nvidia.on('close', (code) => {
+        console.log('');
+        console.log('📊📊📊📊📊📊📊📊📊📊📊📊📊📊📊📊📊📊📊📊📊📊📊📊📊📊📊📊📊📊');
+        console.log('🔍 NVIDIA-SMI COMMAND RESULT');
+        console.log(`🔍 EXIT CODE: ${code}`);
+        console.log(`🔍 STDOUT OUTPUT: "${stdout.trim()}"`);
+        console.log(`🔍 STDERR OUTPUT: "${stderr.trim()}"`);
+        console.log('📊📊📊📊📊📊📊📊📊📊📊📊📊📊📊📊📊📊📊📊📊📊📊📊📊📊📊📊📊📊');
+        console.log('');
+        
         if (code === 0 && stdout.trim()) {
           try {
             const lines = stdout.trim().split('\n');
             const gpuCount = lines.length;
             
+            console.log('');
+            console.log('✅✅✅✅✅✅✅✅✅✅✅✅✅✅✅✅✅✅✅✅✅✅✅✅✅✅✅✅✅✅');
+            console.log(`✅ NVIDIA GPU DETECTION SUCCESS: ${gpuCount} GPU(s) FOUND`);
+            lines.forEach((line, i) => {
+              console.log(`✅ GPU ${i}: ${line}`);
+            });
+            console.log('✅✅✅✅✅✅✅✅✅✅✅✅✅✅✅✅✅✅✅✅✅✅✅✅✅✅✅✅✅✅');
+            console.log('');
+            
             if (gpuCount > 0) {
-              // Parse first GPU line: "GPU 0: NVIDIA GeForce RTX 4090 (UUID: GPU-xxx)"
-              const firstLine = lines[0];
-              const gpuMatch = firstLine.match(/GPU \d+: (.+?) \(UUID:/);
-              const gpuModel = gpuMatch ? gpuMatch[1].trim() : 'NVIDIA GPU';
+              // Parse GPU lines: "GPU 0: NVIDIA GeForce RTX 4090 (UUID: GPU-xxx)"
+              const gpuModels = lines.map(line => {
+                const gpuMatch = line.match(/GPU \d+: (.+?) \(UUID:/);
+                return gpuMatch ? gpuMatch[1].trim() : 'NVIDIA GPU';
+              });
+              
+              // Use the first GPU model as the primary model, or note if multiple different models
+              const uniqueModels = [...new Set(gpuModels)];
+              const gpuModel = uniqueModels.length === 1 
+                ? uniqueModels[0] 
+                : `${uniqueModels[0]} (+${gpuCount-1} more)`;
+
+              console.log('');
+              console.log('🔥🔥🔥 GPU MODEL DETAILS 🔥🔥🔥');
+              gpuModels.forEach((model, i) => {
+                console.log(`🔥 GPU ${i}: ${model}`);
+              });
+              console.log(`🔥 Primary Model: ${gpuModel}`);
+              console.log('🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥');
+              console.log('');
 
               resolve({
                 hasGpu: true,
                 gpuCount,
                 gpuModel,
-                gpuMemoryGB: 16, // Estimate - will get actual memory in separate call if needed
-                gpuVendor: 'NVIDIA'
+                gpuMemoryGB: 24, // RTX 4090 has 24GB VRAM
+                gpuVendor: 'NVIDIA',
+                gpuModels // Array of all GPU models detected
               });
               return;
             }
           } catch (parseError) {
+            console.log('');
+            console.log('❌❌❌ NVIDIA-SMI PARSE ERROR ❌❌❌');
+            console.log(`❌ ERROR: ${parseError.message}`);
+            console.log('❌❌❌❌❌❌❌❌❌❌❌❌❌❌❌❌❌❌❌');
+            console.log('');
             this.logger.warn(`Failed to parse nvidia-smi output: ${parseError.message}`);
           }
+        } else {
+          console.log('');
+          console.log('❌❌❌❌❌❌❌❌❌❌❌❌❌❌❌❌❌❌❌❌❌❌❌❌❌❌❌❌❌❌');
+          console.log('❌ NVIDIA-SMI COMMAND FAILED OR NO OUTPUT');
+          console.log(`❌ This likely means no NVIDIA GPUs or nvidia-smi not installed`);
+          console.log('❌❌❌❌❌❌❌❌❌❌❌❌❌❌❌❌❌❌❌❌❌❌❌❌❌❌❌❌❌❌');
+          console.log('');
         }
         
         resolve({
@@ -360,16 +478,39 @@ export class HardwareDetector {
    * Get GPU info from environment variables as fallback
    */
   getGPUFromEnvironment() {
+    console.log('');
+    console.log('🌍🌍🌍🌍🌍🌍🌍🌍🌍🌍🌍🌍🌍🌍🌍🌍🌍🌍🌍🌍🌍🌍🌍🌍🌍🌍🌍🌍🌍🌍');
+    console.log('🌍 USING ENVIRONMENT VARIABLES FOR GPU DETECTION');
+    console.log(`🌍 MACHINE_NUM_GPUS = "${process.env.MACHINE_NUM_GPUS || 'not set'}"`);
+    console.log(`🌍 MACHINE_HAS_GPU = "${process.env.MACHINE_HAS_GPU || 'not set'}"`);
+    console.log(`🌍 MACHINE_GPU_MODEL = "${process.env.MACHINE_GPU_MODEL || 'not set'}"`);
+    console.log(`🌍 MACHINE_GPU_MEMORY_GB = "${process.env.MACHINE_GPU_MEMORY_GB || 'not set'}"`);
+    console.log('🌍🌍🌍🌍🌍🌍🌍🌍🌍🌍🌍🌍🌍🌍🌍🌍🌍🌍🌍🌍🌍🌍🌍🌍🌍🌍🌍🌍🌍🌍');
+    console.log('');
+    
     const gpuCount = parseInt(process.env.MACHINE_NUM_GPUS || '0');
     const hasGpu = process.env.MACHINE_HAS_GPU !== 'false' && gpuCount > 0;
     
-    return {
+    const result = {
       hasGpu,
       gpuCount,
       gpuModel: process.env.MACHINE_GPU_MODEL || 'Simulated GPU',
       gpuMemoryGB: parseInt(process.env.MACHINE_GPU_MEMORY_GB || '16'),
       gpuVendor: 'Environment'
     };
+    
+    console.log('');
+    console.log('🎯🎯🎯🎯🎯🎯🎯🎯🎯🎯🎯🎯🎯🎯🎯🎯🎯🎯🎯🎯🎯🎯🎯🎯🎯🎯🎯🎯🎯🎯');
+    console.log('🎯 ENVIRONMENT VARIABLE GPU DETECTION RESULT');
+    console.log(`🎯 GPU COUNT: ${result.gpuCount}`);
+    console.log(`🎯 HAS GPU: ${result.hasGpu}`);
+    console.log(`🎯 GPU MODEL: ${result.gpuModel}`);
+    console.log(`🎯 GPU MEMORY: ${result.gpuMemoryGB}GB`);
+    console.log(`🎯 GPU VENDOR: ${result.gpuVendor}`);
+    console.log('🎯🎯🎯🎯🎯🎯🎯🎯🎯🎯🎯🎯🎯🎯🎯🎯🎯🎯🎯🎯🎯🎯🎯🎯🎯🎯🎯🎯🎯🎯');
+    console.log('');
+    
+    return result;
   }
 
   /**

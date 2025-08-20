@@ -13,7 +13,7 @@ import {
 } from '@emp/core';
 
 export class OpenAITextConnector extends BaseConnector {
-  service_type = 'text_generation' as const;
+  service_type = 'text_generation' as const; // Will be set by constructor from service mapping
   version = '1.0.0';
 
   private client: OpenAI | null = null;
@@ -42,10 +42,11 @@ export class OpenAITextConnector extends BaseConnector {
     };
   }
 
-  constructor(connectorId: string = 'openai-text') {
+  constructor(connectorId: string, serviceConfig?: any) {
+    // Get service_type from service mapping configuration (like SimulationConnector)
     const config = {
       connector_id: connectorId,
-      service_type: 'text_generation',
+      service_type: serviceConfig?.service_type || 'text_generation', // Fallback for backwards compatibility
       base_url: process.env.OPENAI_BASE_URL || 'https://api.openai.com/v1',
       timeout_seconds: parseInt(process.env.OPENAI_TIMEOUT_SECONDS || '60'),
       retry_attempts: parseInt(process.env.OPENAI_RETRY_ATTEMPTS || '3'),
@@ -55,6 +56,9 @@ export class OpenAITextConnector extends BaseConnector {
     };
 
     super(connectorId, config);
+
+    // Set service_type from constructor config (overrides hardcoded value)
+    this.service_type = config.service_type;
 
     // OpenAI-specific configuration
     this.apiKey = process.env.OPENAI_API_KEY || '';

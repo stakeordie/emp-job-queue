@@ -55,6 +55,15 @@ export class ComfyUIWebSocketConnector extends WebSocketConnector {
     }
 
     // Debug: Log configuration
+    console.log(`🔗🔗🔗 [COMFYUI-CONNECTOR-DEBUG] ComfyUI WebSocket Connector Configuration:`);
+    console.log(`🔗🔗🔗 [COMFYUI-CONNECTOR-DEBUG] Host: ${host}`);
+    console.log(`🔗🔗🔗 [COMFYUI-CONNECTOR-DEBUG] Port: ${port}`);
+    console.log(`🔗🔗🔗 [COMFYUI-CONNECTOR-DEBUG] WebSocket URL: ${websocketUrl}`);
+    console.log(`🔗🔗🔗 [COMFYUI-CONNECTOR-DEBUG] Environment variables used:`);
+    console.log(`🔗🔗🔗 [COMFYUI-CONNECTOR-DEBUG] - COMFYUI_HOST: ${process.env.COMFYUI_HOST}`);
+    console.log(`🔗🔗🔗 [COMFYUI-CONNECTOR-DEBUG] - COMFYUI_PORT: ${process.env.COMFYUI_PORT}`);
+    console.log(`🔗🔗🔗 [COMFYUI-CONNECTOR-DEBUG] - COMFYUI_BASE_PORT: ${process.env.COMFYUI_BASE_PORT}`);
+    
     logger.debug(`[ComfyUI-${connectorId}] Configuration:`, {
       host,
       port,

@@ -57,6 +57,18 @@ async function runStandaloneService() {
         const index = parseInt(arg.split('=')[1]);
         options.index = isNaN(index) ? 0 : index;
         logger.info(`Parsed index from arguments: ${options.index}`);
+      } else if (arg.startsWith('--cuda-device=')) {
+        const gpuId = parseInt(arg.split('=')[1]);
+        options.gpu = isNaN(gpuId) ? 0 : gpuId;
+        logger.info(`Parsed GPU ID from --cuda-device argument: ${options.gpu}`);
+      } else if (arg.startsWith('--port=')) {
+        const port = parseInt(arg.split('=')[1]);
+        options.port = isNaN(port) ? 8188 : port;
+        logger.info(`Parsed port from --port argument: ${options.port}`);
+      } else if (arg.startsWith('--service-port=')) {
+        const servicePort = parseInt(arg.split('=')[1]);
+        options.servicePort = isNaN(servicePort) ? 8188 : servicePort;
+        logger.info(`Parsed service port from --service-port argument: ${options.servicePort}`);
       }
     }
     

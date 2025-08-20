@@ -12,15 +12,16 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const MONOREPO_ROOT = path.join(__dirname, '../..');
 
-function runCommand(cmd, args, cwd = process.cwd()) {
+function runCommand(cmd, args, cwd = process.cwd(), env = {}) {
   return new Promise((resolve, reject) => {
-    const process = spawn(cmd, args, {
+    const childProcess = spawn(cmd, args, {
       stdio: 'inherit',
       cwd,
-      shell: true
+      shell: true,
+      env: { ...process.env, ...env }
     });
     
-    process.on('close', (code) => {
+    childProcess.on('close', (code) => {
       if (code === 0) {
         resolve();
       } else {
@@ -32,13 +33,18 @@ function runCommand(cmd, args, cwd = process.cwd()) {
 
 async function main() {
   try {
-    console.log('🔧 Step 1: Preparing Docker build files...');
-    await runCommand('node', ['prepare-docker-build.js'], __dirname);
-    
     // Parse command - handle build:push as single command
     const args = process.argv.slice(2);
     const command = args[0] === 'build:push' ? 'build:push' : 'build';
     const remainingArgs = args[0] === 'build:push' ? args.slice(1) : args;
+    
+    // Get profile from args (first non-command argument)
+    const profile = remainingArgs[0];
+    
+    console.log('🔧 Step 1: Preparing Docker build files...');
+    await runCommand('node', ['prepare-docker-build.js'], __dirname, {
+      COMPOSE_PROFILES: profile
+    });
     
     console.log('\n🐳 Step 2: Running docker compose command...');
     await runCommand('node', ['scripts/env/machine-compose.js', command, ...remainingArgs], MONOREPO_ROOT);

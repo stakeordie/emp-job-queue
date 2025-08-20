@@ -5,17 +5,15 @@ import path from 'path';
 import http from 'http';
 import net from 'net';
 
-export default class ComfyUIService extends BaseService {
+export default class A1111Service extends BaseService {
   constructor(options = {}, config) {
-    super('comfyui', options);
+    super('a1111', options);
     this.config = config;
     this.gpu = options.gpu || 0;
-    this.port = options.port || (config.services.comfyui.basePort + this.gpu);
-    this.workDir = process.env.WORKSPACE_DIR ? `${process.env.WORKSPACE_DIR}/ComfyUI` : `/workspace/ComfyUI`;
+    this.port = (config.services?.a1111?.basePort || 7860) + this.gpu;
+    this.workDir = process.env.WORKSPACE_DIR ? `${process.env.WORKSPACE_DIR}/stable-diffusion-webui` : `/workspace/stable-diffusion-webui`;
     this.process = null;
-    this.pidFile = path.join(this.workDir, `comfyui-gpu${this.gpu}.pid`);
-    this.mockFile = path.join(this.workDir, `comfyui-gpu${this.gpu}.mock`);
-    this.argsFile = path.join(this.workDir, `comfyui-gpu${this.gpu}.args`);
+    this.pidFile = path.join(this.workDir, `a1111-gpu${this.gpu}.pid`);
     this.logFile = path.join(this.workDir, 'logs', `output-gpu${this.gpu}.log`);
     this.testMode = process.env.TEST_MODE === 'true';
     
@@ -24,47 +22,45 @@ export default class ComfyUIService extends BaseService {
     this.isGpuModeActual = gpuMode === 'actual';
     this.isGpuModeMock = gpuMode === 'mock';
     
-    // Legacy support for old environment variables
-    this.mockGpu = process.env.MOCK_GPU === '1'; 
-    const legacyCpuMode = process.env.COMFYUI_CPU_MODE === 'true';
+    // CPU mode logic
+    this.cpuMode = this.isGpuModeMock || this.testMode;
     
-    // CPU mode logic: mock GPU mode OR legacy settings OR test mode always uses CPU
-    this.cpuMode = this.isGpuModeMock || legacyCpuMode || this.testMode || this.mockGpu;
+    // Model paths configuration
+    this.comfyuiCheckpointsPath = process.env.COMFYUI_CHECKPOINTS_PATH || '/workspace/ComfyUI/models/checkpoints';
     
-    this.logger.info(`🎮 GPU Mode Configuration:`, {
+    this.logger.info(`🎮 A1111 Configuration:`, {
       GPU_MODE: gpuMode,
-      isActual: this.isGpuModeActual,
-      isMock: this.isGpuModeMock,
       cpuMode: this.cpuMode,
-      testMode: this.testMode,
-      gpu: this.gpu
+      gpu: this.gpu,
+      port: this.port,
+      workDir: this.workDir,
+      comfyuiCheckpointsPath: this.comfyuiCheckpointsPath
     });
     
-    this.comfyArgs = process.env.COMFY_ARGS || '';
+    this.a1111Args = process.env.A1111_ARGS || '';
   }
 
   async onStart() {
-    this.logger.info(`Starting ComfyUI service for GPU ${this.gpu}`, {
+    this.logger.info(`Starting A1111 service for GPU ${this.gpu}`, {
       port: this.port,
       workDir: this.workDir,
       testMode: this.testMode
     });
 
-    // Setup directories and logs
+    // Setup directories and installation
     await this.setupDirectories();
     await this.setupLogs();
+    await this.ensureInstallation();
+    await this.setupModels();
 
     // Check if already running
     if (await this.isAlreadyRunning()) {
-      this.logger.info('ComfyUI is already running');
+      this.logger.info('A1111 is already running');
       return;
     }
 
     // Ensure port is free
     await this.ensurePortFree();
-
-    // Validate working directory
-    await this.validateWorkingDirectory();
 
     // Start the process
     await this.startProcess();
@@ -72,11 +68,11 @@ export default class ComfyUIService extends BaseService {
     // Wait for service to be ready
     await this.waitForReady();
 
-    this.logger.info(`ComfyUI service started successfully on port ${this.port}`);
+    this.logger.info(`A1111 service started successfully on port ${this.port}`);
   }
 
   async onStop() {
-    this.logger.info('Stopping ComfyUI service...');
+    this.logger.info('Stopping A1111 service...');
 
     // Stop process using port
     await this.stopProcessByPort();
@@ -87,7 +83,7 @@ export default class ComfyUIService extends BaseService {
     // Cleanup files
     await this.cleanupFiles();
 
-    this.logger.info('ComfyUI service stopped successfully');
+    this.logger.info('A1111 service stopped successfully');
   }
 
   async onHealthCheck() {
@@ -108,10 +104,10 @@ export default class ComfyUIService extends BaseService {
 
   async setupDirectories() {
     try {
-      await fs.ensureDir(this.workDir);
+      const baseDir = process.env.WORKSPACE_DIR || '/workspace';
+      await fs.ensureDir(baseDir);
       await fs.ensureDir(path.join(this.workDir, 'logs'));
-      await fs.chmod(this.workDir, 0o755);
-      await fs.chmod(path.join(this.workDir, 'logs'), 0o755);
+      await fs.chmod(baseDir, 0o755);
     } catch (error) {
       throw new Error(`Failed to setup directories: ${error.message}`);
     }
@@ -119,7 +115,6 @@ export default class ComfyUIService extends BaseService {
 
   async setupLogs() {
     try {
-      // Create log file if it doesn't exist
       await fs.ensureFile(this.logFile);
       await fs.chmod(this.logFile, 0o644);
     } catch (error) {
@@ -127,12 +122,75 @@ export default class ComfyUIService extends BaseService {
     }
   }
 
+  async ensureInstallation() {
+    try {
+      // Check if A1111 is already installed
+      if (await fs.pathExists(path.join(this.workDir, 'webui.py'))) {
+        this.logger.info('A1111 installation found, skipping clone');
+        return;
+      }
+
+      this.logger.info('Installing A1111...');
+      
+      // Clone A1111 with specific commit hash
+      await execa('git', ['clone', 'https://github.com/AUTOMATIC1111/stable-diffusion-webui.git', this.workDir]);
+      
+      // Reset to specific commit hash
+      await execa('git', ['reset', '--hard', 'cf2772fab0af5573da775e7437e6acdca424f26e'], {
+        cwd: this.workDir
+      });
+
+      // Install Python requirements
+      await execa('pip', ['install', '-r', 'requirements_versions.txt'], {
+        cwd: this.workDir
+      });
+
+      this.logger.info('A1111 installation completed');
+    } catch (error) {
+      throw new Error(`Failed to install A1111: ${error.message}`);
+    }
+  }
+
+  async setupModels() {
+    try {
+      const modelsDir = path.join(this.workDir, 'models');
+      
+      // Check if models directory already exists and has content
+      if (await fs.pathExists(modelsDir)) {
+        const entries = await fs.readdir(modelsDir);
+        if (entries.length > 0) {
+          this.logger.info('Models directory already exists with content, skipping setup');
+          return;
+        }
+        // Remove empty directory
+        await fs.remove(modelsDir);
+      }
+
+      this.logger.info('Setting up A1111 models from sd_models repo...');
+
+      // Clone sd_models repo to A1111's models directory
+      await execa('git', ['clone', 'git@github.com:stakeordie/sd_models.git', modelsDir], {
+        env: {
+          ...process.env,
+          GIT_SSH_COMMAND: 'ssh -o StrictHostKeyChecking=no'
+        }
+      });
+
+      // Remove .git directory to save space
+      await fs.remove(path.join(modelsDir, '.git'));
+
+      this.logger.info('A1111 models setup completed');
+    } catch (error) {
+      this.logger.error('Failed to setup models:', error);
+      // Don't throw here - A1111 can still run without the custom models
+      this.logger.warn('Continuing without custom models - A1111 will use default model paths');
+    }
+  }
+
   async isAlreadyRunning() {
     try {
-      // Check PID file
       const pid = await this.readPidFile();
       if (pid && await this.isProcessRunning(pid)) {
-        // Check if port is in use
         if (await this.isPortInUse(this.port)) {
           return true;
         }
@@ -147,13 +205,11 @@ export default class ComfyUIService extends BaseService {
     if (await this.isPortInUse(this.port)) {
       this.logger.warn(`Port ${this.port} is already in use, attempting to clear it...`);
       
-      // Try to kill the process using this port
       const pid = await this.findProcessByPort(this.port);
       if (pid) {
         this.logger.info(`Killing process ${pid} that is using port ${this.port}`);
         await this.killProcess(pid);
         
-        // Wait a moment and check again
         await this.sleep(2000);
         
         if (await this.isPortInUse(this.port)) {
@@ -167,20 +223,10 @@ export default class ComfyUIService extends BaseService {
     }
   }
 
-  async validateWorkingDirectory() {
-    try {
-      await fs.access(this.workDir);
-      await fs.access(path.join(this.workDir, 'main.py'));
-    } catch (error) {
-      throw new Error(`Working directory ${this.workDir} does not exist or main.py not found`);
-    }
-  }
-
   async startProcess() {
-    // Build command
     const cmd = this.buildCommand();
     
-    this.logger.info(`Starting ComfyUI with command: ${cmd.join(' ')}`);
+    this.logger.info(`Starting A1111 with command: ${cmd.join(' ')}`);
 
     // Set up environment
     const env = {
@@ -188,7 +234,7 @@ export default class ComfyUIService extends BaseService {
       PYTHONUNBUFFERED: '1'
     };
 
-    // Add GPU settings if not in CPU mode (i.e., actual GPU mode)
+    // Add GPU settings if not in CPU mode
     if (!this.cpuMode) {
       env.CUDA_VISIBLE_DEVICES = this.gpu.toString();
     }
@@ -204,13 +250,13 @@ export default class ComfyUIService extends BaseService {
 
     // Handle process events
     this.process.on('exit', (exitCode, signal) => {
-      this.logger.info(`ComfyUI process exited with code ${exitCode}, signal ${signal}`);
+      this.logger.info(`A1111 process exited with code ${exitCode}, signal ${signal}`);
       this.process = null;
       this.emit('process-exit', { code: exitCode, signal });
     });
 
     this.process.on('error', (error) => {
-      this.logger.error('ComfyUI process error:', error);
+      this.logger.error('A1111 process error:', error);
       this.emit('error', error);
     });
 
@@ -219,63 +265,53 @@ export default class ComfyUIService extends BaseService {
     this.process.stdout.pipe(logStream);
     this.process.stderr.pipe(logStream);
     
-    // Also log to console for debugging
-    this.process.stdout.on('data', (data) => {
-      this.logger.debug(`ComfyUI stdout: ${data.toString().trim()}`);
-    });
-    
-    this.process.stderr.on('data', (data) => {
-      this.logger.debug(`ComfyUI stderr: ${data.toString().trim()}`);
-    });
-
-    // Save PID and metadata
+    // Save PID
     await this.savePidFile(this.process.pid);
-    await this.saveMetadataFiles();
   }
 
   buildCommand() {
     const cmd = [
       'python',
-      'main.py',
+      'webui.py',
       '--listen',
-      '0.0.0.0',
       '--port',
-      this.port.toString()
+      this.port.toString(),
+      '--api',
+      '--nowebui'  // Run in API-only mode
     ];
 
+    // Point checkpoints to ComfyUI's directory
+    cmd.push('--ckpt-dir', this.comfyuiCheckpointsPath);
+
     // Add mode-specific args
-    if (this.testMode || this.mockGpu || this.cpuMode) {
-      this.logger.info(`Adding --cpu flag (Test Mode: ${this.testMode}, CPU Mode: ${this.cpuMode})`);
-      cmd.push('--cpu');
+    if (this.cpuMode) {
+      this.logger.info(`Adding --skip-torch-cuda-test and --use-cpu for CPU mode`);
+      cmd.push('--skip-torch-cuda-test', '--use-cpu', 'all');
     } else {
-      // Add GPU device specification for GPU mode
-      this.logger.info(`Adding --cuda-device ${this.gpu} for GPU mode`);
-      cmd.push('--cuda-device', this.gpu.toString());
+      // Add GPU-specific optimizations
+      this.logger.info(`Adding GPU optimizations for GPU ${this.gpu}`);
+      cmd.push('--xformers');
     }
 
-    // Add additional args if provided and not conflicting
-    if (this.comfyArgs && !cmd.includes('--cpu')) {
-      this.logger.info(`Adding additional args: ${this.comfyArgs}`);
-      cmd.push(...this.comfyArgs.split(' ').filter(arg => arg.trim()));
-    } else if (this.comfyArgs && cmd.includes('--cpu')) {
-      this.logger.info('Skipping COMFY_ARGS (--cpu already set)');
+    // Add additional args if provided
+    if (this.a1111Args) {
+      this.logger.info(`Adding additional args: ${this.a1111Args}`);
+      cmd.push(...this.a1111Args.split(' ').filter(arg => arg.trim()));
     }
 
     return cmd;
   }
 
   async waitForReady() {
-    const maxAttempts = 60;
+    const maxAttempts = 120; // A1111 can take longer to start
     const intervalMs = 1000;
 
     for (let i = 0; i < maxAttempts; i++) {
       try {
-        // Check if process is still running
         if (!this.process || this.process.killed || this.process.exitCode !== null) {
           throw new Error('Process exited during startup');
         }
 
-        // Check if HTTP endpoint is responsive
         try {
           const response = await this.makeHealthRequest();
           if (response.statusCode === 200) {
@@ -288,12 +324,12 @@ export default class ComfyUIService extends BaseService {
 
         await this.sleep(intervalMs);
       } catch (error) {
-        await this.onStop(); // Cleanup failed start
+        await this.onStop();
         throw new Error(`Service startup failed: ${error.message}`);
       }
     }
 
-    await this.onStop(); // Cleanup timeout
+    await this.onStop();
     throw new Error('Service startup timeout');
   }
 
@@ -327,18 +363,6 @@ export default class ComfyUIService extends BaseService {
     } catch (error) {
       // File might not exist
     }
-
-    try {
-      await fs.remove(this.mockFile);
-    } catch (error) {
-      // File might not exist
-    }
-
-    try {
-      await fs.remove(this.argsFile);
-    } catch (error) {
-      // File might not exist
-    }
   }
 
   async readPidFile() {
@@ -354,17 +378,9 @@ export default class ComfyUIService extends BaseService {
     await fs.writeFile(this.pidFile, pid.toString());
   }
 
-  async saveMetadataFiles() {
-    // Save GPU mode metadata (consistent with new GPU_MODE system)
-    await fs.writeFile(this.mockFile, this.cpuMode ? '1' : '0');
-    if (this.comfyArgs) {
-      await fs.writeFile(this.argsFile, this.comfyArgs);
-    }
-  }
-
   async isProcessRunning(pid) {
     try {
-      process.kill(pid, 0); // Signal 0 checks if process exists
+      process.kill(pid, 0);
       return true;
     } catch (error) {
       return false;
@@ -393,11 +409,9 @@ export default class ComfyUIService extends BaseService {
 
   async killProcess(pid) {
     try {
-      // Try graceful shutdown first
       process.kill(pid, 'SIGTERM');
-      await this.sleep(2000);
+      await this.sleep(3000);
 
-      // Check if still running
       if (await this.isProcessRunning(pid)) {
         this.logger.info('Process still alive, force killing...');
         process.kill(pid, 'SIGKILL');
@@ -413,7 +427,7 @@ export default class ComfyUIService extends BaseService {
       const req = http.request({
         hostname: 'localhost',
         port: this.port,
-        path: '/',
+        path: '/sdapi/v1/options',
         method: 'GET',
         timeout: 5000
       }, (res) => {
@@ -435,15 +449,13 @@ export default class ComfyUIService extends BaseService {
       gpu: this.gpu,
       port: this.port,
       workDir: this.workDir,
+      comfyuiCheckpointsPath: this.comfyuiCheckpointsPath,
       gpuMode: process.env.GPU_MODE || 'actual',
       cpuMode: this.cpuMode,
-      isGpuModeActual: this.isGpuModeActual,
-      isGpuModeMock: this.isGpuModeMock,
-      // Legacy fields for compatibility
-      mockGpu: this.mockGpu,
-      comfyArgs: this.comfyArgs,
+      a1111Args: this.a1111Args,
       pid: this.process ? this.process.pid : null,
-      processExitCode: this.process ? this.process.exitCode : null
+      processExitCode: this.process ? this.process.exitCode : null,
+      commitHash: 'cf2772fab0af5573da775e7437e6acdca424f26e'
     };
   }
 }

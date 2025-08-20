@@ -2,9 +2,6 @@ import { BaseService, ServiceStatus } from './base-service.js';
 import { execa } from 'execa';
 import fs from 'fs-extra';
 import path from 'path';
-import axios from 'axios';
-import * as tar from 'tar';
-import pRetry from 'p-retry';
 
 export default class RedisWorkerService extends BaseService {
   constructor(options, config) {
@@ -12,13 +9,14 @@ export default class RedisWorkerService extends BaseService {
     this.config = config;
     this.gpu = options.gpu || 0;
     this.index = options.index !== undefined ? options.index : this.gpu;
+    this.servicePort = options.servicePort; // Port for connecting to ComfyUI service
     // Use PM2-provided WORKER_ID if available, otherwise generate fallback
     this.workerId = process.env.WORKER_ID || `${config.machine.id}-worker-${this.index}`;
     console.log(`🔴 [REDIS-WORKER-SERVICE-DEBUG] workerId set to: "${this.workerId}" (from PM2: ${!!process.env.WORKER_ID})`);
+    console.log(`🔌 [REDIS-WORKER-SERVICE-DEBUG] servicePort set to: ${this.servicePort} (from --service-port argument)`);
+    console.log(`🔌 [REDIS-WORKER-SERVICE-DEBUG] GPU index: ${this.gpu}, Worker index: ${this.index}`);
     this.workerDir = `/tmp/worker_gpu${this.gpu}`;
     this.workerProcess = null;
-    // Use GitHub releases URL for worker package
-    this.downloadUrl = config.worker.downloadUrl || 'https://github.com/stakeordie/emp-job-queue/releases/latest/download/emp-job-queue-worker.tar.gz';
   }
 
   async onStart() {
@@ -104,172 +102,78 @@ export default class RedisWorkerService extends BaseService {
   async ensureWorkerPackage() {
     const workerScript = path.join(this.workerDir, 'redis-direct-worker.js');
     
-    // Check WORKER_BUNDLE_MODE environment variable
-    const workerBundleMode = process.env.WORKER_BUNDLE_MODE;
-    
-    if (workerBundleMode === 'local') {
-      console.log("🎯 Using local worker bundle (WORKER_BUNDLE_MODE=local)!");
-      // Override config to use local worker bundle
-      this.config.worker.useLocalPath = '/workspace/worker-bundled';
-      await this.useLocalWorker();
-      return;
-    } else if (workerBundleMode === 'remote') {
-      console.log("📥 Using remote worker download (WORKER_BUNDLE_MODE=remote)");
-      // Continue with normal download logic
-    } else if (this.config.worker.useLocalPath) {
-      console.log("🎯 Using local worker (config override)!");
-      await this.useLocalWorker();
-      return;
-    } else {
-      console.log(`⚠️  WORKER_BUNDLE_MODE not set or invalid: '${workerBundleMode}', defaulting to download`);
-    }
-    
+    // Check if worker already exists in this worker's directory
     if (await fs.pathExists(workerScript)) {
-      this.logger.info('Worker package already exists');
+      this.logger.info('Worker package already exists in worker directory');
       return;
     }
 
-    await this.downloadWorkerPackage();
+    // UNIFIED ARCHITECTURE: Always copy from shared location
+    // The entrypoint has already populated /workspace/worker-bundled for both local and remote modes
+    await this.copyFromSharedLocation();
   }
 
-  async useLocalWorker() {
-    const localPath = this.config.worker.useLocalPath;
-    this.logger.info(`Using local worker from: ${localPath}`);
+  async copyFromSharedLocation() {
+    const sharedLocation = '/workspace/worker-bundled';
+    
+    console.log('');
+    console.log('🔄🔄🔄 COPYING WORKER FROM SHARED LOCATION 🔄🔄🔄');
+    console.log('📁 Source:', sharedLocation);
+    console.log('📁 Target:', this.workerDir);
+    console.log('🔧 Unified architecture - same logic for local and remote modes');
+    console.log('');
+    
+    this.logger.info(`Copying worker bundle from shared location: ${sharedLocation}`);
     
     try {
-      // Check if local path exists
-      if (!await fs.pathExists(localPath)) {
-        throw new Error(`Local worker path does not exist: ${localPath}`);
+      // Check if shared location exists and has worker files
+      if (!await fs.pathExists(sharedLocation)) {
+        throw new Error(`Shared worker bundle location does not exist: ${sharedLocation}`);
       }
       
-      // Copy local worker files to worker directory
-      this.logger.info(`Copying local worker files to: ${this.workerDir}`);
-      await fs.copy(localPath, this.workerDir, {
+      const workerScript = path.join(sharedLocation, 'redis-direct-worker.js');
+      if (!await fs.pathExists(workerScript)) {
+        throw new Error(`Worker script not found in shared location: ${workerScript}`);
+      }
+      
+      // Copy shared worker files to this worker's directory
+      this.logger.info(`Copying shared worker files to: ${this.workerDir}`);
+      await fs.copy(sharedLocation, this.workerDir, {
         overwrite: true,
         dereference: true
       });
       
-      // For bundled worker, just copy the package.json that's already there
-      // The bundled worker includes all dependencies
+      // Verify the copy was successful
+      const targetWorkerScript = path.join(this.workerDir, 'redis-direct-worker.js');
+      if (!await fs.pathExists(targetWorkerScript)) {
+        throw new Error(`Worker script not found after copy: ${targetWorkerScript}`);
+      }
       
-      this.logger.info('Local worker files copied successfully with package.json');
+      console.log('');
+      console.log('✅✅✅ WORKER COPIED FROM SHARED LOCATION SUCCESSFULLY ✅✅✅');
+      console.log('📁 Copied to:', this.workerDir);
+      console.log('🚀 Worker ready to start');
+      console.log('');
+      
+      this.logger.info('Worker files copied successfully from shared location');
     } catch (error) {
-      this.logger.error('Failed to use local worker:', error);
+      console.log('');
+      console.log('❌❌❌ FAILED TO COPY WORKER FROM SHARED LOCATION ❌❌❌');
+      console.log('🔍 Shared location:', sharedLocation);
+      console.log('🔍 Error:', error.message);
+      console.log('');
+      
+      this.logger.error('Failed to copy worker from shared location:', error);
       throw error;
-    }
-  }
-
-  async downloadWorkerPackage() {
-    this.logger.info(`Downloading worker package from: ${this.downloadUrl}`);
-    
-    const tempFile = path.join('/tmp', `worker-${this.gpu}.tar.gz`);
-
-    try {
-      // Clean up any existing temp file
-      await fs.remove(tempFile).catch(() => {});
-      
-      // Download with retry using wget for better reliability
-      await pRetry(async () => {
-        this.logger.info(`Downloading worker from: ${this.downloadUrl}`);
-        this.logger.debug(`Downloading to: ${tempFile}`);
-        
-        const actualDownloadUrl = this.downloadUrl;
-        
-        // Simple wget download - no auth needed for direct URLs
-        const downloadArgs = [
-          '--no-check-certificate',
-          '--timeout=60',
-          '--tries=3',
-          '-O', tempFile,
-          actualDownloadUrl
-        ];
-        
-        this.logger.debug(`Downloading worker package from: ${actualDownloadUrl}`);
-        const { stdout, stderr } = await execa('wget', downloadArgs, {
-          timeout: 120000
-        });
-        
-        this.logger.debug('Download completed', { stdout: stdout.slice(0, 200) });
-        
-        // Verify file was downloaded and is not empty
-        const stats = await fs.stat(tempFile);
-        if (stats.size === 0) {
-          throw new Error('Downloaded file is empty');
-        }
-        
-        this.logger.debug(`Downloaded file size: ${stats.size} bytes`);
-        
-        // Skip file type validation - file command not available in container
-        this.logger.debug('Download validation: File size check passed');
-      }, {
-        retries: 3,
-        onFailedAttempt: (error) => {
-          this.logger.warn(`Download attempt ${error.attemptNumber} failed: ${error.message}`);
-        }
-      });
-
-      // Extract package
-      this.logger.info('Extracting worker package...');
-      
-      // Ensure worker directory is clean
-      await fs.emptyDir(this.workerDir);
-      await fs.ensureDir(path.join(this.workerDir, 'logs'));
-      
-      // Extract with tar
-      await tar.extract({
-        file: tempFile,
-        cwd: this.workerDir,
-        strip: 1,
-        preservePaths: false
-      });
-      
-      // Ensure package.json exists with type: module
-      const packageJsonPath = path.join(this.workerDir, 'package.json');
-      if (!await fs.pathExists(packageJsonPath)) {
-        const packageJson = {
-          name: 'emp-worker',
-          type: 'module',
-          version: '1.0.0',
-          description: 'EMP Worker - Production'
-        };
-        await fs.writeJson(packageJsonPath, packageJson, { spaces: 2 });
-        this.logger.info('Created package.json for ES module support');
-      }
-
-      // Clean up temp file
-      await fs.remove(tempFile);
-      
-      // Verify extraction
-      const workerScript = path.join(this.workerDir, 'redis-direct-worker.js');
-      if (!await fs.pathExists(workerScript)) {
-        throw new Error('Worker script not found after extraction');
-      }
-      
-      // Verify service-mapping.json was extracted
-      const serviceMappingPath = path.join(this.workerDir, 'src', 'config', 'service-mapping.json');
-      if (!await fs.pathExists(serviceMappingPath)) {
-        this.logger.warn('service-mapping.json not found in extracted package, copying from service-manager');
-        // Copy from service-manager as fallback
-        const sourcePath = path.join('/service-manager/src/config/service-mapping.json');
-        if (await fs.pathExists(sourcePath)) {
-          await fs.ensureDir(path.dirname(serviceMappingPath));
-          await fs.copy(sourcePath, serviceMappingPath);
-          this.logger.info('Copied service-mapping.json from service-manager');
-        } else {
-          throw new Error('service-mapping.json not found in package or service-manager');
-        }
-      }
-      
-      this.logger.info('Worker package downloaded and extracted successfully');
-    } catch (error) {
-      // Clean up on error
-      await fs.remove(tempFile).catch(() => {});
-      throw new Error(`Failed to download worker package: ${error.message}`);
     }
   }
 
   async createEnvFile() {
     const envPath = path.join(this.workerDir, '.env');
+    
+    console.log(`🔌🔌🔌 [REDIS-WORKER-ENV-DEBUG] Creating environment file for worker`);
+    console.log(`🔌🔌🔌 [REDIS-WORKER-ENV-DEBUG] Service port being set to: ${this.servicePort}`);
+    console.log(`🔌🔌🔌 [REDIS-WORKER-ENV-DEBUG] Environment file path: ${envPath}`);
     
     // Debug: Log what we're getting from environment
     this.logger.info('DEBUG: Environment variables for ComfyUI worker:', {
@@ -293,20 +197,26 @@ export default class RedisWorkerService extends BaseService {
       NODE_ENV: 'production',
       LOG_LEVEL: this.config.logging.level,
       // Pass through ComfyUI connection settings
-      WORKER_COMFYUI_HOST: process.env.WORKER_COMFYUI_HOST,
-      WORKER_COMFYUI_PORT: process.env.WORKER_COMFYUI_PORT,
+      COMFYUI_HOST: 'localhost',
+      COMFYUI_PORT: this.servicePort,
       WORKER_COMFYUI_USERNAME: process.env.WORKER_COMFYUI_USERNAME,
       WORKER_COMFYUI_PASSWORD: process.env.WORKER_COMFYUI_PASSWORD,
       WORKER_COMFYUI_TIMEOUT_SECONDS: process.env.WORKER_COMFYUI_TIMEOUT_SECONDS,
       WORKER_COMFYUI_MAX_CONCURRENT_JOBS: process.env.WORKER_COMFYUI_MAX_CONCURRENT_JOBS
     };
 
+    console.log(`🔌🔌🔌 [REDIS-WORKER-ENV-DEBUG] Final environment variables being written:`);
+    console.log(`🔌🔌🔌 [REDIS-WORKER-ENV-DEBUG] COMFYUI_HOST: ${envContent.COMFYUI_HOST}`);
+    console.log(`🔌🔌🔌 [REDIS-WORKER-ENV-DEBUG] COMFYUI_PORT: ${envContent.COMFYUI_PORT}`);
+    
     const envString = Object.entries(envContent)
       .map(([key, value]) => `${key}=${value || ''}`)
       .join('\n');
 
     await fs.writeFile(envPath, envString);
     this.logger.info('Created environment file', envContent);
+    
+    console.log(`🔌🔌🔌 [REDIS-WORKER-ENV-DEBUG] Environment file written with COMFYUI_PORT=${envContent.COMFYUI_PORT}`);
   }
 
   async startWorkerProcess() {
@@ -432,8 +342,7 @@ export default class RedisWorkerService extends BaseService {
       workerId: this.workerId,
       workerDir: this.workerDir,
       pid: this.workerProcess?.pid || null,
-      connectors: this.config.worker.connectors,
-      downloadUrl: this.downloadUrl
+      connectors: this.config.worker.connectors
     };
   }
 }

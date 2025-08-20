@@ -6,12 +6,12 @@
  * This file replaces the original generate-pm2-ecosystem.js when worker-driven mode is enabled
  */
 
-import { EnhancedPM2EcosystemGenerator } from './src/config/enhanced-pm2-ecosystem-generator-alt.js';
+import { EnhancedPM2EcosystemGenerator } from './src/config/enhanced-pm2-ecosystem-generator.js';
 
 async function main() {
   try {
-    console.log(`🔥🔥🔥 [ALT-BUILD-VERIFICATION] ALTERNATE WORKER-DRIVEN GENERATOR ACTIVE - ${new Date().toISOString()}`);
-    console.log('🔥🔥🔥 [ALT-BUILD-VERIFICATION] Using ALTERNATE generator file...');
+    console.log(`🔥🔥🔥 [GENERATOR] WORKER-DRIVEN GENERATOR ACTIVE - ${new Date().toISOString()}`);
+    console.log('🔥🔥🔥 [GENERATOR] Using primary generator file...');
     
     // Always use enhanced generator (no legacy fallback)
     const generator = new EnhancedPM2EcosystemGenerator();

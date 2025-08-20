@@ -22,7 +22,7 @@
     ],
     "worker": [
       "default",
-      "local"
+      "production"
     ],
     "monitor": [
       "default",

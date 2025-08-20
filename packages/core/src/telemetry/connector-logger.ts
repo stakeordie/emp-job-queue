@@ -23,7 +23,32 @@ export interface JobLogData {
   inputSize?: number;
   outputSize?: number;
   model?: string;
+  queuePosition?: number;
+  estimatedWaitTime?: number;
+  resourceAllocation?: any;
+  priority?: number;
+  expectedDuration?: number;
+  execution_step?: string;
+  currentOperation?: string;
+  elapsedTime?: number;
+  estimatedRemaining?: number;
   [key: string]: any;
+}
+
+export interface CompletionMetrics {
+  efficiency: number;
+  cost: number;
+  cacheHit: boolean;
+  userScore: number;
+}
+
+export interface FailureAnalysis {
+  type: string;
+  category: string;
+  recoverable: boolean;
+  retryRecommended: boolean;
+  resourceImpact: string;
+  userImpact: string;
 }
 
 export class ConnectorLogger {

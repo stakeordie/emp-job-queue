@@ -536,7 +536,7 @@ export function JobSubmissionForm() {
         // Only include workflow fields if this is marked as a workflow
         if (data.is_workflow) {
           const baseWorkflowId = data.workflow_id && data.workflow_id.trim() ? data.workflow_id : `workflow-${Date.now()}`;
-          const currentWorkflowId = batchSize > 1 ? `${baseWorkflowId}-${workflowIndex}` : baseWorkflowId;
+          const currentWorkflowId = baseWorkflowId;
           
           jobData.workflow_id = currentWorkflowId;
           jobData.workflow_priority = data.workflow_priority !== '' ? data.workflow_priority : undefined;

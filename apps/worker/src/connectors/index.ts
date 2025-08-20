@@ -2,6 +2,7 @@
 // This file automatically exports all *-connector.ts files in this directory
 // No need to manually add exports when creating new connectors
 
+export * from './a1111-websocket-connector.js';
 export * from './comfyui-remote-connector.js';
 export * from './comfyui-websocket-connector.js';
 export * from './openai-base-connector.js';

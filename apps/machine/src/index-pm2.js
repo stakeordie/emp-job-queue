@@ -23,6 +23,32 @@ let startTime = null;
 let telemetryClient = null;
 
 /**
+ * Debug hook - sleep infinitely if environment variable is set
+ */
+async function debugBreakpoint(hookName) {
+  const envVar = `DEBUG_HOOK_${hookName.toUpperCase()}`;
+  const shouldPause = process.env[envVar];
+  
+  if (shouldPause) {
+    logger.info(`🐛 [DEBUG-HOOK] ${hookName}: PAUSED INDEFINITELY`);
+    logger.info(`🐛 [DEBUG-HOOK] ============================================`);
+    logger.info(`🐛 [DEBUG-HOOK] TO CONTINUE:`);
+    logger.info(`🐛 [DEBUG-HOOK] 1. SSH into container: docker exec -it <container> bash`);
+    logger.info(`🐛 [DEBUG-HOOK] 2. Inspect state, files, environment variables`);
+    logger.info(`🐛 [DEBUG-HOOK] 3. To resume: unset ${envVar}`);
+    logger.info(`🐛 [DEBUG-HOOK] 4. Or restart container without the debug env var`);
+    logger.info(`🐛 [DEBUG-HOOK] ============================================`);
+    
+    // Sleep indefinitely in small chunks to allow checking if env var was unset
+    while (process.env[envVar]) {
+      await new Promise(resolve => setTimeout(resolve, 1000)); // Check every second
+    }
+    
+    logger.info(`🐛 [DEBUG-HOOK] ${hookName}: Resuming - environment variable cleared`);
+  }
+}
+
+/**
  * Initialize unified telemetry client for machine
  */
 async function initializeTelemetry() {
@@ -189,9 +215,14 @@ async function main() {
       logger.warn('Not running under PM2, but PM2 mode is enabled');
     }
 
+    // Debug hook before PM2 service startup
+    await debugBreakpoint('BEFORE_PM2_SERVICES');
+
     // Step 11-13: Service Startup
     logger.info('STEP 11-13: Service Startup - Starting PM2 services from ecosystem config...');
     await startPM2Services();
+    
+    await debugBreakpoint('AFTER_PM2_SERVICES');
     
     // Verify services are running and healthy  
     await verifyPM2Services();
@@ -377,10 +408,16 @@ async function startPM2Services() {
         const gpuMode = process.env.GPU_MODE || 'actual';
         
         if (gpuMode === 'actual') {
-          // Real GPU mode - limit by actual GPU count
-          const actualGpuCount = parseInt(process.env.MACHINE_NUM_GPUS || '0');
-          if (actualGpuCount > 0 && instanceCount > actualGpuCount) {
-            logger.warn(`Requested ${instanceCount} ${serviceName} workers but only ${actualGpuCount} GPUs available. Starting ${actualGpuCount} instances.`);
+          // Real GPU mode - use actual GPU count from hardware detection
+          const actualGpuCount = config.machine.gpu.count;
+          logger.info(`🔍 [GPU-COUNT-DEBUG] Using hardware-detected GPU count: ${actualGpuCount} (not environment variable)`);
+          logger.info(`🔍 [GPU-COUNT-DEBUG] Requested count: ${instanceCount}, Actual GPU count: ${actualGpuCount}`);
+          
+          if (actualGpuCount > 0) {
+            // For GPU-bound services, always use the actual GPU count
+            if (instanceCount !== actualGpuCount) {
+              logger.info(`🎯 [GPU-COUNT-DEBUG] Adjusting instance count from ${instanceCount} to ${actualGpuCount} based on hardware detection`);
+            }
             instanceCount = actualGpuCount;
           }
         } else {
@@ -645,7 +682,6 @@ async function generatePM2EcosystemConfig() {
     } catch (readError) {
       logger.error(`🔥🔥🔥 [INDEX-PM2-FILE-VERIFICATION] ERROR reading generator file: ${readError.message}`);
     }
-    
     
     await execa('node', ['/service-manager/generate-pm2-ecosystem-worker-driven.js'], {
       cwd: '/workspace',

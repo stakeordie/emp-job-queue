@@ -229,6 +229,7 @@ export class ConnectorManager implements ConnectorRegistry, ConnectorFactory {
   private async loadConnector(connectorName: string): Promise<void> {
     // connectorName is the actual connector class name (e.g., "ComfyUIRemoteConnector")
     let ConnectorClass;
+    let serviceConfig = null;
 
     try {
       // Load service mapping to get connector configuration
@@ -285,12 +286,24 @@ export class ConnectorManager implements ConnectorRegistry, ConnectorFactory {
             `Connector ${connectorName} not found in connectors section of service mapping`
           );
         }
+
+        // Find the service configuration that maps to this connector
+        if (serviceMapping.services) {
+          for (const [serviceName, config] of Object.entries(serviceMapping.services)) {
+            if ((config as any).connector === connectorName) {
+              serviceConfig = config;
+              logger.debug(`Found service config for connector ${connectorName}: service type = ${(config as any).service_type}`);
+              break;
+            }
+          }
+        }
+
       } catch (error) {
         throw new Error(`Failed to load service mapping: ${error}`);
       }
 
-      // Create connector instance
-      const connector = new ConnectorClass(connectorName);
+      // Create connector instance with service mapping configuration
+      const connector = new ConnectorClass(connectorName, serviceConfig);
 
       // Inject Redis connection if available
       if (this.redis && this.workerId) {
@@ -378,6 +391,7 @@ export class ConnectorManager implements ConnectorRegistry, ConnectorFactory {
   }
 
   // Removed unnecessary conversion functions and fallbacks
+
   // Service mapping provides everything needed - fail explicitly if it's missing
 
   // ConnectorRegistry implementation

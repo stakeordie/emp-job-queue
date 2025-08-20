@@ -17,11 +17,18 @@ const __dirname = path.dirname(__filename);
 
 export class EnhancedPM2EcosystemGenerator {
   constructor() {
-    console.log(`🚀🚀🚀 [BUILD-VERIFICATION] NEW PM2 ECOSYSTEM GENERATOR BUILD ACTIVE - ${new Date().toISOString()}`);
+    const BUILD_TIMESTAMP = '2025-08-18T23:01:30.000Z';
+    const FILE_VERSION = 'ENHANCED-ALT-v2';
+    
+    console.log(`🔥🔥🔥 [EXTREME-ALT-ENHANCED] === ALTERNATE PM2 ECOSYSTEM GENERATOR ACTIVE ===`);
+    console.log(`🔥🔥🔥 [EXTREME-ALT-ENHANCED] BUILD TIMESTAMP: ${BUILD_TIMESTAMP}`);
+    console.log(`🔥🔥🔥 [EXTREME-ALT-ENHANCED] FILE VERSION: ${FILE_VERSION}`);
+    console.log(`🔥🔥🔥 [EXTREME-ALT-ENHANCED] Current Time: ${new Date().toISOString()}`);
+    console.log(`🔥🔥🔥 [EXTREME-ALT-ENHANCED] THIS IS THE ALTERNATE ENHANCED GENERATOR FILE!`);
     this.logger = {
-      log: (msg) => console.log(`[Enhanced PM2 Generator] ${msg}`),
-      warn: (msg) => console.warn(`[Enhanced PM2 Generator] ${msg}`),
-      error: (msg) => console.error(`[Enhanced PM2 Generator] ${msg}`)
+      log: (msg) => console.log(`[🔥 ALT Enhanced PM2 Generator] ${msg}`),
+      warn: (msg) => console.warn(`[🔥 ALT Enhanced PM2 Generator] ${msg}`),
+      error: (msg) => console.error(`[🔥 ALT Enhanced PM2 Generator] ${msg}`)
     };
     
     this.hardwareDetector = new HardwareDetector();
@@ -35,8 +42,8 @@ export class EnhancedPM2EcosystemGenerator {
    */
   async generateEcosystem() {
     try {
-      this.logger.log('⭐⭐⭐ [ECOSYSTEM-TRACE] === STARTING generateEcosystem ===');
-      this.logger.log('⭐⭐⭐ [ECOSYSTEM-TRACE] 🚀 Starting enhanced PM2 ecosystem generation...');
+      this.logger.log('🔥🔥🔥 [ALT-ECOSYSTEM-TRACE] === STARTING generateEcosystem ===');
+      this.logger.log('🔥🔥🔥 [ALT-ECOSYSTEM-TRACE] 🚀 Starting ALTERNATE enhanced PM2 ecosystem generation...');
 
       // Load service mapping configuration
       this.logger.log('⭐⭐⭐ [ECOSYSTEM-TRACE] Loading service mapping...');
@@ -47,6 +54,18 @@ export class EnhancedPM2EcosystemGenerator {
       this.logger.log('⭐⭐⭐ [ECOSYSTEM-TRACE] Detecting hardware resources...');
       this.hardwareResources = await this.hardwareDetector.detectResources();
       this.logger.log('⭐⭐⭐ [ECOSYSTEM-TRACE] Hardware detection completed');
+      
+      // PROMINENT GPU DETECTION RESULT FOR ECOSYSTEM GENERATION
+      console.log('');
+      console.log('🎯🎯🎯🎯🎯🎯🎯🎯🎯🎯🎯🎯🎯🎯🎯🎯🎯🎯🎯🎯🎯🎯🎯🎯🎯🎯🎯🎯🎯🎯');
+      console.log('🎯 ECOSYSTEM GENERATOR: GPU DETECTION RESULT');
+      console.log(`🎯 GPU COUNT: ${this.hardwareResources.gpuCount}`);
+      console.log(`🎯 GPU MODEL: ${this.hardwareResources.gpuModel}`);
+      console.log(`🎯 GPU VENDOR: ${this.hardwareResources.gpuVendor}`);
+      console.log(`🎯 GPU MEMORY: ${this.hardwareResources.gpuMemoryGB}GB`);
+      console.log(`🎯 HAS GPU: ${this.hardwareResources.hasGpu}`);
+      console.log('🎯🎯🎯🎯🎯🎯🎯🎯🎯🎯🎯🎯🎯🎯🎯🎯🎯🎯🎯🎯🎯🎯🎯🎯🎯🎯🎯🎯🎯🎯');
+      console.log('');
       
       // Parse worker specifications from environment
       this.logger.log('⭐⭐⭐ [ECOSYSTEM-TRACE] Parsing worker specifications...');
@@ -310,6 +329,29 @@ export class EnhancedPM2EcosystemGenerator {
   }
 
   /**
+   * Parse instances per GPU from service config string
+   */
+  parseInstancesPerGpu(instancesPerGpuStr) {
+    if (!instancesPerGpuStr) return 1;
+    
+    console.log(`🔍 [FIXED-PARSE-DEBUG ${new Date().toISOString()}] Parsing instancesPerGpu: "${instancesPerGpuStr}"`);
+    
+    // Handle environment variable syntax: ${COMFYUI_INSTANCES_PER_GPU:-1}
+    const match = instancesPerGpuStr.match(/\${.*:-(\d+)}/);
+    if (match) {
+      const parsed = parseInt(match[1]);
+      console.log(`✅ [FIXED-PARSE-DEBUG ${new Date().toISOString()}] Parsed from env syntax: ${parsed}`);
+      return parsed;
+    }
+    
+    // Handle direct number
+    const parsed = parseInt(instancesPerGpuStr);
+    const result = isNaN(parsed) ? 1 : parsed;
+    console.log(`✅ [FIXED-PARSE-DEBUG ${new Date().toISOString()}] Parsed as direct number: ${result}`);
+    return result;
+  }
+
+  /**
    * Calculate actual instance count based on GPU binding and hardware
    */
   calculateInstanceCount(workerConfig, requestedCount) {
@@ -426,11 +468,7 @@ This container will now exit. Please fix the deployment configuration and restar
       // Worker type specification
       CONNECTORS: workerType,
       
-      // Resource binding specific
-      ...(isGpuBound && {
-        GPU_INDEX: index.toString(),
-        CUDA_VISIBLE_DEVICES: index.toString()
-      }),
+      // Resource binding handled via --cuda-device argument, not environment variables
       
       // Copy worker-specific environment variables
       ...this.getWorkerEnvironmentVars(workerConfig),
@@ -441,10 +479,19 @@ This container will now exit. Please fix the deployment configuration and restar
 
     const appName = isGpuBound ? `redis-worker-${workerType}-gpu${index}` : `redis-worker-${workerType}-${index}`;
 
+    // For ComfyUI workers, add the service port as an argument
+    const args = ['redis-worker', isGpuBound ? `--cuda-device=${index}` : `--index=${index}`];
+    if (workerConfig.services && workerConfig.services.includes('comfyui')) {
+      const basePort = parseInt(process.env.COMFYUI_BASE_PORT || '8188');
+      const servicePort = basePort + index;
+      args.push(`--service-port=${servicePort}`);
+      this.logger.log(`🔌 Adding --service-port=${servicePort} for Redis worker index ${index}`);
+    }
+
     return {
       name: appName,
       script: 'src/services/standalone-wrapper.js',
-      args: ['redis-worker', isGpuBound ? `--gpu=${index}` : `--index=${index}`],
+      args,
       cwd: '/service-manager',
       instances: 1,
       autorestart: true,
@@ -484,51 +531,51 @@ This container will now exit. Please fix the deployment configuration and restar
   async generateServiceApps(workerType, instanceCount, workerConfig, serviceConfig, actualServiceName) {
     const apps = [];
     
-    this.logger.log(`🔍 [SERVICE-DEBUG] generateServiceApps called:`);
-    this.logger.log(`🔍 [SERVICE-DEBUG] - workerType: "${workerType}"`);
-    this.logger.log(`🔍 [SERVICE-DEBUG] - instanceCount: ${instanceCount}`);
-    this.logger.log(`🔍 [SERVICE-DEBUG] - actualServiceName: "${actualServiceName}"`);
-    this.logger.log(`🔍 [SERVICE-DEBUG] - serviceConfig: ${JSON.stringify(serviceConfig)}`);
+    console.log(`🔍 [FIXED-SERVICE-DEBUG ${new Date().toISOString()}] generateServiceApps called:`);
+    console.log(`🔍 [FIXED-SERVICE-DEBUG ${new Date().toISOString()}] - workerType: "${workerType}"`);
+    console.log(`🔍 [FIXED-SERVICE-DEBUG ${new Date().toISOString()}] - instanceCount: ${instanceCount}`);
+    console.log(`🔍 [FIXED-SERVICE-DEBUG ${new Date().toISOString()}] - actualServiceName: "${actualServiceName}"`);
+    console.log(`🔍 [FIXED-SERVICE-DEBUG ${new Date().toISOString()}] - serviceConfig.installer: "${serviceConfig.installer}"`);
+    console.log(`🔍 [FIXED-SERVICE-DEBUG ${new Date().toISOString()}] - serviceConfig.type: "${serviceConfig.type}"`);
+    console.log(`🔍 [FIXED-SERVICE-DEBUG ${new Date().toISOString()}] - serviceConfig.is_gpu_bound: ${serviceConfig.is_gpu_bound}`);
     
-    // Use the actual service name from service mapping instead of deriving from connector
-    const serviceName = actualServiceName;
-    
-    // Check connector type to determine service implementation  
-    const connectorType = serviceConfig.connector.replace('Connector', '').toLowerCase();
-    this.logger.log(`🔍 [SERVICE-DEBUG] - connectorType: "${connectorType}"`);
-    
-    if (connectorType === 'comfyui') {
-      for (let i = 0; i < instanceCount; i++) {
-        apps.push(this.createComfyUIApp(serviceName, i));
-      }
-    } else if (connectorType === 'simulationhttp' || connectorType === 'simulation') {
-      // Check if service is GPU-bound to decide instance count
-      const isGpuBound = serviceConfig.is_gpu_bound;
+    // FIXED: Simple logic - if it's internal, create apps based on installer
+    if (serviceConfig.type === 'internal') {
+      console.log(`✅ [FIXED-SERVICE-DEBUG ${new Date().toISOString()}] Service type is 'internal', proceeding with app creation`);
       
-      if (isGpuBound) {
-        // Create per-GPU simulation instances (like ComfyUI)
-        for (let i = 0; i < instanceCount; i++) {
-          apps.push(this.createSimulationApp(serviceName, i));
-        }
-      } else {
-        // Single simulation service for the machine
-        apps.push(this.createSimulationApp(serviceName));
-      }
-    } else if (connectorType === 'simulationwebsocket') {
-      // WebSocket simulation service
-      const isGpuBound = serviceConfig.is_gpu_bound;
+      // Calculate actual instance count based on GPU binding and hardware
+      const instancesPerGpuStr = serviceConfig.service_instances_per_gpu || '1';
+      const instancesPerGpu = this.parseInstancesPerGpu(instancesPerGpuStr);
+      const gpuCount = this.hardwareResources?.gpuCount || 1;
+      const totalInstances = serviceConfig.is_gpu_bound ? instancesPerGpu * gpuCount : instancesPerGpu;
       
-      if (isGpuBound) {
-        // Create per-GPU WebSocket simulation instances (like ComfyUI)
-        for (let i = 0; i < instanceCount; i++) {
-          apps.push(this.createSimulationWebSocketApp(serviceName, i));
+      console.log(`🔍 [FIXED-SERVICE-DEBUG ${new Date().toISOString()}] Instance calculation:`);
+      console.log(`🔍 [FIXED-SERVICE-DEBUG ${new Date().toISOString()}] - instancesPerGpuStr: "${instancesPerGpuStr}"`);
+      console.log(`🔍 [FIXED-SERVICE-DEBUG ${new Date().toISOString()}] - instancesPerGpu: ${instancesPerGpu}`);
+      console.log(`🔍 [FIXED-SERVICE-DEBUG ${new Date().toISOString()}] - gpuCount: ${gpuCount}`);
+      console.log(`🔍 [FIXED-SERVICE-DEBUG ${new Date().toISOString()}] - is_gpu_bound: ${serviceConfig.is_gpu_bound}`);
+      console.log(`🔍 [FIXED-SERVICE-DEBUG ${new Date().toISOString()}] - totalInstances: ${totalInstances}`);
+      
+      for (let i = 0; i < totalInstances; i++) {
+        console.log(`🔍 [FIXED-SERVICE-DEBUG ${new Date().toISOString()}] Creating app ${i+1}/${totalInstances} for installer: "${serviceConfig.installer}"`);
+        
+        // FIXED: Use installer field instead of hardcoded connector parsing
+        if (serviceConfig.installer === 'ComfyUIManagementClient') {
+          console.log(`✅ [FIXED-SERVICE-DEBUG ${new Date().toISOString()}] Creating ComfyUI app for instance ${i}`);
+          apps.push(this.createComfyUIApp(actualServiceName, i));
+        } else if (serviceConfig.installer === 'SimulationService') {
+          console.log(`✅ [FIXED-SERVICE-DEBUG ${new Date().toISOString()}] Creating Simulation app for instance ${i}`);
+          apps.push(this.createSimulationApp(actualServiceName, i));
+        } else {
+          console.error(`❌ [FIXED-SERVICE-DEBUG ${new Date().toISOString()}] Unknown service installer: "${serviceConfig.installer}"`);
+          throw new Error(`Unknown service installer: ${serviceConfig.installer}. Add support in generateServiceApps.`);
         }
-      } else {
-        // Single WebSocket simulation service for the machine
-        apps.push(this.createSimulationWebSocketApp(serviceName));
       }
+    } else {
+      console.log(`❌ [FIXED-SERVICE-DEBUG ${new Date().toISOString()}] Service type is '${serviceConfig.type}', not 'internal'. Skipping app creation.`);
     }
     
+    console.log(`🎉 [FIXED-SERVICE-DEBUG ${new Date().toISOString()}] generateServiceApps returning ${apps.length} apps for "${actualServiceName}"`);
     return apps;
   }
 
@@ -536,10 +583,18 @@ This container will now exit. Please fix the deployment configuration and restar
    * Create ComfyUI service PM2 app
    */
   createComfyUIApp(serviceName, gpuIndex) {
-    return {
+    console.log('');
+    console.log('🟢🟢🟢🟢🟢🟢🟢🟢🟢🟢🟢🟢🟢🟢🟢🟢🟢🟢🟢🟢🟢🟢🟢🟢🟢🟢🟢🟢🟢🟢');
+    console.log(`🟢 CREATING COMFYUI APP: ${serviceName}-gpu${gpuIndex}`);
+    console.log(`🟢 GPU Index: ${gpuIndex}`);
+    console.log(`🟢 --cuda-device argument will be set to: ${gpuIndex}`);
+    console.log('🟢🟢🟢🟢🟢🟢🟢🟢🟢🟢🟢🟢🟢🟢🟢🟢🟢🟢🟢🟢🟢🟢🟢🟢🟢🟢🟢🟢🟢🟢');
+    console.log('');
+    
+    const app = {
       name: `${serviceName}-gpu${gpuIndex}`,
       script: 'src/services/standalone-wrapper.js',
-      args: ['comfyui', `--gpu=${gpuIndex}`],
+      args: ['comfyui', `--cuda-device=${gpuIndex}`, `--port=${8188 + gpuIndex}`],
       cwd: '/service-manager',
       instances: 1,
       autorestart: true,
@@ -557,12 +612,20 @@ This container will now exit. Please fix the deployment configuration and restar
         // Override/add specific values
         NODE_ENV: 'production',
         LOG_LEVEL: 'info',
-        GPU_INDEX: gpuIndex.toString(),
-        CUDA_VISIBLE_DEVICES: gpuIndex.toString(),
         COMFYUI_PORT: (8188 + gpuIndex).toString(),
         COMFYUI_CPU_MODE: process.env.COMFYUI_CPU_MODE || 'false'
       }
     };
+    
+    console.log('');
+    console.log('✅✅✅✅✅✅✅✅✅✅✅✅✅✅✅✅✅✅✅✅✅✅✅✅✅✅✅✅✅✅');
+    console.log(`✅ COMFYUI APP CREATED SUCCESSFULLY: ${app.name}`);
+    console.log(`✅ Port: ${app.env.COMFYUI_PORT}`);
+    console.log(`✅ --cuda-device argument: ${gpuIndex}`);
+    console.log('✅✅✅✅✅✅✅✅✅✅✅✅✅✅✅✅✅✅✅✅✅✅✅✅✅✅✅✅✅✅');
+    console.log('');
+    
+    return app;
   }
 
   /**
@@ -595,11 +658,8 @@ This container will now exit. Please fix the deployment configuration and restar
         NODE_ENV: 'production',
         LOG_LEVEL: 'info',
         SIMULATION_PORT: port.toString(),
-        SIMULATION_HOST: '0.0.0.0',
-        ...(isPerGpu && {
-          GPU_INDEX: gpuIndex.toString(),
-          CUDA_VISIBLE_DEVICES: gpuIndex.toString()
-        })
+        SIMULATION_HOST: '0.0.0.0'
+        // GPU isolation handled via command line arguments, not environment variables
       }
     };
   }
@@ -637,11 +697,8 @@ This container will now exit. Please fix the deployment configuration and restar
         HOST: '0.0.0.0',
         SIMULATION_WS_PROCESSING_TIME: '10',
         SIMULATION_WS_STEPS: '10',
-        SIMULATION_WS_PROGRESS_INTERVAL_MS: '300',
-        ...(isPerGpu && {
-          GPU_INDEX: gpuIndex.toString(),
-          CUDA_VISIBLE_DEVICES: gpuIndex.toString()
-        })
+        SIMULATION_WS_PROGRESS_INTERVAL_MS: '300'
+        // GPU isolation handled via command line arguments, not environment variables
       }
     };
   }
@@ -683,7 +740,19 @@ This container will now exit. Please fix the deployment configuration and restar
   getServiceEnvironmentVars(workerConfig, index) {
     const env = {};
     
-    // Handle service-specific configuration
+    // Direct service-specific environment variables (bypasses complex job type mapping)
+    if (workerConfig.services) {
+      for (const serviceName of workerConfig.services) {
+        if (serviceName === 'comfyui') {
+          // Set ComfyUI port directly based on worker index
+          const basePort = parseInt(process.env.COMFYUI_BASE_PORT || '8188');
+          env.COMFYUI_PORT = (basePort + index).toString();
+          this.logger.log(`🔌 Setting COMFYUI_PORT=${env.COMFYUI_PORT} for worker index ${index}`);
+        }
+      }
+    }
+    
+    // Handle service-specific configuration (legacy complex mapping)
     if (workerConfig.services) {
       for (const serviceName of workerConfig.services) {
         const serviceConfig = this.serviceMapping.services[serviceName];

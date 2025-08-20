@@ -76,10 +76,8 @@ FROM ai-base AS base-machine
     COPY src/ /service-manager/src/
     COPY scripts/ /service-manager/scripts/
     
-    # FORCE COPY ALTERNATE FILES TO BREAK CACHE - EXPLICIT PATHS
-    COPY generate-pm2-ecosystem-worker-driven-alt.js /service-manager/generate-pm2-ecosystem-worker-driven.js
-    COPY src/config/enhanced-pm2-ecosystem-generator-alt.js /service-manager/src/config/enhanced-pm2-ecosystem-generator-alt.js
-    COPY src/config/enhanced-pm2-ecosystem-generator-alt.js /service-manager/src/config/enhanced-pm2-ecosystem-generator.js
+    # Copy worker-driven ecosystem generator
+    COPY generate-pm2-ecosystem-worker-driven.js /service-manager/generate-pm2-ecosystem-worker-driven.js
 
     # Set up environment
     ENV NODE_ENV=production \

@@ -36,6 +36,13 @@ setup_environment() {
     log_info "✅ Machine environment configured"
     log_info "  - WORKERS: ${WORKERS}"
     log_info "  - MACHINE_ID: ${MACHINE_ID}"
+    
+    # Early ecosystem generator configuration logging
+    log_info "🔧 PM2 Ecosystem Generator Configuration:"
+    log_info "  - WORKER_CONNECTORS: ${WORKER_CONNECTORS:-${WORKERS}}"
+    log_info "  - COMFYUI_BASE_PORT: ${COMFYUI_BASE_PORT:-8188}"
+    log_info "  - GPU_MODE: ${GPU_MODE:-actual}"
+    log_info "  - NUM_GPUS: ${NUM_GPUS:-auto}"
 }
 
 # =====================================================
@@ -55,24 +62,172 @@ setup_directories() {
 }
 
 # =====================================================
+# Worker Bundle Download and Extraction
+# =====================================================
+download_and_extract_worker_bundle() {
+    local target_dir="$1"
+    local download_url="${WORKER_DOWNLOAD_URL:-https://github.com/stakeordie/emp-job-queue/releases/latest/download/emp-job-queue-worker.tar.gz}"
+    local temp_file="/tmp/worker-bundle-entrypoint.tar.gz"
+    
+    log_info "🌐 Downloading worker bundle from: $download_url"
+    log_info "📁 Extracting to: $target_dir"
+    
+    # Clean up any existing temp file
+    rm -f "$temp_file" 2>/dev/null || true
+    
+    # Create target directory
+    mkdir -p "$target_dir"
+    
+    # Download with wget
+    if wget --no-check-certificate --timeout=60 --tries=3 -O "$temp_file" "$download_url" 2>/dev/null; then
+        log_info "✅ Download completed successfully"
+        
+        # Verify file was downloaded and is not empty
+        if [[ -f "$temp_file" && -s "$temp_file" ]]; then
+            log_info "📦 Extracting worker bundle..."
+            
+            # Extract to target directory
+            if tar -xzf "$temp_file" -C "$target_dir" --strip-components=1 2>/dev/null; then
+                log_info "✅ Extraction completed successfully"
+                
+                # Ensure package.json exists with type: module
+                local package_json="$target_dir/package.json"
+                if [[ ! -f "$package_json" ]]; then
+                    cat > "$package_json" << 'EOF'
+{
+  "name": "emp-worker",
+  "type": "module",
+  "version": "1.0.0",
+  "description": "EMP Worker - Production"
+}
+EOF
+                    log_info "✅ Created package.json with ES module support"
+                fi
+                
+                # Make scripts executable
+                chmod +x "$target_dir"/*.js 2>/dev/null || true
+                
+                # Cleanup temp file
+                rm -f "$temp_file" 2>/dev/null || true
+                
+                return 0  # Success
+            else
+                log_error "❌ Failed to extract worker bundle"
+                rm -f "$temp_file" 2>/dev/null || true
+                return 1  # Failure
+            fi
+        else
+            log_error "❌ Downloaded file is empty or missing"
+            rm -f "$temp_file" 2>/dev/null || true
+            return 1  # Failure
+        fi
+    else
+        log_error "❌ Failed to download worker bundle"
+        rm -f "$temp_file" 2>/dev/null || true
+        return 1  # Failure
+    fi
+}
+
+# =====================================================
 # Machine Worker Bundle Setup
 # =====================================================
 setup_worker_bundle() {
     log_section "Worker Bundle Setup"
     
-    local WORKER_BUNDLE_SOURCE="/worker-bundled"
-    local WORKER_BUNDLE_TARGET="/service-manager/worker"
+    # Unified target location for both local and production modes
+    local WORKER_BUNDLE_TARGET="/workspace/worker-bundled"
     
-    if [[ -d "$WORKER_BUNDLE_SOURCE" ]]; then
-        log_info "Copying worker bundle from $WORKER_BUNDLE_SOURCE to $WORKER_BUNDLE_TARGET"
+    echo ""
+    echo "🔄🔄🔄🔄🔄🔄🔄🔄🔄🔄🔄🔄🔄🔄🔄🔄🔄🔄🔄🔄🔄🔄🔄🔄🔄🔄🔄🔄🔄🔄"
+    echo "🎯 WORKER BUNDLE DEPLOYMENT - UNIFIED ARCHITECTURE"
+    echo "🎯 MODE: ${WORKER_BUNDLE_MODE:-remote}"
+    echo "🎯 TARGET: ${WORKER_BUNDLE_TARGET}"
+    echo "🔄🔄🔄🔄🔄🔄🔄🔄🔄🔄🔄🔄🔄🔄🔄🔄🔄🔄🔄🔄🔄🔄🔄🔄🔄🔄🔄🔄🔄🔄"
+    echo ""
+    
+    if [[ "$WORKER_BUNDLE_MODE" == "local" ]]; then
+        local WORKER_BUNDLE_SOURCE="/service-manager/worker-bundled"
         
-        mkdir -p "$WORKER_BUNDLE_TARGET"
-        cp -r "$WORKER_BUNDLE_SOURCE"/* "$WORKER_BUNDLE_TARGET/"
-        chmod +x "$WORKER_BUNDLE_TARGET"/*.js 2>/dev/null || true
+        log_info "🏠 LOCAL MODE: Copying bundled worker from build to runtime location"
+        log_info "📁 Source: $WORKER_BUNDLE_SOURCE"
+        log_info "📁 Target: $WORKER_BUNDLE_TARGET"
         
-        log_info "✅ Worker bundle setup completed"
+        if [[ -d "$WORKER_BUNDLE_SOURCE" ]]; then
+            mkdir -p "$WORKER_BUNDLE_TARGET"
+            cp -r "$WORKER_BUNDLE_SOURCE"/* "$WORKER_BUNDLE_TARGET/"
+            chmod +x "$WORKER_BUNDLE_TARGET"/*.js 2>/dev/null || true
+            
+            echo ""
+            echo "✅✅✅ LOCAL WORKER BUNDLE DEPLOYED SUCCESSFULLY ✅✅✅"
+            echo "📦 Bundle copied to: $WORKER_BUNDLE_TARGET"
+            echo "🔧 All workers will copy from this shared location"
+            echo ""
+            
+            # Show what was deployed
+            log_info "📋 Deployed bundle contents:"
+            ls -la "$WORKER_BUNDLE_TARGET" 2>/dev/null || true
+        else
+            echo ""
+            echo "❌❌❌ LOCAL WORKER BUNDLE SOURCE NOT FOUND ❌❌❌"
+            echo "🔍 Expected: $WORKER_BUNDLE_SOURCE"
+            echo "📂 Available directories in /service-manager/:"
+            ls -la /service-manager/ || true
+            echo ""
+        fi
     else
-        log_warn "⚠️  Worker bundle source not found: $WORKER_BUNDLE_SOURCE"
+        log_info "☁️  REMOTE MODE: Downloading worker bundle during entrypoint setup"
+        log_info "📁 Download target: $WORKER_BUNDLE_TARGET"
+        log_info "🌐 Download URL: ${WORKER_DOWNLOAD_URL:-https://github.com/stakeordie/emp-job-queue/releases/latest/download/emp-job-queue-worker.tar.gz}"
+        
+        echo ""
+        echo "📥📥📥 DOWNLOADING WORKER BUNDLE TO SHARED LOCATION 📥📥📥"
+        echo ""
+        
+        if download_and_extract_worker_bundle "$WORKER_BUNDLE_TARGET"; then
+            echo ""
+            echo "✅✅✅ REMOTE WORKER BUNDLE DOWNLOADED SUCCESSFULLY ✅✅✅"
+            echo "📦 Bundle extracted to: $WORKER_BUNDLE_TARGET"
+            echo "🔧 All workers will copy from this shared location"
+            echo ""
+            
+            # Show what was downloaded
+            log_info "📋 Downloaded bundle contents:"
+            ls -la "$WORKER_BUNDLE_TARGET" 2>/dev/null || true
+        else
+            echo ""
+            echo "❌❌❌ REMOTE WORKER BUNDLE DOWNLOAD FAILED ❌❌❌"
+            echo "🌐 URL: ${WORKER_DOWNLOAD_URL:-https://github.com/stakeordie/emp-job-queue/releases/latest/download/emp-job-queue-worker.tar.gz}"
+            echo "🔄 FALLING BACK TO LOCAL BUNDLE AS BACKUP"
+            echo ""
+            
+            # Fallback: try to use local bundle if available
+            local WORKER_BUNDLE_SOURCE="/service-manager/worker-bundled"
+            if [[ -d "$WORKER_BUNDLE_SOURCE" ]]; then
+                log_info "🏠 FALLBACK: Using local worker bundle as backup"
+                log_info "📁 Source: $WORKER_BUNDLE_SOURCE"
+                log_info "📁 Target: $WORKER_BUNDLE_TARGET"
+                
+                mkdir -p "$WORKER_BUNDLE_TARGET"
+                cp -r "$WORKER_BUNDLE_SOURCE"/* "$WORKER_BUNDLE_TARGET/"
+                chmod +x "$WORKER_BUNDLE_TARGET"/*.js 2>/dev/null || true
+                
+                echo ""
+                echo "✅✅✅ FALLBACK TO LOCAL BUNDLE SUCCESSFUL ✅✅✅"
+                echo "📦 Local bundle copied to: $WORKER_BUNDLE_TARGET"
+                echo "🔧 All workers will copy from this shared location"
+                echo ""
+                
+                # Show what was deployed
+                log_info "📋 Fallback bundle contents:"
+                ls -la "$WORKER_BUNDLE_TARGET" 2>/dev/null || true
+            else
+                echo ""
+                echo "❌❌❌ NO LOCAL BUNDLE AVAILABLE FOR FALLBACK ❌❌❌"
+                echo "🔍 Checked: $WORKER_BUNDLE_SOURCE"
+                echo "⚠️  Workers will attempt individual downloads as last resort"
+                echo ""
+            fi
+        fi
     fi
 }
 
@@ -115,12 +270,47 @@ perform_health_check() {
         return 1
     fi
     
-    # Check worker bundle (warning only)
-    if [[ ! -d "/service-manager/worker" ]]; then
-        log_warn "⚠️  Worker bundle not found, may affect functionality"
+    # Check worker bundle at unified location
+    if [[ ! -d "/workspace/worker-bundled" ]]; then
+        log_warn "⚠️  Worker bundle not found at /workspace/worker-bundled"
+        log_info "🔍 This will be populated by:"
+        log_info "   • LOCAL MODE: Copy from /service-manager/worker-bundled"
+        log_info "   • REMOTE MODE: Download during worker startup"
+    else
+        echo ""
+        echo "🎉🎉🎉 WORKER BUNDLE SUCCESSFULLY DEPLOYED 🎉🎉🎉"
+        echo "📍 Location: /workspace/worker-bundled"
+        echo "✅ Redis workers can now access bundled worker code"
+        echo ""
     fi
     
     log_info "✅ Machine health checks completed"
+}
+
+# =====================================================
+# Debug Hook Function
+# =====================================================
+debug_hook() {
+    local hook_name="$1"
+    local env_var="DEBUG_HOOK_${hook_name^^}"  # Convert to uppercase
+    
+    if [[ -n "${!env_var:-}" ]]; then
+        log_info "🐛 [DEBUG-HOOK] ${hook_name}: PAUSED INDEFINITELY"
+        log_info "🐛 [DEBUG-HOOK] ============================================"
+        log_info "🐛 [DEBUG-HOOK] TO CONTINUE:"
+        log_info "🐛 [DEBUG-HOOK] 1. SSH into container: docker exec -it <container> bash"
+        log_info "🐛 [DEBUG-HOOK] 2. Inspect state, files, environment variables"
+        log_info "🐛 [DEBUG-HOOK] 3. To resume: unset ${env_var}"
+        log_info "🐛 [DEBUG-HOOK] 4. Or restart container without the debug env var"
+        log_info "🐛 [DEBUG-HOOK] ============================================"
+        
+        # Sleep indefinitely until env var is unset
+        while [[ -n "${!env_var:-}" ]]; do
+            sleep 1
+        done
+        
+        log_info "🐛 [DEBUG-HOOK] ${hook_name}: Resuming - environment variable cleared"
+    fi
 }
 
 # =====================================================
@@ -128,6 +318,8 @@ perform_health_check() {
 # =====================================================
 start_application() {
     log_section "Starting EMP Machine - Base Profile"
+    
+    debug_hook "BEFORE_CD_SERVICE_MANAGER"
     
     cd /service-manager
     
@@ -145,6 +337,8 @@ start_application() {
     log_info "Starting main application..."
     log_info "Machine ID: ${MACHINE_ID:-unknown}"
     log_info "Workers: ${WORKERS:-none}"
+    
+    debug_hook "BEFORE_NODE_START"
     
     # Start the machine application (foreground)
     exec node src/index-pm2.js

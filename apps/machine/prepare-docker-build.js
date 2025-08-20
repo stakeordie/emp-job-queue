@@ -10,14 +10,45 @@ import path from 'path';
 import crypto from 'crypto';
 import zlib from 'zlib';
 import { fileURLToPath } from 'url';
+import * as yaml from 'js-yaml';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-// Parse command line arguments
-const args = process.argv.slice(2);
-const envFile = args.find(arg => arg.startsWith('--env='))?.split('=')[1] || '.env.production';
-const encryptKey = args.find(arg => arg.startsWith('--key='))?.split('=')[1] || process.env.ENV_ENCRYPT_KEY;
+// Get profile from environment (set by build-machine.js)
+const profile = process.env.COMPOSE_PROFILES;
+if (!profile) {
+  throw new Error('COMPOSE_PROFILES environment variable is required');
+}
+
+// Get env file from docker-compose.yml profile
+function getEnvFileFromProfile(profileName) {
+  const composePath = path.join(__dirname, 'docker-compose.yml');
+  if (!fs.existsSync(composePath)) {
+    throw new Error(`docker-compose.yml not found at ${composePath}`);
+  }
+  
+  const composeContent = fs.readFileSync(composePath, 'utf8');
+  const composeData = yaml.load(composeContent);
+  
+  if (!composeData.services) {
+    throw new Error('No services found in docker-compose.yml');
+  }
+  
+  // Find the service with the matching profile
+  for (const [serviceName, serviceConfig] of Object.entries(composeData.services)) {
+    if (serviceConfig.profiles && serviceConfig.profiles.includes(profileName)) {
+      if (!serviceConfig.env_file || serviceConfig.env_file.length === 0) {
+        throw new Error(`No env_file found for profile ${profileName} in service ${serviceName}`);
+      }
+      return serviceConfig.env_file[0];
+    }
+  }
+  
+  throw new Error(`Profile ${profileName} not found in docker-compose.yml services`);
+}
+
+const envFile = getEnvFileFromProfile(profile);
 
 console.log('🔧 Preparing Docker build files...\n');
 
@@ -167,44 +198,64 @@ function parseEnv(content) {
 
 try {
   // Load environment files
-  const regularEnvPath = path.join(__dirname, envFile);
-  const secretEnvPath = path.join(__dirname, `.env.secret.${envFile.replace('.env.', '')}`);
+  let regularEnv = {};
+  let secretEnv = {};
   
-  if (!fs.existsSync(regularEnvPath)) {
-    throw new Error(`Environment file not found: ${regularEnvPath}`);
-  }
-  if (!fs.existsSync(secretEnvPath)) {
-    throw new Error(`Secret environment file not found: ${secretEnvPath}`);
+  if (envFile.includes('.secret.')) {
+    // envFile is already a secret file from docker-compose
+    const secretEnvPath = path.join(__dirname, envFile);
+    if (!fs.existsSync(secretEnvPath)) {
+      throw new Error(`Secret environment file not found: ${secretEnvPath}`);
+    }
+    secretEnv = parseEnv(fs.readFileSync(secretEnvPath, 'utf8'));
+    
+    // Also try to load regular env file
+    const envName = envFile.replace('.env.secret.', '');
+    const regularEnvPath = path.join(__dirname, `.env.${envName}`);
+    if (fs.existsSync(regularEnvPath)) {
+      regularEnv = parseEnv(fs.readFileSync(regularEnvPath, 'utf8'));
+    }
+  } else {
+    // envFile is a regular env file
+    const regularEnvPath = path.join(__dirname, envFile);
+    const secretEnvPath = path.join(__dirname, `.env.secret.${envFile.replace('.env.', '')}`);
+    
+    if (!fs.existsSync(regularEnvPath)) {
+      throw new Error(`Environment file not found: ${regularEnvPath}`);
+    }
+    if (!fs.existsSync(secretEnvPath)) {
+      throw new Error(`Secret environment file not found: ${secretEnvPath}`);
+    }
+    
+    regularEnv = parseEnv(fs.readFileSync(regularEnvPath, 'utf8'));
+    secretEnv = parseEnv(fs.readFileSync(secretEnvPath, 'utf8'));
   }
   
-  const regularEnv = parseEnv(fs.readFileSync(regularEnvPath, 'utf8'));
-  const secretEnv = parseEnv(fs.readFileSync(secretEnvPath, 'utf8'));
   const allEnvVars = { ...regularEnv, ...secretEnv };
   
   console.log(`  Found ${Object.keys(regularEnv).length} regular variables`);
   console.log(`  Found ${Object.keys(secretEnv).length} secret variables`);
   console.log(`  Total: ${Object.keys(allEnvVars).length} variables`);
   
-  // Generate or use provided encryption key
-  let encryptionKey;
+  // Get encryption key from loaded env vars
+  const encryptKey = allEnvVars.ENV_ENCRYPT_KEY;
+  
+  // Encryption key is required
   if (!encryptKey) {
-    encryptionKey = crypto.randomBytes(32);
-    const keyBase64 = encryptionKey.toString('base64');
-    console.log('\n⚠️  No encryption key provided. Generated new key:');
-    console.log(`  ENV_ENCRYPT_KEY=${keyBase64}`);
-    console.log('  Save this key for decryption!\n');
-  } else {
-    // Handle both base64 and non-base64 keys
-    try {
-      encryptionKey = Buffer.from(encryptKey, 'base64');
-      if (encryptionKey.length !== 32) {
-        throw new Error('Invalid key length');
-      }
-    } catch (e) {
-      // If not valid base64, hash the key to get 32 bytes
-      console.log('  Key is not base64, using SHA256 hash...');
-      encryptionKey = crypto.createHash('sha256').update(encryptKey).digest();
+    throw new Error('ENV_ENCRYPT_KEY is required for encryption. No fallback key generation.');
+  }
+  
+  // Handle both base64 and non-base64 keys
+  let encryptionKey;
+  try {
+    encryptionKey = Buffer.from(encryptKey, 'base64');
+    if (encryptionKey.length !== 32) {
+      throw new Error('Invalid key length');
     }
+  } catch (e) {
+    // If not valid base64, hash the key to get 32 bytes
+    console.log('  Key is not base64, using SHA256 hash...');
+    encryptionKey = crypto.createHash('sha256').update(encryptKey).digest();
   }
   
   // Compress and encrypt

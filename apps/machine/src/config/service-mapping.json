@@ -1,5 +1,19 @@
 {
   "workers": {
+    "emprops-app": {
+      "services": ["comfyui", "a1111"],
+      "is_gpu_bound": true,
+      "job_service_required_map": [
+        {
+          "job_service_required": "comfyui",
+          "worker_service": "comfyui"
+        },
+        {
+          "job_service_required": "a1111",
+          "worker_service": "a1111"
+        }
+      ]
+    },
     "comfyui": {
       "services": ["comfyui"],
       "is_gpu_bound": true,
@@ -40,6 +54,17 @@
         {
           "job_service_required": "simulation",
           "worker_service": "simulation-http" 
+        }
+      ]
+    },
+    
+    "a1111": {
+      "services": ["a1111"],
+      "is_gpu_bound": true,
+      "job_service_required_map": [
+        {
+          "job_service_required": "a1111",
+          "worker_service": "a1111"
         }
       ]
     },
@@ -106,6 +131,10 @@
       "path": "./redis-direct-worker.js", 
       "description": "Remote ComfyUI WebSocket connector - connects to external ComfyUI instance"
     },
+    "A1111WebSocketConnector": {
+      "path": "./redis-direct-worker.js",
+      "description": "Automatic1111 WebUI connector - uses local A1111 installation with shared models"
+    },
     "SimulationHttpConnector": {
       "path": "./redis-direct-worker.js",
       "description": "Simulation processing connector for testing and development"
@@ -146,6 +175,27 @@
         "custom_nodes_enabled": "${COMFYUI_ENABLE_CUSTOM_NODES:-true}",
         "models_path": "${COMFYUI_MODELS_PATH:-/workspace/ComfyUI/models}",
         "install_timeout": "${COMFYUI_INSTALL_TIMEOUT:-300}"
+      }
+    },
+    
+    "a1111": {
+      "connector": "A1111WebSocketConnector",
+      "type": "internal",
+      "installer": "A1111ManagementClient",
+      "installer_filename": "./services/a1111-management-client.js",
+      "is_gpu_bound": true,
+      "build_stage": "a1111",
+      "service_instances_per_gpu": "${A1111_INSTANCES_PER_GPU:-1}",
+      "ports": ["${A1111_BASE_PORT:-7860}"],
+      "port_increment": "${A1111_PORT_INCREMENT:-1}",
+      "description": "Automatic1111 WebUI with shared ComfyUI models and sd_models repository",
+      "installer_config": {
+        "branch": "${A1111_BRANCH:-main}",
+        "repo_url": "${A1111_REPO_URL:-https://github.com/AUTOMATIC1111/stable-diffusion-webui.git}",
+        "commit_hash": "${A1111_COMMIT_HASH:-cf2772fab0af5573da775e7437e6acdca424f26e}",
+        "models_repo_url": "${A1111_MODELS_REPO_URL:-git@github.com:stakeordie/sd_models.git}",
+        "comfyui_checkpoints_path": "${COMFYUI_CHECKPOINTS_PATH:-/workspace/ComfyUI/models/checkpoints}",
+        "install_timeout": "${A1111_INSTALL_TIMEOUT:-300}"
       }
     },
     

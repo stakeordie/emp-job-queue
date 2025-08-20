@@ -20,7 +20,7 @@ export class SimulationConnector extends BaseConnector {
   private progressIntervalMs: number;
   private healthCheckFailureRate: number;
 
-  constructor(connectorId: string) {
+  constructor(connectorId: string, serviceConfig?: any) {
     // Configuration from environment (matching Python patterns)
     const processingTimeMs = parseInt(process.env.WORKER_SIMULATION_PROCESSING_TIME || '5') * 1000;
     const steps = parseInt(process.env.WORKER_SIMULATION_STEPS || '10');
@@ -34,7 +34,7 @@ export class SimulationConnector extends BaseConnector {
 
     // Initialize BaseConnector with simulation-specific config
     super(connectorId, {
-      service_type: 'simulation',
+      service_type: serviceConfig?.service_type || 'simulation', // Get from service mapping if available
       base_url: 'http://simulation',
       timeout_seconds: 60,
       retry_attempts: 3,

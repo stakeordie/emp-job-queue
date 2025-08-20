@@ -232,7 +232,8 @@ base_main_setup() {
     
     log_section "EMP $service_name Starting"
     log_info "Entrypoint script version: $version"
-    log_info "Date: $(date '+%Y-%m-%d %H:%M:%S')"
+    log_info "Build date: ${BUILD_DATE:-unknown}"
+    log_info "Runtime: $(date '+%Y-%m-%d %H:%M:%S')"
 }
 
 # =====================================================

@@ -16,7 +16,7 @@ import {
 } from '@emp/core';
 
 export class OpenAIImageConnector extends OpenAIBaseConnector {
-  service_type = 'image_generation' as const;
+  service_type = 'image_generation' as const; // Will be set by constructor from service mapping
   version = '1.0.0';
 
   private defaultModel: string;
@@ -37,10 +37,11 @@ export class OpenAIImageConnector extends OpenAIBaseConnector {
     };
   }
 
-  constructor(connectorId: string = 'openai-image') {
+  constructor(connectorId: string, serviceConfig?: any) {
+    // Get service_type from service mapping configuration (like SimulationConnector)
     const config = {
       connector_id: connectorId,
-      service_type: 'image_generation',
+      service_type: serviceConfig?.service_type || 'image_generation', // Fallback for backwards compatibility
       base_url: process.env.OPENAI_BASE_URL || 'https://api.openai.com/v1',
       timeout_seconds: parseInt(process.env.OPENAI_TIMEOUT_SECONDS || '120'),
       retry_attempts: parseInt(process.env.OPENAI_RETRY_ATTEMPTS || '3'),
@@ -50,6 +51,9 @@ export class OpenAIImageConnector extends OpenAIBaseConnector {
     };
 
     super(connectorId, config);
+
+    // Set service_type from constructor config (overrides hardcoded value)
+    this.service_type = config.service_type;
 
     // Image-specific configuration
     this.defaultModel = process.env.OPENAI_IMAGE_MODEL || 'gpt-4.1';
