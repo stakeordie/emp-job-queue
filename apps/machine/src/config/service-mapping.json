@@ -147,9 +147,9 @@
       "path": "./redis-direct-worker.js",
       "description": "OpenAI text generation API connector"
     },
-    "OpenAIImageConnector": {
+    "OpenAIText2ImgConnector": {
       "path": "./redis-direct-worker.js",
-      "description": "OpenAI image generation API connector"
+      "description": "OpenAI text-to-image generation API connector"
     },
     "OpenAIImg2ImgConnector": {
       "path": "./redis-direct-worker.js",
@@ -263,7 +263,7 @@
     },
     
     "openai-image": {
-      "connector": "OpenAIImageConnector", 
+      "connector": "OpenAIText2ImgConnector", 
       "type": "external",
       "installer": null,
       "installer_filename": null,

@@ -38,10 +38,16 @@ log_section() {
 }
 
 # =====================================================
-# Environment Decryption (for Docker containers)
+# Environment Decryption (for Machine containers only)
 # =====================================================
 decrypt_environment() {
     log_section "Environment Decryption"
+    
+    # Skip decryption for non-machine services (API/Webhook)
+    if [ "${SERVICE_TYPE:-}" != "machine" ]; then
+        log_info "Skipping environment decryption for ${SERVICE_TYPE:-unknown} service"
+        return 0
+    fi
     
     local encrypted_file="/service-manager/env.encrypted"
     local target_env_file="/service-manager/.env"

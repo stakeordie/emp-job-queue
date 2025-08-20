@@ -79,19 +79,38 @@ for (const pkg of requiredPackages) {
 }
 console.log('✅ All workspace packages validated');
 
-// Copy core package
-const coreSource = path.join(MONOREPO_ROOT, 'packages/core');
-const coreTarget = path.join(workspacePackagesDir, 'core');
+// Copy workspace packages with dependency conversion (matching machine pattern)
+const copyWorkspacePackage = (packageName) => {
+  const sourceDir = path.join(MONOREPO_ROOT, 'packages', packageName);
+  const targetDir = path.join(workspacePackagesDir, packageName);
 
-console.log(`  Copying core: ${coreSource} → ${coreTarget}`);
-fs.cpSync(coreSource, coreTarget, { recursive: true });
+  console.log(`  Copying ${packageName}: ${sourceDir} → ${targetDir}`);
+  
+  // Copy entire package first
+  fs.cpSync(sourceDir, targetDir, { recursive: true });
+  
+  // Convert workspace dependencies in package.json
+  const packageJsonPath = path.join(targetDir, 'package.json');
+  if (fs.existsSync(packageJsonPath)) {
+    const packageJsonContent = JSON.parse(fs.readFileSync(packageJsonPath, 'utf8'));
+    
+    // Convert workspace dependencies to file references (matching machine pattern)
+    if (packageJsonContent.dependencies) {
+      Object.keys(packageJsonContent.dependencies).forEach(key => {
+        if (packageJsonContent.dependencies[key].startsWith('workspace:')) {
+          const packageName = key.replace('@emp/', '');
+          packageJsonContent.dependencies[key] = `file:../${packageName}`;
+        }
+      });
+    }
+    
+    fs.writeFileSync(packageJsonPath, JSON.stringify(packageJsonContent, null, 2));
+  }
+};
 
-// Copy telemetry package
-const telemetrySource = path.join(MONOREPO_ROOT, 'packages/telemetry');
-const telemetryTarget = path.join(workspacePackagesDir, 'telemetry');
-
-console.log(`  Copying telemetry: ${telemetrySource} → ${telemetryTarget}`);
-fs.cpSync(telemetrySource, telemetryTarget, { recursive: true });
+// Copy required packages
+copyWorkspacePackage('core');
+copyWorkspacePackage('telemetry');
 
 // Step 2: Create optimized package.json
 console.log('📋 Creating optimized package.json...');

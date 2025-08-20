@@ -29,9 +29,12 @@ FROM ubuntu:22.04
     # Copy workspace packages for dependencies
     COPY .workspace-packages/ ./.workspace-packages/
 
-    # Copy package files (dependencies will be installed at runtime)
+    # Copy package files and install dependencies during build (matching machine pattern)
     COPY package.docker.json ./package.json
     COPY pnpm-lock.yaml ./
+    
+    # Install dependencies during Docker build (not at runtime)
+    RUN pnpm install --prod --no-frozen-lockfile --ignore-workspace
 
     # Copy application source
     COPY src/ ./src/

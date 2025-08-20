@@ -1,5 +1,5 @@
-// OpenAI Image Connector - Handles image generation using OpenAI SDK
-// Uses the OpenAI images API for DALL-E image generation tasks
+// OpenAI Text-to-Image Connector - Handles text-to-image generation using OpenAI SDK
+// Uses the OpenAI responses API for text-to-image generation tasks
 
 import OpenAI from 'openai';
 import * as fs from 'fs';
@@ -15,7 +15,7 @@ import {
   logger,
 } from '@emp/core';
 
-export class OpenAIImageConnector extends OpenAIBaseConnector {
+export class OpenAIText2ImgConnector extends OpenAIBaseConnector {
   service_type = 'image_generation' as const; // Will be set by constructor from service mapping
   version = '1.0.0';
 
@@ -757,6 +757,12 @@ export class OpenAIImageConnector extends OpenAIBaseConnector {
     const pollResult = await this.pollForJobCompletion(openaiJobId, jobData.id, enhancedCallback);
     
     logger.info(`Background polling successful for OpenAI job ${openaiJobId} -> job ${jobData.id}`);
+    
+    // Validate that the response contains images using MessageBus pattern
+    if (!pollResult.images || !Array.isArray(pollResult.images) || pollResult.images.length === 0) {
+      // This triggers MessageBus pattern matching: should_terminate = true, recoverable = false
+      throw new Error(`No image was generated - check that the prompt is asking for an image`);
+    }
     
     // Convert base64 to data URLs for consistency with existing processing
     const dataUrls = pollResult.images.map(base64 => `data:image/png;base64,${base64}`);

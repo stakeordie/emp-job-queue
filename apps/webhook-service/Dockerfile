@@ -48,9 +48,12 @@ FROM ubuntu:22.04
     # Copy workspace packages first (for better layer caching)
     COPY .workspace-packages/ /webhook-server/.workspace-packages/
 
-    # Copy package files (dependencies will be installed at runtime)
+    # Copy package files and install dependencies during build (matching machine pattern)
     COPY package.docker.json /webhook-server/package.json
     COPY pnpm-lock.yaml* /webhook-server/
+    
+    # Install dependencies during Docker build (not at runtime)
+    RUN pnpm install --prod --no-frozen-lockfile --ignore-workspace
 
     # Copy application source
     COPY dist/ /webhook-server/dist/

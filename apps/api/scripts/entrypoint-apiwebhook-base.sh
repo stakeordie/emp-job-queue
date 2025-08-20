@@ -17,19 +17,16 @@ source "$SCRIPT_DIR/entrypoint-base-common.sh"
 # Node.js Dependencies Installation (API/Webhook pattern)
 # =====================================================
 install_dependencies() {
-    log_section "Installing Node.js Dependencies"
+    log_section "Checking Node.js Dependencies"
     
-    # Both API and webhook use the same dependency pattern
+    # Dependencies are now installed during Docker build (matching machine pattern)
     local service_dir="${SERVICE_DIR:-$(pwd)}"
     cd "$service_dir"
     
-    if [[ -f "package.json" && -f "pnpm-lock.yaml" ]]; then
-        log_info "Installing production dependencies (including workspace packages)..."
-        # Remove --ignore-workspace to allow @emp/telemetry and @emp/core workspace dependencies
-        pnpm install --prod --no-frozen-lockfile
-        log_info "✅ Dependencies installed successfully"
+    if [[ -d "node_modules" ]]; then
+        log_info "✅ Dependencies already installed during Docker build"
     else
-        log_error "❌ No package.json or pnpm-lock.yaml found in $service_dir"
+        log_error "❌ No node_modules directory found - dependencies should be installed during Docker build"
         return 1
     fi
 }

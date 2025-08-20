@@ -520,34 +520,8 @@ export abstract class OpenAIBaseConnector extends BaseConnector {
             }
           }
 
-          if (images.length === 0) {
-            // IMMEDIATE FAILURE: Job completed but no images generated
-            const noImagesMessage = `No image was generated - check that the prompt is asking for an image`;
-            
-            // Report with intelligent interpretation - this is a critical pattern for OpenAI
-            await this.reportIntelligentLog(
-              `OpenAI job ${openaiJobId} completed but no images found in output - likely prompt issue`,
-              'error',
-              'openai_no_images'
-            );
-            
-            logger.error(`❌ ${noImagesMessage}`);
-            logger.error(`   OpenAI job ${openaiJobId} completed but returned no images`);
-            logger.error(`   Response has output: ${!!statusResponse.output}`);
-            logger.error(`   Response output type: ${Array.isArray(statusResponse.output) ? 'array' : typeof statusResponse.output}`);
-            // Sanitize output for error logging
-            const sanitizedOutput = statusResponse.output && Array.isArray(statusResponse.output) 
-              ? statusResponse.output.map(item => {
-                  if ('result' in item && item.result && typeof item.result === 'string' && item.result.length > 100) {
-                    return { ...item, result: `<base64 data: ${item.result.length} chars>` };
-                  }
-                  return item;
-                })
-              : statusResponse.output;
-            logger.error(`   Response output structure: ${JSON.stringify(sanitizedOutput, null, 2)}`);
-            
-            throw new Error(noImagesMessage);
-          }
+          // Return images array - let specific connectors validate as needed
+          // Base class doesn't assume all responses need images
 
           // Report successful image extraction
           await this.reportIntelligentLog(

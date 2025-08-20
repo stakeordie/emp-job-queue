@@ -50,7 +50,6 @@ export const ApiEnvInterface = {
     "LOG_LEVEL": "API_LOG_LEVEL"
   },
   defaults: {
-    "LOG_LEVEL": "info",
-    "CORS_ORIGINS": "*"
+    "SERVICE_TYPE": "api"
   }
 };

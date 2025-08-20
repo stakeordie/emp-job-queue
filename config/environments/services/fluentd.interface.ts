@@ -15,6 +15,7 @@ export const FluentdEnvInterface = {
   },
   
   defaults: {
-    "FLUENTD_COMPANION_PORT": 3335
+    "FLUENTD_COMPANION_PORT": 3335,
+    "SERVICE_TYPE":"fluentd"
   }
 };

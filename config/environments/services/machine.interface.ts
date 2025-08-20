@@ -39,7 +39,8 @@ export const MachineEnvInterface = {
     "FLUENTD_SECURE": "TELEMETRY_FLUENTD_SECURE",
 
     "WORKER_COMFYUI_REMOTE_SECURE":"COMFYUI_REMOTE_SECURE",
-    "COMFYUI_BASE_PORT":"COMFYUI_BASE_PORT"
+    "COMFYUI_BASE_PORT":"COMFYUI_BASE_PORT",
+    "DISABLE_ENV_ENCRYPTION":"MACHINE_DISABLE_ENV_ENCRYPTION"
 
   },
   
@@ -97,6 +98,8 @@ export const MachineEnvInterface = {
   defaults: {
     // Worker configuration (passed to workers)
     "WORKER_MAX_CONCURRENT_JOBS": "1",
-    "WORKER_HEALTH_CHECK_INTERVAL": "30"
+    "WORKER_HEALTH_CHECK_INTERVAL": "30",
+
+    "SERVICE_TYPE":"machine"
   }
 };

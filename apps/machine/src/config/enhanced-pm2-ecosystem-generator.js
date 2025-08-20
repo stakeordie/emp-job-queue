@@ -566,6 +566,15 @@ This container will now exit. Please fix the deployment configuration and restar
         } else if (serviceConfig.installer === 'SimulationService') {
           console.log(`✅ [FIXED-SERVICE-DEBUG ${new Date().toISOString()}] Creating Simulation app for instance ${i}`);
           apps.push(this.createSimulationApp(actualServiceName, i));
+        } else if (serviceConfig.installer === null) {
+          console.log(`✅ [FIXED-SERVICE-DEBUG ${new Date().toISOString()}] Creating minimal service app for null installer (${actualServiceName}) instance ${i}`);
+          // Handle null installer services (like simulation-websocket)
+          if (actualServiceName.includes('simulation-websocket')) {
+            apps.push(this.createSimulationWebSocketApp(actualServiceName, i));
+          } else {
+            // Generic null installer handler - minimal service with no specific installer logic
+            apps.push(this.createMinimalServiceApp(actualServiceName, i));
+          }
         } else {
           console.error(`❌ [FIXED-SERVICE-DEBUG ${new Date().toISOString()}] Unknown service installer: "${serviceConfig.installer}"`);
           throw new Error(`Unknown service installer: ${serviceConfig.installer}. Add support in generateServiceApps.`);
@@ -699,6 +708,41 @@ This container will now exit. Please fix the deployment configuration and restar
         SIMULATION_WS_STEPS: '10',
         SIMULATION_WS_PROGRESS_INTERVAL_MS: '300'
         // GPU isolation handled via command line arguments, not environment variables
+      }
+    };
+  }
+
+  /**
+   * Create minimal service PM2 app for null installer services
+   */
+  createMinimalServiceApp(serviceName, instanceIndex = 0) {
+    const name = `${serviceName}-${instanceIndex}`;
+    const port = 8300 + instanceIndex; // Default port range starting at 8300
+    
+    return {
+      name,
+      script: 'src/services/standalone-wrapper.js',
+      args: [serviceName, `--index=${instanceIndex}`],
+      cwd: '/service-manager',
+      instances: 1,
+      autorestart: true,
+      max_restarts: 10,
+      min_uptime: '5s',
+      max_memory_restart: '256M',
+      restart_delay: 2000,
+      error_file: `/workspace/logs/${name}-error.log`,
+      out_file: `/workspace/logs/${name}-out.log`,
+      log_file: `/workspace/logs/${name}-combined.log`,
+      merge_logs: true,
+      env: {
+        ...process.env, // Pass through ALL environment variables
+        
+        // Override/add specific values
+        NODE_ENV: 'production',
+        LOG_LEVEL: 'info',
+        PORT: port.toString(),
+        HOST: '0.0.0.0'
+        // No specific installer logic - minimal service
       }
     };
   }

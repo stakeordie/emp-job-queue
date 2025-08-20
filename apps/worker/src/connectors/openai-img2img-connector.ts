@@ -362,6 +362,12 @@ export class OpenAIImg2ImgConnector extends OpenAIBaseConnector {
       
       logger.info(`Background polling successful for OpenAI img2img job ${openaiJobId} -> job ${jobData.id}`);
       
+      // Validate that the response contains images using MessageBus pattern
+      if (!pollResult.images || !Array.isArray(pollResult.images) || pollResult.images.length === 0) {
+        // This triggers MessageBus pattern matching: should_terminate = true, recoverable = false
+        throw new Error(`No image was generated - check that the prompt is asking for an image`);
+      }
+      
       const imageBase64 = pollResult.images[0];
 
       if (progressCallback) {

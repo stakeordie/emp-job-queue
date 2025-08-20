@@ -44,5 +44,6 @@ export const WebhookServiceEnvInterface = {
   },
   
   defaults: {
+    "SERVICE_TYPE":"webhook"
   }
 };

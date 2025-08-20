@@ -322,21 +322,14 @@ class MachineCompose {
           process.exit(1);
         }
       } else {
-        // Production hosting emulation mode: Only pass the decryption key
-        // The container will decrypt env.encrypted file internally (like production hosts)
+        // DEFAULT MODE: Pass all environment variables (restored original behavior)
         const allEnvVars = this.loadAllEnvVars(envName);
-        const decryptKey = allEnvVars.ENV_ENCRYPT_KEY;
+        Object.entries(allEnvVars).forEach(([key, value]) => {
+          cmd.push('-e', `${key}=${value}`);
+        });
         
-        if (decryptKey) {
-          cmd.push('-e', `EMP_ENV_DECRYPT_KEY=${decryptKey}`);
-          console.log(chalk.blue(`🔐 PRODUCTION MODE: Only passing EMP_ENV_DECRYPT_KEY (${Object.keys(allEnvVars).length} vars will be decrypted internally)`));
-          console.log(chalk.dim(`  Container will decrypt env.encrypted file during startup`));
-          console.log(chalk.dim(`  This matches production hosting environments (Railway, VAST.ai, etc.)`));
-        } else {
-          console.log(chalk.red(`❌ No ENV_ENCRYPT_KEY found in ${envName} environment`));
-          console.log(chalk.yellow(`   This environment may not be encrypted. Use docker-compose commands instead.`));
-          process.exit(1);
-        }
+        console.log(chalk.blue(`🌐 Added ${Object.keys(allEnvVars).length} environment variables as -e flags`));
+        console.log(chalk.dim(`  Environment variables: ${Object.keys(allEnvVars).join(', ')}`));
       }
     }
     

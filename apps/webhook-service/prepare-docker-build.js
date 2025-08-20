@@ -98,10 +98,21 @@ const copyWorkspacePackage = (packageName) => {
       fs.mkdirSync(targetDir, { recursive: true });
     }
     
-    // Copy package.json
+    // Copy package.json and convert workspace dependencies
     const packageJsonPath = path.join(sourceDir, 'package.json');
     if (fs.existsSync(packageJsonPath)) {
       const packageJsonContent = JSON.parse(fs.readFileSync(packageJsonPath, 'utf8'));
+      
+      // Convert workspace dependencies to file references (matching machine pattern)
+      if (packageJsonContent.dependencies) {
+        Object.keys(packageJsonContent.dependencies).forEach(key => {
+          if (packageJsonContent.dependencies[key].startsWith('workspace:')) {
+            const packageName = key.replace('@emp/', '');
+            packageJsonContent.dependencies[key] = `file:../${packageName}`;
+          }
+        });
+      }
+      
       fs.writeFileSync(path.join(targetDir, 'package.json'), JSON.stringify(packageJsonContent, null, 2));
     }
     

@@ -31,5 +31,6 @@ export const MonitorEnvInterface = {
     "LOG_LEVEL": "MONITOR_LOG_LEVEL",
   },
   defaults: {
+    "SERVICE_TYPE": "monitor"
   }
 };
