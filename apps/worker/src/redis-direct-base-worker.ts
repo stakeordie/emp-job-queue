@@ -756,8 +756,9 @@ export class RedisDirectBaseWorker {
     } else {
       // Job failed - use connector's error message or fallback
       const errorMessage = result.error || `Job processing failed for service: ${job.service_required}`;
-      logger.error(`Job ${job.id} failed: ${errorMessage}`);
-      await this.failJob(job.id, errorMessage);
+      const canRetry = (result as any).shouldRetry !== false; // Default to true unless explicitly false
+      logger.error(`Job ${job.id} failed: ${errorMessage} (retryable: ${canRetry})`);
+      await this.failJob(job.id, errorMessage, canRetry);
     }
   }
 

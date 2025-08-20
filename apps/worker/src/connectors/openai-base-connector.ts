@@ -12,6 +12,39 @@ import {
   EnhancedProgressReporter,
 } from '@emp/core';
 
+// New resolution architecture interfaces
+export interface JobResolutionResult {
+  isTerminal: boolean;
+  type?: string;
+  data?: any;
+}
+
+export interface JobResolutionValidator {
+  (response: any): JobResolutionResult;
+}
+
+export interface JobResolutionStrategy {
+  terminalStates: string[];
+  validator: JobResolutionValidator;
+}
+
+export interface JobResult {
+  success?: boolean;
+  status?: string;
+  data?: any;
+  error?: string;
+  shouldRetry?: boolean;
+  processing_time_ms?: number;
+  metadata?: any;
+}
+
+export interface ResolvedJob {
+  success: boolean;
+  data?: any;
+  error?: string;
+  shouldRetry?: boolean;
+}
+
 export abstract class OpenAIBaseConnector extends BaseConnector {
   protected client: OpenAI | null = null;
   protected apiKey: string;
@@ -375,6 +408,9 @@ export abstract class OpenAIBaseConnector extends BaseConnector {
    * Poll OpenAI job status until completion
    * Shared polling logic for all OpenAI background jobs
    * Updated: Dynamic polling intervals and indefinite polling for queued/in-progress jobs
+   * 
+   * @deprecated Use pollForJobResolution and resolveJob for better separation of concerns
+   * FLAGGED FOR DELETION - kept for backward compatibility
    */
   protected async pollForJobCompletion(
     openaiJobId: string, 
@@ -617,6 +653,141 @@ export abstract class OpenAIBaseConnector extends BaseConnector {
         // Wait before retrying
         await new Promise(resolve => setTimeout(resolve, 2000));
       }
+    }
+  }
+
+  /**
+   * NEW ARCHITECTURE: Poll for job resolution (any terminal state)
+   * Polls until job reaches a terminal state, returns raw result
+   */
+  protected async pollForJobResolution(
+    openaiJobId: string,
+    jobId: string,
+    strategy: JobResolutionStrategy,
+    progressCallback?: ProgressCallback,
+    progressStartPercent: number = 15,
+    progressEndPercent: number = 85
+  ): Promise<JobResult> {
+    const startTime = Date.now();
+    let pollAttempts = 0;
+    let lastStatus = 'unknown';
+    let totalElapsedTime = 0;
+
+    await this.reportIntelligentLog(
+      `Starting job resolution polling for OpenAI job ${openaiJobId}`,
+      'info',
+      'openai_polling'
+    );
+
+    while (true) {
+      pollAttempts++;
+      const pollStartTime = Date.now();
+      totalElapsedTime = pollStartTime - startTime;
+
+      try {
+        // Get job status from OpenAI
+        const statusResponse = await this.client!.responses.retrieve(openaiJobId);
+        
+        // Log polling attempt
+        await this.logOpenAIResponse(
+          200,
+          statusResponse,
+          Date.now() - pollStartTime,
+          `Resolution poll ${pollAttempts} for OpenAI job ${openaiJobId} (${Math.round(totalElapsedTime / 1000)}s elapsed)`
+        );
+
+        // Check if service defines this as terminal
+        const resolutionResult = strategy.validator(statusResponse);
+        
+        if (resolutionResult.isTerminal) {
+          await this.reportIntelligentLog(
+            `OpenAI job ${openaiJobId} reached terminal state: ${resolutionResult.type} after ${pollAttempts} polls`,
+            'info',
+            'openai_resolution'
+          );
+
+          return {
+            status: statusResponse.status,
+            data: statusResponse,
+            metadata: {
+              resolutionType: resolutionResult.type,
+              pollAttempts,
+              totalElapsedTime,
+              openaiJobId
+            }
+          };
+        }
+
+        // Update progress if status changed
+        if (statusResponse.status !== lastStatus) {
+          lastStatus = statusResponse.status;
+          const progressPercent = Math.min(progressEndPercent, 
+            progressStartPercent + Math.min(50, (totalElapsedTime / 60000) * 30)
+          );
+          
+          if (progressCallback) {
+            await progressCallback({
+              job_id: jobId,
+              progress: progressPercent,
+              message: `OpenAI job ${statusResponse.status} (poll ${pollAttempts}, ${Math.round(totalElapsedTime / 1000)}s elapsed)`,
+              current_step: 'polling_resolution',
+              metadata: {
+                openai_job_id: openaiJobId,
+                openai_status: statusResponse.status,
+                poll_attempts: pollAttempts,
+                elapsed_time_ms: totalElapsedTime
+              },
+            });
+          }
+        }
+
+        // Continue polling with dynamic intervals
+        const slowPollStatuses = ['queued', 'pending', 'submitted'];
+        const pollInterval = slowPollStatuses.includes(statusResponse.status.toLowerCase()) ? 5000 : 3000;
+        
+        await new Promise(resolve => setTimeout(resolve, pollInterval));
+
+      } catch (error) {
+        await this.reportIntelligentLog(
+          `Polling error for OpenAI job ${openaiJobId}: ${error.message}`,
+          'error',
+          'openai_polling_error'
+        );
+        throw error;
+      }
+    }
+  }
+
+  /**
+   * NEW ARCHITECTURE: Resolve job based on result and service-specific logic
+   * Takes a job result and applies business logic to determine outcome
+   */
+  protected async resolveJob(
+    jobResult: JobResult, 
+    resolver: (result: JobResult) => ResolvedJob | Promise<ResolvedJob>
+  ): Promise<ResolvedJob> {
+    try {
+      const resolution = await resolver(jobResult);
+      
+      await this.reportIntelligentLog(
+        `Job resolved: ${resolution.success ? 'success' : 'failure'} - ${resolution.error || 'completed'}`,
+        resolution.success ? 'info' : 'error',
+        'job_resolution'
+      );
+
+      return resolution;
+    } catch (error) {
+      await this.reportIntelligentLog(
+        `Job resolution failed: ${error.message}`,
+        'error',
+        'job_resolution_error'
+      );
+
+      return {
+        success: false,
+        error: error.message,
+        shouldRetry: false
+      };
     }
   }
 

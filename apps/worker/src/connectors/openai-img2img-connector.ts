@@ -432,7 +432,13 @@ export class OpenAIImg2ImgConnector extends OpenAIBaseConnector {
       });
 
       if (!resolvedJob.success) {
-        throw new Error(resolvedJob.error);
+        // Return failed result instead of throwing - let base worker handle it
+        return {
+          success: false,
+          error: resolvedJob.error,
+          shouldRetry: resolvedJob.shouldRetry,
+          processing_time_ms: 0 // Will be calculated by base class
+        } as any;
       }
 
       // REST OF CODE - RESTORED
