@@ -742,13 +742,23 @@ export class RedisDirectBaseWorker {
       payload: transformedPayload,
       requirements: job.requirements,
     };
+    
+    // Process the job - the connector's resolver will handle completion
+    // The resolver is responsible for calling completeJob or failJob
     const result = await connector.processJob(jobData, onProgress);
-
+    
+    // IMPORTANT: We do NOT automatically complete the job here
+    // The connector's resolver must explicitly complete/fail the job
+    // This ensures proper validation and error handling per service type
+    
     // Small delay to ensure final progress updates are written to Redis
     await new Promise(resolve => setTimeout(resolve, 100));
-
-    // Complete the job
-    await this.completeJob(job.id, result);
+    
+    // Only log the result, don't complete
+    logger.info(`Connector processed job ${job.id} with result:`, {
+      success: result.success,
+      hasError: !!result.error
+    });
   }
 
   private async completeJob(jobId: string, result: unknown): Promise<void> {

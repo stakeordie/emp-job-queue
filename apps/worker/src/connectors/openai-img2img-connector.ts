@@ -382,22 +382,18 @@ export class OpenAIImg2ImgConnector extends OpenAIBaseConnector {
         80
       );
 
-      // TEST: Skip resolver entirely - job should remain orphaned in processing state
-      logger.warn(`🧪 TEST MODE: Skipping resolver for job ${jobData.id} - job will remain in processing state`);
-      logger.warn(`🧪 OpenAI returned status: ${jobResult.status}`);
-      logger.warn(`🧪 Job should stay orphaned to prove only resolver can end jobs`);
-      
-      // Return empty success to avoid errors but without calling resolver
+      // TEMPORARY: Return success to test base worker change
+      // Jobs should stay orphaned in processing state
       return {
         success: true,
         data: {
-          test: 'SKIPPED_RESOLVER',
-          message: 'Job orphaned in processing state as test'
+          test: 'BASE_WORKER_TEST',
+          message: 'Testing if base worker no longer auto-completes jobs'
         },
         processing_time_ms: 0
       };
-      
-      /* ORIGINAL CODE - COMMENTED OUT FOR TEST
+
+      /* ORIGINAL CODE - RESTORE AFTER CONFIRMING BASE WORKER FIX
       // NEW ARCHITECTURE: Resolve the job result with image-specific business logic
       const resolvedJob = await this.resolveJob(jobResult, (result) => {
         const openaiResponse = result.data;
