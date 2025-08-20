@@ -1,6 +1,6 @@
 {
   "name": "emp-ai-backend",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "EmProps AI Backend - Distributed AI workload orchestration with specialized machine pools",
   "private": true,
   "type": "module",
