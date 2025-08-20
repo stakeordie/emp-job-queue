@@ -382,18 +382,7 @@ export class OpenAIImg2ImgConnector extends OpenAIBaseConnector {
         80
       );
 
-      // TEMPORARY: Return success to test base worker change
-      // Jobs should stay orphaned in processing state
-      return {
-        success: true,
-        data: {
-          test: 'BASE_WORKER_TEST',
-          message: 'Testing if base worker no longer auto-completes jobs'
-        },
-        processing_time_ms: 0
-      };
-
-      /* ORIGINAL CODE - RESTORE AFTER CONFIRMING BASE WORKER FIX
+      // RESTORED: Use resolver to determine job success/failure
       // NEW ARCHITECTURE: Resolve the job result with image-specific business logic
       const resolvedJob = await this.resolveJob(jobResult, (result) => {
         const openaiResponse = result.data;
@@ -445,9 +434,8 @@ export class OpenAIImg2ImgConnector extends OpenAIBaseConnector {
       if (!resolvedJob.success) {
         throw new Error(resolvedJob.error);
       }
-      */
 
-      /* REST OF CODE ALSO COMMENTED FOR TEST
+      // REST OF CODE - RESTORED
       logger.info(`Image generation resolved successfully for job ${jobData.id} -> OpenAI job ${openaiJobId}`);
       
       const imageBase64 = resolvedJob.data.images[0];
@@ -544,7 +532,6 @@ export class OpenAIImg2ImgConnector extends OpenAIBaseConnector {
         },
         processing_time_ms: 0, // Will be calculated by base class
       };
-      */ // END OF COMMENTED TEST CODE
     } catch (error) {
       logger.error(`OpenAI img2img processing failed: ${error.message}`);
       throw error;
