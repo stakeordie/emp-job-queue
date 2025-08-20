@@ -357,18 +357,86 @@ export class OpenAIImg2ImgConnector extends OpenAIBaseConnector {
         });
       }
 
-      // Poll for job completion (use base class method with custom progress range)
-      const pollResult = await this.pollForJobCompletion(openaiJobId, jobData.id, progressCallback, 50, 80);
-      
-      logger.info(`Background polling successful for OpenAI img2img job ${openaiJobId} -> job ${jobData.id}`);
-      
-      // Validate that the response contains images using MessageBus pattern
-      if (!pollResult.images || !Array.isArray(pollResult.images) || pollResult.images.length === 0) {
-        // This triggers MessageBus pattern matching: should_terminate = true, recoverable = false
-        throw new Error(`No image was generated - check that the prompt is asking for an image`);
+      // NEW ARCHITECTURE: Poll for job resolution with image-specific terminal state logic
+      const jobResult = await this.pollForJobResolution(
+        openaiJobId,
+        jobData.id,
+        {
+          terminalStates: ['completed', 'failed', 'cancelled'],
+          validator: (response) => {
+            // Image generation specific terminal state detection
+            if (response.status === 'completed') {
+              return { 
+                isTerminal: true, 
+                type: response.output && response.output.length > 0 ? 'has_output' : 'no_output'
+              };
+            }
+            if (['failed', 'cancelled'].includes(response.status)) {
+              return { isTerminal: true, type: response.status };
+            }
+            return { isTerminal: false };
+          }
+        },
+        progressCallback,
+        50,
+        80
+      );
+
+      // NEW ARCHITECTURE: Resolve the job result with image-specific business logic
+      const resolvedJob = await this.resolveJob(jobResult, (result) => {
+        const openaiResponse = result.data;
+        
+        // Extract images from OpenAI response
+        const images: string[] = [];
+        if (openaiResponse.output && Array.isArray(openaiResponse.output)) {
+          for (const output of openaiResponse.output) {
+            if (output.type === 'image_generation_call' && output.result) {
+              images.push(output.result);
+            }
+          }
+        }
+
+        // Image generation validation
+        if (images.length === 0) {
+          // Capture what OpenAI actually returned instead of images
+          let actualResponse = 'No output provided';
+          
+          if (openaiResponse.output && Array.isArray(openaiResponse.output)) {
+            const nonImageOutputs = openaiResponse.output
+              .filter((output: any) => output.type !== 'image_generation_call')
+              .map((output: any) => `${output.type}: ${output.result || JSON.stringify(output)}`)
+              .join(', ');
+            
+            if (nonImageOutputs) {
+              actualResponse = nonImageOutputs;
+            } else {
+              // Show what types we got instead
+              const outputTypes = openaiResponse.output.map((o: any) => o.type).join(', ');
+              actualResponse = `Expected image_generation_call but got: [${outputTypes}]`;
+            }
+          }
+          
+          return {
+            success: false,
+            error: 'No image was generated - check that the prompt is asking for an image',
+            actualResponse, // Capture what we actually received
+            shouldRetry: false
+          };
+        }
+
+        return {
+          success: true,
+          data: { images, metadata: result.metadata }
+        };
+      });
+
+      if (!resolvedJob.success) {
+        throw new Error(resolvedJob.error);
       }
+
+      logger.info(`Image generation resolved successfully for job ${jobData.id} -> OpenAI job ${openaiJobId}`);
       
-      const imageBase64 = pollResult.images[0];
+      const imageBase64 = resolvedJob.data.images[0];
 
       if (progressCallback) {
         await progressCallback({
@@ -378,8 +446,8 @@ export class OpenAIImg2ImgConnector extends OpenAIBaseConnector {
           current_step: 'processing',
           metadata: {
             openai_job_id: openaiJobId,
-            poll_attempts: pollResult.pollAttempts,
-            total_poll_time_ms: pollResult.totalPollTimeMs
+            poll_attempts: resolvedJob.data.metadata?.pollAttempts || 0,
+            total_poll_time_ms: resolvedJob.data.metadata?.totalElapsedTime || 0
           },
         });
       }
@@ -437,9 +505,9 @@ export class OpenAIImg2ImgConnector extends OpenAIBaseConnector {
             save_assets: saveAssets,
             model_used: model,
             openai_job_id: openaiJobId,
-            poll_attempts: pollResult.pollAttempts,
-            total_poll_time_ms: pollResult.totalPollTimeMs,
-            approach: 'background_polling'
+            poll_attempts: resolvedJob.data.metadata?.pollAttempts || 0,
+            total_poll_time_ms: resolvedJob.data.metadata?.totalElapsedTime || 0,
+            approach: 'resolution_polling'
           },
         });
       }
@@ -456,9 +524,9 @@ export class OpenAIImg2ImgConnector extends OpenAIBaseConnector {
           reference_images_count: images.length,
           original_prompt: prompt,
           openai_job_id: openaiJobId,
-          poll_attempts: pollResult.pollAttempts,
-          total_poll_time_ms: pollResult.totalPollTimeMs,
-          approach: 'background_polling'
+          poll_attempts: resolvedJob.data.metadata?.pollAttempts || 0,
+          total_poll_time_ms: resolvedJob.data.metadata?.totalElapsedTime || 0,
+          approach: 'resolution_polling'
         },
         processing_time_ms: 0, // Will be calculated by base class
       };
