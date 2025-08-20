@@ -403,15 +403,28 @@ export class OpenAIImg2ImgConnector extends OpenAIBaseConnector {
           let actualResponse = 'No output provided';
           
           if (openaiResponse.output && Array.isArray(openaiResponse.output)) {
-            const nonImageOutputs = openaiResponse.output
-              .filter((output: any) => output.type !== 'image_generation_call')
-              .map((output: any) => `${output.type}: ${output.result || JSON.stringify(output)}`)
-              .join(', ');
+            // Look for text content in the response
+            let textContent = '';
+            for (const output of openaiResponse.output) {
+              if (output.type === 'message' && output.content) {
+                for (const content of output.content) {
+                  if (content.type === 'output_text' && content.text) {
+                    textContent = content.text;
+                    break;
+                  }
+                }
+              }
+            }
             
-            if (nonImageOutputs) {
-              actualResponse = nonImageOutputs;
+            // Also check for output_text field at root level
+            if (!textContent && openaiResponse.output_text) {
+              textContent = openaiResponse.output_text;
+            }
+            
+            if (textContent) {
+              // Include the actual text that was generated instead of an image
+              actualResponse = `Generated text instead of image: "${textContent.substring(0, 500)}${textContent.length > 500 ? '...' : ''}"`;
             } else {
-              // Show what types we got instead
               const outputTypes = openaiResponse.output.map((o: any) => o.type).join(', ');
               actualResponse = `Expected image_generation_call but got: [${outputTypes}]`;
             }
@@ -433,11 +446,20 @@ export class OpenAIImg2ImgConnector extends OpenAIBaseConnector {
 
       if (!resolvedJob.success) {
         // Return failed result instead of throwing - let base worker handle it
+        // Include the actual response in the error for webhook visibility
+        const actualResponse = (resolvedJob as any).actualResponse;
+        const errorWithDetails = actualResponse 
+          ? `${resolvedJob.error}. ${actualResponse}`
+          : resolvedJob.error;
+          
         return {
           success: false,
-          error: resolvedJob.error,
+          error: errorWithDetails,
           shouldRetry: resolvedJob.shouldRetry,
-          processing_time_ms: 0 // Will be calculated by base class
+          processing_time_ms: 0, // Will be calculated by base class
+          metadata: {
+            actualResponse: actualResponse
+          }
         } as any;
       }
 
