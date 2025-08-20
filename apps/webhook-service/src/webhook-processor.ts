@@ -267,6 +267,20 @@ export class WebhookProcessor extends EventEmitter {
         type: channel, // Use channel name as event type
       } as WorkflowJobEvent;
 
+      // Log all job_failed events for debugging workflow metadata
+      if (event.type === 'job_failed') {
+        logger.info(`📡 [WEBHOOK-DEBUG] Webhook processor received job_failed event:`, {
+          channel,
+          jobId: event.job_id,
+          hasWorkflowId: !!event.workflow_id,
+          workflowId: event.workflow_id,
+          stepNumber: event.step_number || event.current_step,
+          totalSteps: event.total_steps,
+          eventKeys: Object.keys(event),
+          rawEventData: eventData
+        });
+      }
+
       // Only log workflow-related events
       if (event.workflow_id) {
         logger.info(
@@ -364,6 +378,14 @@ export class WebhookProcessor extends EventEmitter {
       logger.info(
         `❌ WORKFLOW-TRACK: Step ${stepNumber} failed for workflow ${workflowId} (${workflow.failedSteps.size} failed)`
       );
+      logger.info(`📡 [WEBHOOK-DEBUG] Received job_failed event for workflow processing:`, {
+        jobId: event.job_id,
+        workflowId: event.workflow_id,
+        stepNumber: event.step_number,
+        totalSteps: event.total_steps,
+        hasWorkflowMetadata: !!(event.workflow_id && event.step_number),
+        eventKeys: Object.keys(event)
+      });
     }
 
     // Check for workflow completion

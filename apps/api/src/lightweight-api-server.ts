@@ -1781,6 +1781,10 @@ export class LightweightAPIServer {
     await this.progressSubscriber.subscribe('complete_job');
     logger.info('✅ Subscribed to: complete_job');
 
+    // Subscribe to job failure events
+    await this.progressSubscriber.subscribe('job_failed');
+    logger.info('✅ Subscribed to: job_failed');
+
     // Subscribe to unified machine status updates (replaces fragmented channels)
     logger.info('🔌 Subscribing to unified machine status channel: machine:status:*');
     await this.progressSubscriber.psubscribe('machine:status:*');
@@ -1868,6 +1872,23 @@ export class LightweightAPIServer {
           }, 100); // 100ms delay to allow pending progress updates to be processed
         } catch (error) {
           logger.error('Error processing job completion message:', error);
+        }
+      } else if (channel === 'job_failed') {
+        try {
+          const failureData = JSON.parse(message);
+          logger.info(
+            `❌ Received job failure: job ${failureData.job_id} failed on worker ${failureData.worker_id}: ${failureData.error}`
+          );
+
+          // Add a small delay before broadcasting failure to ensure any pending progress updates are processed first
+          setTimeout(async () => {
+            await this.broadcastFailure(failureData.job_id, failureData);
+            logger.info(
+              `📢 Broadcasted job failure event to clients and monitors: ${failureData.job_id}`
+            );
+          }, 100); // 100ms delay to allow pending progress updates to be processed
+        } catch (error) {
+          logger.error('Error processing job failure message:', error);
         }
       }
     });
@@ -2369,6 +2390,88 @@ export class LightweightAPIServer {
         }
       }
       // Clean up job-to-client mapping for completed jobs
+      this.jobToClientMap.delete(jobId);
+    }
+  }
+
+  private async broadcastFailure(
+    jobId: string,
+    failureData: Record<string, unknown>
+  ): Promise<void> {
+    // Get job details to check for workflow information
+    const jobData = await this.redis.hgetall(`job:${jobId}`);
+    
+    // Handle workflow step failure tracing
+    if (jobData.workflow_id && jobData.step_number && jobData.total_steps) {
+      const workflowId = jobData.workflow_id;
+      const stepNumber = parseInt(jobData.step_number);
+      const totalSteps = parseInt(jobData.total_steps);
+      
+      // Get workflow context
+      const workflowContext = this.workflowTraceContexts.get(workflowId);
+      if (workflowContext) {
+        // Trace workflow step failure
+        await WorkflowInstrumentation.stepFail({
+          workflowId,
+          stepNumber,
+          jobId,
+          error: failureData.error as string,
+          failureType: 'job_processing_error',
+        }, {
+          traceId: workflowContext.traceId,
+          spanId: workflowContext.spanId,
+        });
+        
+        // Mark the entire workflow as failed
+        await WorkflowInstrumentation.complete({
+          workflowId,
+          totalSteps,
+          completedSteps: stepNumber - 1, // Steps completed before this failure
+          duration: Date.now() - workflowContext.startedAt,
+          status: 'failed',
+        }, {
+          traceId: workflowContext.traceId,
+          spanId: workflowContext.spanId,
+        });
+        
+        // Clean up workflow context
+        this.workflowTraceContexts.delete(workflowId);
+        logger.info(`💥 WORKFLOW FAILED: ${workflowId} at step ${stepNumber}/${totalSteps} - ${failureData.error}`);
+      }
+    }
+
+    // Create failure event for monitors
+    const jobFailedEvent: JobFailedEvent = {
+      type: 'job_failed',
+      job_id: jobId,
+      worker_id: failureData.worker_id as string,
+      error: failureData.error as string,
+      failed_at: failureData.timestamp as number,
+      timestamp: failureData.timestamp as number,
+    };
+
+    // Broadcast to both monitors and clients via EventBroadcaster
+    this.eventBroadcaster.broadcast(jobFailedEvent);
+
+    // Broadcast to the specific client that submitted this job
+    this.broadcastJobEventToClient(jobId, jobFailedEvent);
+
+    // Also broadcast to the client that submitted this job
+    const submittingClientId = this.jobToClientMap.get(jobId);
+    if (submittingClientId) {
+      const clientConnection = this.clientConnections.get(submittingClientId);
+      if (clientConnection && clientConnection.ws.readyState === clientConnection.ws.OPEN) {
+        try {
+          logger.debug(`Sent failure update to job submitter client ${submittingClientId}`);
+        } catch (error) {
+          logger.error(
+            `Failed to send failure to submitting client ${submittingClientId}:`,
+            error
+          );
+          this.clientConnections.delete(submittingClientId);
+        }
+      }
+      // Clean up job-to-client mapping for failed jobs
       this.jobToClientMap.delete(jobId);
     }
   }

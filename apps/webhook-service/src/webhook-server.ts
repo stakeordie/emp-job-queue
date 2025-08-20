@@ -46,34 +46,22 @@ export class WebhookServer {
       cors({
         origin: (origin, callback) => {
           try {
-            logger.info('🔍 CORS callback triggered', {
-              origin,
-              corsOrigins,
-              hasOrigin: !!origin,
-              corsOriginsType: typeof corsOrigins,
-              corsOriginsArray: Array.isArray(corsOrigins),
-            });
-
             // Allow requests with no origin (like mobile apps or curl requests)
             if (!origin) {
-              logger.info('✅ CORS: Allowing request with no origin');
               return callback(null, true);
             }
 
             // Check if origin is explicitly allowed
             if (corsOrigins.includes('*')) {
-              logger.info('✅ CORS: Allowing all origins (*)', { origin });
               return callback(null, true);
             }
 
             if (corsOrigins.includes(origin)) {
-              logger.info('✅ CORS: Allowing explicitly listed origin', { origin });
               return callback(null, true);
             }
 
             // Special case: allow localhost variants for development
             if (origin.includes('localhost') || origin.includes('127.0.0.1')) {
-              logger.info('✅ CORS: Allowing localhost origin for development', { origin });
               return callback(null, true);
             }
 

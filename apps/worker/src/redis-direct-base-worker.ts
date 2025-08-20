@@ -792,19 +792,48 @@ export class RedisDirectBaseWorker {
 
   private async failJob(jobId: string, error: string, canRetry = true): Promise<void> {
     try {
+      logger.info(`🔥 [DEBUG] Base worker failJob called: jobId=${jobId}, canRetry=${canRetry}, error="${error}"`);
+      
       // Get job info before failing to update connector status
       const job = this.currentJobs.get(jobId);
 
+      logger.info(`🔥 [DEBUG] About to call redisClient.failJob with canRetry=${canRetry}`);
       await this.redisClient.failJob(jobId, error, canRetry);
+      logger.info(`🔥 [DEBUG] redisClient.failJob completed successfully`);
       await this.finishJob(jobId);
 
       // Send job failed event to machine aggregator
       if (process.env.UNIFIED_MACHINE_STATUS === 'true' && job) {
-        await this.sendMachineEvent('job_failed', {
+        const failureEventData = {
           job_id: jobId,
           service_type: job.service_required,
           error: error,
+          // Include workflow metadata for webhook service workflow tracking
+          ...(job.workflow_id && { workflow_id: job.workflow_id }),
+          ...(job.step_number && { step_number: job.step_number }),
+          ...(job.total_steps && { total_steps: job.total_steps }),
+          ...(job.workflow_priority && { workflow_priority: job.workflow_priority }),
+          ...(job.workflow_datetime && { workflow_datetime: job.workflow_datetime }),
+        };
+        
+        logger.info(`📡 [WEBHOOK-DEBUG] Base worker sending job_failed event:`, {
+          jobId,
+          hasWorkflowId: !!job.workflow_id,
+          workflowId: job.workflow_id,
+          stepNumber: job.step_number,
+          totalSteps: job.total_steps,
+          eventData: failureEventData
         });
+        
+        // Publish directly to job_failed channel for webhook service
+        const redis = this.redisClient.getRedisConnection();
+        if (redis) {
+          await redis.publish('job_failed', JSON.stringify(failureEventData));
+        }
+        
+        logger.info(`📡 [WEBHOOK-DEBUG] Base worker job_failed event sent successfully`);
+      } else {
+        logger.info(`📡 [WEBHOOK-DEBUG] Skipping job_failed event - UNIFIED_MACHINE_STATUS=${process.env.UNIFIED_MACHINE_STATUS}, hasJob=${!!job}`);
       }
 
       // Update connector to 'error' when job fails

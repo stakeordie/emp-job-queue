@@ -903,14 +903,20 @@ export class RedisDirectWorkerClient {
    */
   async failJob(jobId: string, error: string, canRetry = true): Promise<void> {
     try {
+      logger.info(`🔥 [DEBUG] Redis client failJob called: jobId=${jobId}, canRetry=${canRetry}, error="${error}"`);
+      
       const job = await this.getJob(jobId);
       if (!job) {
         logger.warn(`Worker ${this.workerId} cannot fail job ${jobId} - not found`);
         return;
       }
 
+      logger.info(`🔥 [DEBUG] Job found: status=${job.status}, retry_count=${job.retry_count}, max_retries=${job.max_retries}`);
+      
       const newRetryCount = job.retry_count + 1;
       const shouldRetry = canRetry && newRetryCount < job.max_retries;
+      
+      logger.info(`🔥 [DEBUG] Calculated: newRetryCount=${newRetryCount}, shouldRetry=${shouldRetry} (canRetry=${canRetry} && ${newRetryCount} < ${job.max_retries})`);
 
       if (shouldRetry) {
         // Return to queue for retry
@@ -934,6 +940,7 @@ export class RedisDirectWorkerClient {
         );
       } else {
         // Permanent failure
+        logger.info(`🔥 [DEBUG] Setting job ${jobId} to FAILED status (shouldRetry=false)`);
         await this.redis.hmset(`job:${jobId}`, {
           status: JobStatus.FAILED,
           failed_at: new Date().toISOString(),
@@ -953,6 +960,7 @@ export class RedisDirectWorkerClient {
         );
         await this.redis.expire('jobs:failed', 7 * 24 * 60 * 60); // 7 days
 
+        logger.info(`🔥 [DEBUG] Job ${jobId} status updated to FAILED in Redis, stored in jobs:failed`);
         logger.info(
           `Worker ${this.workerId} permanently failed job ${jobId} after ${newRetryCount} attempts`
         );
