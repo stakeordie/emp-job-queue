@@ -126,6 +126,7 @@ export class WebhookNotificationService extends EventEmitter {
       steps: Map<number, string>; // step_number -> job_id mapping
       completedSteps: Set<number>; // completed step numbers (1-indexed)
       failedSteps: Set<number>; // failed step numbers (1-indexed)
+      stepErrors: Map<number, string>; // step_number -> error message for failed steps
       totalSteps?: number; // total steps in workflow (from job submission)
       startTime: number;
       lastUpdate: number;
@@ -336,6 +337,7 @@ export class WebhookNotificationService extends EventEmitter {
         steps: new Map(),
         completedSteps: new Set(),
         failedSteps: new Set(),
+        stepErrors: new Map(),
         startTime: now,
         lastUpdate: now,
       };
@@ -386,6 +388,10 @@ export class WebhookNotificationService extends EventEmitter {
     } else if (webhookEventType === 'job_failed' && !wasFailed) {
       workflow.failedSteps.add(effectiveStepNumber);
       workflow.completedSteps.delete(effectiveStepNumber);
+      
+      // Store the error message for this step
+      const errorMessage = (event as any).error || 'Unknown error';
+      workflow.stepErrors.set(effectiveStepNumber, errorMessage);
       logger.info('❌ [WORKFLOW COMPLETION] Step failed', {
         workflowId,
         jobId,
@@ -488,12 +494,30 @@ export class WebhookNotificationService extends EventEmitter {
         start_time: workflow.startTime,
         end_time: Date.now(),
         current_step: jobEvent.current_step,
-        step_details: Array.from(workflow.steps.entries()).map(([stepNum, stepJobId]) => ({
-          step_number: stepNum,
-          job_id: stepJobId,
-          completed: workflow.completedSteps.has(stepNum),
-          failed: workflow.failedSteps.has(stepNum),
-        })),
+        step_details: Array.from(workflow.steps.entries()).map(([stepNum, stepJobId]) => {
+          const hasError = workflow.stepErrors.has(stepNum);
+          const errorMessage = workflow.stepErrors.get(stepNum);
+          
+          const stepDetail: {
+            step_number: number;
+            job_id: string;
+            completed: boolean;
+            failed: boolean;
+            error?: string;
+          } = {
+            step_number: stepNum,
+            job_id: stepJobId,
+            completed: workflow.completedSteps.has(stepNum),
+            failed: workflow.failedSteps.has(stepNum),
+          };
+          
+          // Add error field if present
+          if (hasError && errorMessage) {
+            stepDetail.error = errorMessage;
+          }
+          
+          return stepDetail;
+        }),
       };
     }
 

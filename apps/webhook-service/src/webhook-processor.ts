@@ -385,14 +385,17 @@ export class WebhookProcessor extends EventEmitter {
       logger.info(
         `❌ WORKFLOW-TRACK: Step ${stepNumber} failed for workflow ${workflowId} (${workflow.failedSteps.size} failed)`
       );
-      logger.info(`📡 [WEBHOOK-DEBUG] Received job_failed event for workflow processing:`, {
+      logger.info(`📡 [WEBHOOK-DEBUG] STEP ERROR STORED:`, {
         jobId: event.job_id,
         workflowId: event.workflow_id,
-        stepNumber: event.step_number,
-        totalSteps: event.total_steps,
-        hasWorkflowMetadata: !!(event.workflow_id && event.step_number),
-        eventKeys: Object.keys(event),
-        errorMessage: errorMessage
+        stepNumber: stepNumber,
+        calculatedFromCurrentStep: currentStep,
+        calculatedFromEventStepNumber: event.step_number,
+        errorMessage: errorMessage,
+        stepErrorsMapSize: workflow.stepErrors.size,
+        stepErrorsEntries: Array.from(workflow.stepErrors.entries()),
+        failedStepsSet: Array.from(workflow.failedSteps),
+        completedStepsSet: Array.from(workflow.completedSteps)
       });
     }
 
@@ -491,13 +494,43 @@ export class WebhookProcessor extends EventEmitter {
           trigger_job_id: triggeringEvent.job_id,
           trigger_event_type: triggeringEvent.type,
           current_step: triggeringEvent.current_step,
-          step_details: Array.from(workflow.steps.entries()).map(([stepNum, jobId]) => ({
-            step_number: stepNum,
-            job_id: jobId,
-            completed: workflow.completedSteps.has(stepNum),
-            failed: workflow.failedSteps.has(stepNum),
-            ...(workflow.stepErrors.has(stepNum) && { error: workflow.stepErrors.get(stepNum) }),
-          })),
+          step_details: Array.from(workflow.steps.entries()).map(([stepNum, jobId]) => {
+            const hasError = workflow.stepErrors.has(stepNum);
+            const errorMessage = workflow.stepErrors.get(stepNum);
+            
+            const stepDetail: {
+              step_number: number;
+              job_id: string;
+              completed: boolean;
+              failed: boolean;
+              error?: string;
+            } = {
+              step_number: stepNum,
+              job_id: jobId,
+              completed: workflow.completedSteps.has(stepNum),
+              failed: workflow.failedSteps.has(stepNum),
+            };
+            
+            // Add error field if present
+            if (hasError && errorMessage) {
+              stepDetail.error = errorMessage;
+            }
+            
+            // Log each step detail for debugging
+            logger.info(`📡 [WEBHOOK-DEBUG] STEP DETAIL GENERATED:`, {
+              stepNum,
+              stepNumType: typeof stepNum,
+              jobId,
+              stepDetail,
+              hasErrorInMap: hasError,
+              errorFromMap: errorMessage,
+              stepErrorsMapContents: Array.from(workflow.stepErrors.entries()),
+              stepErrorsMapKeys: Array.from(workflow.stepErrors.keys()),
+              stepErrorsMapKeysTypes: Array.from(workflow.stepErrors.keys()).map(k => typeof k)
+            });
+            
+            return stepDetail;
+          }),
         },
       } as MonitorEvent;
 
