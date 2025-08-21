@@ -77,7 +77,8 @@ const config = defineConfig({
       { text: 'Planned Features', link: '/07-planned-features/' },
       { text: 'Open API', link: '/08-emprops-open-api/' },
       { text: 'Observability', link: '/09-observability/' },
-      { text: 'Notes', link: '/10-development-notes/' },
+      { text: 'Architecture', link: '/10-notes/' },
+      { text: 'Dev Notes', link: '/10-development-notes/' },
       { text: 'Prompts', link: '/prompts/' },
       { text: 'Site Map', link: '/sitemap' }
     ],
@@ -267,11 +268,21 @@ const config = defineConfig({
           text: '10. Development Notes',
           items: [
             { text: 'Overview', link: '/10-development-notes/' },
+            { text: 'Development → Production Debugging Strategy 🚀', link: '/10-development-notes/development-to-production-debugging-strategy' },
             { text: 'ComfyUI Startup Flow ✨', link: '/10-development-notes/comfyui-startup-flow' },
             { text: '[2025-08-17] Unified Telemetry Client Architecture', link: '/10-development-notes/2025-08-17-unified-telemetry-client-architecture' },
             { text: '[2025-01-08] Architecture Audit & Refactoring Plan', link: '/10-development-notes/2025-01-08-architecture-audit' },
             { text: '[2025-01-08] Error Handling Architecture Analysis', link: '/10-development-notes/2025-01-08-error-handling-architecture-analysis' },
             { text: '[2025-01-08] Active Jobs Display Bug Fix', link: '/10-development-notes/2025-01-08-active-jobs-display-bug-fix' }
+          ]
+        }
+      ],
+      '/10-notes/': [
+        {
+          text: '10. Architecture Notes',
+          items: [
+            { text: 'Overview', link: '/10-notes/' },
+            { text: '[2025-08-20] API Service Refactor Plan', link: '/10-notes/2025-08-20-api-service-refactor-plan' }
           ]
         }
       ],

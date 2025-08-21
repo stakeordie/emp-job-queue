@@ -203,6 +203,9 @@ async function main() {
   logger.info('STEP 6-10: PM2 Ecosystem Generation - Starting...');
   await generatePM2EcosystemConfig();
 
+  // Debug hook after ecosystem generation
+  await debugBreakpoint('AFTER_ECOSYSTEM_GENERATION');
+
   startTime = Date.now();
 
   try {
