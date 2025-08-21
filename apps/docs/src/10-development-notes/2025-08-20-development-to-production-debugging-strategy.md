@@ -1,5 +1,10 @@
 # Development → Production Debugging Strategy
 
+**Date**: 2025-08-20  
+**Status**: Planning  
+**Priority**: High  
+
+
 ## Executive Summary
 
 This document outlines a comprehensive debugging strategy that seamlessly bridges development and production environments for the EMP Job Queue system. The strategy eliminates the friction between local debugging and production deployment while maintaining the immutable container philosophy required by ephemeral platforms like VAST.ai and Railway.
