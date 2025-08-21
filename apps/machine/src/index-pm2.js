@@ -23,32 +23,6 @@ let startTime = null;
 let telemetryClient = null;
 
 /**
- * Debug hook - sleep infinitely if environment variable is set
- */
-async function debugBreakpoint(hookName) {
-  const envVar = `DEBUG_HOOK_${hookName.toUpperCase()}`;
-  const shouldPause = process.env[envVar];
-  
-  if (shouldPause) {
-    logger.info(`🐛 [DEBUG-HOOK] ${hookName}: PAUSED INDEFINITELY`);
-    logger.info(`🐛 [DEBUG-HOOK] ============================================`);
-    logger.info(`🐛 [DEBUG-HOOK] TO CONTINUE:`);
-    logger.info(`🐛 [DEBUG-HOOK] 1. SSH into container: docker exec -it <container> bash`);
-    logger.info(`🐛 [DEBUG-HOOK] 2. Inspect state, files, environment variables`);
-    logger.info(`🐛 [DEBUG-HOOK] 3. To resume: unset ${envVar}`);
-    logger.info(`🐛 [DEBUG-HOOK] 4. Or restart container without the debug env var`);
-    logger.info(`🐛 [DEBUG-HOOK] ============================================`);
-    
-    // Sleep indefinitely in small chunks to allow checking if env var was unset
-    while (process.env[envVar]) {
-      await new Promise(resolve => setTimeout(resolve, 1000)); // Check every second
-    }
-    
-    logger.info(`🐛 [DEBUG-HOOK] ${hookName}: Resuming - environment variable cleared`);
-  }
-}
-
-/**
  * Initialize unified telemetry client for machine
  */
 async function initializeTelemetry() {
@@ -203,9 +177,6 @@ async function main() {
   logger.info('STEP 6-10: PM2 Ecosystem Generation - Starting...');
   await generatePM2EcosystemConfig();
 
-  // Debug hook after ecosystem generation
-  await debugBreakpoint('AFTER_ECOSYSTEM_GENERATION');
-
   startTime = Date.now();
 
   try {
@@ -218,14 +189,9 @@ async function main() {
       logger.warn('Not running under PM2, but PM2 mode is enabled');
     }
 
-    // Debug hook before PM2 service startup
-    await debugBreakpoint('BEFORE_PM2_SERVICES');
-
     // Step 11-13: Service Startup
     logger.info('STEP 11-13: Service Startup - Starting PM2 services from ecosystem config...');
     await startPM2Services();
-    
-    await debugBreakpoint('AFTER_PM2_SERVICES');
     
     // Verify services are running and healthy  
     await verifyPM2Services();

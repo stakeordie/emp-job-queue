@@ -149,6 +149,26 @@ RUN echo "Image built at: ${BUILD_TIMESTAMP}" > /workspace/BUILD_INFO.txt && \
 # Use machine-final entrypoint
 ENTRYPOINT ["/scripts/entrypoint-machine-final.sh"]
 
+# Development stage - for debugging with volume mounts
+FROM base-machine AS development
+
+# Development environment setup
+ENV NODE_ENV=development
+ENV DEVELOPMENT_MODE=true
+
+# Install development dependencies (like nodemon, debugger tools)
+RUN cd /service-manager && npm install --include=dev
+
+# Expose Node.js inspector port for debugging
+EXPOSE 9229
+
+# Don't copy source code - it will be volume mounted
+# Source code comes from host volume mounts at runtime:
+# - ./src:/service-manager/src:ro
+# - ./package.json:/service-manager/package.json:ro
+
+ENTRYPOINT ["/scripts/entrypoint-machine-final.sh"]
+
 # Profile: comfyui - Internal ComfyUI connectors (PURE RUNTIME INSTALLATION)
 FROM base-machine AS comfyui
 

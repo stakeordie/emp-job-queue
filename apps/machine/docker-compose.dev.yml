@@ -1,0 +1,208 @@
+# Development-only Docker Compose
+# Simple, fast, no build pipeline needed
+# Usage: docker-compose -f docker-compose.dev.yml up
+
+version: '3.8'
+
+services:
+  # ComfyUI development container - instant startup with mounts
+  comfyui-dev:
+    # Use the base pytorch image directly - no custom build needed
+    image: pytorch/pytorch:2.7.0-cuda12.8-cudnn9-devel
+    container_name: comfyui-dev
+    hostname: comfyui-dev
+    
+    # Mount everything we need
+    volumes:
+      # Source code - editable in real-time
+      - ./src:/service-manager/src
+      - ./scripts:/service-manager/scripts
+      - ./package.json:/service-manager/package.json
+      - ./generate-pm2-ecosystem-worker-driven.js:/service-manager/generate-pm2-ecosystem-worker-driven.js
+      
+      # Workspace for outputs
+      - ./workspace:/workspace
+      - ./logs:/workspace/logs
+      
+      # Shared scripts from monorepo
+      - ../../scripts/entrypoint-base-common.sh:/scripts/entrypoint-base-common.sh:ro
+      
+      # Worker bundle (if testing with local worker)
+      - ./worker-bundled:/service-manager/worker-bundled:ro
+      
+      # ComfyUI installations (persist between restarts)
+      - comfyui-data:/workspace/ComfyUI
+      
+    # Simple environment - no encryption, no complexity
+    environment:
+      # Core settings
+      NODE_ENV: development
+      DEVELOPMENT_MODE: "true"
+      MACHINE_ID: comfyui-dev
+      WORKERS: ${WORKERS:-comfyui:2}
+      
+      # Node.js debugging
+      NODE_OPTIONS: "--inspect=0.0.0.0:9229 --enable-source-maps"
+      
+      # Skip encryption
+      DISABLE_ENV_ENCRYPTION: "true"
+      
+      # GPU settings
+      NVIDIA_VISIBLE_DEVICES: ${NVIDIA_VISIBLE_DEVICES:-all}
+      NVIDIA_DRIVER_CAPABILITIES: compute,utility
+      GPU_MODE: ${GPU_MODE:-mock}  # Use mock for local dev without GPU
+      
+      # Service configuration
+      COMFYUI_BASE_PORT: ${COMFYUI_BASE_PORT:-8188}
+      PM2_HOME: /workspace/.pm2
+      SERVICE_MANAGER_PATH: /service-manager
+      WORKSPACE_PATH: /workspace
+      
+      # Telemetry (disabled for dev)
+      DISABLE_TELEMETRY: "true"
+      
+      # Redis and API connections come from .env files
+      # local-dev: points to local Redis/API
+      # local-prod: points to production Redis/API
+      
+    # Load env vars from local files (REQUIRED - choose local-dev or local-prod)
+    # Default to local-dev, override with DEV_ENV=local-prod
+    env_file:
+      - .env.${DEV_ENV:-local-dev}
+      - .env.secret.${DEV_ENV:-local-dev}
+    
+    # Ports for debugging and services
+    ports:
+      - "9229:9229"     # Node.js debugger
+      - "9090:9090"     # Health check
+      - "8188:8188"     # ComfyUI GPU 0
+      - "8189:8189"     # ComfyUI GPU 1
+      - "8190:8190"     # ComfyUI GPU 2 (if needed)
+      - "8191:8191"     # ComfyUI GPU 3 (if needed)
+    
+    # Simplified entrypoint - just install dependencies and run
+    entrypoint: |
+      bash -c '
+        # Install Node.js if not present
+        if ! command -v node >/dev/null 2>&1; then
+          echo "📦 Installing Node.js..."
+          apt-get update && apt-get install -y curl
+          curl -fsSL https://deb.nodesource.com/setup_18.x | bash -
+          apt-get install -y nodejs
+          npm install -g pnpm pm2
+        fi
+        
+        # Install dependencies
+        cd /service-manager
+        if [ ! -d "node_modules" ]; then
+          echo "📦 Installing dependencies..."
+          npm install
+        fi
+        
+        # Create required directories
+        mkdir -p /workspace/.pm2 /workspace/logs
+        
+        # Start the application
+        echo "🚀 Starting machine in development mode..."
+        node --inspect=0.0.0.0:9229 src/index-pm2.js
+      '
+    
+    working_dir: /service-manager
+    
+    # Keep it running
+    stdin_open: true
+    tty: true
+    
+    # Resource limits (adjust for your dev machine)
+    deploy:
+      resources:
+        limits:
+          memory: 8G
+        reservations:
+          memory: 2G
+
+  # Simulation development container
+  simulation-dev:
+    # Use Node.js base image directly
+    image: node:18-alpine
+    container_name: simulation-dev
+    hostname: simulation-dev
+    
+    volumes:
+      # Source code
+      - ./src:/service-manager/src
+      - ./scripts:/service-manager/scripts
+      - ./package.json:/service-manager/package.json
+      - ./generate-pm2-ecosystem-worker-driven.js:/service-manager/generate-pm2-ecosystem-worker-driven.js
+      
+      # Workspace
+      - ./workspace:/workspace
+      - ./logs:/workspace/logs
+      
+      # Worker bundle
+      - ./worker-bundled:/service-manager/worker-bundled:ro
+    
+    environment:
+      NODE_ENV: development
+      DEVELOPMENT_MODE: "true"
+      MACHINE_ID: simulation-dev
+      WORKERS: ${WORKERS:-simulation-websocket:4}
+      NODE_OPTIONS: "--inspect=0.0.0.0:9229"
+      DISABLE_ENV_ENCRYPTION: "true"
+      
+      # Service configuration
+      PM2_HOME: /workspace/.pm2
+      SERVICE_MANAGER_PATH: /service-manager
+      WORKSPACE_PATH: /workspace
+    
+    # Load env vars from local files (REQUIRED - choose local-dev or local-prod)
+    # Default to local-dev, override with DEV_ENV=local-prod
+    env_file:
+      - .env.${DEV_ENV:-local-dev}
+      - .env.secret.${DEV_ENV:-local-dev}
+    
+    ports:
+      - "9229:9229"     # Node.js debugger
+      - "9090:9090"     # Health check
+      - "8399:8399"     # Simulation WebSocket base port
+      - "8400:8400"     # Simulation WebSocket port 1
+      - "8401:8401"     # Simulation WebSocket port 2
+      - "8402:8402"     # Simulation WebSocket port 3
+    
+    entrypoint: |
+      sh -c '
+        # Install PM2 if needed
+        if ! command -v pm2 >/dev/null 2>&1; then
+          echo "📦 Installing PM2..."
+          npm install -g pm2
+        fi
+        
+        # Install dependencies
+        cd /service-manager
+        if [ ! -d "node_modules" ]; then
+          echo "📦 Installing dependencies..."
+          npm install
+        fi
+        
+        # Create directories
+        mkdir -p /workspace/.pm2 /workspace/logs
+        
+        # Start the application
+        echo "🚀 Starting simulation in development mode..."
+        node --inspect=0.0.0.0:9229 src/index-pm2.js
+      '
+    
+    working_dir: /service-manager
+    stdin_open: true
+    tty: true
+
+# Persistent volumes for development
+volumes:
+  comfyui-data:
+    name: comfyui-dev-data
+
+# Use the same network as production for Redis access
+networks:
+  default:
+    name: emp-job-queue
+    external: true
