@@ -256,6 +256,7 @@ export class WebhookRedisStorage {
       const logEntry = {
         webhook_id: attempt.webhook_id,
         event_id: attempt.event_id,
+        event_type: attempt.event_type, // Include the event type for audit trail
         success: attempt.success,
         timestamp: attempt.timestamp,
         attempt_number: attempt.attempt_number,
@@ -352,6 +353,7 @@ export class WebhookRedisStorage {
     Array<{
       webhook_id: string;
       event_id: string;
+      event_type: string;
       success: boolean;
       timestamp: number;
       attempt_number: number;

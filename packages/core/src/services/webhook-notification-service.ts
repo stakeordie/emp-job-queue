@@ -96,6 +96,7 @@ export interface WebhookDeliveryAttempt {
   id: string;
   webhook_id: string;
   event_id: string;
+  event_type: string; // The type of webhook event (job_failed, workflow_completed, etc.)
   attempt_number: number;
   timestamp: number;
   success: boolean;
@@ -884,6 +885,7 @@ export class WebhookNotificationService extends EventEmitter {
       id: this.generateId(),
       webhook_id: webhook.id,
       event_id: payload.event_id,
+      event_type: payload.event_type,
       attempt_number: attemptNumber,
       timestamp: Date.now(),
       success: false,
