@@ -716,23 +716,25 @@ export class EnvironmentBuilder {
   private formatEnvValue(value: string): string {
     // Ensure value is a string
     const stringValue = typeof value === 'string' ? value : String(value);
-    
+
     // If value is already quoted, return as-is
-    if ((stringValue.startsWith('"') && stringValue.endsWith('"')) || 
-        (stringValue.startsWith("'") && stringValue.endsWith("'"))) {
+    if (
+      (stringValue.startsWith('"') && stringValue.endsWith('"')) ||
+      (stringValue.startsWith("'") && stringValue.endsWith("'"))
+    ) {
       return stringValue;
     }
-    
+
     // If value contains JSON-like content (starts with [ or {), quote it
     if (stringValue.trim().startsWith('[') || stringValue.trim().startsWith('{')) {
       return `'${stringValue}'`;
     }
-    
+
     // If value contains spaces, special characters, or commas, quote it
     if (/[\s,;&|<>(){}[\]$`"'\\]/.test(stringValue)) {
       return `'${stringValue}'`;
     }
-    
+
     // Simple values don't need quoting
     return stringValue;
   }
