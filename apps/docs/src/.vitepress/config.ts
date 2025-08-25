@@ -267,6 +267,7 @@ const config = defineConfig({
           text: '10. Development Notes',
           items: [
             { text: 'Overview', link: '/10-development-notes/' },
+            { text: '[2025-08-25] Webhook Persistence Reliability Fix 🔧', link: '/10-development-notes/2025-08-25-webhook-persistence-reliability-fix' },
             { text: '[2025-08-25] Modernization Planning Implementation Strategy 📋', link: '/10-development-notes/2025-08-25-modernization-planning-implementation-strategy' },
             { text: '[2025-08-25] Comprehensive Codebase Modernization Plan 🚀', link: '/10-development-notes/2025-08-25-comprehensive-codebase-modernization-plan' },
             { text: '[2025-08-25] EmProps Open API Monorepo Integration Plan 🏗️', link: '/10-development-notes/2025-08-25-emprops-open-api-monorepo-integration-plan' },
