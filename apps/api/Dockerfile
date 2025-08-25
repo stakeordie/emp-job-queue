@@ -41,9 +41,9 @@ FROM ubuntu:22.04
     COPY dist/ ./dist/
 
     # Copy configuration templates
-    COPY otel-collector-api.yaml.template ./otel/otel-collector-api.yaml.template
-    COPY fluent-bit-api.conf.template ./fluent-bit/fluent-bit-api.conf.template
-    COPY fluent-bit-api-forward.conf.template ./fluent-bit-api-forward.conf.template
+    COPY conf/otel-collector-api.yaml.template ./otel/otel-collector-api.yaml.template
+    COPY conf/fluent-bit-api.conf.template ./fluent-bit/fluent-bit-api.conf.template
+    COPY conf/fluent-bit-api-forward.conf.template ./fluent-bit-api-forward.conf.template
 
     # Copy inheritance-based entrypoint system
     COPY scripts/entrypoint-base-common.sh /scripts/entrypoint-base-common.sh

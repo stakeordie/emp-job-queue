@@ -23,11 +23,11 @@
     Record environment ${TELEMETRY_ENV}
     Record source fluent-bit-file-tail
 
-# Send to Fluentd via Forward Protocol (RECOMMENDED - more reliable than HTTP)
+# Send to local nginx proxy (which forwards to Railway Fluentd)
 [OUTPUT]
-    Name forward
+    Name http
     Match api.*
-    Host ${FLUENTD_HOST}
-    Port 24224
-    tls ${FLUENTD_SECURE}
-    tls.verify off
+    Host localhost
+    Port 8889
+    URI /api-logs
+    Format json

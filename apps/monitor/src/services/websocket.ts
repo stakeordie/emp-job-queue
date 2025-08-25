@@ -451,7 +451,7 @@ export class EventStreamService {
   private handleMonitorEvent(event: MonitorEvent) {
     // Skip logging job_progress events to reduce console spam
     if (event.type !== 'update_job_progress') {
-      // Event logging disabled for performance
+      // console.log('[WebSocket] Received event:', event.type, event);
     }
     
     // Update last event timestamp for resync capability
@@ -484,7 +484,9 @@ export class EventStreamService {
     has_more: boolean;
     oldest_available_timestamp: number;
     timestamp: number;
-  }) {    
+  }) {
+    // console.log(`[WebSocket] Received resync response: ${response.events.length} events, has_more: ${response.has_more}`);
+    
     // Process all events in chronological order
     response.events
       .sort((a, b) => a.timestamp - b.timestamp)
@@ -496,7 +498,7 @@ export class EventStreamService {
     // If there are more events available, we could automatically request them
     // For now, we leave it to the application to decide
     if (response.has_more) {
-      // More events available for resync if needed
+      // console.log('[WebSocket] More events available for resync - use requestResync() to get them');
     }
   }
 

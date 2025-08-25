@@ -40,10 +40,10 @@ FROM ubuntu:22.04
     ENV MACHINE_ID=${MACHINE_ID}
 
     # Copy Fluent Bit configuration template
-    COPY fluent-bit-webhook.conf.template /webhook-server/fluent-bit/fluent-bit-webhook.conf.template
+    COPY conf/fluent-bit-webhook.conf.template /webhook-server/fluent-bit/fluent-bit-webhook.conf.template
 
     # Copy OTEL collector configuration template
-    COPY otel-collector-webhook.yaml.template /webhook-server/otel/otel-collector-webhook.yaml.template
+    COPY conf/otel-collector-webhook.yaml.template /webhook-server/otel/otel-collector-webhook.yaml.template
 
     # Copy workspace packages first (for better layer caching)
     COPY .workspace-packages/ /webhook-server/.workspace-packages/

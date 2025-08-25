@@ -808,6 +808,8 @@ export class MachineStatusAggregator {
       health_url: `http://localhost:${process.env.MACHINE_HEALTH_PORT || 9090}/health`
     };
 
+    // console.log('[MachineStatusAggregator] DEBUG: Publishing status with structure.workers:', Object.keys(this.structure.workers));
+    // console.log('[MachineStatusAggregator] DEBUG: Publishing status with status.workers:', Object.keys(this.currentStatus.workers));
 
     try {
       const channel = `machine:status:${this.machineId}`;

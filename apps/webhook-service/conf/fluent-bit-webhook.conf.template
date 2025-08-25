@@ -23,11 +23,11 @@
     Record environment ${NODE_ENV}
     Record source fluent-bit-file-tail
 
-# Send to Fluentd (running on host or external service)
+# Send to local nginx proxy (which forwards to Railway Fluentd)
 [OUTPUT]
-    Name forward
+    Name http
     Match webhook.*
-    Host ${FLUENTD_HOST}
-    Port ${FLUENTD_PORT}
-    tls ${FLUENTD_SECURE}
-    tls.verify off
+    Host localhost
+    Port 8889
+    URI /webhook-logs
+    Format json
