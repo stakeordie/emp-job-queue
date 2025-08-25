@@ -4,13 +4,20 @@ export const FluentdEnvInterface = {
   location: "apps/fluentd",
   
   required: {
-    // Web server configuration
+    // Environment identification for Fluentd template
+    "ENV": "TELEMETRY_DASH0_DATASET",
+    // Web server configuration  
     "TELEMETRY_ENV":"TELEMETRY_DASH0_DATASET",
     "DASH0_DATASET": "TELEMETRY_DASH0_DATASET",
-    "DASH0_API_KEY": "TELEMETRY_DASH0_API_KEY",
     "HUB_REDIS_URL": "REDIS_URL",
     "DASH0_LOGS_ENDPOINT": "TELEMETRY_DASH0_LOGS_ENDPOINT"
   },
+  
+  secret: {
+    // Sensitive API keys
+    "DASH0_API_KEY": "DASH0_API_KEY"
+  },
+  
   optional: {
   },
   

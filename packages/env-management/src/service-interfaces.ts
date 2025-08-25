@@ -89,14 +89,23 @@ export class ServiceInterfaceManager {
     const missing: string[] = [];
     const warnings: string[] = [];
 
-    // Check required variables - only fail if key is missing, not if value is empty
+    // Check required variables - fail fast if key is missing
     for (const [appVar, systemVar] of Object.entries(serviceInterface.required)) {
       if (!(systemVar in systemVars)) {
         missing.push(`${systemVar} (needed for ${appVar})`);
       }
     }
 
-    // Check optional variables - only warn about missing keys, not empty values
+    // Check secret variables - treat them as required and fail fast if missing
+    if (serviceInterface.secret) {
+      for (const [appVar, systemVar] of Object.entries(serviceInterface.secret)) {
+        if (!(systemVar in systemVars)) {
+          missing.push(`${systemVar} (needed for secret ${appVar})`);
+        }
+      }
+    }
+
+    // Check optional variables - only warn about missing keys when defaults exist
     if (serviceInterface.optional) {
       for (const [appVar, systemVar] of Object.entries(serviceInterface.optional)) {
         if (!(systemVar in systemVars) && serviceInterface.defaults?.[appVar]) {

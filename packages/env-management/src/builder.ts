@@ -124,6 +124,19 @@ export class EnvironmentBuilder {
         if (validation.warnings.length > 0) {
           warnings.push(...validation.warnings.map(w => `[${serviceName}] ${w}`));
         }
+
+        // Add successful validation info for transparency  
+        if (validation.valid) {
+          const serviceInterface = this.serviceInterfaces.getInterfaces().get(serviceName);
+          const requiredCount = Object.keys(serviceInterface?.required || {}).length;
+          const secretCount = Object.keys(serviceInterface?.secret || {}).length;
+          const optionalCount = Object.keys(serviceInterface?.optional || {}).length;
+          const totalRequired = requiredCount + secretCount;
+          
+          if (totalRequired > 0) {
+            warnings.push(`[${serviceName}] ✅ ${totalRequired} required variables validated (${requiredCount} public, ${secretCount} secret, ${optionalCount} optional)`);
+          }
+        }
       }
 
       // If any service failed validation, fail the entire build (atomic operation)
