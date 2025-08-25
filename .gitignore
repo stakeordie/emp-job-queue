@@ -28,6 +28,12 @@ bundled/
 # Environment secrets (never commit real secrets)
 config/environments/secrets/.env.secrets.local
 
+# Encrypted environment files (contain sensitive data)
+env.encrypted
+**/env.encrypted
+env.encrypted.*
+**/env.encrypted.*
+
 # Workspace packages (generated during Docker build)
 **/.workspace-packages/
 **/package.docker.json
