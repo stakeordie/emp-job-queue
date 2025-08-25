@@ -18,6 +18,10 @@ setup_environment() {
     # Call parent implementation
     base_setup_environment
     
+    # Set container start time for profile script
+    export CONTAINER_START_TIME=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+    echo "🐳 Container started at: $CONTAINER_START_TIME"
+    
     log_section "Machine Profile - Environment Setup"
     
     # Machine-specific environment

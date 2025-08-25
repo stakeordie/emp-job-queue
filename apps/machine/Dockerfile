@@ -23,7 +23,7 @@ FROM pytorch/pytorch:2.7.0-cuda12.8-cudnn9-devel AS ai-base
     # Install system dependencies
     RUN apt-get update && \
         DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
-        git git-lfs wget curl jq tar nano net-tools lsof \
+        git git-lfs wget curl jq tar nano net-tools lsof nvtop \
         nginx ffmpeg libsm6 libxext6 rsync \
         build-essential libgoogle-perftools-dev cmake ninja-build \
         openssh-client sudo cron zstd ca-certificates \
@@ -75,6 +75,8 @@ FROM ai-base AS base-machine
     # Copy all application files FIRST
     COPY src/ /service-manager/src/
     COPY scripts/ /service-manager/scripts/
+    COPY container-profile.sh /service-manager/container-profile.sh
+    RUN chmod +x /service-manager/container-profile.sh
     
     # Copy worker-driven ecosystem generator
     COPY generate-pm2-ecosystem-worker-driven.js /service-manager/generate-pm2-ecosystem-worker-driven.js
@@ -139,9 +141,17 @@ COPY env.encrypted.info /service-manager/env.encrypted.info
 ARG BUILD_TIMESTAMP
 ARG MACHINE_VERSION=latest
 ARG BUILD_DATE
+ARG GIT_COMMIT=unknown
+ARG GIT_BRANCH=unknown
+ARG BUILD_ENV=production
 ENV BUILD_TIMESTAMP=${BUILD_TIMESTAMP}
 ENV MACHINE_VERSION=${MACHINE_VERSION}
 ENV BUILD_DATE=${BUILD_DATE}
+ENV GIT_COMMIT=${GIT_COMMIT}
+ENV GIT_BRANCH=${GIT_BRANCH}
+ENV BUILD_ENV=${BUILD_ENV}
+ENV BUILD_VERSION=${MACHINE_VERSION}
+ENV NODE_VERSION="18"
 RUN echo "Image built at: ${BUILD_TIMESTAMP}" > /workspace/BUILD_INFO.txt && \
     echo "MACHINE_VERSION=${MACHINE_VERSION}" > /service-manager/.version && \
     echo "BUILD_DATE=${BUILD_DATE}" >> /service-manager/.version
@@ -193,9 +203,17 @@ COPY env.encrypted.info /service-manager/env.encrypted.info
 ARG BUILD_TIMESTAMP
 ARG MACHINE_VERSION=latest
 ARG BUILD_DATE
+ARG GIT_COMMIT=unknown
+ARG GIT_BRANCH=unknown
+ARG BUILD_ENV=production
 ENV BUILD_TIMESTAMP=${BUILD_TIMESTAMP}
 ENV MACHINE_VERSION=${MACHINE_VERSION}
 ENV BUILD_DATE=${BUILD_DATE}
+ENV GIT_COMMIT=${GIT_COMMIT}
+ENV GIT_BRANCH=${GIT_BRANCH}
+ENV BUILD_ENV=${BUILD_ENV}
+ENV BUILD_VERSION=${MACHINE_VERSION}
+ENV NODE_VERSION="18"
 RUN echo "Image built at: ${BUILD_TIMESTAMP}" > /workspace/BUILD_INFO.txt && \
     echo "MACHINE_VERSION=${MACHINE_VERSION}" > /service-manager/.version && \
     echo "BUILD_DATE=${BUILD_DATE}" >> /service-manager/.version
@@ -228,9 +246,17 @@ COPY env.encrypted.info /service-manager/env.encrypted.info
 ARG BUILD_TIMESTAMP
 ARG MACHINE_VERSION=latest
 ARG BUILD_DATE
+ARG GIT_COMMIT=unknown
+ARG GIT_BRANCH=unknown
+ARG BUILD_ENV=production
 ENV BUILD_TIMESTAMP=${BUILD_TIMESTAMP}
 ENV MACHINE_VERSION=${MACHINE_VERSION}
 ENV BUILD_DATE=${BUILD_DATE}
+ENV GIT_COMMIT=${GIT_COMMIT}
+ENV GIT_BRANCH=${GIT_BRANCH}
+ENV BUILD_ENV=${BUILD_ENV}
+ENV BUILD_VERSION=${MACHINE_VERSION}
+ENV NODE_VERSION="18"
 RUN echo "Image built at: ${BUILD_TIMESTAMP}" > /workspace/BUILD_INFO.txt && \
     echo "MACHINE_VERSION=${MACHINE_VERSION}" > /service-manager/.version && \
     echo "BUILD_DATE=${BUILD_DATE}" >> /service-manager/.version

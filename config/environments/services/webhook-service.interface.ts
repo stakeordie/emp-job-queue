@@ -38,7 +38,12 @@ export const WebhookServiceEnvInterface = {
     // Fluent Bit configuration
     "FLUENTD_HOST": "TELEMETRY_FLUENTD_HOST",
     "FLUENTD_PORT": "TELEMETRY_FLUENTD_PORT",
-    "FLUENTD_SECURE": "TELEMETRY_FLUENTD_SECURE"
+    "FLUENTD_SECURE": "TELEMETRY_FLUENTD_SECURE",
+
+    "EMPROPS_API_URL": "EMPROPS_API_URL",
+    "EMPROPS_API_AUTH": "EMPROPS_API_AUTH",
+    "EMPROPS_API_KEY": "EMPROPS_API_KEY"
+
   },
   optional: {
   },

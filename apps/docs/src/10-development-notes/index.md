@@ -9,6 +9,9 @@ This section serves as a development journal and technical analysis feed, docume
 
 ## Recent Entries
 
+- **[2025-08-25 17:30] - [Modernization Planning Implementation Strategy](./2025-08-25-modernization-planning-implementation-strategy.md)** - Strategic analysis of how we transformed three fragmented initiatives into a unified modernization approach, demonstrating the value of architectural thinking and coordinated planning over tactical execution
+- **[2025-08-25 16:45] - [Comprehensive Codebase Modernization Plan](./2025-08-25-comprehensive-codebase-modernization-plan.md)** - Master plan combining API service refactor, EmProps integration, and comprehensive cleanup into a single coordinated 4-week modernization effort with incremental phases and rollback capabilities
+- **[2025-08-25 14:30] - [EmProps Open API Monorepo Integration Plan](./2025-08-25-emprops-open-api-monorepo-integration-plan.md)** - Comprehensive plan to integrate the standalone EmProps Open API service and PostgreSQL database into the emp-job-queue monorepo, including package manager migration, build system integration, and unified development workflow
 - **[2025-08-20 21:15] - [API Service Refactor Plan](./2025-08-20-api-service-refactor-plan.md)** - Domain separation plan to extract JobService and WorkflowService from monolithic API, consolidate duplicate workflow tracking, and integrate with message bus architecture
 - **[2025-08-17 19:30] - [Unified Telemetry Client Architecture](./2025-08-17-unified-telemetry-client-architecture.md)** - Plan to consolidate scattered telemetry logic across API, webhook, machine, and worker services into a single "just works" client
 - **[2025-01-11 20:45] - [Service Mapping System Debug Debrief](./2025-01-11-service-mapping-system-debug-debrief.md)** - Complete analysis of service mapping inconsistencies that broke job processing and UI display

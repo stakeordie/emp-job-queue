@@ -34,7 +34,7 @@ export class ComfyUIWebSocketConnector extends WebSocketConnector {
     // Accept configuration directly OR read from LOCAL ComfyUI environment variables
     // For local ComfyUI, we check both unprefixed (for backwards compat) and COMFYUI_ prefixed vars
     const host = config?.host || process.env.COMFYUI_HOST || 'localhost';
-    const port = config?.port || parseInt(process.env.COMFYUI_BASE_PORT || process.env.COMFYUI_PORT || '8188');
+    const port = config?.port || parseInt(process.env.COMFYUI_PORT || process.env.COMFYUI_BASE_PORT || '8188');
     const isSecure = config?.secure || process.env.COMFYUI_SECURE === 'true';
     const wsProtocol = isSecure ? 'wss' : 'ws';
     
@@ -382,6 +382,22 @@ export class ComfyUIWebSocketConnector extends WebSocketConnector {
 
   getConfiguration(): any {
     return super.getConfiguration();
+  }
+
+  // ============================================================================
+  // Override heartbeat to include port debugging information
+  // ============================================================================
+
+  /**
+   * Build heartbeat message with port information for debugging
+   */
+  protected buildHeartbeatMessage(): any {
+    const baseMessage = this.wsConfig.heartbeat_message;
+    const port = parseInt(process.env.COMFYUI_PORT || process.env.COMFYUI_BASE_PORT || '8188');
+    
+    logger.info(`🔗🔗🔗 [COMFYUI-PING-DEBUG] Heartbeat sending to port ${port} via ${this.config.base_url}`);
+    
+    return baseMessage;
   }
 
   // ============================================================================

@@ -18,7 +18,12 @@ dotenvConfig({ path: envFile });
 
 // Configuration from environment variables
 const config = {
-  port: parseInt(process.env.WEBHOOK_SERVICE_PORT || '3332'),
+  port: (() => {
+    if (!process.env.WEBHOOK_SERVICE_PORT) {
+      throw new Error('WEBHOOK_SERVICE_PORT environment variable is required');
+    }
+    return parseInt(process.env.WEBHOOK_SERVICE_PORT);
+  })(),
   redisUrl: (() => {
     const redisUrl = process.env.HUB_REDIS_URL;
     if (!redisUrl) {

@@ -35,6 +35,7 @@ export class EnhancedPM2EcosystemGenerator {
     this.serviceMapping = null;
     this.serviceEnvMapping = null;
     this.hardwareResources = null;
+    this.servicePairs = []; // Track service-worker pairs as they're created
   }
 
   /**
@@ -276,10 +277,12 @@ export class EnhancedPM2EcosystemGenerator {
     // Determine actual instance count based on resource binding
     const instanceCount = this.calculateInstanceCount(workerConfig, requestedCount);
     
-    // Generate Redis worker instances
+    // Generate Redis worker instances first and store them
+    const workerApps = [];
     for (let i = 0; i < instanceCount; i++) {
       const app = this.createRedisWorkerApp(workerType, i, workerConfig, instanceCount);
       apps.push(app);
+      workerApps.push(app);
     }
     
     // Generate service-specific apps (ComfyUI, etc.) if needed
@@ -312,8 +315,12 @@ export class EnhancedPM2EcosystemGenerator {
             
             this.logger.log(`🔥🔥🔥 [GENERATESERVICEAPPS-TRACE] 🎉🎉🎉 generateServiceApps returned ${serviceApps.length} apps for "${serviceName}"`);
             apps.push(...serviceApps);
+            
+            // Capture service-worker pairs using actual app names that were just created
+            this.captureServicePairs(serviceApps, workerApps, serviceName);
           } else {
             this.logger.log(`🔥🔥🔥 [GENERATESERVICEAPPS-TRACE] ❌ CONDITION FAILED: serviceConfig.type !== 'internal' (got "${serviceConfig.type}")`);
+            this.logger.log(`🔥🔥🔥 [GENERATESERVICEAPPS-TRACE] External service "${serviceName}" - no service pairing needed`);
           }
         } else {
           this.logger.log(`🔥🔥🔥 [GENERATESERVICEAPPS-TRACE] ❌ CONDITION FAILED: serviceConfig not found for "${serviceName}"`);
@@ -543,18 +550,12 @@ This container will now exit. Please fix the deployment configuration and restar
     if (serviceConfig.type === 'internal') {
       console.log(`✅ [FIXED-SERVICE-DEBUG ${new Date().toISOString()}] Service type is 'internal', proceeding with app creation`);
       
-      // Calculate actual instance count based on GPU binding and hardware
-      const instancesPerGpuStr = serviceConfig.service_instances_per_gpu || '1';
-      const instancesPerGpu = this.parseInstancesPerGpu(instancesPerGpuStr);
-      const gpuCount = this.hardwareResources?.gpuCount || 1;
-      const totalInstances = serviceConfig.is_gpu_bound ? instancesPerGpu * gpuCount : instancesPerGpu;
+      // Use the same instance count as the Redis workers to ensure matching pairs
+      const totalInstances = instanceCount;
       
       console.log(`🔍 [FIXED-SERVICE-DEBUG ${new Date().toISOString()}] Instance calculation:`);
-      console.log(`🔍 [FIXED-SERVICE-DEBUG ${new Date().toISOString()}] - instancesPerGpuStr: "${instancesPerGpuStr}"`);
-      console.log(`🔍 [FIXED-SERVICE-DEBUG ${new Date().toISOString()}] - instancesPerGpu: ${instancesPerGpu}`);
-      console.log(`🔍 [FIXED-SERVICE-DEBUG ${new Date().toISOString()}] - gpuCount: ${gpuCount}`);
-      console.log(`🔍 [FIXED-SERVICE-DEBUG ${new Date().toISOString()}] - is_gpu_bound: ${serviceConfig.is_gpu_bound}`);
-      console.log(`🔍 [FIXED-SERVICE-DEBUG ${new Date().toISOString()}] - totalInstances: ${totalInstances}`);
+      console.log(`🔍 [FIXED-SERVICE-DEBUG ${new Date().toISOString()}] - Redis workers created: ${instanceCount}`);
+      console.log(`🔍 [FIXED-SERVICE-DEBUG ${new Date().toISOString()}] - Service instances to create: ${totalInstances}`);
       
       for (let i = 0; i < totalInstances; i++) {
         console.log(`🔍 [FIXED-SERVICE-DEBUG ${new Date().toISOString()}] Creating app ${i+1}/${totalInstances} for installer: "${serviceConfig.installer}"`);
@@ -875,7 +876,10 @@ This container will now exit. Please fix the deployment configuration and restar
    * Write PM2 ecosystem configuration to file
    */
   async writeEcosystemConfig(apps) {
-    const ecosystemConfig = { apps };
+    const ecosystemConfig = { 
+      apps,
+      servicePairs: this.servicePairs // Include captured service pairs
+    };
     const configPath = '/workspace/pm2-ecosystem.config.cjs';
     const configContent = `module.exports = ${JSON.stringify(ecosystemConfig, null, 2)};`;
     
@@ -884,6 +888,7 @@ This container will now exit. Please fix the deployment configuration and restar
       
       this.logger.log(`✅ Generated PM2 ecosystem config: ${configPath}`);
       this.logger.log(`📊 Services configured: ${apps.length} total`);
+      this.logger.log(`🔗 Service pairs tracked: ${this.servicePairs.length} pairs`);
       
       // Log service breakdown
       const serviceTypes = {};
@@ -896,9 +901,71 @@ This container will now exit. Please fix the deployment configuration and restar
         this.logger.log(`   - ${type}: ${count}`);
       });
       
+      // Log service pairs summary
+      if (this.servicePairs.length > 0) {
+        this.logger.log(`🔗 Generated ${this.servicePairs.length} service pairs:`);
+        this.servicePairs.forEach((pair, index) => {
+          this.logger.log(`   ${index + 1}. ${pair.service} ↔ ${pair.worker} (port: ${pair.port})`);
+        });
+      }
+      
     } catch (error) {
       this.logger.error(`Failed to write ecosystem config: ${error.message}`);
       throw error;
     }
+  }
+
+  /**
+   * Capture service-worker pairs using the actual apps that were just created
+   */
+  captureServicePairs(serviceApps, workerApps, serviceName) {
+    this.logger.log(`🔗 Capturing service pairs for ${serviceName} (${serviceApps.length} services, ${workerApps.length} workers)`);
+    
+    // Pair each service with its corresponding worker (by index)
+    for (let i = 0; i < serviceApps.length && i < workerApps.length; i++) {
+      const serviceApp = serviceApps[i];
+      const workerApp = workerApps[i];
+      
+      const pair = {
+        service: serviceApp.name,
+        worker: workerApp.name,
+        serviceType: serviceName,
+        port: this.extractPortFromApp(serviceApp)
+      };
+      
+      this.servicePairs.push(pair);
+      this.logger.log(`   🔗 Added pair: ${pair.service} ↔ ${pair.worker} (port: ${pair.port})`);
+    }
+  }
+
+  /**
+   * Extract port from a service app configuration
+   */
+  extractPortFromApp(serviceApp) {
+    // Check args for --port=XXXX
+    if (serviceApp.args) {
+      const portArg = serviceApp.args.find(arg => arg.startsWith('--port='));
+      if (portArg) {
+        return parseInt(portArg.split('=')[1]);
+      }
+    }
+    
+    // Check environment variables
+    if (serviceApp.env) {
+      if (serviceApp.env.COMFYUI_PORT) {
+        return parseInt(serviceApp.env.COMFYUI_PORT);
+      }
+      if (serviceApp.env.PORT) {
+        return parseInt(serviceApp.env.PORT);
+      }
+      if (serviceApp.env.SIMULATION_PORT) {
+        return parseInt(serviceApp.env.SIMULATION_PORT);
+      }
+      if (serviceApp.env.SERVICE_PORT) {
+        return parseInt(serviceApp.env.SERVICE_PORT);
+      }
+    }
+    
+    return null;
   }
 }

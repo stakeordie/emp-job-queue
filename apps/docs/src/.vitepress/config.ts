@@ -267,6 +267,9 @@ const config = defineConfig({
           text: '10. Development Notes',
           items: [
             { text: 'Overview', link: '/10-development-notes/' },
+            { text: '[2025-08-25] Modernization Planning Implementation Strategy 📋', link: '/10-development-notes/2025-08-25-modernization-planning-implementation-strategy' },
+            { text: '[2025-08-25] Comprehensive Codebase Modernization Plan 🚀', link: '/10-development-notes/2025-08-25-comprehensive-codebase-modernization-plan' },
+            { text: '[2025-08-25] EmProps Open API Monorepo Integration Plan 🏗️', link: '/10-development-notes/2025-08-25-emprops-open-api-monorepo-integration-plan' },
             { text: '[2025-08-20] Development → Production Debugging Strategy 🚀', link: '/10-development-notes/development-to-production-debugging-strategy' },
             { text: '[2025-08-20] API Service Refactor Plan 📋', link: '/10-development-notes/2025-08-20-api-service-refactor-plan' },
             { text: '[2025-08-18] ComfyUI Startup Flow ✨', link: '/10-development-notes/comfyui-startup-flow' },

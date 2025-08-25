@@ -115,6 +115,8 @@ export class WebhookNotificationService extends EventEmitter {
   private processingInterval?: NodeJS.Timeout;
   private cacheRefreshInterval?: NodeJS.Timeout;
   private throttleCleanupInterval?: NodeJS.Timeout;
+  private empropsApiUrl: string;
+  private empropsApiKey?: string;
 
   // Throttling: Track last progress webhook sent per job (1 per second max)
   private lastProgressWebhookSent: Map<string, number> = new Map();
@@ -138,6 +140,19 @@ export class WebhookNotificationService extends EventEmitter {
   constructor(redis: Redis) {
     super();
     this.webhookStorage = new WebhookRedisStorage(redis);
+    
+    // REQUIRED: EMPROPS_API_URL must be explicitly set
+    if (!process.env.EMPROPS_API_URL) {
+      throw new Error('EMPROPS_API_URL environment variable is required for webhook notification service');
+    }
+    this.empropsApiUrl = process.env.EMPROPS_API_URL;
+    
+    // Optional: EMPROPS_API_KEY for authenticated endpoints
+    this.empropsApiKey = process.env.EMPROPS_API_KEY;
+    if (!this.empropsApiKey) {
+      logger.warn('⚠️ [WEBHOOK] EMPROPS_API_KEY not set - API calls may fail if authentication is required');
+    }
+    
     this.startProcessing();
     this.startCacheRefresh();
     this.startThrottleCleanup();
@@ -423,7 +438,7 @@ export class WebhookNotificationService extends EventEmitter {
     workflowId: string,
     triggeringEvent: MonitorEvent
   ): Promise<void> {
-    const workflowEvent = this.createWorkflowEvent(eventType, workflowId, triggeringEvent);
+    const workflowEvent = await this.createWorkflowEvent(eventType, workflowId, triggeringEvent);
 
     // Find webhooks subscribed to this workflow event type
     const matchingWebhooks = this.findMatchingWebhooksForEventType(eventType);
@@ -452,13 +467,164 @@ export class WebhookNotificationService extends EventEmitter {
   }
 
   /**
+   * Handle workflow completion with EMPROPS API confirmation and fallback
+   */
+  private async handleWorkflowCompletionWithEmpropsConfirmation(
+    workflowId: string, 
+    triggeringEvent: MonitorEvent
+  ): Promise<void> {
+    const maxRetries = 10;
+    const retryDelayMs = 2000; // 2 seconds between retries
+    
+    logger.info('⏳ [WORKFLOW COMPLETION] Waiting for EMPROPS API to confirm workflow completion...');
+    
+    for (let attempt = 1; attempt <= maxRetries; attempt++) {
+      try {
+        logger.info(`🔍 [WORKFLOW COMPLETION] Checking EMPROPS API (attempt ${attempt}/${maxRetries})`);
+        
+        const workflowDetails = await this.fetchWorkflowDetails(workflowId);
+        const empStatus = workflowDetails?.data?.status;
+        const hasOutputs = workflowDetails?.data?.data?.outputs && workflowDetails.data.data.outputs.length > 0;
+        
+        logger.info(`📊 [WORKFLOW COMPLETION] EMPROPS Status Check:`);
+        logger.info(`   Status: ${empStatus}`);
+        logger.info(`   Progress: ${workflowDetails?.data?.progress || 'unknown'}`);
+        logger.info(`   Has Outputs: ${hasOutputs}`);
+        
+        if (empStatus === 'completed') {
+          logger.info('✅ [WORKFLOW COMPLETION] EMPROPS workflow confirmed complete, sending webhook with outputs');
+          await this.sendWorkflowEvent('workflow_completed', workflowId, triggeringEvent);
+          return;
+        }
+        
+        if (attempt < maxRetries) {
+          logger.info(`   ⏳ EMPROPS job still ${empStatus}, waiting ${retryDelayMs}ms before next check...`);
+          await new Promise(resolve => setTimeout(resolve, retryDelayMs));
+        }
+        
+      } catch (error) {
+        // Handle 404 or other errors - could be direct workflow not tracked by EMPROPS
+        if (error.message?.includes('404') || error.message?.includes('not found')) {
+          logger.info('🔄 [WORKFLOW COMPLETION] EMPROPS job not found (likely direct workflow), sending completion with available data');
+          await this.sendWorkflowEvent('workflow_completed', workflowId, triggeringEvent);
+          return;
+        }
+        
+        // For other errors, log and continue retrying
+        logger.warn(`⚠️ [WORKFLOW COMPLETION] Attempt ${attempt} failed:`, error.message);
+        
+        if (attempt < maxRetries) {
+          await new Promise(resolve => setTimeout(resolve, retryDelayMs));
+        }
+      }
+    }
+    
+    // Fallback: Send completion event even if EMPROPS API never confirmed
+    logger.warn(`⚠️ [WORKFLOW COMPLETION] EMPROPS API never confirmed completion after ${maxRetries} attempts, sending webhook anyway`);
+    await this.sendWorkflowEvent('workflow_completed', workflowId, triggeringEvent);
+  }
+
+  /**
+   * Fetch workflow details from EMPROPS API
+   */
+  private async fetchWorkflowDetails(workflowId: string): Promise<any> {
+    try {
+      const url = `${this.empropsApiUrl}/jobs/${workflowId}`;
+      logger.info(`🔍 [WEBHOOK] Making EMPROPS API Request:`);
+      logger.info(`   URL: ${url}`);
+      logger.info(`   Method: GET`);
+      logger.info(`   Workflow ID: ${workflowId}`);
+      
+      const headers: Record<string, string> = {
+        'Content-Type': 'application/json',
+      };
+      
+      // Add authorization header if API key is available
+      if (this.empropsApiKey) {
+        headers['Authorization'] = `Bearer ${this.empropsApiKey}`;
+        logger.info(`   Auth: Using Bearer token`);
+      } else {
+        logger.warn(`   Auth: No API key available`);
+      }
+      
+      const startTime = Date.now();
+      const response = await fetch(url, {
+        method: 'GET',
+        headers,
+        // 10 second timeout for API calls
+        signal: AbortSignal.timeout(10000)
+      });
+      const responseTime = Date.now() - startTime;
+
+      logger.info(`📡 [WEBHOOK] EMPROPS API Response:`);
+      logger.info(`   Status: ${response.status} ${response.statusText}`);
+      logger.info(`   Response Time: ${responseTime}ms`);
+      logger.info(`   Headers: ${JSON.stringify(Object.fromEntries(response.headers.entries()))}`);
+
+      if (!response.ok) {
+        const errorBody = await response.text();
+        logger.error(`❌ [WEBHOOK] EMPROPS API Error Response:`);
+        logger.error(`   Status: ${response.status}`);
+        logger.error(`   Body: ${errorBody}`);
+        throw new Error(`EMPROPS API returned ${response.status}: ${response.statusText}`);
+      }
+
+      const data = await response.json();
+      logger.info(`✅ [WEBHOOK] Successfully fetched workflow details for ${workflowId}`);
+      
+      // Log the COMPLETE response without truncation
+      const responseStr = JSON.stringify(data, null, 2);
+      console.log(`📋 [WEBHOOK] FULL API RESPONSE:\n${responseStr}`);
+      
+      // Also split into chunks for structured logging
+      const chunks = responseStr.match(/.{1,1000}/g) || [];
+      chunks.forEach((chunk, index) => {
+        logger.info(`📋 [WEBHOOK] Response chunk ${index + 1}/${chunks.length}: ${chunk}`);
+      });
+      
+      logger.info(`   Response Data Structure:`);
+      logger.info(`   - Has data: ${!!data?.data}`);
+      logger.info(`   - Has data.data: ${!!data?.data?.data}`);
+      logger.info(`   - Has outputs: ${!!data?.data?.data?.outputs}`);
+      logger.info(`   - Output count: ${data?.data?.data?.outputs?.length || 0}`);
+      logger.info(`   - Job type: ${data?.data?.job_type || 'N/A'}`);
+      logger.info(`   - Workflow name: ${data?.data?.name || 'N/A'}`);
+      
+      // Log first output if exists (CORRECT PATH: data.data.outputs)
+      if (data?.data?.data?.outputs?.length > 0) {
+        const firstOutput = data.data.data.outputs[0];
+        logger.info(`   - First output ID: ${firstOutput?.id || 'unknown'}`);
+        
+        // Check for image outputs in steps
+        if (firstOutput?.steps?.length > 0) {
+          firstOutput.steps.forEach((step: any, index: number) => {
+            if (step?.nodeResponse?.src) {
+              logger.info(`   - Step ${index + 1} output: ${step.nodeName} - ${step.nodeResponse.src}`);
+            }
+          });
+        }
+      }
+      
+      return data;
+    } catch (error) {
+      logger.error(`❌ [WEBHOOK] Failed to fetch workflow details for ${workflowId}:`, error);
+      logger.error(`   Error Type: ${error.constructor.name}`);
+      logger.error(`   Error Message: ${error.message}`);
+      if (error.cause) {
+        logger.error(`   Error Cause: ${error.cause}`);
+      }
+      return null;
+    }
+  }
+
+  /**
    * Create workflow event data
    */
-  private createWorkflowEvent(
+  private async createWorkflowEvent(
     eventType: string,
     workflowId: string,
     triggeringEvent: MonitorEvent
-  ): Record<string, unknown> {
+  ): Promise<Record<string, unknown>> {
     const jobEvent = triggeringEvent as unknown as Record<string, unknown>;
     const workflow = this.workflowTracker.get(workflowId);
 
@@ -485,7 +651,8 @@ export class WebhookNotificationService extends EventEmitter {
       const isSuccess = eventType === 'workflow_completed';
       const duration = Date.now() - workflow.startTime;
 
-      return {
+      // Base workflow event data
+      const workflowEventData: Record<string, unknown> = {
         ...baseEvent,
         success: isSuccess,
         total_steps: workflow.totalSteps,
@@ -520,6 +687,39 @@ export class WebhookNotificationService extends EventEmitter {
           return stepDetail;
         }),
       };
+
+      // For completed workflows, try to enhance with EMPROPS API data (already fetched in confirmation)
+      if (isSuccess) {
+        try {
+          logger.info(`🔍 [WEBHOOK] Attempting to enhance workflow_completed event with EMPROPS API data for ${workflowId}`);
+          const workflowDetails = await this.fetchWorkflowDetails(workflowId);
+          
+          if (workflowDetails?.data?.data?.outputs) {
+            workflowEventData.outputs = workflowDetails.data.data.outputs;
+            logger.info(`   ✅ Added ${workflowDetails.data.data.outputs.length} outputs to webhook payload`);
+            
+            // Log the actual image URLs we're sending
+            workflowDetails.data.data.outputs.forEach((output: any, index: number) => {
+              if (output.steps) {
+                output.steps.forEach((step: any) => {
+                  if (step?.nodeResponse?.src) {
+                    logger.info(`   🖼️ Output ${index + 1} - ${step.nodeName}: ${step.nodeResponse.src}`);
+                  }
+                });
+              }
+            });
+            
+            logger.info(`📤 [WEBHOOK] Final enriched payload size: ${JSON.stringify(workflowEventData).length} bytes`);
+          } else {
+            logger.info(`   ⚠️ No outputs found in EMPROPS API response, sending basic workflow data`);
+          }
+        } catch (error) {
+          // Fallback: If EMPROPS API fails (404, timeout, etc.), send basic workflow event
+          logger.warn(`⚠️ [WEBHOOK] Could not enhance with EMPROPS API data (${error.message}), sending basic workflow completion`);
+        }
+      }
+
+      return workflowEventData;
     }
 
     return baseEvent;
@@ -566,7 +766,7 @@ export class WebhookNotificationService extends EventEmitter {
       const isSuccess = failedSteps === 0;
       const eventType = isSuccess ? 'workflow_completed' : 'workflow_failed';
 
-      logger.info('🎉 [WORKFLOW COMPLETION] Workflow completion detected!', {
+      logger.info('🎉 [WORKFLOW COMPLETION] Job queue steps finished!', {
         workflowId,
         totalSteps,
         completedSteps,
@@ -575,7 +775,14 @@ export class WebhookNotificationService extends EventEmitter {
         eventType,
       });
 
-      await this.sendWorkflowEvent(eventType, workflowId, triggeringEvent);
+      // For successful workflows, wait for EMPROPS API confirmation with fallback
+      if (isSuccess) {
+        await this.handleWorkflowCompletionWithEmpropsConfirmation(workflowId, triggeringEvent);
+      } else {
+        // For failed workflows, send immediately
+        logger.info('❌ [WORKFLOW COMPLETION] Workflow failed, sending failure event immediately');
+        await this.sendWorkflowEvent(eventType, workflowId, triggeringEvent);
+      }
 
       // Clean up workflow tracking
       this.workflowTracker.delete(workflowId);

@@ -88,10 +88,17 @@ cp "$ROOT_DIR/scripts/entrypoint-base-common.sh" scripts/
 # Build the Docker image with workspace packages
 echo -e "${GREEN}Building Docker image...${NC}"
 BUILD_DATE=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
+BUILD_TIMESTAMP=$(date +%s)
+GIT_COMMIT=$(git rev-parse --short HEAD 2>/dev/null || echo "unknown")
+GIT_BRANCH=$(git rev-parse --abbrev-ref HEAD 2>/dev/null || echo "unknown")
 
 docker build \
   --build-arg MACHINE_VERSION="${MACHINE_VERSION}" \
   --build-arg BUILD_DATE="${BUILD_DATE}" \
+  --build-arg BUILD_TIMESTAMP="${BUILD_TIMESTAMP}" \
+  --build-arg GIT_COMMIT="${GIT_COMMIT}" \
+  --build-arg GIT_BRANCH="${GIT_BRANCH}" \
+  --build-arg BUILD_ENV="production" \
   --tag "${LOCAL_IMAGE_NAME}" \
   .
 
