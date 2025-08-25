@@ -9,6 +9,8 @@ This section serves as a development journal and technical analysis feed, docume
 
 ## Recent Entries
 
+- **[2025-08-25 21:00] - [Modernization Detailed TODO List](./2025-08-25-modernization-detailed-todo-list.md)** - Comprehensive, sequenced task breakdown for the 4-week modernization initiative with 23 detailed issues across cleanup, service refactor, and EmProps integration, optimized for execution order and risk management
+- **[2025-08-25 20:00] - [GitHub Project Management Setup](./2025-08-25-github-project-management-setup.md)** - Comprehensive setup for GitHub Projects, Issues, and Milestones to track TODOs and longer-term plans while maintaining the direct-commit workflow, including automation, templates, and integration strategies
 - **[2025-08-25 19:15] - [Webhook Persistence Reliability Fix](./2025-08-25-webhook-persistence-reliability-fix.md)** - Root cause analysis and solution for webhook disappearance bug: cache-only visibility issue where refreshCache() clears inactive webhooks, plus comprehensive reliability improvements
 - **[2025-08-25 17:30] - [Modernization Planning Implementation Strategy](./2025-08-25-modernization-planning-implementation-strategy.md)** - Strategic analysis of how we transformed three fragmented initiatives into a unified modernization approach, demonstrating the value of architectural thinking and coordinated planning over tactical execution
 - **[2025-08-25 16:45] - [Comprehensive Codebase Modernization Plan](./2025-08-25-comprehensive-codebase-modernization-plan.md)** - Master plan combining API service refactor, EmProps integration, and comprehensive cleanup into a single coordinated 4-week modernization effort with incremental phases and rollback capabilities

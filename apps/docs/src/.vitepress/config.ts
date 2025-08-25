@@ -267,6 +267,8 @@ const config = defineConfig({
           text: '10. Development Notes',
           items: [
             { text: 'Overview', link: '/10-development-notes/' },
+            { text: '[2025-08-25] Modernization Detailed TODO List 📋', link: '/10-development-notes/2025-08-25-modernization-detailed-todo-list' },
+            { text: '[2025-08-25] GitHub Project Management Setup 📊', link: '/10-development-notes/2025-08-25-github-project-management-setup' },
             { text: '[2025-08-25] Webhook Persistence Reliability Fix 🔧', link: '/10-development-notes/2025-08-25-webhook-persistence-reliability-fix' },
             { text: '[2025-08-25] Modernization Planning Implementation Strategy 📋', link: '/10-development-notes/2025-08-25-modernization-planning-implementation-strategy' },
             { text: '[2025-08-25] Comprehensive Codebase Modernization Plan 🚀', link: '/10-development-notes/2025-08-25-comprehensive-codebase-modernization-plan' },
