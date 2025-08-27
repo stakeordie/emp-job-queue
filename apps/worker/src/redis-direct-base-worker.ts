@@ -25,6 +25,7 @@ import {
   JobStatus,
   ConnectorStatus,
   logger,
+  JobInstrumentation,
 } from '@emp/core';
 import { readFileSync } from 'fs';
 import * as os from 'os';
@@ -83,6 +84,8 @@ export class RedisDirectBaseWorker {
   private currentJobs = new Map<string, Job>();
   private jobStartTimes = new Map<string, number>();
   private jobTimeouts = new Map<string, NodeJS.Timeout>();
+  private jobClaimSpanContexts = new Map<string, { traceId: string; spanId: string }>();
+  private jobProcessSpanContexts = new Map<string, { traceId: string; spanId: string }>();
   private running = false;
   private jobTimeoutCheckInterval?: NodeJS.Timeout;
   private connectorStatusInterval?: NodeJS.Timeout;
@@ -665,6 +668,41 @@ export class RedisDirectBaseWorker {
     this.jobStartTimes.set(job.id, Date.now());
     this.status = WorkerStatus.BUSY;
 
+    // 🚨 BIG TRACE LOGGING: CREATING JOB CLAIM SPAN
+    console.log(`\n🚨🚨🚨 WORKER: CREATING CLAIM SPAN FOR JOB ${job.id}`);
+    console.log(`🚨 JOB: ${job.id}`);
+    console.log(`🚨 WORKFLOW: ${job.workflow_id || 'NONE'}`);
+    console.log(`🚨 USING PARENT job_trace_id: ${job.job_trace_id || 'MISSING!!!'}`);
+    console.log(`🚨 USING PARENT job_span_id: ${job.job_span_id || 'MISSING!!!'}`);
+    console.log(`🚨🚨🚨\n`);
+
+    // Create claim span with parent context from job submission
+    const parentSpanContext = job.job_trace_id && job.job_span_id 
+      ? { traceId: job.job_trace_id, spanId: job.job_span_id }
+      : undefined;
+    
+    const claimSpanContext = await JobInstrumentation.claim({
+      jobId: job.id,
+      workerId: this.workerId,
+      machineId: process.env.MACHINE_ID || 'unknown',
+      connectorId: 'unknown', // Will be determined when connector is assigned
+      serviceType: job.service_required,
+      queueWaitTime: Date.now() - new Date(job.created_at).getTime()
+    }, parentSpanContext);
+
+    // 🚨 BIG TRACE LOGGING: CLAIM SPAN CREATED
+    console.log(`\n🚨🚨🚨 WORKER: CLAIM SPAN CREATED FOR JOB ${job.id}`);
+    console.log(`🚨 JOB: ${job.id}`);
+    console.log(`🚨 WORKFLOW: ${job.workflow_id || 'NONE'}`);
+    console.log(`🚨 CLAIM TRACE_ID: ${claimSpanContext?.traceId || 'FAILED!!!'}`);
+    console.log(`🚨 CLAIM SPAN_ID: ${claimSpanContext?.spanId || 'FAILED!!!'}`);
+    console.log(`🚨🚨🚨\n`);
+
+    // Store claim span context for use in process and complete spans
+    if (claimSpanContext) {
+      this.jobClaimSpanContexts.set(job.id, claimSpanContext);
+    }
+
     // Start health monitoring for this job
     this.jobHealthMonitor.startMonitoring(job);
 
@@ -705,6 +743,22 @@ export class RedisDirectBaseWorker {
       throw new Error(`No connector available for service: ${job.service_required}`);
     }
 
+    // Get claim span context for process span parent
+    const claimSpanContext = this.jobClaimSpanContexts.get(job.id);
+    
+    // Start process span with claim as parent
+    const processSpanContext = await JobInstrumentation.process({
+      jobId: job.id,
+      connectorId: connector.connector_id,
+      serviceType: connector.service_type,
+      estimatedDuration: undefined // We don't have duration estimates yet
+    }, claimSpanContext);
+
+    // Store process span context for use in complete span and connector operations
+    if (processSpanContext) {
+      this.jobProcessSpanContexts.set(job.id, processSpanContext);
+    }
+
     // Update job status to IN_PROGRESS when processing begins
     await this.redisClient.startJobProcessing(job.id);
 
@@ -741,6 +795,15 @@ export class RedisDirectBaseWorker {
       type: job.service_required,
       payload: transformedPayload,
       requirements: job.requirements,
+      metadata: {
+        // Pass process span context to connectors for service operation parenting
+        parentSpanContext: processSpanContext,
+        // Pass job trace context for connector trace parenting
+        job_trace_id: job.job_trace_id,
+        job_span_id: job.job_span_id,
+        workflow_trace_id: job.workflow_trace_id,
+        workflow_span_id: job.workflow_span_id,
+      },
     };
     
     // Process the job - the connector determines success/failure
@@ -766,6 +829,20 @@ export class RedisDirectBaseWorker {
     try {
       // Get job info before completing to update connector status
       const job = this.currentJobs.get(jobId);
+      
+      // Get process span context for complete span parent
+      const processSpanContext = this.jobProcessSpanContexts.get(jobId);
+      
+      // Complete the job with instrumentation
+      const startTime = this.jobStartTimes.get(jobId);
+      const duration = startTime ? Date.now() - startTime : 0;
+      
+      await JobInstrumentation.complete({
+        jobId: jobId,
+        status: 'completed',
+        result: result,
+        duration: duration
+      }, processSpanContext);
 
       await this.redisClient.completeJob(jobId, result);
       await this.finishJob(jobId);
@@ -796,6 +873,20 @@ export class RedisDirectBaseWorker {
       
       // Get job info before failing to update connector status
       const job = this.currentJobs.get(jobId);
+      
+      // Get process span context for complete span parent
+      const processSpanContext = this.jobProcessSpanContexts.get(jobId);
+      
+      // Complete the job with failure instrumentation
+      const startTime = this.jobStartTimes.get(jobId);
+      const duration = startTime ? Date.now() - startTime : 0;
+      
+      await JobInstrumentation.complete({
+        jobId: jobId,
+        status: 'failed',
+        error: error,
+        duration: duration
+      }, processSpanContext);
 
       logger.info(`🔥 [DEBUG] About to call redisClient.failJob with canRetry=${canRetry}`);
       await this.redisClient.failJob(jobId, error, canRetry);
@@ -860,6 +951,10 @@ export class RedisDirectBaseWorker {
       clearTimeout(timeout);
       this.jobTimeouts.delete(jobId);
     }
+
+    // Clean up span contexts
+    this.jobClaimSpanContexts.delete(jobId);
+    this.jobProcessSpanContexts.delete(jobId);
 
     // Update status
     const newStatus = this.currentJobs.size > 0 ? WorkerStatus.BUSY : WorkerStatus.IDLE;

@@ -17,6 +17,7 @@ interface WebhookServerConfig {
   port: number;
   redisUrl: string;
   corsOrigins?: string[];
+  telemetryClient?: any; // Optional telemetry client for OTEL events
 }
 
 export class WebhookServer {
@@ -31,7 +32,7 @@ export class WebhookServer {
     this.app = express();
     this.httpServer = createServer(this.app);
     this.redis = new Redis(config.redisUrl);
-    this.webhookProcessor = new WebhookProcessor(this.redis);
+    this.webhookProcessor = new WebhookProcessor(this.redis, config.telemetryClient);
 
     this.setupMiddleware();
     this.setupRoutes();

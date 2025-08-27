@@ -65,8 +65,8 @@ start_otel_collector() {
     log_info "  - Template: /api-server/otel/otel-collector-api.yaml.template"
     log_info "  - Config: /api-server/otel/otel-collector-api.yaml"
     
-    # Create otel directory
-    mkdir -p /api-server/otel
+    # Create otel and logs directories
+    mkdir -p /api-server/otel /api-server/logs
     
     # Generate OTel Collector config from template at runtime
     if [ -f "/api-server/otel/otel-collector-api.yaml.template" ]; then

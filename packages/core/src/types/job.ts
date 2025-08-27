@@ -29,6 +29,11 @@ export interface Job {
   service_submitted_at?: string; // When job was submitted to external service
   last_service_check?: string; // Last time we verified status with external service
   service_status?: string; // Last known status from external service
+  // OTEL trace context for cross-service propagation
+  job_trace_id?: string; // Trace ID from job submission span
+  job_span_id?: string; // Span ID from job submission span
+  workflow_trace_id?: string; // Trace ID from workflow step span (if applicable)
+  workflow_span_id?: string; // Span ID from workflow step span (if applicable)
 }
 
 export enum JobStatus {

@@ -37,8 +37,9 @@ export const ApiEnvInterface = {
     // Fluent Bit configuration
     "FLUENTD_HOST": "TELEMETRY_FLUENTD_HOST",
     "FLUENTD_PORT": "TELEMETRY_FLUENTD_PORT",
-    "FLUENTD_SECURE": "TELEMETRY_FLUENTD_SECURE"
-    },
+    "FLUENTD_SECURE": "TELEMETRY_FLUENTD_SECURE",
+    "NODE_ENV": "API_NODE_ENV"
+  },
   
   secret: {
     // Sensitive authentication tokens and API keys
@@ -54,6 +55,7 @@ export const ApiEnvInterface = {
     "LOG_LEVEL": "API_LOG_LEVEL"
   },
   defaults: {
-    "SERVICE_TYPE": "api"
+    "SERVICE_TYPE": "api",
+    "LOG_TO_FILE": "true"
   }
 };

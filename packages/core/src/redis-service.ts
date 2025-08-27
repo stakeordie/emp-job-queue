@@ -323,6 +323,11 @@ export class RedisService implements RedisServiceInterface {
         service_required: job.service_required,
         customer_id: job.customer_id,
         timestamp: Date.now(),
+        // Include trace context for webhook hierarchy
+        job_trace_id: job.job_trace_id,
+        job_span_id: job.job_span_id,
+        workflow_trace_id: job.workflow_trace_id,
+        workflow_span_id: job.workflow_span_id,
       };
 
       // Publish completion

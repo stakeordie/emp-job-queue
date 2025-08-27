@@ -10,7 +10,7 @@
 
 import axios, { AxiosInstance, AxiosRequestConfig, AxiosResponse, AxiosError } from 'axios';
 import { BaseConnector, ConnectorConfig } from '../base-connector.js';
-import { JobData, JobResult, ProgressCallback, ServiceInfo, logger } from '@emp/core';
+import { JobData, JobResult, ProgressCallback, ServiceInfo, logger, ProcessingInstrumentation, sendTrace, SpanContext } from '@emp/core';
 
 // HTTP-specific configuration - contains base config fields
 export interface HTTPConnectorConfig {
@@ -439,7 +439,9 @@ export abstract class HTTPConnector extends BaseConnector {
   // BaseConnector Implementation
   // ========================================
 
-  async processJob(jobData: JobData, progressCallback?: ProgressCallback): Promise<JobResult> {
+  async processJob(jobData: JobData, progressCallback?: ProgressCallback, parentSpan?: SpanContext): Promise<JobResult> {
+    const startTime = Date.now();
+    
     try {
       logger.debug(`Processing HTTP job`, {
         connector: this.connector_id,
@@ -450,17 +452,111 @@ export abstract class HTTPConnector extends BaseConnector {
       // Build request configuration
       const requestConfig = this.buildRequestConfig(jobData);
       
+      const fullURL = `${this.httpClient.defaults.baseURL}${requestConfig.url}`;
+      
       logger.info(`🌐 HTTPConnector making request`, {
         connector: this.connector_id,
         method: requestConfig.method,
         url: requestConfig.url,
         baseURL: this.httpClient.defaults.baseURL,
-        fullURL: `${this.httpClient.defaults.baseURL}${requestConfig.url}`,
+        fullURL: fullURL,
         jobId: jobData.id
       });
+
+      // Calculate request payload size and string for telemetry
+      const requestPayloadString = requestConfig.data ? 
+        (typeof requestConfig.data === 'string' ? requestConfig.data : JSON.stringify(requestConfig.data)) : '';
+      const requestPayloadSize = requestPayloadString.length;
+
+      // 🚨 BIG PAYLOAD LOGGING: HTTP REQUEST TO SERVICE
+      console.log(`\n🚨🚨🚨 HTTP CONNECTOR: SENDING REQUEST TO ${this.config.service_type.toUpperCase()}`);
+      console.log(`🚨 JOB: ${jobData.id}`);
+      console.log(`🚨 SERVICE: ${this.config.service_type}`);
+      console.log(`🚨 URL: ${fullURL}`);
+      console.log(`🚨 METHOD: ${requestConfig.method?.toUpperCase() || 'POST'}`);
+      console.log(`🚨 REQUEST PAYLOAD SIZE: ${requestPayloadSize} bytes`);
+      console.log(`🚨 REQUEST PAYLOAD:`);
+      console.log(requestPayloadString.length > 1000 ? 
+        requestPayloadString.substring(0, 1000) + '\n... [TRUNCATED - ' + (requestPayloadSize - 1000) + ' more bytes]' : 
+        requestPayloadString);
+      console.log(`🚨🚨🚨\n`);
+
+      // Send OTEL trace for HTTP request start with parent context
+      try {
+        await ProcessingInstrumentation.httpRequest({
+          jobId: jobData.id,
+          method: requestConfig.method?.toUpperCase() || 'POST',
+          url: fullURL,
+          requestSize: requestPayloadSize,
+          timeout: this.httpConfig.request_timeout_ms || 30000,
+          headers: undefined, // Headers are complex objects, skip for telemetry
+          payload: requestPayloadString.substring(0, 2000) // Truncate large payloads
+        }, parentSpan);
+      } catch (traceError) {
+        logger.debug('Failed to send HTTP request trace', { error: traceError.message });
+      }
       
       // Execute HTTP request
       const response = await this.httpClient.request(requestConfig);
+      
+      const requestDurationMs = Date.now() - startTime;
+
+      // Send OTEL trace for HTTP request completion with request/response data
+      try {
+        const responsePayloadString = response.data ? 
+          (typeof response.data === 'string' ? response.data : JSON.stringify(response.data)) : '';
+        const responsePayloadSize = responsePayloadString.length;
+
+        // 🚨 BIG PAYLOAD LOGGING: HTTP RESPONSE FROM SERVICE
+        console.log(`\n🚨🚨🚨 HTTP CONNECTOR: RECEIVED RESPONSE FROM ${this.config.service_type.toUpperCase()}`);
+        console.log(`🚨 JOB: ${jobData.id}`);
+        console.log(`🚨 SERVICE: ${this.config.service_type}`);
+        console.log(`🚨 STATUS: ${response.status}`);
+        console.log(`🚨 DURATION: ${requestDurationMs}ms`);
+        console.log(`🚨 RESPONSE PAYLOAD SIZE: ${responsePayloadSize} bytes`);
+        console.log(`🚨 RESPONSE PAYLOAD:`);
+        console.log(responsePayloadString.length > 1000 ? 
+          responsePayloadString.substring(0, 1000) + '\n... [TRUNCATED - ' + (responsePayloadSize - 1000) + ' more bytes]' : 
+          responsePayloadString);
+        console.log(`🚨🚨🚨\n`);
+        
+        await sendTrace('connector.http_response', {
+          'job.id': jobData.id,
+          'connector.id': this.connector_id,
+          'connector.type': 'http',
+          'service.type': this.config.service_type,
+          'http.method': requestConfig.method?.toUpperCase() || 'POST',
+          'http.url': fullURL,
+          'http.status_code': response.status.toString(),
+          'http.request_size': requestPayloadSize.toString(),
+          'http.response_size': responsePayloadSize.toString(),
+          'http.request.payload': requestPayloadString.substring(0, 2000), // Truncate large payloads
+          'http.response.payload': responsePayloadString.substring(0, 2000), // Truncate large payloads
+          'request.payload.size': requestPayloadSize.toString(),
+          'response.payload.size': responsePayloadSize.toString(),
+          'operation.success': (response.status >= 200 && response.status < 300).toString(),
+          'operation.duration_ms': requestDurationMs.toString(),
+          'component.type': 'connector',
+          'process.type': 'http_request_response'
+        }, {
+          duration_ms: requestDurationMs,
+          status: (response.status >= 200 && response.status < 300) ? 'ok' : 'error',
+          parent_trace_id: parentSpan?.traceId,
+          parent_span_id: parentSpan?.spanId,
+          events: [
+            {
+              name: 'http.response_received',
+              attributes: {
+                'response.status': response.status.toString(),
+                'response.size': responsePayloadSize.toString(),
+                'response.content_type': response.headers?.['content-type'] || 'unknown'
+              }
+            }
+          ]
+        });
+      } catch (traceError) {
+        logger.debug('Failed to send HTTP response trace', { error: traceError.message });
+      }
 
       // Validate response
       if (!this.validateServiceResponse(response)) {

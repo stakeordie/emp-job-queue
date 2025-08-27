@@ -27,6 +27,45 @@ class WebhookCompose {
   constructor() {}
 
   /**
+   * Simple INI parser for component configuration files
+   */
+  parseINI(content) {
+    const result = {};
+    let currentSection = 'default';
+    
+    content.split('\n').forEach(line => {
+      line = line.trim();
+      
+      // Skip empty lines and comments
+      if (!line || line.startsWith('#')) return;
+      
+      // Check for section headers [section]
+      const sectionMatch = line.match(/^\[([^\]]+)\]$/);
+      if (sectionMatch) {
+        currentSection = sectionMatch[1];
+        if (!result[currentSection]) {
+          result[currentSection] = {};
+        }
+        return;
+      }
+      
+      // Parse key=value pairs
+      const kvMatch = line.match(/^([^=]+)=(.*)$/);
+      if (kvMatch) {
+        const key = kvMatch[1].trim();
+        const value = kvMatch[2].trim();
+        
+        if (!result[currentSection]) {
+          result[currentSection] = {};
+        }
+        result[currentSection][key] = value;
+      }
+    });
+    
+    return result;
+  }
+
+  /**
    * Load environment variables from .env.{envName} (exactly like machine pattern)
    */
   loadEnvironment(envName) {
@@ -49,6 +88,43 @@ class WebhookCompose {
     console.log(chalk.dim(`   Variables: ${Object.keys(result.parsed || {}).length}`));
 
     return result.parsed || {};
+  }
+
+  /**
+   * Load and combine regular .env file + secrets for deployment
+   */
+  loadCombinedEnvironment(envName) {
+    const envPath = path.join(WEBHOOK_DIR, `.env.${envName}`);
+    const secretsPath = path.join(WEBHOOK_DIR, `.env.secret.${envName}`);
+    
+    console.log(chalk.blue(`📋 Loading regular env: ${path.relative(PROJECT_ROOT, envPath)}`));
+    console.log(chalk.blue(`🔐 Loading secrets: ${path.relative(PROJECT_ROOT, secretsPath)}`));
+
+    // Load regular .env file
+    let envVars = {};
+    if (fs.existsSync(envPath)) {
+      const envContent = fs.readFileSync(envPath, 'utf8');
+      envVars = dotenv.parse(envContent);
+      console.log(chalk.green(`✅ Loaded ${Object.keys(envVars).length} regular variables`));
+    } else {
+      console.warn(chalk.yellow(`⚠️  Env file not found: ${envPath}`));
+    }
+
+    // Load secrets (flat .env format)
+    let secretVars = {};
+    if (fs.existsSync(secretsPath)) {
+      const secretContent = fs.readFileSync(secretsPath, 'utf8');
+      secretVars = dotenv.parse(secretContent);
+      console.log(chalk.green(`✅ Loaded ${Object.keys(secretVars).length} secret variables`));
+    } else {
+      console.warn(chalk.yellow(`⚠️  Secrets file not found: ${secretsPath}`));
+    }
+
+    // Combine (secrets override regular vars)
+    const combined = { ...envVars, ...secretVars };
+    console.log(chalk.blue(`📦 Combined total: ${Object.keys(combined).length} variables`));
+    
+    return combined;
   }
 
   /**
@@ -171,13 +247,8 @@ class WebhookCompose {
     console.log(chalk.blue(`🌐 Environment: ${envName}`));
     console.log();
 
-    // Load environment variables
-    const envPath = path.join(WEBHOOK_DIR, `.env.${envName}`);
-    if (!fs.existsSync(envPath)) {
-      throw new Error(`Environment file not found: .env.${envName}`);
-    }
-
-    const envVars = dotenv.parse(fs.readFileSync(envPath));
+    // Load and combine component + secret environment variables
+    const envVars = this.loadCombinedEnvironment(envName);
     const envCount = Object.keys(envVars).length;
 
     // Create output directory
@@ -192,13 +263,13 @@ class WebhookCompose {
 
     const serviceName = 'webhook';
 
-    // 1. Railway deployment file (.env format)
-    const railwayFile = path.join(deployDir, `${serviceName}-${envName}.railway.env`);
-    const railwayContent = Object.entries(envVars)
+    // 1. Unified deployment file (.deploy.env format)
+    const deployFile = path.join(deployDir, `${serviceName}-${envName}.deploy.env`);
+    const deployContent = Object.entries(envVars)
       .map(([key, value]) => `${key}=${value}`)
       .join('\n');
-    fs.writeFileSync(railwayFile, railwayContent);
-    console.log(chalk.green(`✅ Railway: ${railwayFile}`));
+    fs.writeFileSync(deployFile, deployContent);
+    console.log(chalk.green(`✅ Deploy file: ${deployFile}`));
 
     // 2. Docker run command file
     const dockerFile = path.join(deployDir, `${serviceName}-${envName}.docker-run.sh`);

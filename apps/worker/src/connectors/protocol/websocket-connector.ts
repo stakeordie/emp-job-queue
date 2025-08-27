@@ -10,7 +10,7 @@
 
 import { WebSocket } from 'ws';
 import { BaseConnector, ConnectorConfig } from '../base-connector.js';
-import { JobData, JobResult, ProgressCallback, ServiceInfo, logger } from '@emp/core';
+import { JobData, JobResult, ProgressCallback, ServiceInfo, logger, ProcessingInstrumentation, sendTrace, SpanContext } from '@emp/core';
 
 // WebSocket-specific configuration - contains base config fields
 export interface WebSocketConnectorConfig {
@@ -437,12 +437,62 @@ export abstract class WebSocketConnector extends BaseConnector {
         return;
       }
       
+      // 🚨 BIG PAYLOAD LOGGING: WEBSOCKET MESSAGE FROM SERVICE
+      const messageType = messageData?.type || 'unknown';
+      const isHeartbeat = messageType === 'ping' || messageType === 'pong' || messageType === 'heartbeat';
+      
+      if (!isHeartbeat) {
+        console.log(`\n🚨🚨🚨 WEBSOCKET CONNECTOR: RECEIVED MESSAGE FROM ${this.config.service_type.toUpperCase()}`);
+        console.log(`🚨 CONNECTOR: ${this.connector_id}`);
+        console.log(`🚨 SERVICE: ${this.config.service_type}`);
+        console.log(`🚨 MESSAGE TYPE: ${messageType}`);
+        console.log(`🚨 MESSAGE SIZE: ${rawMessage.length} bytes`);
+        console.log(`🚨 MESSAGE PAYLOAD:`);
+        console.log(rawMessage.length > 1000 ? 
+          rawMessage.substring(0, 1000) + '\n... [TRUNCATED - ' + (rawMessage.length - 1000) + ' more bytes]' : 
+          rawMessage);
+        console.log(`🚨🚨🚨\n`);
+      }
+      
       // 🔍 LOG IMPORTANT MESSAGES ONLY
       logger.info(`🔍 [${this.connector_id}] RAW WebSocket Message:`, {
         type: messageData.type,
         data: messageData.data,
         full_message: messageData
       });
+      
+      // Send OTEL trace for received WebSocket message (skip heartbeats/pings)
+      
+      if (!isHeartbeat) {
+        try {
+          sendTrace('connector.websocket_receive', {
+            'connector.id': this.connector_id,
+            'connector.type': 'websocket',
+            'service.type': this.config.service_type,
+            'websocket.message.direction': 'received',
+            'websocket.message.size': rawMessage.length.toString(),
+            'websocket.message.type': messageType,
+            'websocket.message.data_type': typeof messageData,
+            'websocket.message.internal_type': messageType,
+            'websocket.message.payload': rawMessage.substring(0, 2000), // Truncate large payloads
+            'component.type': 'connector',
+            'operation.type': 'websocket_receive'
+          }, {
+            events: [
+              {
+                name: 'websocket.message_received',
+                attributes: {
+                  'message.type': messageType,
+                  'message.size': rawMessage.length.toString(),
+                  'timestamp': new Date().toISOString()
+                }
+              }
+            ]
+          });
+        } catch (traceError) {
+          logger.debug('Failed to send WebSocket receive trace', { error: traceError.message });
+        }
+      }
       
       // Classify and route message
       const message: WebSocketMessage = {
@@ -645,12 +695,64 @@ export abstract class WebSocketConnector extends BaseConnector {
   /**
    * Send message through WebSocket
    */
-  protected sendMessage(message: any): void {
+  protected sendMessage(message: any, parentSpan?: SpanContext): void {
     if (this.connectionState !== WebSocketState.CONNECTED || !this.websocket) {
       throw new Error('WebSocket not connected');
     }
 
     const messageString = typeof message === 'string' ? message : JSON.stringify(message);
+    
+    // Skip telemetry for heartbeat/ping messages to reduce noise
+    const messageType = message?.type || 'unknown';
+    const isHeartbeat = messageType === 'ping' || messageType === 'pong' || messageType === 'heartbeat';
+    
+    // 🚨 BIG PAYLOAD LOGGING: WEBSOCKET MESSAGE TO SERVICE
+    if (!isHeartbeat) {
+      console.log(`\n🚨🚨🚨 WEBSOCKET CONNECTOR: SENDING MESSAGE TO ${this.config.service_type.toUpperCase()}`);
+      console.log(`🚨 CONNECTOR: ${this.connector_id}`);
+      console.log(`🚨 SERVICE: ${this.config.service_type}`);
+      console.log(`🚨 MESSAGE TYPE: ${messageType}`);
+      console.log(`🚨 MESSAGE SIZE: ${messageString.length} bytes`);
+      console.log(`🚨 MESSAGE PAYLOAD:`);
+      console.log(messageString.length > 1000 ? 
+        messageString.substring(0, 1000) + '\n... [TRUNCATED - ' + (messageString.length - 1000) + ' more bytes]' : 
+        messageString);
+      console.log(`🚨🚨🚨\n`);
+    }
+    
+    // Send OTEL trace for WebSocket message (skip heartbeats/pings)
+    if (!isHeartbeat) {
+      try {
+        sendTrace('connector.websocket_send', {
+          'connector.id': this.connector_id,
+          'connector.type': 'websocket',
+          'service.type': this.config.service_type,
+          'websocket.message.direction': 'sent',
+          'websocket.message.size': messageString.length.toString(),
+          'websocket.message.type': messageType,
+          'websocket.message.data_type': typeof message,
+          'websocket.message.payload': messageString.substring(0, 2000), // Truncate large payloads
+          'component.type': 'connector',
+          'operation.type': 'websocket_send'
+        }, {
+          parent_trace_id: parentSpan?.traceId,
+          parent_span_id: parentSpan?.spanId,
+          events: [
+            {
+              name: 'websocket.message_sent',
+              attributes: {
+                'message.type': messageType,
+                'message.size': messageString.length.toString(),
+                'timestamp': new Date().toISOString()
+              }
+            }
+          ]
+        });
+      } catch (traceError) {
+        logger.debug('Failed to send WebSocket send trace', { error: traceError.message });
+      }
+    }
+    
     this.websocket.send(messageString);
   }
 

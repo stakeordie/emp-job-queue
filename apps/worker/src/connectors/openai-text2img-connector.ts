@@ -782,8 +782,9 @@ export class OpenAIText2ImgConnector extends OpenAIBaseConnector {
       
       // Extract images from OpenAI response
       const images: string[] = [];
-      if (openaiResponse.output && Array.isArray(openaiResponse.output)) {
-        for (const output of openaiResponse.output) {
+      const response = openaiResponse as any; // Type assertion for OpenAI response structure
+      if (response.output && Array.isArray(response.output)) {
+        for (const output of response.output) {
           if (output.type === 'image_generation_call' && output.result) {
             images.push(output.result);
           }
@@ -795,10 +796,10 @@ export class OpenAIText2ImgConnector extends OpenAIBaseConnector {
         // Capture what OpenAI actually returned instead of images
         let actualResponse = 'No output provided';
         
-        if (openaiResponse.output && Array.isArray(openaiResponse.output)) {
+        if (response.output && Array.isArray(response.output)) {
           // Look for text content in the response
           let textContent = '';
-          for (const output of openaiResponse.output) {
+          for (const output of response.output) {
             if (output.type === 'message' && output.content) {
               for (const content of output.content) {
                 if (content.type === 'output_text' && content.text) {
@@ -810,15 +811,15 @@ export class OpenAIText2ImgConnector extends OpenAIBaseConnector {
           }
           
           // Also check for output_text field at root level
-          if (!textContent && openaiResponse.output_text) {
-            textContent = openaiResponse.output_text;
+          if (!textContent && response.output_text) {
+            textContent = response.output_text;
           }
           
           if (textContent) {
             // Include the actual text that was generated instead of an image
             actualResponse = `Generated text instead of image: "${textContent.substring(0, 500)}${textContent.length > 500 ? '...' : ''}"`;
           } else {
-            const outputTypes = openaiResponse.output.map((o: any) => o.type).join(', ');
+            const outputTypes = response.output.map((o: any) => o.type).join(', ');
             actualResponse = `Expected image_generation_call but got: [${outputTypes}]`;
           }
         }

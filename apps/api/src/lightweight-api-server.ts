@@ -2543,6 +2543,13 @@ export class LightweightAPIServer {
       parentSpanContext = workflowStepSpanContext;
     }
     
+    // 🚨 BIG TRACE LOGGING: ABOUT TO CREATE JOB SUBMISSION SPAN
+    console.log(`\n🚨🚨🚨 API: BIG SUBMITTING TRACE for JOB ${jobId}`);
+    console.log(`🚨 JOB: ${jobId}`);
+    console.log(`🚨 WORKFLOW: ${jobData.workflow_id || 'NONE'}`);
+    console.log(`🚨 PARENT SPAN CONTEXT:`, parentSpanContext);
+    console.log(`🚨🚨🚨\n`);
+    
     // Start job submission tracing (either standalone or as child of workflow step)
     const submitSpanContext = await JobInstrumentation.submit({
       jobId,
@@ -2554,7 +2561,17 @@ export class LightweightAPIServer {
       submittedBy: 'api-server',
       workflowId: jobData.workflow_id as string | undefined,
       userId: jobData.customer_id as string | undefined,
+      payload: jobData.payload || jobData, // Include the full payload sent to services
+      payloadSizeBytes: JSON.stringify(jobData.payload || jobData).length
     }, parentSpanContext);
+    
+    // 🚨 BIG TRACE LOGGING: AFTER CREATING JOB SUBMISSION SPAN
+    console.log(`\n🚨🚨🚨 API: JOB SUBMISSION SPAN CREATED FOR JOB ${jobId}`);
+    console.log(`🚨 JOB: ${jobId}`);
+    console.log(`🚨 WORKFLOW: ${jobData.workflow_id || 'NONE'}`);
+    console.log(`🚨 SUBMIT TRACE_ID: ${submitSpanContext.traceId}`);
+    console.log(`🚨 SUBMIT SPAN_ID: ${submitSpanContext.spanId}`);
+    console.log(`🚨🚨🚨\n`);
     
     if (providedJobId) {
       logger.info(`[JOB SUBMIT START] Using provided job ID: ${jobId} (EmProps compatibility)`);
@@ -2606,6 +2623,16 @@ export class LightweightAPIServer {
     );
     logger.info(`🔍 [SUBMIT_JOB_DEBUG] About to call redis.hmset for job:${jobId}`);
     
+    // 🚨 BIG TRACE LOGGING: STORING TRACE CONTEXT IN REDIS
+    console.log(`\n🚨🚨🚨 API: STORING JOB ${jobId} IN REDIS WITH TRACE CONTEXT`);
+    console.log(`🚨 JOB: ${jobId}`);
+    console.log(`🚨 WORKFLOW: ${job.workflow_id || 'NONE'}`);
+    console.log(`🚨 STORING job_trace_id: ${submitSpanContext.traceId}`);
+    console.log(`🚨 STORING job_span_id: ${submitSpanContext.spanId}`);
+    console.log(`🚨 STORING workflow_trace_id: ${workflowStepSpanContext?.traceId || 'NONE'}`);
+    console.log(`🚨 STORING workflow_span_id: ${workflowStepSpanContext?.spanId || 'NONE'}`);
+    console.log(`🚨🚨🚨\n`);
+    
     try {
       await this.redis.hmset(`job:${jobId}`, {
       id: job.id,
@@ -2630,6 +2657,11 @@ export class LightweightAPIServer {
       workflow_span_id: workflowStepSpanContext?.spanId || '',
     });
     logger.info(`🔍 [SUBMIT_JOB_DEBUG] Successfully stored job in Redis hash`);
+    
+    // 🚨 BIG TRACE LOGGING: CONFIRM WHAT GOT STORED
+    console.log(`\n🚨🚨🚨 API: REDIS STORAGE COMPLETE FOR JOB ${jobId}`);
+    console.log(`🚨 JOB: ${jobId} - STORED IN REDIS WITH TRACE IDs`);
+    console.log(`🚨🚨🚨\n`);
     } catch (error) {
       logger.error(`🔍 [SUBMIT_JOB_DEBUG] FAILED to store job in Redis hash:`, error);
       throw error;

@@ -30,6 +30,10 @@ services:
       # Worker bundle (if testing with local worker)
       - ./worker-bundled:/service-manager/worker-bundled:ro
       
+      # Mount telemetry and core packages for JobInstrumentation
+      - ../../packages/telemetry:/service-manager/node_modules/@emp/telemetry:ro
+      - ../../packages/core:/service-manager/node_modules/@emp/core:ro
+      
       # ComfyUI installations (persist between restarts)
       - comfyui-data:/workspace/ComfyUI
       
@@ -46,6 +50,14 @@ services:
       
       # Skip encryption
       DISABLE_ENV_ENCRYPTION: "true"
+      
+      # Telemetry environment for JobInstrumentation
+      OTEL_ENABLED: "true"
+      OTEL_COLLECTOR_TRACES_ENDPOINT: "https://ingress.us-west-2.aws.dash0.com:4318/v1/traces"
+      SERVICE_NAME: "comfyui-remote-local-dev-219469"
+      SERVICE_VERSION: "1.0.0"
+      DASH0_DATASET: "development"
+      WORKER_ID: "comfyui-dev-worker"
       
       # GPU settings
       NVIDIA_VISIBLE_DEVICES: ${NVIDIA_VISIBLE_DEVICES:-all}

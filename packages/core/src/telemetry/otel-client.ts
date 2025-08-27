@@ -20,11 +20,19 @@ export async function sendTrace(
     parent_span_id?: string;
   } = {}
 ): Promise<{ traceId: string; spanId: string }> {
-  const collectorEndpoint = getRequiredEnv('OTEL_COLLECTOR_TRACES_ENDPOINT', 'Must specify OTEL collector traces endpoint');
+  const collectorEndpoint = process.env.OTEL_COLLECTOR_TRACES_ENDPOINT || 'https://ingress.us-west-2.aws.dash0.com:4318/v1/traces';
   
   // Generate IDs
   const traceId = options.parent_trace_id || generateTraceId();
   const spanId = generateSpanId();
+  
+  // 🚨 BIG TRACE LOGGING: OTEL CLIENT CREATING SPAN
+  console.log(`\n🚨🚨🚨 OTEL: CREATING SPAN '${name}'`);
+  console.log(`🚨 PARENT_TRACE_ID: ${options.parent_trace_id || 'NONE - GENERATING NEW'}`);
+  console.log(`🚨 FINAL TRACE_ID: ${traceId}`);
+  console.log(`🚨 SPAN_ID: ${spanId}`);
+  console.log(`🚨 PARENT_SPAN_ID: ${options.parent_span_id || 'NONE'}`);
+  console.log(`🚨🚨🚨\n`);
   const startTime = Date.now() * 1000000; // nanoseconds
   const duration = (options.duration_ms || 1) * 1000000; // convert to nanoseconds
   
@@ -33,11 +41,11 @@ export async function sendTrace(
     resourceSpans: [{
       resource: {
         attributes: [
-          { key: 'service.name', value: { stringValue: getRequiredEnv('SERVICE_NAME', 'Service name for telemetry') } },
-          { key: 'service.version', value: { stringValue: getRequiredEnv('SERVICE_VERSION', 'Service version for telemetry') } },
-          { key: 'telemetry.dataset', value: { stringValue: getRequiredEnv('DASH0_DATASET', 'Dash0 dataset (development/production)') } },
-          { key: 'machine.id', value: { stringValue: getRequiredEnv('MACHINE_ID', 'Unique machine identifier') } },
-          { key: 'worker.id', value: { stringValue: getRequiredEnv('WORKER_ID', 'Unique worker identifier') } }
+          { key: 'service.name', value: { stringValue: process.env.SERVICE_NAME || 'emp-service' } },
+          { key: 'service.version', value: { stringValue: process.env.SERVICE_VERSION || '1.0.0' } },
+          { key: 'telemetry.dataset', value: { stringValue: process.env.DASH0_DATASET || 'development' } },
+          { key: 'machine.id', value: { stringValue: process.env.MACHINE_ID || process.env.HOSTNAME || 'unknown' } },
+          { key: 'worker.id', value: { stringValue: process.env.WORKER_ID || process.pid?.toString() || 'unknown' } }
         ]
       },
       scopeSpans: [{
@@ -48,7 +56,7 @@ export async function sendTrace(
         spans: [{
           traceId,
           spanId,
-          parentSpanId: options.parent_span_id,
+          ...(options.parent_span_id && { parentSpanId: options.parent_span_id }),
           name,
           kind: 1, // SPAN_KIND_INTERNAL
           startTimeUnixNano: startTime.toString(),
@@ -526,6 +534,8 @@ export interface JobSubmitData {
   submittedBy?: string;
   workflowId?: string;
   userId?: string;
+  payload?: any; // The actual job payload that will be sent to services
+  payloadSizeBytes?: number; // Size of payload for performance analysis
 }
 
 export interface JobSaveData {
@@ -618,6 +628,36 @@ export const JobInstrumentation = {
     }
     if (data.userId) {
       attributes['user.id'] = data.userId;
+    }
+
+    // Add payload information for analysis
+    if (data.payload) {
+      // Include serialized payload for debugging (truncated if too large)
+      const payloadStr = JSON.stringify(data.payload);
+      attributes['job.payload'] = payloadStr.length > 2000 
+        ? payloadStr.substring(0, 2000) + '...[truncated]'
+        : payloadStr;
+      
+      attributes['job.payload.size_bytes'] = data.payloadSizeBytes || payloadStr.length;
+      
+      // Extract key payload properties for easier querying
+      if (data.payload.prompt) {
+        attributes['job.payload.prompt'] = typeof data.payload.prompt === 'string' 
+          ? data.payload.prompt.substring(0, 500) // Truncate long prompts
+          : JSON.stringify(data.payload.prompt).substring(0, 500);
+      }
+      if (data.payload.model) {
+        attributes['job.payload.model'] = data.payload.model;
+      }
+      if (data.payload.width && data.payload.height) {
+        attributes['job.payload.dimensions'] = `${data.payload.width}x${data.payload.height}`;
+      }
+      if (data.payload.max_tokens) {
+        attributes['job.payload.max_tokens'] = data.payload.max_tokens;
+      }
+      if (data.payload.temperature) {
+        attributes['job.payload.temperature'] = data.payload.temperature;
+      }
     }
 
     const events = [
@@ -969,6 +1009,7 @@ export interface HttpRequestData {
   requestSize: number;
   timeout: number;
   headers?: Record<string, string>;
+  payload?: string; // Request payload (truncated)
 }
 
 export interface PollData {
@@ -1056,7 +1097,7 @@ export interface ComfyUIData {
 export const ProcessingInstrumentation = {
   // HTTP-based services (OpenAI, A1111, etc.)
   httpRequest: (data: HttpRequestData, parent?: SpanContext): Promise<SpanContext> => {
-    const attributes = {
+    const attributes: Record<string, any> = {
       'job.id': data.jobId,
       'http.method': data.method,
       'http.url': data.url,
@@ -1065,6 +1106,11 @@ export const ProcessingInstrumentation = {
       'process.type': 'http_request',
       'component.type': 'connector'
     };
+    
+    // Add payload if provided
+    if (data.payload) {
+      attributes['http.request.payload'] = data.payload;
+    }
 
     const events = [
       {

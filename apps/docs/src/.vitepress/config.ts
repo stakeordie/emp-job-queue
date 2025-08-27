@@ -249,16 +249,12 @@ const config = defineConfig({
           text: '9. Observability',
           items: [
             { text: 'Overview', link: '/09-observability/' },
+            { text: 'Telemetry Setup Guide ⭐', link: '/09-observability/telemetry-setup-guide' },
+            { text: 'System Architecture', link: '/09-observability/system-architecture' },
             { text: 'Information Flow', link: '/09-observability/information-flow' },
-            { text: 'Architecture ✨', link: '/09-observability/architecture' },
-            { text: 'Progress Status ✅', link: '/09-observability/progress-status' },
-            { text: 'Information Flow (Detailed) ✨', link: '/09-observability/information-flow-detailed' },
-            { text: 'Adding Telemetry 📝', link: '/09-observability/adding-telemetry' },
-            { text: 'Debugging Guide 📝', link: '/09-observability/debugging-guide' },
-            { text: 'Query Cookbook 📝', link: '/09-observability/query-cookbook' },
-            { text: 'Monitoring Setup 📝', link: '/09-observability/monitoring-setup' },
-            { text: 'Alert Configuration 📝', link: '/09-observability/alert-configuration' },
-            { text: 'Performance Tuning 📝', link: '/09-observability/performance-tuning' }
+            { text: 'Implementation Status', link: '/09-observability/implementation-status' },
+            { text: 'OTEL Trace Library', link: '/09-observability/otel-trace-library' },
+            { text: 'Query & Debug Guide', link: '/09-observability/query-debug-guide' }
           ]
         }
       ],
@@ -267,6 +263,7 @@ const config = defineConfig({
           text: '10. Development Notes',
           items: [
             { text: 'Overview', link: '/10-development-notes/' },
+            { text: '[2025-08-26] North Star Architecture Modernization Proposal 🎯', link: '/10-development-notes/2025-08-26-north-star-architecture-modernization-proposal' },
             { text: '[2025-08-25] Modernization Detailed TODO List 📋', link: '/10-development-notes/2025-08-25-modernization-detailed-todo-list' },
             { text: '[2025-08-25] GitHub Project Management Setup 📊', link: '/10-development-notes/2025-08-25-github-project-management-setup' },
             { text: '[2025-08-25] Webhook Persistence Reliability Fix 🔧', link: '/10-development-notes/2025-08-25-webhook-persistence-reliability-fix' },

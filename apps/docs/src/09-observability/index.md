@@ -4,59 +4,35 @@
 
 ## Overview
 
-Our observability strategy provides complete visibility into the distributed job processing system through a unified telemetry platform that captures logs, traces, metrics, and events from every component.
+Our observability strategy provides complete visibility into the distributed job processing system through a **5-track telemetry architecture** that captures logs, traces, metrics, events, and errors from every component.
 
-## Core Documentation
+## Quick Start
 
-### [Information Flow & Architecture](./information-flow.md)
-Complete mapping of how data flows through the system, including:
-- Service communication patterns
-- Telemetry data flows
-- Context propagation strategy
-- Correlation ID design
+🚀 **Get started immediately:** [Telemetry Setup Guide ⭐](./telemetry-setup-guide.md) - Complete implementation guide with examples
 
-### [Implementation Architecture](./architecture.md)
-Technical design for the observability platform:
-- Zero-configuration telemetry client
-- Reliability guarantees
-- Collection infrastructure
-- Query interfaces
+📊 **Understand the architecture:** [System Architecture](./system-architecture.md) - 5-track observability system design
 
-## Quick Links
+## Documentation Structure
 
-### For Developers
-- [Adding Telemetry](./adding-telemetry.md) - How to instrument new code
-- [Debugging Guide](./debugging-guide.md) - Using observability to solve problems
-- [Query Cookbook](./query-cookbook.md) - Common queries and patterns
+### Essential Reading
+- **[Telemetry Setup Guide ⭐](./telemetry-setup-guide.md)** - Complete implementation guide with step-by-step setup
+- **[System Architecture](./system-architecture.md)** - 5-track observability system architecture and design
+- **[Information Flow](./information-flow.md)** - How telemetry data moves through the system
+- **[Implementation Status](./implementation-status.md)** - Current progress and roadmap
 
-### For Operations
-- [Monitoring Setup](./monitoring-setup.md) - Deploying the observability stack
-- [Alert Configuration](./alert-configuration.md) - Setting up proactive monitoring
-- [Performance Tuning](./performance-tuning.md) - Optimizing telemetry overhead
+### Advanced Usage  
+- **[OTEL Trace Library](./otel-trace-library.md)** - OpenTelemetry integration and usage patterns
+- **[Query & Debug Guide](./query-debug-guide.md)** - Practical debugging and monitoring queries
 
 ## Key Concepts
 
-### The Four Pillars
+### The Five Tracks
 
-1. **Logs** - What happened
-   - Structured JSON format
-   - Automatic correlation IDs
-   - Centralized aggregation
-
-2. **Traces** - How requests flow
-   - Distributed tracing across services
-   - Automatic span creation
-   - Parent-child relationships
-
-3. **Metrics** - System measurements
-   - Performance indicators
-   - Resource utilization
-   - Business KPIs
-
-4. **Events** - Business moments
-   - User actions
-   - System state changes
-   - Critical business events
+1. **🚌 Operational Event Bus** - Application state management and workflow automation
+2. **📋 Log Collection** - Raw log aggregation from all services
+3. **🔗 Distributed Tracing** - Request flow tracking across services  
+4. **📊 Metrics Collection** - Quantitative performance and operational data
+5. **🐛 Code Monitoring** - Error tracking and analysis
 
 ### Correlation Strategy
 
@@ -66,96 +42,69 @@ Every piece of telemetry is automatically correlated using:
 - `machine_id` - Identifies the originating machine
 - `worker_id` - Identifies specific workers
 
-## Architecture Principles
-
-### 1. Zero Configuration
-```typescript
-// Just import - everything else is automatic
-import '@emp/telemetry/auto';
-```
-
-### 2. Never Block Operations
-- All telemetry is asynchronous
-- Circuit breakers prevent cascading failures
-- Local buffering ensures no data loss
-
-### 3. Uniform Interface
-- Same API across all services
-- Consistent correlation IDs
-- Standard query patterns
-
-### 4. Progressive Enhancement
-- Start with basic logging
-- Add traces as needed
-- Layer in custom metrics
-- Track business events
-
 ## Current Status
 
-### ✅ Implemented
-- Direct Dash0 integration for metrics
-- Machine status telemetry
-- Environment-based dataset routing
-- Basic correlation IDs
+### ✅ Production Ready (Phase 1 Complete)
+- **Centralized logging pipeline** - Fluent Bit → Fluentd → Dash0
+- **ConnectorLogger library** - Structured logging interface for all services
+- **Worker ID scheme** - Hierarchical machine/worker/service identification
+- **Job lifecycle tracking** - Complete visibility into job processing stages
 
-### 🚧 In Progress
-- Unified telemetry client package
-- Log aggregation pipeline
-- Distributed tracing setup
-- Query CLI tool
+### 🚧 In Development
+- **OpenTelemetry integration** - Distributed tracing implementation
+- **Metrics collection** - Performance and resource monitoring
+- **Sentry integration** - Error tracking and analysis
 
 ### 📋 Planned
-- Full service instrumentation
-- Custom dashboards
-- Alert rules
-- Performance optimization
+- **Advanced analytics** - ML-based anomaly detection
+- **Predictive alerting** - Automated incident detection
+- **Custom dashboards** - Pre-built monitoring templates
 
-## Getting Started
+## Quick Usage
 
-### For New Services
+### Basic Job Logging
 ```typescript
-// 1. Install the telemetry package
-npm install @emp/telemetry
+import { ConnectorLogger } from '@emp/core';
 
-// 2. Import auto-instrumentation
-import '@emp/telemetry/auto';
+const logger = new ConnectorLogger({
+  machineId: process.env.MACHINE_ID,
+  workerId: process.env.WORKER_ID,
+  serviceType: 'comfyui',
+  connectorId: 'comfyui-local'
+});
 
-// 3. Use the unified API
-import { log, trace, metrics, event } from '@emp/telemetry';
-
-log.info('Service started');
-const span = trace.startSpan('operation');
-metrics.counter('requests').inc();
-event('user.action', { type: 'click' });
+// Job lifecycle tracking
+const jobLogger = logger.withJobContext('job-12345');
+jobLogger.jobReceived({ jobId: 'job-12345', inputSize: 1024 });
+jobLogger.jobCompleted({ jobId: 'job-12345', duration: 15000, outputCount: 4 });
 ```
 
-### For Debugging
+### Environment Setup
 ```bash
-# Query logs by job
-pnpm telemetry logs --job job-123
+# Core configuration
+DASH0_API_KEY=your-dash0-api-key
+DASH0_DATASET=development
+MACHINE_ID=railway-comfyui-01
+WORKER_ID=worker-001
+SERVICE_TYPE=comfyui
 
-# View distributed trace
-pnpm telemetry trace abc123def
-
-# Check metrics
-pnpm telemetry metrics --machine machine-1
-
-# Correlate everything
-pnpm telemetry correlate --job job-456
+# Logging pipeline
+FLUENTD_HOST=your-fluentd-service.railway.app
+FLUENTD_PORT=8888
 ```
 
 ## Success Metrics
 
 Our observability system aims to achieve:
-- **99.99%** telemetry delivery reliability
-- **<1ms** P99 overhead per operation
-- **100%** service coverage
-- **<5 min** mean time to debug any issue
-- **<$0.001** cost per million events
+- **✅ 99.9%** telemetry delivery reliability (current)
+- **✅ <10ms** logging overhead per operation (current)
+- **🎯 100%** service coverage (in progress)
+- **🎯 <2 min** mean time to debug any issue (target)
+- **🎯 Real-time** job status visibility (target)
 
-## Next Steps
+## Getting Help
 
-1. Review the [Information Flow](./information-flow.md) to understand the system
-2. Read the [Architecture](./architecture.md) for technical details
-3. Follow the [Implementation Guide](./implementation-guide.md) to add telemetry
-4. Use the [Query Cookbook](./query-cookbook.md) for debugging
+- **Implementation issues**: See [Telemetry Setup Guide](./telemetry-setup-guide.md)
+- **System design questions**: See [System Architecture](./system-architecture.md)
+- **Debugging problems**: See [Query & Debug Guide](./query-debug-guide.md)
+- **Current progress**: See [Implementation Status](./implementation-status.md)

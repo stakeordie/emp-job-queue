@@ -10,7 +10,8 @@ export const FluentdEnvInterface = {
     "TELEMETRY_ENV":"TELEMETRY_DASH0_DATASET",
     "DASH0_DATASET": "TELEMETRY_DASH0_DATASET",
     "HUB_REDIS_URL": "REDIS_URL",
-    "DASH0_LOGS_ENDPOINT": "TELEMETRY_DASH0_LOGS_ENDPOINT"
+    "DASH0_LOGS_ENDPOINT": "TELEMETRY_DASH0_LOGS_ENDPOINT",
+    "NODE_ENV": "API_NODE_ENV"
   },
   
   secret: {
@@ -23,6 +24,7 @@ export const FluentdEnvInterface = {
   
   defaults: {
     "FLUENTD_COMPANION_PORT": 3335,
-    "SERVICE_TYPE":"fluentd"
+    "SERVICE_TYPE":"fluentd",
+    "LOG_TO_FILE": "true"
   }
 };

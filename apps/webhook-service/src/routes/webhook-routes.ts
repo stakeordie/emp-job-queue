@@ -283,6 +283,33 @@ export function setupWebhookRoutes(app: Express, webhookProcessor: WebhookProces
     }
   });
 
+  // POST /webhooks/:id/reconnect - Manually reconnect a disconnected webhook
+  router.post('/:id/reconnect', async (req: Request, res: Response) => {
+    try {
+      const webhookId = req.params.id;
+      const success = await webhookProcessor.reconnectWebhook(webhookId);
+
+      if (success) {
+        res.json({
+          success: true,
+          message: `Webhook ${webhookId} reconnected successfully`,
+        });
+      } else {
+        res.status(404).json({
+          success: false,
+          error: 'Webhook not found',
+        });
+      }
+    } catch (error) {
+      logger.error(`Error reconnecting webhook ${req.params.id}:`, error);
+      res.status(500).json({
+        success: false,
+        error: 'Internal server error',
+        message: error instanceof Error ? error.message : 'Unknown error',
+      });
+    }
+  });
+
   // Mount the webhook routes under /webhooks
   app.use('/webhooks', router);
 

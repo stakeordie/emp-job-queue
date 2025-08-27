@@ -19,6 +19,7 @@ import {
   JobFailedEvent,
 } from '../types/monitor-events.js';
 import { JobStatus } from '../types/job.js';
+import { sendTrace } from '../telemetry/otel-client.js';
 
 // Webhook configuration types
 export interface WebhookEndpoint {
@@ -30,6 +31,10 @@ export interface WebhookEndpoint {
   headers?: Record<string, string>;
   retry_config?: WebhookRetryConfig;
   active: boolean;
+  disconnected?: boolean; // Set to true when 10+ consecutive failures occur
+  consecutive_failures?: number; // Track consecutive failures for auto-disconnect
+  last_failure_at?: number; // Timestamp of last failure
+  last_success_at?: number; // Timestamp of last success
   created_at: number;
   updated_at: number;
 }
@@ -70,6 +75,11 @@ export interface WebhookPayload {
   metadata?: {
     retry_attempt?: number;
     original_timestamp?: number;
+  };
+  // OTEL trace context for webhook hierarchy
+  parent_trace_context?: {
+    trace_id?: string;
+    span_id?: string;
   };
 }
 
@@ -117,6 +127,11 @@ export class WebhookNotificationService extends EventEmitter {
   private throttleCleanupInterval?: NodeJS.Timeout;
   private empropsApiUrl: string;
   private empropsApiKey?: string;
+  private telemetryClient: any | null;
+
+  // Auto-disconnect configuration
+  private static readonly MAX_CONSECUTIVE_FAILURES = 10;
+  private static readonly AUTO_RECONNECT_DELAY_MS = 5 * 60 * 1000; // 5 minutes
 
   // Throttling: Track last progress webhook sent per job (1 per second max)
   private lastProgressWebhookSent: Map<string, number> = new Map();
@@ -137,9 +152,10 @@ export class WebhookNotificationService extends EventEmitter {
     }
   >();
 
-  constructor(redis: Redis) {
+  constructor(redis: Redis, telemetryClient?: any) {
     super();
     this.webhookStorage = new WebhookRedisStorage(redis);
+    this.telemetryClient = telemetryClient || null;
     
     // REQUIRED: EMPROPS_API_URL must be explicitly set
     if (!process.env.EMPROPS_API_URL) {
@@ -159,6 +175,156 @@ export class WebhookNotificationService extends EventEmitter {
   }
 
   /**
+   * Track successful webhook delivery and reset failure count
+   */
+  private async recordWebhookSuccess(webhookId: string): Promise<void> {
+    const webhook = await this.getWebhook(webhookId);
+    if (!webhook) return;
+
+    const updates: Partial<WebhookEndpoint> = {
+      consecutive_failures: 0,
+      last_success_at: Date.now(),
+      updated_at: Date.now(),
+    };
+
+    // Re-enable webhook if it was disconnected
+    if (webhook.disconnected) {
+      updates.disconnected = false;
+      logger.info(`🔌 Webhook reconnected after successful delivery: ${webhookId}`, {
+        url: webhook.url,
+        previous_failures: webhook.consecutive_failures || 0,
+      });
+
+      // Send OTEL event for webhook reconnection
+      if (this.telemetryClient) {
+        await this.telemetryClient.otel.counter('webhook.status.reconnected', 1, {
+          webhook_id: webhookId,
+          previous_failures: (webhook.consecutive_failures || 0).toString(),
+        });
+      }
+    }
+
+    await this.updateWebhook(webhookId, updates);
+  }
+
+  /**
+   * Track webhook delivery failure and auto-disconnect if threshold reached
+   */
+  private async recordWebhookFailure(webhookId: string): Promise<void> {
+    const webhook = await this.getWebhook(webhookId);
+    if (!webhook) return;
+
+    const consecutiveFailures = (webhook.consecutive_failures || 0) + 1;
+    const updates: Partial<WebhookEndpoint> = {
+      consecutive_failures: consecutiveFailures,
+      last_failure_at: Date.now(),
+      updated_at: Date.now(),
+    };
+
+    // Auto-disconnect webhook if it hits the failure threshold
+    if (consecutiveFailures >= WebhookNotificationService.MAX_CONSECUTIVE_FAILURES && !webhook.disconnected) {
+      updates.disconnected = true;
+      
+      logger.warn(`🚨 Webhook auto-disconnected due to ${consecutiveFailures} consecutive failures: ${webhookId}`, {
+        url: webhook.url,
+        threshold: WebhookNotificationService.MAX_CONSECUTIVE_FAILURES,
+      });
+
+      // Send OTEL trace event for webhook auto-disconnect
+      await sendTrace('webhook.status.disconnected', {
+        webhook_id: webhookId,
+        webhook_url: webhook.url,
+        consecutive_failures: consecutiveFailures.toString(),
+        threshold: WebhookNotificationService.MAX_CONSECUTIVE_FAILURES.toString(),
+        disconnect_reason: 'auto_disconnect_on_failures',
+        disconnect_type: 'automatic',
+        user_agent: 'emp-webhook-service',
+      }, {
+        duration_ms: 1,
+        status: 'ok',
+      });
+
+      // Send OTEL counter for webhook auto-disconnect
+      if (this.telemetryClient) {
+        await this.telemetryClient.otel.counter('webhook.status.disconnected', 1, {
+          webhook_id: webhookId,
+          consecutive_failures: consecutiveFailures.toString(),
+          threshold: WebhookNotificationService.MAX_CONSECUTIVE_FAILURES.toString(),
+        });
+      }
+
+      // Emit event for external monitoring
+      this.emit('webhook.disconnected', {
+        webhook,
+        consecutive_failures: consecutiveFailures,
+        threshold: WebhookNotificationService.MAX_CONSECUTIVE_FAILURES,
+      });
+    }
+
+    await this.updateWebhook(webhookId, updates);
+  }
+
+  /**
+   * Check if webhook should be skipped due to disconnected state
+   */
+  private shouldSkipDisconnectedWebhook(webhook: WebhookEndpoint): boolean {
+    if (!webhook.disconnected) return false;
+
+    // Allow reconnection attempt after delay
+    const lastFailure = webhook.last_failure_at || 0;
+    const timeSinceLastFailure = Date.now() - lastFailure;
+    
+    if (timeSinceLastFailure >= WebhookNotificationService.AUTO_RECONNECT_DELAY_MS) {
+      logger.info(`🔄 Attempting to reconnect disconnected webhook: ${webhook.id}`, {
+        url: webhook.url,
+        minutes_since_last_failure: Math.round(timeSinceLastFailure / (60 * 1000)),
+      });
+      return false; // Allow delivery attempt
+    }
+
+    return true; // Skip delivery
+  }
+
+  /**
+   * Manually reconnect a disconnected webhook
+   */
+  async reconnectWebhook(webhookId: string): Promise<boolean> {
+    const webhook = await this.getWebhook(webhookId);
+    if (!webhook) {
+      logger.warn(`Cannot reconnect webhook: ${webhookId} not found`);
+      return false;
+    }
+
+    if (!webhook.disconnected) {
+      logger.info(`Webhook ${webhookId} is not disconnected, no action needed`);
+      return true;
+    }
+
+    const updates: Partial<WebhookEndpoint> = {
+      disconnected: false,
+      consecutive_failures: 0,
+      updated_at: Date.now(),
+    };
+
+    await this.updateWebhook(webhookId, updates);
+    
+    logger.info(`🔌 Webhook manually reconnected: ${webhookId}`, {
+      url: webhook.url,
+      previous_failures: webhook.consecutive_failures || 0,
+    });
+
+    // Send OTEL event for manual reconnection
+    if (this.telemetryClient) {
+      await this.telemetryClient.otel.counter('webhook.status.manual_reconnect', 1, {
+        webhook_id: webhookId,
+        previous_failures: (webhook.consecutive_failures || 0).toString(),
+      });
+    }
+
+    return true;
+  }
+
+  /**
    * Register a new webhook endpoint
    */
   async registerWebhook(
@@ -168,6 +334,8 @@ export class WebhookNotificationService extends EventEmitter {
       id: this.generateId(),
       created_at: Date.now(),
       updated_at: Date.now(),
+      consecutive_failures: 0,
+      disconnected: false,
       retry_config: {
         max_attempts: 3,
         initial_delay_ms: 1000,
@@ -528,8 +696,10 @@ export class WebhookNotificationService extends EventEmitter {
    * Fetch workflow details from EMPROPS API
    */
   private async fetchWorkflowDetails(workflowId: string): Promise<any> {
+    const url = `${this.empropsApiUrl}/jobs/${workflowId}`;
+    let startTime: number;
+    
     try {
-      const url = `${this.empropsApiUrl}/jobs/${workflowId}`;
       logger.info(`🔍 [WEBHOOK] Making EMPROPS API Request:`);
       logger.info(`   URL: ${url}`);
       logger.info(`   Method: GET`);
@@ -547,7 +717,21 @@ export class WebhookNotificationService extends EventEmitter {
         logger.warn(`   Auth: No API key available`);
       }
       
-      const startTime = Date.now();
+      startTime = Date.now();
+      
+      // Send EMPROPS API call trace (start)
+      const apiTraceResult = await sendTrace('webhook.emprops_api.call', {
+        workflow_id: workflowId,
+        endpoint: 'get_workflow_details',
+        http_method: 'GET',
+        api_url: url,
+        status: 'started',
+        user_agent: 'emp-webhook-service',
+      }, {
+        duration_ms: 1, // placeholder, will send completion trace
+        status: 'ok',
+      });
+      
       const response = await fetch(url, {
         method: 'GET',
         headers,
@@ -555,6 +739,22 @@ export class WebhookNotificationService extends EventEmitter {
         signal: AbortSignal.timeout(10000)
       });
       const responseTime = Date.now() - startTime;
+
+      // Send EMPROPS API call completion trace
+      await sendTrace('webhook.emprops_api.call', {
+        workflow_id: workflowId,
+        endpoint: 'get_workflow_details',
+        http_method: 'GET',
+        api_url: url,
+        http_status: response.status.toString(),
+        response_time_ms: responseTime.toString(),
+        status: response.ok ? 'success' : 'http_error',
+        user_agent: 'emp-webhook-service',
+      }, {
+        duration_ms: responseTime,
+        status: response.ok ? 'ok' : 'error',
+        parent_trace_id: apiTraceResult.traceId,
+      });
 
       logger.info(`📡 [WEBHOOK] EMPROPS API Response:`);
       logger.info(`   Status: ${response.status} ${response.statusText}`);
@@ -566,29 +766,58 @@ export class WebhookNotificationService extends EventEmitter {
         logger.error(`❌ [WEBHOOK] EMPROPS API Error Response:`);
         logger.error(`   Status: ${response.status}`);
         logger.error(`   Body: ${errorBody}`);
+        
+        // Send OTEL event for HTTP error from EMPROPS API
+        if (this.telemetryClient) {
+          await this.telemetryClient.otel.counter('webhook.emprops_api.failure', 1, {
+            workflow_id: workflowId,
+            http_status: response.status.toString(),
+            response_time_ms: responseTime.toString(),
+            endpoint: 'get_workflow_details',
+            error_type: 'HttpError',
+            error_message: `HTTP ${response.status}: ${response.statusText}`,
+          });
+          
+          await this.telemetryClient.otel.histogram('webhook.emprops_api.response_time', responseTime, {
+            workflow_id: workflowId,
+            status: 'error',
+            endpoint: 'get_workflow_details',
+          }, 'ms');
+        }
+        
         throw new Error(`EMPROPS API returned ${response.status}: ${response.statusText}`);
       }
 
       const data = await response.json();
       logger.info(`✅ [WEBHOOK] Successfully fetched workflow details for ${workflowId}`);
       
-      // Log the COMPLETE response without truncation
-      const responseStr = JSON.stringify(data, null, 2);
-      console.log(`📋 [WEBHOOK] FULL API RESPONSE:\n${responseStr}`);
+      // Send OTEL event for successful EMPROPS API call
+      if (this.telemetryClient) {
+        await this.telemetryClient.otel.counter('webhook.emprops_api.success', 1, {
+          workflow_id: workflowId,
+          http_status: response.status.toString(),
+          response_time_ms: responseTime.toString(),
+          endpoint: 'get_workflow_details',
+        });
+        
+        await this.telemetryClient.otel.histogram('webhook.emprops_api.response_time', responseTime, {
+          workflow_id: workflowId,
+          status: 'success',
+          endpoint: 'get_workflow_details',
+        }, 'ms');
+      }
       
-      // Also split into chunks for structured logging
-      const chunks = responseStr.match(/.{1,1000}/g) || [];
-      chunks.forEach((chunk, index) => {
-        logger.info(`📋 [WEBHOOK] Response chunk ${index + 1}/${chunks.length}: ${chunk}`);
+      // Log response summary (avoid verbose chunked logging that creates 50+ log entries)
+      const responseSize = JSON.stringify(data).length;
+      logger.info(`📋 [WEBHOOK] API Response received:`, {
+        workflow_id: data?.data?.id,
+        workflow_name: data?.data?.name,
+        status: data?.data?.status, 
+        job_type: data?.data?.job_type || 'N/A',
+        has_outputs: !!data?.data?.data?.outputs,
+        output_count: data?.data?.data?.outputs?.length || 0,
+        response_size_bytes: responseSize
       });
-      
-      logger.info(`   Response Data Structure:`);
-      logger.info(`   - Has data: ${!!data?.data}`);
-      logger.info(`   - Has data.data: ${!!data?.data?.data}`);
-      logger.info(`   - Has outputs: ${!!data?.data?.data?.outputs}`);
-      logger.info(`   - Output count: ${data?.data?.data?.outputs?.length || 0}`);
-      logger.info(`   - Job type: ${data?.data?.job_type || 'N/A'}`);
-      logger.info(`   - Workflow name: ${data?.data?.name || 'N/A'}`);
       
       // Log first output if exists (CORRECT PATH: data.data.outputs)
       if (data?.data?.data?.outputs?.length > 0) {
@@ -607,12 +836,41 @@ export class WebhookNotificationService extends EventEmitter {
       
       return data;
     } catch (error) {
+      const errorTime = Date.now() - startTime;
+      
+      // Send EMPROPS API error trace
+      await sendTrace('webhook.emprops_api.call', {
+        workflow_id: workflowId,
+        endpoint: 'get_workflow_details',
+        http_method: 'GET',
+        api_url: url,
+        response_time_ms: errorTime.toString(),
+        status: 'error',
+        error_type: error instanceof Error ? error.constructor.name : 'UnknownError',
+        error_message: error instanceof Error ? error.message : String(error),
+        user_agent: 'emp-webhook-service',
+      }, {
+        duration_ms: errorTime,
+        status: 'error',
+      });
+
       logger.error(`❌ [WEBHOOK] Failed to fetch workflow details for ${workflowId}:`, error);
       logger.error(`   Error Type: ${error.constructor.name}`);
       logger.error(`   Error Message: ${error.message}`);
       if (error.cause) {
         logger.error(`   Error Cause: ${error.cause}`);
       }
+      
+      // Send OTEL event for failed EMPROPS API call
+      if (this.telemetryClient) {
+        await this.telemetryClient.otel.counter('webhook.emprops_api.failure', 1, {
+          workflow_id: workflowId,
+          endpoint: 'get_workflow_details',
+          error_type: error instanceof Error ? error.constructor.name : 'UnknownError',
+          error_message: error instanceof Error ? error.message : String(error),
+        });
+      }
+      
       return null;
     }
   }
@@ -730,7 +988,11 @@ export class WebhookNotificationService extends EventEmitter {
    */
   private findMatchingWebhooksForEventType(eventType: WebhookEventType): WebhookEndpoint[] {
     const allWebhooks = Array.from(this.webhooksCache.values());
-    return allWebhooks.filter(webhook => webhook.active && webhook.events.includes(eventType));
+    return allWebhooks.filter(webhook => 
+      webhook.active && 
+      webhook.events.includes(eventType) &&
+      !this.shouldSkipDisconnectedWebhook(webhook)
+    );
   }
 
   /**
@@ -880,6 +1142,11 @@ export class WebhookNotificationService extends EventEmitter {
         return false;
       }
 
+      // Skip disconnected webhooks unless they're ready for reconnection
+      if (this.shouldSkipDisconnectedWebhook(webhook)) {
+        return false;
+      }
+
       // Apply filters
       if (webhook.filters) {
         return this.eventMatchesFilters(event, webhook.filters);
@@ -947,13 +1214,41 @@ export class WebhookNotificationService extends EventEmitter {
   ): WebhookPayload {
     const eventData = this.extractEventData(event);
 
+    // Extract trace context for webhook hierarchy (especially from job completion)
+    const jobEvent = event as unknown as Record<string, unknown>;
+    const parentTraceContext = this.extractTraceContext(jobEvent);
+
     return {
       event_type: eventType,
       event_id: this.generateId(),
       timestamp: event.timestamp,
       webhook_id: webhook.id,
       data: eventData,
+      parent_trace_context: parentTraceContext,
     };
+  }
+
+  /**
+   * Extract trace context from job event for webhook hierarchy
+   */
+  private extractTraceContext(jobEvent: Record<string, unknown>): { trace_id?: string; span_id?: string } | undefined {
+    // Check for job completion trace context (from job completion spans)
+    if (jobEvent.job_trace_id && jobEvent.job_span_id) {
+      return {
+        trace_id: jobEvent.job_trace_id as string,
+        span_id: jobEvent.job_span_id as string
+      };
+    }
+
+    // Check for workflow trace context (from workflow spans)  
+    if (jobEvent.workflow_trace_id && jobEvent.workflow_span_id) {
+      return {
+        trace_id: jobEvent.workflow_trace_id as string,
+        span_id: jobEvent.workflow_span_id as string
+      };
+    }
+
+    return undefined;
   }
 
   /**
@@ -1072,6 +1367,16 @@ export class WebhookNotificationService extends EventEmitter {
       return;
     }
 
+    // Check if webhook is disconnected and should be skipped
+    if (this.shouldSkipDisconnectedWebhook(webhook)) {
+      logger.debug(`⚠️ Skipping delivery to disconnected webhook: ${webhook.id}`, {
+        url: webhook.url,
+        consecutive_failures: webhook.consecutive_failures,
+        last_failure_at: webhook.last_failure_at,
+      });
+      return;
+    }
+
     // DEBUG: Log webhook delivery attempt
     logger.info(`🚀 [WEBHOOK DEBUG] Sending webhook`, {
       webhook_id: webhook.id,
@@ -1098,6 +1403,11 @@ export class WebhookNotificationService extends EventEmitter {
       success: false,
     };
 
+    // Declare variables outside try block for catch access
+    const deliveryStartTime = Date.now();
+    let timeoutId: NodeJS.Timeout | null = null;
+    let traceResult = null;
+
     try {
       const headers: Record<string, string> = {
         'Content-Type': 'application/json',
@@ -1116,8 +1426,8 @@ export class WebhookNotificationService extends EventEmitter {
 
       // Use AbortController for timeout with native fetch
       const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 30000);
-
+      timeoutId = setTimeout(() => controller.abort(), 30000);
+      
       const response = await fetch(webhook.url, {
         method: 'POST',
         headers,
@@ -1126,6 +1436,37 @@ export class WebhookNotificationService extends EventEmitter {
       });
 
       clearTimeout(timeoutId);
+      const deliveryDuration = Date.now() - deliveryStartTime;
+
+      // 🚨 BIG PAYLOAD LOGGING: WEBHOOK DELIVERY SUCCESS  
+      console.log(`\n🚨🚨🚨 WEBHOOK: DELIVERY SUCCESS`);
+      console.log(`🚨 JOB: ${payload.data?.job_id || 'unknown'}`);
+      console.log(`🚨 WEBHOOK: ${webhook.id}`);
+      console.log(`🚨 EVENT TYPE: ${payload.event_type}`);
+      console.log(`🚨 HTTP STATUS: ${response.status}`);
+      console.log(`🚨 PARENT TRACE ID: ${payload.parent_trace_context?.trace_id || 'NONE'}`);
+      console.log(`🚨 PARENT SPAN ID: ${payload.parent_trace_context?.span_id || 'NONE'}`);
+      console.log(`🚨🚨🚨\n`);
+
+      // Send successful webhook delivery trace with parent context
+      traceResult = await sendTrace('webhook.delivery', {
+        webhook_id: webhook.id,
+        webhook_url: webhook.url,
+        event_type: payload.event_type,
+        http_status: response.status.toString(),
+        http_method: 'POST',
+        attempt_number: attemptNumber.toString(),
+        job_id: payload.data?.job_id || 'unknown',
+        workflow_id: payload.data?.workflow_id || 'none',
+        response_time_ms: deliveryDuration.toString(),
+        status: response.ok ? 'success' : 'http_error',
+        user_agent: 'emp-webhook-service',
+      }, {
+        duration_ms: deliveryDuration,
+        status: response.ok ? 'ok' : 'error',
+        parent_trace_id: payload.parent_trace_context?.trace_id,
+        parent_span_id: payload.parent_trace_context?.span_id,
+      });
 
       attempt.response_status = response.status;
       attempt.response_body = await response.text();
@@ -1137,18 +1478,81 @@ export class WebhookNotificationService extends EventEmitter {
           job_id: payload.data.job_id,
           status: response.status,
         });
+        
+        // Send OTEL event for successful webhook delivery
+        if (this.telemetryClient) {
+          await this.telemetryClient.otel.counter('webhook.delivery.success', 1, {
+            webhook_id: webhook.id,
+            event_type: payload.event_type,
+            http_status: response.status.toString(),
+            attempt_number: attemptNumber.toString(),
+            job_id: payload.data.job_id || 'unknown',
+            workflow_id: payload.data.workflow_id || 'none',
+          });
+        }
+        
+        // Track successful delivery and reset failure count
+        await this.recordWebhookSuccess(webhook.id);
+        
         this.emit('webhook.delivered', { webhook, payload, attempt });
       } else {
         throw new Error(`HTTP ${response.status}: ${attempt.response_body}`);
       }
     } catch (error) {
+      if (timeoutId) clearTimeout(timeoutId);
       attempt.error_message = error instanceof Error ? error.message : String(error);
+      const deliveryDuration = Date.now() - deliveryStartTime;
+
+      // 🚨 BIG PAYLOAD LOGGING: WEBHOOK DELIVERY FAILED
+      console.log(`\n🚨🚨🚨 WEBHOOK: DELIVERY FAILED`);
+      console.log(`🚨 JOB: ${payload.data?.job_id || 'unknown'}`);
+      console.log(`🚨 WEBHOOK: ${webhook.id}`);
+      console.log(`🚨 EVENT TYPE: ${payload.event_type}`);
+      console.log(`🚨 ERROR: ${attempt.error_message}`);
+      console.log(`🚨 PARENT TRACE ID: ${payload.parent_trace_context?.trace_id || 'NONE'}`);
+      console.log(`🚨 PARENT SPAN ID: ${payload.parent_trace_context?.span_id || 'NONE'}`);
+      console.log(`🚨🚨🚨\n`);
+
+      // Send failed webhook delivery trace with parent context
+      await sendTrace('webhook.delivery', {
+        webhook_id: webhook.id,
+        webhook_url: webhook.url,
+        event_type: payload.event_type,
+        http_status: attempt.response_status?.toString() || 'timeout',
+        http_method: 'POST',
+        attempt_number: attemptNumber.toString(),
+        job_id: payload.data?.job_id || 'unknown',
+        workflow_id: payload.data?.workflow_id || 'none',
+        response_time_ms: deliveryDuration.toString(),
+        status: 'error',
+        error_type: error instanceof Error ? error.constructor.name : 'UnknownError',
+        error_message: attempt.error_message,
+        user_agent: 'emp-webhook-service',
+      }, {
+        duration_ms: deliveryDuration,
+        status: 'error',
+        parent_trace_id: payload.parent_trace_context?.trace_id,
+        parent_span_id: payload.parent_trace_context?.span_id,
+      });
 
       logger.warn(`Webhook delivery failed: ${webhook.id} (attempt ${attemptNumber})`, {
         error: attempt.error_message,
         event_type: payload.event_type,
         job_id: payload.data.job_id,
       });
+      
+      // Send OTEL event for failed webhook delivery
+      if (this.telemetryClient) {
+        await this.telemetryClient.otel.counter('webhook.delivery.failure', 1, {
+          webhook_id: webhook.id,
+          event_type: payload.event_type,
+          http_status: attempt.response_status?.toString() || 'error',
+          attempt_number: attemptNumber.toString(),
+          job_id: payload.data.job_id || 'unknown',
+          workflow_id: payload.data.workflow_id || 'none',
+          error_type: error instanceof Error ? error.constructor.name : 'UnknownError',
+        });
+      }
 
       // Retry logic
       const retryConfig = webhook.retry_config || {
@@ -1181,6 +1585,10 @@ export class WebhookNotificationService extends EventEmitter {
           attempts: attemptNumber,
           error: attempt.error_message,
         });
+        
+        // Track permanent failure and potentially auto-disconnect
+        await this.recordWebhookFailure(webhook.id);
+        
         this.emit('webhook.failed', { webhook, payload, attempt });
       }
     }

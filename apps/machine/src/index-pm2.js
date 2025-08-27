@@ -35,28 +35,79 @@ async function initializeTelemetry() {
   console.log('🚀 initializeTelemetry: Starting telemetry initialization for machine service');
   
   try {
-    // Generate machine IDs - MACHINE_ID should already be set by environment
+    // Generate machine IDs using MACHINE_BASE_ID + TELEMETRY_ENV pattern (like API/webhook)
     console.log(`🔍 initializeTelemetry: Checking MACHINE_ID environment variable`);
     if (!process.env.MACHINE_ID) {
-      console.error('❌ initializeTelemetry: MACHINE_ID environment variable missing');
-      throw new Error('FATAL: MACHINE_ID environment variable is required for machine identification.');
+      console.log(`🔍 initializeTelemetry: MACHINE_ID not set, generating from MACHINE_BASE_ID + TELEMETRY_ENV`);
+      const machineBaseId = process.env.MACHINE_BASE_ID;
+      const telemetryEnv = process.env.TELEMETRY_ENV;
+      
+      console.log(`🔍 initializeTelemetry: MACHINE_BASE_ID: ${machineBaseId}, TELEMETRY_ENV: ${telemetryEnv}`);
+      
+      if (!machineBaseId) {
+        console.error('❌ initializeTelemetry: MACHINE_BASE_ID environment variable missing');
+        throw new Error('FATAL: MACHINE_BASE_ID environment variable is required for machine identification.');
+      }
+      if (!telemetryEnv) {
+        console.error('❌ initializeTelemetry: TELEMETRY_ENV environment variable missing');
+        throw new Error('FATAL: TELEMETRY_ENV environment variable is required for machine identification.');
+      }
+      
+      const machineId = `${machineBaseId}-${telemetryEnv}`;
+      process.env.MACHINE_ID = machineId;
+      console.log(`✅ initializeTelemetry: Generated MACHINE_ID: ${machineId}`);
+    } else {
+      console.log(`✅ initializeTelemetry: Using existing MACHINE_ID: ${process.env.MACHINE_ID}`);
     }
-    
-    console.log(`✅ initializeTelemetry: Using MACHINE_ID: ${process.env.MACHINE_ID}`);
     
     // Set WORKER_ID if not already set (machines can have multiple workers)
     if (!process.env.WORKER_ID) {
       console.log(`🔍 initializeTelemetry: WORKER_ID not set, using MACHINE_ID value`);
       process.env.WORKER_ID = process.env.MACHINE_ID;
       console.log(`✅ initializeTelemetry: Set WORKER_ID: ${process.env.WORKER_ID}`);
+    } else {
+      console.log(`✅ initializeTelemetry: Using existing WORKER_ID: ${process.env.WORKER_ID}`);
     }
 
     console.log('🔧 initializeTelemetry: Creating telemetry client');
     // Create and initialize telemetry client
     const client = createTelemetryClient('machine');
     
-    // Set machine-specific log file path
-    client.setLogFile('/workspace/logs/machine.log');
+    console.log('📁 initializeTelemetry: Adding log files before telemetry startup...');
+    // Monitor Winston log files (core logger writes to LOG_DIR or /workspace/logs)
+    const logDir = process.env.LOG_DIR || '/workspace/logs';
+    const containerName = process.env.CONTAINER_NAME || 'basic-machine';
+    const today = new Date().toISOString().split('T')[0]; // YYYY-MM-DD format
+    
+    // Add Winston logs
+    await client.log.addFile(`${logDir}/error-${today}.log`, 'machine-winston-error');
+    await client.log.addFile(`${logDir}/${containerName}-${today}.log`, 'machine-winston-combined');
+    
+    // Add PM2 service logs - we'll discover them dynamically later, but add common ones
+    const commonPM2Services = ['comfyui-gpu0', 'comfyui-gpu1', 'comfyui-gpu2', 'worker'];
+    for (const service of commonPM2Services) {
+      try {
+        await client.log.addFile(`${logDir}/${service}-error.log`, `pm2-${service}-error`);
+        await client.log.addFile(`${logDir}/${service}-out.log`, `pm2-${service}-out`);
+      } catch (error) {
+        // PM2 logs may not exist yet - non-fatal
+        console.log(`⚠️ initializeTelemetry: PM2 log file for ${service} not found (will be created when service starts)`);
+      }
+    }
+    
+    // Add ComfyUI specific logs
+    try {
+      await client.log.addFile('/workspace/ComfyUI/user/comfyui_8188.log', 'comfyui-server');
+      await client.log.addFile('/workspace/ComfyUI/logs/output-gpu0.log', 'comfyui-output-gpu0');
+      await client.log.addFile('/workspace/ComfyUI/logs/output-gpu1.log', 'comfyui-output-gpu1');
+    } catch (error) {
+      console.log('⚠️ initializeTelemetry: ComfyUI log files not found (will be created when ComfyUI starts)');
+    }
+    
+    // Add machine-specific log file (legacy support)
+    await client.log.addFile('/workspace/logs/machine.log', 'machine-legacy');
+    
+    console.log(`✅ initializeTelemetry: Log files added to monitoring (${logDir})`);
     
     console.log('🔧 initializeTelemetry: Starting telemetry client startup');
     // Initialize without connection testing to avoid startup failures
@@ -77,6 +128,164 @@ async function initializeTelemetry() {
     console.error('❌ initializeTelemetry: Telemetry initialization failed:', error.message);
     console.warn('⚠️ initializeTelemetry: Continuing machine startup without telemetry...');
     return null;
+  }
+}
+
+/**
+ * Add service-specific telemetry logs from service mapping configuration
+ * This reads the service mapping and adds telemetry_logs for each active service
+ */
+async function addServiceMappingTelemetryLogs() {
+  if (!telemetryClient) {
+    logger.debug('No telemetry client available, skipping service mapping log discovery');
+    return;
+  }
+
+  try {
+    logger.info('📁 Adding service-specific telemetry logs from service mapping...');
+    
+    // Load service mapping
+    const fs = await import('fs');
+    const serviceMappingPath = './src/config/service-mapping.json';
+    
+    if (!fs.existsSync(serviceMappingPath)) {
+      logger.warn('Service mapping not found, skipping service-specific telemetry logs');
+      return;
+    }
+    
+    const serviceMappingContent = fs.readFileSync(serviceMappingPath, 'utf8');
+    const serviceMapping = JSON.parse(serviceMappingContent);
+    
+    // Get active services from PM2
+    const activeServices = await pm2Manager.getAllServicesStatus();
+    const activeServiceNames = new Set(activeServices.map(s => s.name));
+    
+    // Parse worker specifications to determine which services should be active
+    const workerConnectors = process.env.WORKERS || process.env.WORKER_CONNECTORS || 'simulation:1';
+    const workerSpecs = workerConnectors
+      .split(',')
+      .map(s => s.trim())
+      .filter(s => s)
+      .map(spec => {
+        const [type, count] = spec.split(':');
+        return { type, count: parseInt(count) || 1 };
+      });
+
+    // Find required services and their telemetry logs
+    const requiredServices = new Set();
+    for (const spec of workerSpecs) {
+      const workerConfig = serviceMapping.workers?.[spec.type];
+      if (workerConfig && workerConfig.services) {
+        workerConfig.services.forEach(serviceName => {
+          requiredServices.add(serviceName);
+        });
+      }
+    }
+    
+    let logsAdded = 0;
+    
+    // Add telemetry logs for each required service
+    for (const serviceName of requiredServices) {
+      const serviceConfig = serviceMapping.services?.[serviceName];
+      if (serviceConfig && serviceConfig.telemetry_logs) {
+        logger.debug(`Processing telemetry logs for service: ${serviceName}`);
+        
+        for (const logConfig of serviceConfig.telemetry_logs) {
+          // Check if path contains wildcard characters
+          const isWildcardPath = logConfig.path.includes('*') || logConfig.path.includes('?');
+          
+          if (isWildcardPath) {
+            // For wildcard paths, add directly to telemetry - Fluent Bit supports wildcards natively
+            try {
+              await telemetryClient.log.addFile(logConfig.path, logConfig.name);
+              logsAdded++;
+              logger.debug(`Added wildcard service telemetry log: ${logConfig.path} as ${logConfig.name} (${logConfig.description})`);
+            } catch (error) {
+              logger.warn(`Failed to add wildcard service telemetry log ${logConfig.path}: ${error.message}`);
+            }
+          } else {
+            // For regular paths, check if file exists first
+            if (fs.existsSync(logConfig.path)) {
+              try {
+                await telemetryClient.log.addFile(logConfig.path, logConfig.name);
+                logsAdded++;
+                logger.debug(`Added service telemetry log: ${logConfig.path} as ${logConfig.name} (${logConfig.description})`);
+              } catch (error) {
+                logger.warn(`Failed to add service telemetry log ${logConfig.path}: ${error.message}`);
+              }
+            } else {
+              logger.debug(`Service telemetry log file does not exist yet: ${logConfig.path} (${logConfig.description})`);
+            }
+          }
+        }
+      }
+    }
+    
+    logger.info(`✅ Added ${logsAdded} service-specific telemetry logs from service mapping`);
+    
+    // Send telemetry event about service log discovery
+    if (telemetryClient && logsAdded > 0) {
+      await telemetryClient.log.info('📁 VALIDATION: Service-specific telemetry logs added from service mapping', {
+        service_logs_added: logsAdded,
+        required_services: Array.from(requiredServices),
+        active_pm2_services: Array.from(activeServiceNames),
+        validation_type: 'service_mapping_logs',
+        expected_result: 'Service-specific logs are now flowing to Dash0 based on machine configuration'
+      });
+    }
+  } catch (error) {
+    logger.error('Failed to add service mapping telemetry logs:', error);
+    // Non-fatal error - continue without service-specific log monitoring
+  }
+}
+
+/**
+ * Add custom named log files to telemetry monitoring
+ * This allows flexible addition of any log files that need monitoring
+ */
+async function addCustomLogFiles(logFiles = []) {
+  if (!telemetryClient || !Array.isArray(logFiles) || logFiles.length === 0) {
+    return;
+  }
+
+  try {
+    logger.info(`📁 Adding ${logFiles.length} custom log files to telemetry monitoring...`);
+    const fs = await import('fs');
+    
+    let filesAdded = 0;
+    for (const logFile of logFiles) {
+      if (typeof logFile !== 'object' || !logFile.path || !logFile.name) {
+        logger.warn('Invalid log file specification (must have path and name):', logFile);
+        continue;
+      }
+      
+      if (fs.existsSync(logFile.path)) {
+        try {
+          await telemetryClient.log.addFile(logFile.path, logFile.name);
+          filesAdded++;
+          logger.debug(`Added custom log file: ${logFile.path} as ${logFile.name}`);
+        } catch (error) {
+          logger.warn(`Failed to add custom log file ${logFile.path}: ${error.message}`);
+        }
+      } else {
+        logger.warn(`Custom log file does not exist: ${logFile.path}`);
+      }
+    }
+    
+    logger.info(`✅ Added ${filesAdded} custom log files to telemetry monitoring`);
+    
+    // Send telemetry event about custom log addition
+    if (telemetryClient && filesAdded > 0) {
+      await telemetryClient.log.info('📁 VALIDATION: Custom log files added to monitoring', {
+        custom_logs_added: filesAdded,
+        custom_logs_requested: logFiles.length,
+        validation_type: 'custom_log_addition',
+        expected_result: 'Custom machine log files are now flowing to Dash0'
+      });
+    }
+  } catch (error) {
+    logger.error('Failed to add custom log files to telemetry:', error);
+    // Non-fatal error - continue without custom log monitoring
   }
 }
 
@@ -154,6 +363,8 @@ function analyzeServiceRequirements(workerConnectors) {
  * Main application entry point - PM2 mode
  */
 async function main() {
+  const startupTime = Date.now();
+  
   logger.info('STEP 1-5: Container & Environment - Starting Basic Machine in PM2 mode...', {
     version: '0.1.0',
     nodeVersion: process.version,
@@ -163,6 +374,29 @@ async function main() {
 
   // Initialize telemetry first
   telemetryClient = await initializeTelemetry();
+  
+  // Demonstrate clean telemetry API (like API/webhook services)
+  if (telemetryClient) {
+    // Write some test logs to demonstrate the pipeline
+    await telemetryClient.log.info('🔍 VALIDATION: Machine service startup initiated', {
+      startup_time_ms: Date.now() - startupTime,
+      environment: process.env.TELEMETRY_ENV,
+      machine_id: config.machine.id,
+      gpu_count: config.machine.gpu.count,
+      validation_type: 'machine_startup',
+      expected_pipeline: 'machine-service.log → fluent-bit → fluentd → dash0'
+    });
+
+    // Send a test metric (non-fatal if it fails)
+    try {
+      await telemetryClient.otel.gauge('machine.startup.phase.telemetry_complete', Date.now() - startupTime, {
+        environment: process.env.TELEMETRY_ENV || 'unknown',
+        machine_id: config.machine.id
+      }, 'ms');
+    } catch (error) {
+      console.warn('⚠️ Failed to send startup metric (non-fatal):', error.message);
+    }
+  }
 
   // Initialize machine status aggregator with telemetry client
   statusAggregator = new MachineStatusAggregator(config, telemetryClient);
@@ -195,6 +429,26 @@ async function main() {
     
     // Verify services are running and healthy  
     await verifyPM2Services();
+    
+    // Add discovered PM2 service logs to telemetry monitoring
+    await addDiscoveredPM2LogsToTelemetry();
+    
+    // Add service-specific telemetry logs from service mapping
+    await addServiceMappingTelemetryLogs();
+    
+    // Add any additional custom log files specified via environment variable (fallback)
+    // Format: CUSTOM_LOG_FILES=path1:name1,path2:name2
+    // Example: CUSTOM_LOG_FILES=/workspace/debug.log:debug-trace,/tmp/custom.log:custom-app
+    if (process.env.CUSTOM_LOG_FILES) {
+      const customLogSpecs = process.env.CUSTOM_LOG_FILES.split(',').map(spec => {
+        const [path, name] = spec.trim().split(':');
+        return path && name ? { path: path.trim(), name: name.trim() } : null;
+      }).filter(Boolean);
+      
+      if (customLogSpecs.length > 0) {
+        await addCustomLogFiles(customLogSpecs);
+      }
+    }
 
     // Step 12: Health Server Start
     logger.info('STEP 12: Health Server - Starting health check server...');
@@ -204,13 +458,13 @@ async function main() {
     await statusAggregator.machineReady();
     
     // Step 21: Machine Ready
-    const startupTime = Date.now() - startTime;
-    logger.info(`STEP 21: Machine Ready - Basic Machine ready in PM2 mode (${startupTime}ms)`);
+    const totalStartupTime = Date.now() - startupTime;
+    logger.info(`STEP 21: Machine Ready - Basic Machine ready in PM2 mode (${totalStartupTime}ms)`);
 
     // Log machine ready through telemetry
     if (telemetryClient) {
       await telemetryClient.log.info('✅ VALIDATION: Machine startup completed successfully', {
-        total_startup_time_ms: startupTime,
+        total_startup_time_ms: totalStartupTime,
         machine_id: config.machine.id,
         gpu_count: config.machine.gpu.count,
         pm2_mode: true,
@@ -219,7 +473,7 @@ async function main() {
         expected_result: 'Machine is now accepting jobs and telemetry is flowing to Dash0'
       });
       
-      await telemetryClient.otel.gauge('machine.startup.total_duration', startupTime, {
+      await telemetryClient.otel.gauge('machine.startup.total_duration', totalStartupTime, {
         machine_id: config.machine.id,
         gpu_count: config.machine.gpu.count.toString(),
         status: 'success'
@@ -291,6 +545,96 @@ async function verifyPM2Services() {
   } catch (error) {
     logger.error('Failed to verify PM2 services:', error);
     throw error;
+  }
+}
+
+/**
+ * Discover running PM2 services and add their log files to telemetry monitoring
+ */
+async function addDiscoveredPM2LogsToTelemetry() {
+  if (!telemetryClient) {
+    logger.debug('No telemetry client available, skipping PM2 log discovery');
+    return;
+  }
+
+  try {
+    logger.info('📁 Discovering PM2 service logs for telemetry monitoring...');
+    const services = await pm2Manager.getAllServicesStatus();
+    const logDir = process.env.LOG_DIR || '/workspace/logs';
+    const fs = await import('fs');
+    
+    let logsAdded = 0;
+    for (const service of services) {
+      const serviceName = service.name;
+      const errorLogPath = `${logDir}/${serviceName}-error.log`;
+      const outLogPath = `${logDir}/${serviceName}-out.log`;
+      
+      // Check if error log exists and add it
+      if (fs.existsSync(errorLogPath)) {
+        try {
+          await telemetryClient.log.addFile(errorLogPath, `pm2-${serviceName}-error`);
+          logsAdded++;
+          logger.debug(`Added PM2 error log: ${errorLogPath}`);
+        } catch (error) {
+          logger.warn(`Failed to add PM2 error log for ${serviceName}: ${error.message}`);
+        }
+      }
+      
+      // Check if output log exists and add it
+      if (fs.existsSync(outLogPath)) {
+        try {
+          await telemetryClient.log.addFile(outLogPath, `pm2-${serviceName}-out`);
+          logsAdded++;
+          logger.debug(`Added PM2 output log: ${outLogPath}`);
+        } catch (error) {
+          logger.warn(`Failed to add PM2 output log for ${serviceName}: ${error.message}`);
+        }
+      }
+    }
+    
+    // Also discover any additional ComfyUI logs that might exist based on GPU count
+    const gpuCount = config.machine.gpu.count;
+    for (let gpu = 0; gpu < gpuCount; gpu++) {
+      const comfyuiOutputLog = `/workspace/ComfyUI/logs/output-gpu${gpu}.log`;
+      const comfyuiErrorLog = `/workspace/logs/comfyui-gpu${gpu}-error.log`;
+      
+      if (fs.existsSync(comfyuiOutputLog)) {
+        try {
+          await telemetryClient.log.addFile(comfyuiOutputLog, `comfyui-output-gpu${gpu}`);
+          logsAdded++;
+          logger.debug(`Added ComfyUI output log: ${comfyuiOutputLog}`);
+        } catch (error) {
+          logger.warn(`Failed to add ComfyUI output log for GPU ${gpu}: ${error.message}`);
+        }
+      }
+      
+      if (fs.existsSync(comfyuiErrorLog)) {
+        try {
+          await telemetryClient.log.addFile(comfyuiErrorLog, `comfyui-gpu${gpu}-error`);
+          logsAdded++;
+          logger.debug(`Added ComfyUI error log: ${comfyuiErrorLog}`);
+        } catch (error) {
+          logger.warn(`Failed to add ComfyUI error log for GPU ${gpu}: ${error.message}`);
+        }
+      }
+    }
+    
+    logger.info(`✅ Discovered and added ${logsAdded} additional log files to telemetry monitoring`);
+    
+    // Send telemetry event about log discovery
+    if (telemetryClient) {
+      await telemetryClient.log.info('📁 VALIDATION: PM2 and service logs discovered for monitoring', {
+        discovered_logs_count: logsAdded,
+        pm2_services_count: services.length,
+        gpu_count: gpuCount,
+        log_directory: logDir,
+        validation_type: 'log_discovery',
+        expected_result: 'All machine service logs are now flowing to Dash0'
+      });
+    }
+  } catch (error) {
+    logger.error('Failed to discover PM2 service logs for telemetry:', error);
+    // Non-fatal error - continue without additional log monitoring
   }
 }
 

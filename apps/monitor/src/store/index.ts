@@ -285,11 +285,14 @@ export const useMonitorStore = create<MonitorStore>()(
     
     updateWorker: (workerId, updates) =>
       set((state) => {
+        // console.log(`updateWorker called for ${workerId} with updates:`, updates);
         // const targetWorker = state.workers.find(w => w.id === workerId);
+        // console.log(`Target worker ${workerId}:`, targetWorker ? { id: targetWorker.id, status: targetWorker.status } : 'NOT FOUND');
         const newWorkers = state.workers.map((worker) =>
           worker.worker_id === workerId ? { ...worker, ...updates } : worker
         );
         // const updatedWorker = newWorkers.find(w => w.id === workerId);
+        // console.log(`Updated worker ${workerId}:`, updatedWorker ? { id: updatedWorker.id, status: updatedWorker.status } : 'NOT FOUND');
         return { workers: newWorkers };
       }),
     
@@ -422,8 +425,10 @@ export const useMonitorStore = create<MonitorStore>()(
       // Process workers
       if (stateData.workers) {
         if (Array.isArray(stateData.workers)) {
+          // console.log('Full state workers received (array):', stateData.workers.map(w => (w as any).id));
           stateData.workers.forEach((workerData) => {
             const worker = workerData as Record<string, unknown>;
+            // console.log(`Processing full state worker: ${worker.id}`);
             const capabilities = (worker.capabilities as WorkerCapabilities) || {
               worker_id: worker.worker_id as string || worker.id as string,
               services: [],

@@ -410,7 +410,7 @@ export class RedisDirectWorkerClient {
    * Convert Redis job data (strings) to typed Job object
    */
   private convertRedisJobData(jobId: string, redisData: RedisJobData): Job {
-    return {
+    const job: Job = {
       id: jobId,
       service_required: redisData.service_required || redisData.job_type || 'unknown',
       priority: parseInt(redisData.priority || '50'),
@@ -437,7 +437,24 @@ export class RedisDirectWorkerClient {
         ? parseInt(redisData.workflow_datetime)
         : undefined,
       step_number: redisData.step_number ? parseInt(redisData.step_number) : undefined,
+      // OTEL trace context for cross-service propagation
+      job_trace_id: redisData.job_trace_id,
+      job_span_id: redisData.job_span_id,
+      workflow_trace_id: redisData.workflow_trace_id,
+      workflow_span_id: redisData.workflow_span_id,
     };
+
+    // 🚨 BIG TRACE LOGGING: JOB RETRIEVED FROM REDIS
+    console.log(`\n🚨🚨🚨 WORKER: RETRIEVED JOB FROM REDIS`);
+    console.log(`🚨 JOB: ${job.id}`);
+    console.log(`🚨 WORKFLOW: ${job.workflow_id || 'NONE'}`);
+    console.log(`🚨 RETRIEVED job_trace_id: ${job.job_trace_id || 'MISSING!!!'}`);
+    console.log(`🚨 RETRIEVED job_span_id: ${job.job_span_id || 'MISSING!!!'}`);
+    console.log(`🚨 RETRIEVED workflow_trace_id: ${job.workflow_trace_id || 'NONE'}`);
+    console.log(`🚨 RETRIEVED workflow_span_id: ${job.workflow_span_id || 'NONE'}`);
+    console.log(`🚨🚨🚨\n`);
+
+    return job;
   }
 
   /**

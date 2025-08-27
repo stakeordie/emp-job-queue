@@ -486,8 +486,10 @@ export class EnvironmentBuilder {
     for (const [key, value] of Object.entries(vars)) {
       // Ensure value is a string
       const stringValue = typeof value === 'string' ? value : String(value);
+      
       resolved[key] = stringValue.replace(/\$\{([^}]+)\}/g, (match, varName) => {
-        return vars[varName] || process.env[varName] || match;
+        const replacement = vars[varName] || process.env[varName] || match;
+        return replacement;
       });
     }
 
@@ -728,19 +730,24 @@ export class EnvironmentBuilder {
    */
   private formatEnvValue(value: string): string {
     // Ensure value is a string
-    const stringValue = typeof value === 'string' ? value : String(value);
+    let stringValue = typeof value === 'string' ? value : String(value);
 
-    // If value is already quoted, return as-is
+    // Strip existing quotes to ensure consistent formatting
     if (
       (stringValue.startsWith('"') && stringValue.endsWith('"')) ||
       (stringValue.startsWith("'") && stringValue.endsWith("'"))
     ) {
-      return stringValue;
+      stringValue = stringValue.slice(1, -1);
     }
 
     // If value contains JSON-like content (starts with [ or {), quote it
     if (stringValue.trim().startsWith('[') || stringValue.trim().startsWith('{')) {
       return `'${stringValue}'`;
+    }
+
+    // Check if this is a variable substitution pattern
+    if (/^\$\{[^}]+\}$/.test(stringValue)) {
+      return stringValue; // Don't quote variable substitutions
     }
 
     // If value contains spaces, special characters, or commas, quote it

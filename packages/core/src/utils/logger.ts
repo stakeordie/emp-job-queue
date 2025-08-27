@@ -28,8 +28,8 @@ export const logger = winston.createLogger({
   ],
 });
 
-// Add file logging in production (use /tmp for containers)
-if (process.env.NODE_ENV === 'production' && !process.env.DISABLE_FILE_LOGGING) {
+// Add file logging when LOG_TO_FILE is enabled
+if (process.env.LOG_TO_FILE === 'true' && !process.env.DISABLE_FILE_LOGGING) {
   const logDir = process.env.LOG_DIR || '/tmp';
 
   logger.add(

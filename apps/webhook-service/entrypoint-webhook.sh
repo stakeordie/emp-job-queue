@@ -110,9 +110,11 @@ configure_otel() {
 }
 
 # =====================================================
-# Configure nginx using TelemetryClient
+# Configure nginx using TelemetryClient (DISABLED - using direct connection)
 # =====================================================
 configure_nginx() {
+    log_info "⚠️  nginx proxy disabled - using direct Fluentd connection via Railway TCP proxy"
+    return 0
     log_section "Configuring nginx proxy"
     
     # TelemetryClient will generate configuration at /tmp/telemetry/nginx.conf
@@ -261,9 +263,11 @@ cleanup() {
 setup_signal_handlers
 
 # =====================================================
-# Start nginx proxy
+# Start nginx proxy (DISABLED - using direct connection)
 # =====================================================
 start_nginx() {
+    log_info "⚠️  nginx proxy disabled - using direct Fluentd connection via Railway TCP proxy"
+    return 0
     if [ "${NGINX_ENABLED:-true}" = "true" ] && [ -f "/webhook-server/nginx/nginx.conf" ]; then
         log_section "Starting nginx proxy"
         

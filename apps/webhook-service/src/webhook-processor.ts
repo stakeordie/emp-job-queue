@@ -67,6 +67,7 @@ export class WebhookProcessor extends EventEmitter {
   private subscriber: Redis;
   private webhookService: WebhookNotificationService;
   private webhookStorage: WebhookRedisStorage;
+  private telemetryClient: any | null;
   private isProcessing = false;
   private eventStats = {
     totalEvents: 0,
@@ -103,12 +104,13 @@ export class WebhookProcessor extends EventEmitter {
     'machine:status:*', // Machine status events (pattern subscription)
   ];
 
-  constructor(redis: Redis) {
+  constructor(redis: Redis, telemetryClient?: any) {
     super();
     this.redis = redis;
     this.subscriber = new Redis(redis.options);
     this.webhookStorage = new WebhookRedisStorage(redis);
-    this.webhookService = new WebhookNotificationService(redis);
+    this.webhookService = new WebhookNotificationService(redis, telemetryClient);
+    this.telemetryClient = telemetryClient || null;
 
     this.setupEventHandlers();
   }
@@ -681,6 +683,10 @@ export class WebhookProcessor extends EventEmitter {
 
   async testWebhook(id: string): Promise<boolean> {
     return await this.webhookService.testWebhook(id);
+  }
+
+  async reconnectWebhook(id: string): Promise<boolean> {
+    return await this.webhookService.reconnectWebhook(id);
   }
 
   async getWebhookStats(webhookId?: string) {

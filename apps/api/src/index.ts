@@ -46,6 +46,13 @@ async function initializeTelemetry() {
     // Create and initialize telemetry client
     const telemetryClient = createTelemetryClient('api');
     
+    console.log('📁 initializeTelemetry: Adding log files before telemetry startup...');
+    // Monitor actual Winston log files (core logger writes to LOG_DIR or /tmp)
+    const logDir = process.env.LOG_DIR || '/tmp';
+    await telemetryClient.log.addFile(`${logDir}/error.log`, 'api-error');
+    await telemetryClient.log.addFile(`${logDir}/combined.log`, 'api-combined');
+    console.log(`✅ initializeTelemetry: Log files added to monitoring (${logDir})`);
+    
     console.log('🔧 initializeTelemetry: Starting telemetry client startup');
     // Initialize without connection testing to avoid startup failures
     const pipelineHealth = await telemetryClient.startup({
@@ -92,9 +99,6 @@ async function main() {
   
   // Demonstrate clean telemetry API
   if (telemetryClient) {
-    console.log('📁 Setting up application log file monitoring...');
-    await telemetryClient.log.addFile('/api-server/logs/application.log', 'api-app');
-    
     // Write some test logs to demonstrate the pipeline
     await telemetryClient.log.info('🔍 VALIDATION: API server startup initiated', {
       startup_time_ms: Date.now() - startupTime,
@@ -103,10 +107,14 @@ async function main() {
       expected_pipeline: 'application.log → fluent-bit → fluentd → dash0'
     });
 
-    // Send a test metric
-    await telemetryClient.otel.gauge('api.startup.phase.telemetry_complete', Date.now() - startupTime, {
-      environment: process.env.TELEMETRY_ENV || 'unknown'
-    }, 'ms');
+    // Send a test metric (non-fatal if it fails)
+    try {
+      await telemetryClient.otel.gauge('api.startup.phase.telemetry_complete', Date.now() - startupTime, {
+        environment: process.env.TELEMETRY_ENV || 'unknown'
+      }, 'ms');
+    } catch (error) {
+      console.warn('⚠️ Failed to send startup metric (non-fatal):', error.message);
+    }
   }
   
   // CRITICAL: API_PORT must be explicitly set - NO FALLBACKS
@@ -188,10 +196,14 @@ ${Object.keys(process.env).filter(k => k.includes('REDIS')).map(k => `  - ${k}=$
         expected_result: 'API is now accepting requests and logs are flowing to Dash0'
       });
       
-      await telemetryClient.otel.gauge('api.startup.total_duration', totalStartupTime, {
-        environment: process.env.TELEMETRY_ENV || 'unknown',
-        status: 'success'
-      }, 'ms');
+      try {
+        await telemetryClient.otel.gauge('api.startup.total_duration', totalStartupTime, {
+          environment: process.env.TELEMETRY_ENV || 'unknown',
+          status: 'success'
+        }, 'ms');
+      } catch (error) {
+        console.warn('⚠️ Failed to send total startup metric (non-fatal):', error.message);
+      }
     }
   } catch (error) {
     logger.error('Failed to start API server:', error);

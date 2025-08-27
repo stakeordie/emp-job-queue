@@ -16,7 +16,8 @@ export const MonitorEnvInterface = {
     "NEXT_PUBLIC_CONNECTIONS": "MONITOR_CONNECTION",
     "WEBHOOK_SERVICE_URL": "WEBHOOK_SERVICE_URL",
     "NEXT_PUBLIC_WEBHOOK_SERVICE_URL": "WEBHOOK_SERVICE_URL",
-    "AUTH_TOKEN": "API_AUTH_TOKEN"
+    "AUTH_TOKEN": "API_AUTH_TOKEN",
+    "NODE_ENV": "API_NODE_ENV"
   },
   
   optional: {
@@ -31,6 +32,7 @@ export const MonitorEnvInterface = {
     "LOG_LEVEL": "MONITOR_LOG_LEVEL",
   },
   defaults: {
-    "SERVICE_TYPE": "monitor"
+    "SERVICE_TYPE": "monitor",
+    "LOG_TO_FILE": "true"
   }
 };

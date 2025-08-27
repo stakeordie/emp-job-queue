@@ -229,7 +229,7 @@ export class TelemetryConnectionManager {
       try {
         await this.sendTestMetric();
         metricsSuccess = true;
-        console.log('✅ Test metric sent to OTEL collector');
+        // Test metric sent successfully
       } catch (error) {
         errors.push(`Metrics: ${error instanceof Error ? error.message : 'Unknown error'}`);
         console.log('❌ Failed to send test metric to OTEL collector');
@@ -298,7 +298,7 @@ export class TelemetryConnectionManager {
   }
 
   private async sendTestMetric(): Promise<void> {
-    console.log(`🔍 TelemetryConnectionManager: Sending test metric to OTEL collector`);
+    // Sending test metric to OTEL collector
     const timestamp = Date.now();
 
     const metricData = {
@@ -331,8 +331,7 @@ export class TelemetryConnectionManager {
     };
 
     const metricsEndpoint = this.config.otel.collectorEndpoint.replace('/v1/traces', '/v1/metrics');
-    console.log(`🔍 TelemetryConnectionManager: OTEL metrics endpoint: ${metricsEndpoint}`);
-    console.log(`🔍 TelemetryConnectionManager: OTEL metrics payload size: ${JSON.stringify(metricData).length} bytes`);
+    // Sending test metric to OTEL collector endpoint
 
     const response = await fetch(metricsEndpoint, {
       method: 'POST',
@@ -340,7 +339,7 @@ export class TelemetryConnectionManager {
       body: JSON.stringify(metricData),
     });
 
-    console.log(`🔍 TelemetryConnectionManager: OTEL metrics response status: ${response.status}`);
+    // Test metric response received
     
     if (!response.ok) {
       const responseText = await response.text();
@@ -348,7 +347,7 @@ export class TelemetryConnectionManager {
       throw new Error(`HTTP ${response.status}: ${response.statusText} - ${responseText}`);
     }
     
-    console.log(`✅ TelemetryConnectionManager: OTEL metric sent successfully`);
+    // Test metric sent successfully
   }
 
   private async sendTestLog(): Promise<void> {

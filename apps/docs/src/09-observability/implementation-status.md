@@ -1,11 +1,10 @@
-# Observability Implementation Progress
+# Implementation Status
 
-**Last Updated:** January 2025  
-**Status:** Phase 1 Complete - Logging Infrastructure Operational
+> **Current state and roadmap** - Real progress on the 5-track observability system
 
 ## 🏆 Current State: Production-Ready Logging Pipeline
 
-We have successfully implemented a comprehensive observability architecture with **structured logging pipeline** that is ready for Railway deployment. The system provides real-time log aggregation, normalization, and forwarding to Dash0 observability platform.
+We have successfully implemented a comprehensive observability foundation with **structured logging pipeline** that is ready for Railway deployment. The system provides real-time log aggregation, normalization, and forwarding to Dash0 observability platform.
 
 ### ✅ **Completed Components**
 
@@ -99,81 +98,6 @@ graph TB
 
 ---
 
-## 🚀 **Deployment Guide**
-
-### **Railway Deployment Steps**
-
-#### **1. Deploy Centralized Fluentd Service**
-```bash
-# Deploy Fluentd aggregation service
-railway up --service fluentd --config apps/fluentd/railway.toml
-
-# Verify Dash0 integration
-curl -X POST https://your-fluentd-service/test \
-     -H "Content-Type: application/json" \
-     -d '{"test": "message"}'
-```
-
-#### **2. Configure Worker Machines**
-```bash
-# Environment variables for each Railway service
-MACHINE_ID=railway-${RAILWAY_SERVICE_NAME}
-WORKER_ID=${RAILWAY_SERVICE_NAME}-worker-001
-SERVICE_TYPE=comfyui  # or openai, a1111, simulation
-FLUENTD_HOST=your-fluentd-service.railway.app
-FLUENTD_PORT=8888
-```
-
-#### **3. Add Fluent Bit to PM2 Configuration**
-```javascript
-// In your PM2 ecosystem file
-{
-  name: 'fluent-bit',
-  script: '/usr/local/bin/fluent-bit',
-  args: '--config /app/fluent-bit-worker.conf',
-  env: {
-    MACHINE_ID: process.env.MACHINE_ID,
-    WORKER_ID: process.env.WORKER_ID,
-    SERVICE_TYPE: process.env.SERVICE_TYPE,
-    FLUENTD_HOST: process.env.FLUENTD_HOST,
-  }
-}
-```
-
-#### **4. Update Connector Code**
-```typescript
-import { ConnectorLogger } from '@emp/core';
-
-export class YourConnector extends BaseConnector {
-  private logger: ConnectorLogger;
-
-  constructor(connectorId: string) {
-    super(connectorId);
-    
-    this.logger = new ConnectorLogger({
-      machineId: process.env.MACHINE_ID,
-      workerId: process.env.WORKER_ID,
-      serviceType: this.service_type,
-      connectorId: this.connector_id,
-    });
-  }
-
-  async processJob(jobData: JobData): Promise<JobResult> {
-    const jobLogger = this.logger.withJobContext(jobData.id);
-    
-    jobLogger.jobReceived({ 
-      jobId: jobData.id,
-      model: this.extractModel(jobData.payload),
-      inputSize: JSON.stringify(jobData.payload).length,
-    });
-
-    // ... rest of your job processing logic
-  }
-}
-```
-
----
-
 ## 📈 **Expected Observability Outcomes**
 
 ### **Immediate Benefits (Phase 1 Complete)**
@@ -260,10 +184,10 @@ export class YourConnector extends BaseConnector {
 - **Test Suite:** `test-connector-logging.js`
 
 ### **Reference Documentation**
-- [Observability Architecture](./observability-architecture.md) - Complete system design
-- [North Star Architecture](./NORTH_STAR_ARCHITECTURE.md) - Strategic direction
-- [Fluent Bit Documentation](https://docs.fluentbit.io/) - Configuration reference
-- [Dash0 Integration Guide](https://dash0.dev/docs) - Platform-specific setup
+- [System Architecture](./system-architecture.md) - Complete system design
+- [Telemetry Setup Guide](./telemetry-setup-guide.md) - Comprehensive implementation guide
+- [OTEL Trace Library](./otel-trace-library.md) - OpenTelemetry integration details
+- [Query & Debug Guide](./query-debug-guide.md) - Practical usage patterns
 
 ---
 
