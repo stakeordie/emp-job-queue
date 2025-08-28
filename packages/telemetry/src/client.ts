@@ -9,6 +9,7 @@ import { TelemetryConfigManager, type TelemetryConfig } from './config.js';
 import { TelemetryConnectionManager, type PipelineHealth } from './connections.js';
 import { promises as fs, readFileSync, existsSync } from 'fs';
 import { dirname, join } from 'path';
+import { fileURLToPath } from 'url';
 
 export interface TelemetryStartupOptions {
   testConnections?: boolean;
@@ -126,6 +127,10 @@ export class EmpTelemetryClient {
    */
   private loadServiceMapping(): any {
     try {
+      // Get the current directory for ES modules
+      const __filename = fileURLToPath(import.meta.url);
+      const __dirname = dirname(__filename);
+      
       // Try common paths where service-mapping.json might be located
       const possiblePaths = [
         '/workspace/service-mapping.json',
