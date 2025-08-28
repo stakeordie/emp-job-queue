@@ -68,6 +68,11 @@ echo -e "${YELLOW}Copying service mapping for bundled worker...${NC}"
 mkdir -p $MACHINE_BUNDLE_DIR/src/config/
 cp apps/machine/src/config/service-mapping.json $MACHINE_BUNDLE_DIR/src/config/
 
+# Copy scripts directory (includes init-winston-logs.sh)
+echo -e "${YELLOW}Copying worker scripts...${NC}"
+mkdir -p $MACHINE_BUNDLE_DIR/scripts/
+cp -r apps/worker/scripts/* $MACHINE_BUNDLE_DIR/scripts/ 2>/dev/null || true
+
 echo -e "${GREEN}✓ Worker bundled successfully at: $WORKER_BUNDLE_DIR${NC}"
 echo -e "${GREEN}✓ Worker copied to machine directory: $MACHINE_BUNDLE_DIR${NC}"
 echo -e "${GREEN}  Ready for Docker build with WORKER_BUNDLE_MODE=local${NC}"

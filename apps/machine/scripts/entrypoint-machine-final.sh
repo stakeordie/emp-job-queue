@@ -62,6 +62,12 @@ setup_directories() {
     mkdir -p /workspace/.pm2 /workspace/logs /service-manager
     mkdir -p /workspace/.pm2/logs /workspace/.pm2/pids
     
+    # Initialize Winston log files for FluentBit tail input
+    if [[ -f "/workspace/worker-bundled/scripts/init-winston-logs.sh" ]]; then
+        log_info "🔧 Initializing Winston OpenAI log files..."
+        bash "/workspace/worker-bundled/scripts/init-winston-logs.sh" || log_warn "Failed to initialize Winston log files"
+    fi
+    
     log_info "✅ Machine directories created"
 }
 
