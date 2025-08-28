@@ -10,9 +10,9 @@ import {
   logger,
   createEnhancedProgressReporter,
   EnhancedProgressReporter,
-  sendTrace,
   JobResult,
 } from '@emp/core';
+import { getOpenAILogger } from '../utils/openai-winston-logger.js';
 
 // New resolution architecture interfaces
 export interface JobResolutionResult {
@@ -140,261 +140,129 @@ export abstract class OpenAIBaseConnector extends BaseConnector {
   }
 
   /**
-   * Initialize OpenAI client with shared configuration and instrumentation
+   * Initialize OpenAI client with Winston logging integration
    */
   protected async initializeOpenAIClient(): Promise<void> {
-    // Create the base OpenAI client
-    const baseClient = new OpenAI({
+    // Get Winston logger for OpenAI SDK
+    const openaiWinston = getOpenAILogger();
+    const openaiLogger = openaiWinston.getOpenAILogger();
+
+    // Configure OpenAI client with Winston logging
+    this.client = new OpenAI({
       apiKey: this.apiKey,
       baseURL: this.baseURL,
       timeout: this.config.timeout_seconds * 1000,
       maxRetries: this.config.retry_attempts,
+      // Enable SDK logging with Winston
+      logger: openaiLogger,
+      logLevel: process.env.OPENAI_DEBUG === 'true' ? 'debug' : 'info'
     });
 
-    // Wrap the client with instrumentation
-    this.client = this.createInstrumentedClient(baseClient);
+    logger.info(`✅ OpenAI client initialized for connector ${this.connector_id}`, {
+      baseURL: this.baseURL,
+      logLevel: process.env.OPENAI_DEBUG === 'true' ? 'debug' : 'info',
+      logDir: openaiWinston.getLogDirectory()
+    });
 
-    // Enable debug logging if OPENAI_DEBUG=true
-    if (process.env.OPENAI_DEBUG === 'true') {
-      logger.info(`🔍 OpenAI Debug Mode ENABLED for connector ${this.connector_id}`);
-      this.enableDebugLogging();
-    }
-  }
-
-  /**
-   * Create instrumented OpenAI client that adds trace visibility to all API calls
-   */
-  private createInstrumentedClient(baseClient: OpenAI, path: string = ''): OpenAI {
-    // Create a proxy that intercepts all method calls
-    return new Proxy(baseClient, {
-      get: (target, prop, receiver) => {
-        const originalValue = Reflect.get(target, prop, receiver);
-        const propName = String(prop);
-        const currentPath = path ? `${path}.${propName}` : propName;
-        
-        // Skip constructor and non-function, non-object properties
-        if (prop === 'constructor' || (typeof originalValue !== 'function' && typeof originalValue !== 'object')) {
-          return originalValue;
-        }
-
-        // For nested objects (like client.responses, client.chat), create proxied versions
-        if (typeof originalValue === 'object' && originalValue !== null) {
-          return this.createInstrumentedClient(originalValue as any, currentPath);
-        }
-
-        // For functions, check if it's an API method we want to instrument
-        if (typeof originalValue === 'function') {
-          const isApiCall = this.isOpenAIApiMethod(propName, currentPath);
-          
-          if (!isApiCall) {
-            return originalValue;
-          }
-
-          // Wrap API methods with instrumentation
-          return async (...args: any[]) => {
-
-            // Extract request details for tracing
-            const requestData = this.extractRequestData(propName, args);
-            const startTime = Date.now();
-            
-            // 🚨 BIG PAYLOAD LOGGING: OPENAI API REQUEST
-            console.log(`\n🚨🚨🚨 HTTP CONNECTOR: SENDING REQUEST TO OPENAI`);
-            console.log(`🚨 JOB: ${this.currentJobId || 'unknown'}`);
-            console.log(`🚨 SERVICE: openai`);
-            console.log(`🚨 METHOD: ${propName}`);
-            console.log(`🚨 PATH: ${currentPath}`);
-            console.log(`🚨 URL: ${this.baseURL}/${requestData.endpoint || 'unknown'}`);
-            console.log(`🚨 REQUEST PAYLOAD SIZE: ${requestData.payloadSize} bytes`);
-            console.log(`🚨 REQUEST PAYLOAD:`);
-            console.log(requestData.payload.length > 1000 ? 
-              requestData.payload.substring(0, 1000) + '\n... [TRUNCATED - ' + (requestData.payloadSize - 1000) + ' more bytes]' : 
-              requestData.payload);
-            console.log(`🚨🚨🚨\n`);
-
-          // Send OTEL trace for request
-          try {
-            await sendTrace('connector.http_request', {
-              'job.id': this.currentJobId || 'unknown',
-              'connector.id': this.connector_id,
-              'connector.type': 'http',
-              'service.type': 'openai',
-              'http.method': 'POST',
-              'http.url': `${this.baseURL}/${requestData.endpoint || 'unknown'}`,
-              'http.request_size': requestData.payloadSize.toString(),
-              'openai.method': propName,
-                'openai.path': currentPath,
-              'http.request.payload': this.truncatePayloadValues(requestData.payload),
-              'component.type': 'connector',
-              'process.type': 'openai_api_request'
-            }, {
-              parent_trace_id: this.currentJobTraceContext.traceId,
-              parent_span_id: this.currentJobTraceContext.spanId
-            });
-          } catch (traceError) {
-            logger.debug('Failed to send OpenAI request trace', { error: traceError.message });
-          }
-
-          try {
-            // Execute the actual OpenAI API call
-            const response = await originalValue.apply(target, args);
-            const duration = Date.now() - startTime;
-            
-            // Extract response data for tracing
-            const responseData = this.extractResponseData(response);
-            
-            // 🚨 BIG PAYLOAD LOGGING: OPENAI API RESPONSE
-            console.log(`\n🚨🚨🚨 HTTP CONNECTOR: RECEIVED RESPONSE FROM OPENAI`);
-            console.log(`🚨 JOB: ${this.currentJobId || 'unknown'}`);
-            console.log(`🚨 SERVICE: openai`);
-            console.log(`🚨 METHOD: ${propName}`);
-            console.log(`🚨 PATH: ${currentPath}`);
-            console.log(`🚨 STATUS: 200`);
-            console.log(`🚨 DURATION: ${duration}ms`);
-            console.log(`🚨 RESPONSE PAYLOAD SIZE: ${responseData.payloadSize} bytes`);
-            console.log(`🚨 RESPONSE PAYLOAD:`);
-            console.log(responseData.payload.length > 1000 ? 
-              responseData.payload.substring(0, 1000) + '\n... [TRUNCATED - ' + (responseData.payloadSize - 1000) + ' more bytes]' : 
-              responseData.payload);
-            console.log(`🚨🚨🚨\n`);
-
-            // Send OTEL trace for response
-            try {
-              await sendTrace('connector.http_response', {
-                'job.id': this.currentJobId || 'unknown',
-                'connector.id': this.connector_id,
-                'connector.type': 'http',
-                'service.type': 'openai',
-                'http.method': 'POST',
-                'http.url': `${this.baseURL}/${requestData.endpoint || 'unknown'}`,
-                'http.status_code': '200',
-                'http.request_size': requestData.payloadSize.toString(),
-                'http.response_size': responseData.payloadSize.toString(),
-                'http.request.payload': this.truncatePayloadValues(requestData.payload),
-                'http.response.payload': this.truncatePayloadValues(responseData.payload),
-                'openai.method': propName,
-                'openai.path': currentPath,
-                'operation.success': 'true',
-                'operation.duration_ms': duration.toString(),
-                'component.type': 'connector',
-                'process.type': 'openai_api_response'
-              }, {
-                duration_ms: duration,
-                status: 'ok',
-                parent_trace_id: this.currentJobTraceContext.traceId,
-                parent_span_id: this.currentJobTraceContext.spanId
-              });
-            } catch (traceError) {
-              logger.debug('Failed to send OpenAI response trace', { error: traceError.message });
-            }
-
-            return response;
-            
-          } catch (error) {
-            const duration = Date.now() - startTime;
-            
-            // 🚨 BIG PAYLOAD LOGGING: OPENAI API ERROR
-            console.log(`\n🚨🚨🚨 HTTP CONNECTOR: ERROR FROM OPENAI`);
-            console.log(`🚨 JOB: ${this.currentJobId || 'unknown'}`);
-            console.log(`🚨 SERVICE: openai`);
-            console.log(`🚨 METHOD: ${propName}`);
-            console.log(`🚨 PATH: ${currentPath}`);
-            console.log(`🚨 ERROR: ${error.message}`);
-            console.log(`🚨 DURATION: ${duration}ms`);
-            console.log(`🚨🚨🚨\n`);
-
-            // Send OTEL trace for error
-            try {
-              await sendTrace('connector.http_response', {
-                'job.id': this.currentJobId || 'unknown',
-                'connector.id': this.connector_id,
-                'connector.type': 'http',
-                'service.type': 'openai',
-                'openai.method': propName,
-                'openai.path': currentPath,
-                'error.message': error.message,
-                'operation.success': 'false',
-                'operation.duration_ms': duration.toString(),
-                'component.type': 'connector',
-                'process.type': 'openai_api_error'
-              }, {
-                duration_ms: duration,
-                status: 'error',
-                parent_trace_id: this.currentJobTraceContext.traceId,
-                parent_span_id: this.currentJobTraceContext.spanId
-              });
-            } catch (traceError) {
-              logger.debug('Failed to send OpenAI error trace', { error: traceError.message });
-            }
-
-            throw error;
-          }
-        };
-        }
-        
-        return originalValue;
-      }
+    // Log telemetry setup
+    openaiLogger.info('OpenAI client configured with Winston logging', {
+      connector_id: this.connector_id,
+      baseURL: this.baseURL,
+      timeout_seconds: this.config.timeout_seconds,
+      max_retries: this.config.retry_attempts,
+      telemetry_type: 'client_initialization'
     });
   }
 
   /**
-   * Check if a method is an OpenAI API call that should be instrumented
+   * Enhanced logging for OpenAI API calls with telemetry extraction
    */
-  private isOpenAIApiMethod(methodName: string, path: string): boolean {
-    // OpenAI SDK API method patterns we want to instrument
-    const apiPatterns = [
-      /^responses\.create$/, // client.responses.create (our main use case)
-      /^chat\.completions\.create$/, // client.chat.completions.create  
-      /^images\.generate$/, // client.images.generate
-      /^images\.edit$/, // client.images.edit
-      /^images\.createVariation$/, // client.images.createVariation
-      /^models\.list$/, // client.models.list
-      /^models\.retrieve$/, // client.models.retrieve
-    ];
-    
-    // Check if the current path matches any API patterns
-    return apiPatterns.some(pattern => pattern.test(path));
-  }
+  protected async logOpenAIApiCall(
+    method: string,
+    endpoint: string,
+    requestData: any,
+    response?: any,
+    startTime?: number
+  ): Promise<void> {
+    const openaiWinston = getOpenAILogger();
+    const openaiLogger = openaiWinston.getOpenAILogger();
 
-  /**
-   * Extract request data for tracing
-   */
-  private extractRequestData(methodName: string, args: any[]): { endpoint: string; payload: string; payloadSize: number } {
-    try {
-      const payload = args[0] ? JSON.stringify(args[0]) : '{}';
-      return {
-        endpoint: this.getEndpointFromMethod(methodName),
-        payload,
-        payloadSize: payload.length
-      };
-    } catch (error) {
-      return { endpoint: methodName, payload: '{}', payloadSize: 2 };
-    }
-  }
+    const duration = startTime ? Date.now() - startTime : undefined;
 
-  /**
-   * Extract response data for tracing
-   */
-  private extractResponseData(response: any): { payload: string; payloadSize: number } {
-    try {
-      const payload = JSON.stringify(response);
-      return { payload, payloadSize: payload.length };
-    } catch (error) {
-      return { payload: String(response), payloadSize: String(response).length };
-    }
-  }
-
-  /**
-   * Get API endpoint from method name
-   */
-  private getEndpointFromMethod(methodName: string): string {
-    // This is a simple mapping - in reality OpenAI SDK uses complex routing
-    const endpointMap: { [key: string]: string } = {
-      'create': 'chat/completions',
-      'list': 'models',
-      'retrieve': 'models',
+    // Extract telemetry data
+    const telemetryData: any = {
+      method,
+      endpoint,
+      duration,
+      connector_id: this.connector_id,
+      job_id: this.currentJobId,
     };
-    return endpointMap[methodName] || methodName;
+
+    if (response) {
+      // Extract usage data if available
+      if (response.usage) {
+        telemetryData.usage = response.usage;
+        telemetryData.prompt_tokens = response.usage.prompt_tokens;
+        telemetryData.completion_tokens = response.usage.completion_tokens;
+        telemetryData.total_tokens = response.usage.total_tokens;
+      }
+
+      // Extract model information
+      if (response.model) {
+        telemetryData.model = response.model;
+      }
+
+      // Extract response metadata
+      if (response.id) {
+        telemetryData.response_id = response.id;
+      }
+      if (response.created) {
+        telemetryData.created = response.created;
+      }
+      if (response.object) {
+        telemetryData.object_type = response.object;
+      }
+
+      // Log successful API call
+      openaiLogger.logHTTP({
+        method,
+        url: endpoint,
+        status: 200,
+        duration,
+        usage: response.usage,
+        model: response.model,
+        created: response.created
+      });
+
+      // Log usage data separately for billing/analytics
+      if (response.usage) {
+        openaiLogger.logUsage({
+          model: response.model,
+          usage: response.usage,
+          job_id: this.currentJobId,
+          connector_id: this.connector_id
+        });
+      }
+    } else {
+      // Log request only
+      openaiLogger.logHTTP({
+        method,
+        url: endpoint,
+        duration
+      });
+    }
+
+    // Also log to enhanced progress reporter if available
+    if (response?.usage) {
+      await this.reportIntelligentLog(
+        `OpenAI API usage: ${response.usage.total_tokens} tokens (${response.model})`,
+        'info',
+        'openai_usage'
+      );
+    }
   }
+
+
 
   // Add property to track current job for tracing
   protected currentJobId: string | null = null;
