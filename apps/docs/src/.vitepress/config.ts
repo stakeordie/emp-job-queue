@@ -263,20 +263,46 @@ const config = defineConfig({
           text: '10. Development Notes',
           items: [
             { text: 'Overview', link: '/10-development-notes/' },
-            { text: '[2025-08-26] North Star Architecture Modernization Proposal 🎯', link: '/10-development-notes/2025-08-26-north-star-architecture-modernization-proposal' },
-            { text: '[2025-08-25] Modernization Detailed TODO List 📋', link: '/10-development-notes/2025-08-25-modernization-detailed-todo-list' },
-            { text: '[2025-08-25] GitHub Project Management Setup 📊', link: '/10-development-notes/2025-08-25-github-project-management-setup' },
+            { text: '📋 [ACTIVE] Unified Modernization Plan 🚀', link: '/10-development-notes/2025-08-26-unified-modernization-plan' },
+            { text: '🎯 [ACTIVE] North Star Architecture Modernization 2025', link: '/10-development-notes/2025-08-26-north-star-architecture-modernization-proposal' }
+          ]
+        },
+        {
+          text: 'Phase Implementation Guides',
+          items: [
+            { text: '🧪 Phase 1: Testing Implementation Guide', link: '/10-development-notes/2025-08-26-phase1-testing-implementation-guide' },
+            { text: '📡 Phase 2: Message Bus Implementation Guide', link: '/10-development-notes/2025-08-26-phase2-message-bus-implementation-guide' },
+            { text: '🔧 Phase 3: API Refactor Implementation Guide', link: '/10-development-notes/2025-08-26-phase3-api-refactor-implementation-guide' },
+            { text: '🗄️ Phase 4: Database Integration Guide', link: '/10-development-notes/2025-08-26-phase4-database-integration-guide' },
+            { text: '🌐 Phase 5: EmProps Integration Guide', link: '/10-development-notes/2025-08-26-phase5-emprops-integration-guide' }
+          ]
+        },
+        {
+          text: 'Recent Development Work',
+          items: [
             { text: '[2025-08-25] Webhook Persistence Reliability Fix 🔧', link: '/10-development-notes/2025-08-25-webhook-persistence-reliability-fix' },
-            { text: '[2025-08-25] Modernization Planning Implementation Strategy 📋', link: '/10-development-notes/2025-08-25-modernization-planning-implementation-strategy' },
-            { text: '[2025-08-25] Comprehensive Codebase Modernization Plan 🚀', link: '/10-development-notes/2025-08-25-comprehensive-codebase-modernization-plan' },
-            { text: '[2025-08-25] EmProps Open API Monorepo Integration Plan 🏗️', link: '/10-development-notes/2025-08-25-emprops-open-api-monorepo-integration-plan' },
-            { text: '[2025-08-20] Development → Production Debugging Strategy 🚀', link: '/10-development-notes/development-to-production-debugging-strategy' },
-            { text: '[2025-08-20] API Service Refactor Plan 📋', link: '/10-development-notes/2025-08-20-api-service-refactor-plan' },
             { text: '[2025-08-18] ComfyUI Startup Flow ✨', link: '/10-development-notes/comfyui-startup-flow' },
-            { text: '[2025-08-17] Unified Telemetry Client Architecture', link: '/10-development-notes/2025-08-17-unified-telemetry-client-architecture' },
-            { text: '[2025-01-08] Architecture Audit & Refactoring Plan', link: '/10-development-notes/2025-01-08-architecture-audit' },
-            { text: '[2025-01-08] Error Handling Architecture Analysis', link: '/10-development-notes/2025-01-08-error-handling-architecture-analysis' },
-            { text: '[2025-01-08] Active Jobs Display Bug Fix', link: '/10-development-notes/2025-01-08-active-jobs-display-bug-fix' }
+            { text: '[2025-08-17] Unified Telemetry Client Architecture', link: '/10-development-notes/2025-08-17-unified-telemetry-client-architecture' }
+          ]
+        },
+        {
+          text: 'Archived Planning Documents',
+          items: [
+            { text: '📦 [SUPERSEDED] Modernization Detailed TODO List', link: '/10-development-notes/2025-08-25-modernization-detailed-todo-list' },
+            { text: '📦 [SUPERSEDED] Modernization Planning Strategy', link: '/10-development-notes/2025-08-25-modernization-planning-implementation-strategy' },
+            { text: '📦 [SUPERSEDED] Comprehensive Modernization Plan', link: '/10-development-notes/2025-08-25-comprehensive-codebase-modernization-plan' },
+            { text: '📦 [SUPERSEDED] API Service Refactor Plan', link: '/10-development-notes/2025-08-20-api-service-refactor-plan' },
+            { text: '📦 [ARCHIVED] GitHub Project Management Setup', link: '/10-development-notes/2025-08-25-github-project-management-setup' },
+            { text: '📦 [ARCHIVED] EmProps Integration Plan', link: '/10-development-notes/2025-08-25-emprops-open-api-monorepo-integration-plan' }
+          ]
+        },
+        {
+          text: 'Historical Analysis & Debugging',
+          items: [
+            { text: '🔍 [2025-08-20] Development → Production Debugging Strategy', link: '/10-development-notes/development-to-production-debugging-strategy' },
+            { text: '🔍 [2025-01-08] Architecture Audit & Refactoring Plan', link: '/10-development-notes/2025-01-08-architecture-audit' },
+            { text: '🔍 [2025-01-08] Error Handling Architecture Analysis', link: '/10-development-notes/2025-01-08-error-handling-architecture-analysis' },
+            { text: '🔍 [2025-01-08] Active Jobs Display Bug Fix', link: '/10-development-notes/2025-01-08-active-jobs-display-bug-fix' }
           ]
         }
       ],
