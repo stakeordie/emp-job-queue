@@ -7,8 +7,8 @@
 
 import { TelemetryConfigManager, type TelemetryConfig } from './config.js';
 import { TelemetryConnectionManager, type PipelineHealth } from './connections.js';
-import { promises as fs } from 'fs';
-import { dirname } from 'path';
+import { promises as fs, readFileSync, existsSync } from 'fs';
+import { dirname, join } from 'path';
 
 export interface TelemetryStartupOptions {
   testConnections?: boolean;
@@ -36,6 +36,11 @@ export class EmpTelemetryClient {
     const defaultLogPath = this.getDefaultLogFilePath();
     this.logFilePaths = [{path: defaultLogPath, tag: this.config.serviceType}];
     console.log(`📁 EmpTelemetryClient: Default log file: ${defaultLogPath}`);
+    
+    // For machine services, also collect telemetry logs from external services
+    if (this.config.serviceType === 'machine') {
+      this.addExternalServiceTelemetryLogs();
+    }
   }
 
   private getDefaultLogFilePath(): string {
@@ -43,6 +48,115 @@ export class EmpTelemetryClient {
     const baseDir = this.config.logging.logDir || 
       (this.config.serviceType === 'api' ? '/api-server/logs' : '/logs');
     return `${baseDir}/${this.config.serviceName}-${this.config.serviceType}.log`;
+  }
+
+  /**
+   * Add telemetry logs from external services (OpenAI, etc.) for machine services
+   */
+  private addExternalServiceTelemetryLogs(): void {
+    try {
+      console.log('🔍 TelemetryClient: Looking for external services telemetry logs...');
+      
+      // Parse WORKERS environment variable (e.g., "openai:1,comfyui:2")
+      const workersEnv = process.env.WORKERS;
+      if (!workersEnv) {
+        console.log('📋 TelemetryClient: No WORKERS configured, skipping external service logs');
+        return;
+      }
+      
+      console.log(`📋 TelemetryClient: WORKERS environment: ${workersEnv}`);
+      
+      // Load service mapping configuration
+      const serviceMapping = this.loadServiceMapping();
+      if (!serviceMapping) {
+        console.warn('⚠️ TelemetryClient: Could not load service mapping, skipping external service logs');
+        return;
+      }
+      
+      // Parse worker configurations (e.g., "openai:1" -> worker type "openai")
+      const workers = workersEnv.split(',').map(w => w.trim().split(':')[0]);
+      console.log(`📋 TelemetryClient: Parsed workers: ${workers.join(', ')}`);
+      
+      let addedCount = 0;
+      
+      // For each worker type, find its services and collect telemetry logs
+      for (const workerType of workers) {
+        const workerConfig = serviceMapping.workers[workerType];
+        if (!workerConfig) {
+          console.log(`📋 TelemetryClient: No configuration found for worker type: ${workerType}`);
+          continue;
+        }
+        
+        console.log(`📋 TelemetryClient: Processing worker ${workerType} with services: ${workerConfig.services.join(', ')}`);
+        
+        // For each service in this worker, collect telemetry logs
+        for (const serviceName of workerConfig.services) {
+          const serviceConfig = serviceMapping.services[serviceName];
+          if (!serviceConfig) {
+            console.log(`📋 TelemetryClient: No service configuration found for: ${serviceName}`);
+            continue;
+          }
+          
+          // Only process external services with telemetry_logs
+          if (serviceConfig.type === 'external' && serviceConfig.telemetry_logs) {
+            console.log(`📋 TelemetryClient: Found external service ${serviceName} with ${serviceConfig.telemetry_logs.length} telemetry logs`);
+            
+            for (const telemetryLog of serviceConfig.telemetry_logs) {
+              this.logFilePaths.push({
+                path: telemetryLog.path,
+                tag: telemetryLog.name
+              });
+              addedCount++;
+              console.log(`✅ TelemetryClient: Added telemetry log: ${telemetryLog.path} (tag: ${telemetryLog.name})`);
+            }
+          }
+        }
+      }
+      
+      console.log(`✅ TelemetryClient: Added ${addedCount} external service telemetry logs`);
+      
+    } catch (error) {
+      console.error('❌ TelemetryClient: Failed to add external service telemetry logs:', error);
+      console.warn('⚠️ TelemetryClient: Continuing without external service logs');
+    }
+  }
+
+  /**
+   * Load service mapping configuration from expected paths
+   */
+  private loadServiceMapping(): any {
+    try {
+      // Try common paths where service-mapping.json might be located
+      const possiblePaths = [
+        '/workspace/service-mapping.json',
+        '/app/service-mapping.json', 
+        '/service-manager/src/config/service-mapping.json', // This is where the container has it
+        process.env.SERVICE_MAPPING_PATH,
+        join(process.cwd(), 'service-mapping.json'),
+        join(process.cwd(), 'src/config/service-mapping.json'),
+        join(__dirname, '../../../apps/machine/src/config/service-mapping.json')
+      ].filter(Boolean);
+      
+      for (const configPath of possiblePaths) {
+        try {
+          if (existsSync(configPath)) {
+            console.log(`📁 TelemetryClient: Loading service mapping from: ${configPath}`);
+            const content = readFileSync(configPath, 'utf8');
+            return JSON.parse(content);
+          }
+        } catch (error) {
+          console.log(`📋 TelemetryClient: Could not load service mapping from ${configPath}: ${error.message}`);
+        }
+      }
+      
+      console.warn('⚠️ TelemetryClient: Service mapping file not found in any expected location');
+      console.log('📋 TelemetryClient: Searched paths:', possiblePaths.join(', '));
+      return null;
+      
+    } catch (error) {
+      console.error('❌ TelemetryClient: Error loading service mapping:', error);
+      return null;
+    }
   }
 
   /**

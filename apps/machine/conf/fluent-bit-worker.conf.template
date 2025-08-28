@@ -1,30 +1,171 @@
-# Fluent Bit Configuration - File tailing only
+# Enhanced Fluent Bit Configuration for Machine Logs
+# Includes specific handling for Winston OpenAI logs
 [SERVICE]
     Flush 5
     Log_Level info
     Daemon off
+    Parsers_File /fluent-bit/etc/parsers.conf
 
-# Collect log files from PM2 services (raw logs)
+# Monitor general PM2 logs
+[INPUT]
+    Name tail
+    Tag pm2.logs
+    Path /workspace/.pm2/logs/*.log
+    Skip_Long_Lines On
+    Skip_Empty_Lines On
+    Refresh_Interval 5
+    DB /tmp/fluentbit-pm2.db
+    DB.Sync Off
+
+# Monitor OpenAI SDK main logs (hourly rotation)
+[INPUT]
+    Name tail
+    Tag openai.sdk
+    Path_Key file_name
+    Path /workspace/logs/openai-sdk-*.log
+    Skip_Long_Lines On
+    Skip_Empty_Lines Off
+    Refresh_Interval 2
+    Parser json
+    DB /tmp/fluentbit-openai-sdk.db
+    DB.Sync Off
+
+# Monitor OpenAI telemetry logs (hourly rotation)
+[INPUT]
+    Name tail
+    Tag openai.telemetry
+    Path_Key file_name
+    Path /workspace/logs/openai-telemetry-*.log
+    Skip_Long_Lines On
+    Skip_Empty_Lines Off
+    Refresh_Interval 2
+    Parser json
+    DB /tmp/fluentbit-openai-telemetry.db
+    DB.Sync Off
+
+# Monitor OpenAI error logs (daily rotation)
+[INPUT]
+    Name tail
+    Tag openai.errors
+    Path_Key file_name
+    Path /workspace/logs/openai-errors-*.log
+    Skip_Long_Lines On
+    Skip_Empty_Lines Off
+    Refresh_Interval 2
+    Parser json
+    DB /tmp/fluentbit-openai-errors.db
+    DB.Sync Off
+
+# Monitor general workspace logs
 [INPUT]
     Name tail
     Tag worker.logs
     Path /workspace/logs/*.log
+    Exclude_Path /workspace/logs/openai-*.log
     Skip_Long_Lines On
     Skip_Empty_Lines On
     Refresh_Interval 5
+    DB /tmp/fluentbit-worker.db
+    DB.Sync Off
+
+# Parse JSON logs if they come as strings
+[FILTER]
+    Name parser
+    Match pm2.*
+    Key_Name log
+    Parser json
+    Reserve_Data On
+    Preserve_Key On
 
 # Add machine metadata to all logs
 [FILTER]
     Name record_modifier
-    Match worker.*
+    Match *
     Record machine_id ${MACHINE_ID}
-    Record source fluent-bit-file-tail
+    Record worker_id ${WORKER_ID}
+    Record deployment_env ${DEPLOYMENT_ENV:-development}
+    Record source fluent-bit-enhanced
 
-# Send to local nginx proxy (which forwards to Railway with correct Host header)
+# Special processing for OpenAI SDK logs
+[FILTER]
+    Name record_modifier
+    Match openai.sdk
+    Record log_category openai-sdk-main
+    Record service_type openai
+
+# Special processing for OpenAI telemetry
+[FILTER]
+    Name record_modifier
+    Match openai.telemetry
+    Record log_category openai-telemetry
+    Record service_type openai
+    Record is_telemetry true
+
+# Special processing for OpenAI errors
+[FILTER]
+    Name record_modifier
+    Match openai.errors
+    Record log_category openai-errors
+    Record service_type openai
+    Record is_error true
+
+# Extract OpenAI usage metrics if present
+[FILTER]
+    Name nest
+    Match openai.*
+    Operation lift
+    Nested_under usage
+    Add_prefix usage_
+
+# Extract OpenAI telemetry type if present
+[FILTER]
+    Name modify
+    Match openai.*
+    Condition Key_value_equals telemetry_type http_request
+    Add openai_http_request true
+
+[FILTER]
+    Name modify
+    Match openai.*
+    Condition Key_value_equals telemetry_type usage_metrics
+    Add openai_usage_metrics true
+
+# Debug output for development
+[OUTPUT]
+    Name stdout
+    Match openai.*
+    Format json_lines
+
+# Send OpenAI logs to nginx proxy with higher priority
+[OUTPUT]
+    Name http
+    Match openai.*
+    Host localhost
+    Port ${FLUENTBIT_PORT:-8889}
+    URI /openai-logs
+    Format json
+    json_date_key timestamp
+    json_date_format iso8601
+    Retry_Limit 5
+    storage.type filesystem
+    storage.path /tmp/fluent-bit-openai-buffer
+    storage.sync normal
+
+# Send all other logs to nginx proxy
+[OUTPUT]
+    Name http
+    Match pm2.*
+    Host localhost
+    Port ${FLUENTBIT_PORT:-8889}
+    URI /worker-logs
+    Format json
+    Retry_Limit 3
+
 [OUTPUT]
     Name http
     Match worker.*
     Host localhost
-    Port 8889
+    Port ${FLUENTBIT_PORT:-8889}
     URI /worker-logs
     Format json
+    Retry_Limit 3

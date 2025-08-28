@@ -300,7 +300,24 @@
         "timeout": "${OPENAI_TIMEOUT:-60}",
         "max_retries": "${OPENAI_MAX_RETRIES:-3}",
         "text_models": "${OPENAI_TEXT_MODELS:-gpt-4,gpt-3.5-turbo}"
-      }
+      },
+      "telemetry_logs": [
+        {
+          "path": "/workspace/logs/openai-sdk-*.log",
+          "name": "openai-sdk-main",
+          "description": "OpenAI SDK comprehensive logs with API requests, responses, and errors"
+        },
+        {
+          "path": "/workspace/logs/openai-telemetry-*.log",
+          "name": "openai-telemetry",
+          "description": "OpenAI SDK telemetry logs with usage metrics, billing data, and performance"
+        },
+        {
+          "path": "/workspace/logs/openai-errors-*.log",
+          "name": "openai-errors", 
+          "description": "OpenAI SDK error logs for troubleshooting and monitoring"
+        }
+      ]
     },
     
     "openai-image": {
@@ -317,7 +334,24 @@
         "timeout": "${OPENAI_TIMEOUT:-60}",
         "max_retries": "${OPENAI_MAX_RETRIES:-3}",
         "image_models": "${OPENAI_IMAGE_MODELS:-dall-e-3,dall-e-2}"
-      }
+      },
+      "telemetry_logs": [
+        {
+          "path": "/workspace/logs/openai-sdk-*.log",
+          "name": "openai-sdk-main",
+          "description": "OpenAI SDK comprehensive logs with API requests, responses, and errors"
+        },
+        {
+          "path": "/workspace/logs/openai-telemetry-*.log",
+          "name": "openai-telemetry",
+          "description": "OpenAI SDK telemetry logs with usage metrics, billing data, and performance"
+        },
+        {
+          "path": "/workspace/logs/openai-errors-*.log",
+          "name": "openai-errors", 
+          "description": "OpenAI SDK error logs for troubleshooting and monitoring"
+        }
+      ]
     },
     
     "openai-img2img": {
@@ -334,7 +368,24 @@
         "timeout": "${OPENAI_TIMEOUT:-60}",
         "max_retries": "${OPENAI_MAX_RETRIES:-3}",
         "image_models": "${OPENAI_IMAGE_MODELS:-dall-e-3,dall-e-2}"
-      }
+      },
+      "telemetry_logs": [
+        {
+          "path": "/workspace/logs/openai-sdk-*.log",
+          "name": "openai-sdk-main",
+          "description": "OpenAI SDK comprehensive logs with API requests, responses, and errors"
+        },
+        {
+          "path": "/workspace/logs/openai-telemetry-*.log",
+          "name": "openai-telemetry",
+          "description": "OpenAI SDK telemetry logs with usage metrics, billing data, and performance"
+        },
+        {
+          "path": "/workspace/logs/openai-errors-*.log",
+          "name": "openai-errors", 
+          "description": "OpenAI SDK error logs for troubleshooting and monitoring"
+        }
+      ]
     }
   },
   
