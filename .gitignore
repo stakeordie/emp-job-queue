@@ -12,21 +12,33 @@ bundled/
 */worker-bundled/
 *.tsbuildinfo
 
-# Environment files - ALL .env files are generated and should not be committed
+# Environment files - ALL .env files are ignored (no exceptions needed)
 .env
 .env.*
 **/.env
 **/.env.*
+*.env*
+**/*.env*
 
-# Keep example files and environment system components
-!.env.example
-!**/.env.example
+# Keep only the environment system components (not .env files)
 !config/environments/components/**
 !config/environments/profiles/**
 !config/environments/services/**
 
 # Environment secrets (never commit real secrets)
 config/environments/secrets/.env.secrets.local
+
+# Secret and sensitive files (broader patterns)
+*secret*
+*Secret*
+*SECRET*
+*.key
+*.pem
+*.p12
+*.pfx
+*credentials*
+*Credentials*
+jwt.txt
 
 # Encrypted environment files (contain sensitive data)
 env.encrypted
@@ -204,3 +216,6 @@ test-*.py
 
 
 nohup.out
+
+bfg*
+..bfg*
