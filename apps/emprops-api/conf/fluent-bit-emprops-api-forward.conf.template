@@ -1,0 +1,33 @@
+# Fluent Bit Configuration for API Server - Forward Protocol (RECOMMENDED)
+[SERVICE]
+    Flush 5
+    Log_Level info
+    Daemon off
+
+# Collect API server log files
+[INPUT]
+    Name tail
+    Tag emprops-api.logs
+    Path /emprops-api-server/logs/*.log
+    Skip_Long_Lines On
+    Skip_Empty_Lines On
+    Refresh_Interval 5
+
+# Add API service metadata to all logs
+[FILTER]
+    Name record_modifier
+    Match emprops-api.*
+    Record service_name ${SERVICE_NAME}
+    Record service_version ${SERVICE_VERSION}
+    Record service_type emprops-api-server
+    Record environment ${TELEMETRY_ENV}
+    Record source fluent-bit-file-tail
+
+# Send to local nginx proxy (which forwards to Railway Fluentd)
+[OUTPUT]
+    Name http
+    Match emprops-api.*
+    Host localhost
+    Port 8889
+    URI /emprops-api-logs
+    Format json

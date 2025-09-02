@@ -1,0 +1,67 @@
+# OpenTelemetry Collector Configuration for API Server
+# This collector runs inside the API container to receive telemetry from the API service
+# and forward to Dash0 with proper batching and resilience
+
+receivers:
+  otlp:
+    protocols:
+      grpc:
+        endpoint: 0.0.0.0:4317
+      http:
+        endpoint: 0.0.0.0:4318
+
+processors:
+  batch:
+    timeout: 1s
+    send_batch_size: 1024
+    send_batch_max_size: 2048
+  
+  # Add API service context to all telemetry
+  resource:
+    attributes:
+      - key: service.name
+        value: "${SERVICE_NAME}"
+        action: insert
+      - key: service.version
+        value: "${SERVICE_VERSION}"
+        action: insert
+      - key: service.type
+        value: "emprops-api-server"
+        action: insert
+      - key: deployment.environment
+        value: "${TELEMETRY_ENV}"
+        action: insert
+
+exporters:
+  # Dash0 OTLP exporter (unified for all telemetry types)
+  otlp/dash0:
+    endpoint: "https://ingress.us-west-2.aws.dash0.com:4317"
+    headers:
+      Authorization: "Bearer ${DASH0_API_KEY}"
+      Dash0-Dataset: "${TELEMETRY_ENV}"
+  
+  # Local debug logging
+  debug:
+    verbosity: detailed
+    sampling_initial: 5
+    sampling_thereafter: 1
+
+extensions:
+  health_check:
+    endpoint: 0.0.0.0:13133
+
+service:
+  extensions: [health_check]
+  pipelines:
+    traces:
+      receivers: [otlp]
+      processors: [batch, resource]
+      exporters: [otlp/dash0, debug]
+    metrics:
+      receivers: [otlp]
+      processors: [batch, resource] 
+      exporters: [otlp/dash0, debug]
+    logs:
+      receivers: [otlp]
+      processors: [batch, resource]
+      exporters: [otlp/dash0, debug]

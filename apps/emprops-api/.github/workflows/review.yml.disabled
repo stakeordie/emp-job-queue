@@ -1,0 +1,183 @@
+name: Build for review
+
+on: [pull_request]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v3
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v1
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: us-east-1
+
+      - name: Login ECR
+        id: login-ecr
+        uses: aws-actions/amazon-ecr-login@v1
+
+      - name: Build and push
+        run: |
+          docker build --build-arg SENTRY_AUTH_TOKEN=${{secrets.SENTRY_AUTH_TOKEN}} --build-arg SENTRY_PROJECT=${{secrets.SENTRY_PROJECT}}  --build-arg SENTRY_RELEASE_TAG=${{ github.head_ref }} -t ${{ steps.login-ecr.outputs.registry }}/${{ github.event.repository.name }}:${{github.head_ref}} .
+          docker push     ${{ steps.login-ecr.outputs.registry }}/${{ github.event.repository.name }}:${{github.head_ref}}
+      
+      - name: Checkout emprops platform repository
+        uses: actions/checkout@v3
+        with:
+          repository: stakeordie/emprops-platform
+          path: emprops-platform
+          ref: master
+          token: ${{ secrets.GH_PAT }}
+
+      - name: Verify deployment file        
+        run: |
+          if [ -f emprops-platform/templates/development/${{ github.event.repository.name }}.template.${{ github.head_ref }}.yaml ]; then
+            echo "Custom file exists."
+            DEPLOYMENT_FILE_NAME=${{ github.event.repository.name }}.template.${{ github.head_ref }}.yaml            
+          elif [ -f emprops-platform/templates/development/${{ github.event.repository.name }}.template.yaml ]; then
+            echo "Template file exists." 
+            DEPLOYMENT_FILE_NAME=${{ github.event.repository.name }}.template.yaml           
+          else
+            echo "No deployment file is set"
+            exit 1
+          fi
+
+          echo "DEPLOYMENT_FILE_NAME_ENV=$DEPLOYMENT_FILE_NAME" >> $GITHUB_ENV
+
+      - name: Set up kubectl
+        uses: tale/kubectl-action@v1
+        with:
+          base64-kube-config: ${{ secrets.KUBE_CONFIG_DATA }}
+      
+      - name: Check for duplicate host on emprops ingress        
+        run: |
+          GITHUB_REF=${{ github.head_ref }}  
+          GITHUB_REF_LOWER=${GITHUB_REF,,}  
+          INGRESS_SERVICE_HOST_NAME=${GITHUB_REF_LOWER}-dev-api-openstudio.emprops.ai
+          INGRESS_SERVICE_HOST_NAME_WITHOUT_DOMAIN=${GITHUB_REF_LOWER}-dev-api-openstudio
+          INGRESS_SERVICE_NAME=emprops-open-api-${GITHUB_REF_LOWER}
+          INGRESS_NAME=emprops-ingress
+          
+          # Fetch the existing Ingress resource
+          existing_config=$(kubectl get ingress $INGRESS_NAME -o jsonpath="{.spec.rules[?(@.host=='$INGRESS_SERVICE_HOST_NAME')].http.paths[*].backend.service.name}")
+          
+          # Check if the host already exists
+          if echo "$existing_config" | grep -q "$INGRESS_SERVICE_NAME"; then
+            echo "Host $INGRESS_SERVICE_HOST_NAME with service $INGRESS_SERVICE_NAME exists."
+            ING_CONFIG_EXISTS=true
+          else
+            echo "Host $INGRESS_SERVICE_HOST_NAME with service $INGRESS_SERVICE_NAME is valid"
+          fi   
+
+          # Export the variable to be used in subsequent steps
+          echo "INGRESS_CONFIG_EXISTS_ENV=$ING_CONFIG_EXISTS" >> $GITHUB_ENV   
+          echo "INGRESS_SERVICE_HOST_NAME_ENV=$INGRESS_SERVICE_HOST_NAME" >> $GITHUB_ENV  
+          echo "INGRESS_SERVICE_HOST_NAME_WITHOUT_DOMAIN_ENV=$INGRESS_SERVICE_HOST_NAME_WITHOUT_DOMAIN" >> $GITHUB_ENV  
+          echo "INGRESS_SERVICE_NAME_ENV=$INGRESS_SERVICE_NAME" >> $GITHUB_ENV
+      
+      - name: Check DNS record on Cloudflare
+        uses: actionsflow/axios@v1
+        id: check_dns
+        with:
+          url: 'https://api.cloudflare.com/client/v4/zones/${{ secrets.CLOUDFLARE_ZONE_ID }}/dns_records'
+          method: 'GET'
+          content-type: application/json
+          params: '{ "name": "${{ env.INGRESS_SERVICE_HOST_NAME_ENV }}", "type": "CNAME" }'
+          headers: '{ "X-Auth-Key": "${{ secrets.CLOUDFLARE_AUTH_KEY }}", "X-Auth-Email": "${{ secrets.CLOUDFLARE_AUTH_EMAIL }}" }'
+      
+      - name: Extract total count from GET DNS
+        id: extract_total_count
+        uses: actions/github-script@v6
+        with:
+          script: |
+            const data = '${{ steps.check_dns.outputs.data }}';
+            const json = JSON.parse(data);
+            const totalCount = json.result_info.total_count;
+            console.log(`Total DNS count is ${totalCount}`);
+            return totalCount;
+
+      - name: Create DNS record
+        if: ${{ steps.extract_total_count.outputs.result == 0 }}        
+        uses: actionsflow/axios@v1
+        id: create_dns
+        with:
+          url: 'https://api.cloudflare.com/client/v4/zones/${{ secrets.CLOUDFLARE_ZONE_ID }}/dns_records'
+          method: 'POST'
+          content-type: application/json
+          data: '{"name": "${{ env.INGRESS_SERVICE_HOST_NAME_WITHOUT_DOMAIN_ENV }}", "content": "${{ secrets.DNS_TARGET }}", "proxied": false, "type": "CNAME", "ttl": 1, "comment": "Created automatically by Github Action" }'
+          headers: '{ "X-Auth-Key": "${{ secrets.CLOUDFLARE_AUTH_KEY }}", "X-Auth-Email": "${{ secrets.CLOUDFLARE_AUTH_EMAIL }}" }'   
+
+      - name: 'Setup yq'
+        uses: dcarbone/install-yq-action@v1.1.1
+      
+      - name: Append new ingress rule
+        if: ${{ env.INGRESS_CONFIG_EXISTS_ENV != 'true' }}
+        run: |  
+          cd emprops-platform
+          yq '.spec.rules += [{"host": "${{ env.INGRESS_SERVICE_HOST_NAME_ENV }}", "http": {"paths": [{"path": "/*", "pathType": "ImplementationSpecific", "backend": {"service": {"name": "${{ env.INGRESS_SERVICE_NAME_ENV }}", "port": {"number": 8080}}}}]}}]' -i resources/development/emprops-ingress.yaml
+      
+      - name: Commit and push ingress changes
+        if: ${{ env.INGRESS_CONFIG_EXISTS_ENV != 'true' }}
+        run: |          
+          cd emprops-platform
+          
+          # Configure Git
+          git config --global user.name "github-actions[bot]"
+          git config --global user.email "github-actions[bot]@users.noreply.github.com"
+
+          # Pull the latest changes from the target repository
+          git pull origin master
+
+          # Add changes to the staging area
+          git add resources/development/emprops-ingress.yaml
+
+          # Commit changes
+          git commit -m "Append new host to Ingress YAML" || echo "No changes to commit"  # Prevents failure if there are no changes to commit
+
+          # Push changes to the target repository
+          git push origin master
+
+      - name: Apply ingress
+        if: ${{ env.INGRESS_CONFIG_EXISTS_ENV != 'true' }}
+        run: |          
+          cd emprops-platform     
+
+          # Pull the latest changes from the target repository
+          git pull origin master
+
+          kubectl apply -f resources/development/emprops-ingress.yaml
+      
+      - name: Delete deployment
+        run: |
+          cd emprops-platform 
+
+          GITHUB_REF=${{ github.head_ref }}
+          GITHUB_REF_LOWER=${GITHUB_REF,,}
+          sed -e "s/\${GITHUB_REF}/$GITHUB_REF_LOWER/g" -e "s/\${IMAGE_TAG}/$GITHUB_REF/g" templates/development/${{ env.DEPLOYMENT_FILE_NAME_ENV }} | kubectl delete -f -        
+        continue-on-error: true
+      
+      - name: Apply deployment
+        run: |
+          cd emprops-platform
+
+          GITHUB_REF=${{ github.head_ref }}   
+          GITHUB_REF_LOWER=${GITHUB_REF,,}       
+          sed -e "s/\${GITHUB_REF}/$GITHUB_REF_LOWER/g" -e "s/\${IMAGE_TAG}/$GITHUB_REF/g" templates/development/${{ env.DEPLOYMENT_FILE_NAME_ENV }} | kubectl apply -f -
+
+  delete_dns:
+    runs-on: ubuntu-latest
+    if: github.event.pull_request.merged == true
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v3
+
+      - name: Delete DNS record
+        uses: actionsflow/axios@v1
+        with:
+          url: 'https://api.cloudflare.com/client/v4/zones/${{ secrets.CLOUDFLARE_ZONE_ID }}/dns_records/${{ env.DNS_RECORD_ID }}'
+          method: 'DELETE'
+          headers: '{ "X-Auth-Key": "${{ secrets.CLOUDFLARE_AUTH_KEY }}", "X-Auth-Email": "${{ secrets.CLOUDFLARE_AUTH_EMAIL }}" }'
