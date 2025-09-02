@@ -14,12 +14,12 @@ layout {
             pane split_direction="vertical" {
                 pane name="JOB QUEUE API" {
                     command "bash"
-                    args "-c" "sleep 7 && cd ~/code/emprops/ai_infra/emp-job-queue && pnpm d:api:pull:run local-dev"
+                    args "-c" "sleep 7 && cd ~/code/emprops/ai_infra/emp-job-queue && pnpm d:api:run local-dev"
                     start_suspended false
                 }
                 pane name="WEBHOOK SERVICE" {
                     command "bash" 
-                    args "-c" "sleep 7 && cd ~/code/emprops/ai_infra/emp-job-queue && pnpm d:webhook:pull:run local-dev"
+                    args "-c" "sleep 7 && cd ~/code/emprops/ai_infra/emp-job-queue && pnpm d:webhook:run local-dev"
                     start_suspended false
                 }
                 pane name="JOB NETWORK MONITOR" {
@@ -36,7 +36,7 @@ layout {
                 }
                 pane name="Fluentd" {
                     command "bash"
-                    args "-c" "sleep 4 && cd ~/code/emprops/ai_infra/emp-job-queue && pnpm d:fluentd:pull:run local-dev"
+                    args "-c" "sleep 4 && cd ~/code/emprops/ai_infra/emp-job-queue && pnpm d:fluentd:run local-dev"
                     start_suspended false
                 }
                 pane name="EmProps API Server" {

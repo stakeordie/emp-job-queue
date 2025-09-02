@@ -172,6 +172,11 @@ export abstract class OpenAIBaseConnector extends BaseConnector {
       max_retries: this.config.retry_attempts,
       telemetry_type: 'client_initialization'
     });
+
+    // Enable detailed request/response logging if OPENAI_DEBUG is true
+    if (process.env.OPENAI_DEBUG === 'true') {
+      this.enableDebugLogging();
+    }
   }
 
   /**

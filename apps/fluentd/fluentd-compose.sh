@@ -35,6 +35,8 @@ echo "🔍 Loading environment: $ENV"
 
 # Load environment variables from the appropriate .env file
 ENV_FILE=".env.$ENV"
+SECRET_ENV_FILE=".env.secret.$ENV"
+
 if [[ ! -f "$ENV_FILE" ]]; then
     echo "❌ Environment file not found: $ENV_FILE"
     echo "Available files:"
@@ -42,8 +44,15 @@ if [[ ! -f "$ENV_FILE" ]]; then
     exit 1
 fi
 
-# Source the environment file to load variables into shell
+# Source the environment files to load variables into shell
 source "$ENV_FILE"
+
+# Source secret environment file if it exists
+if [[ -f "$SECRET_ENV_FILE" ]]; then
+    source "$SECRET_ENV_FILE"
+else
+    echo "⚠️ Secret environment file not found: $SECRET_ENV_FILE"
+fi
 
 # Export the variables so they're available to docker compose
 export ENV DASH0_API_KEY DASH0_DATASET DASH0_LOGS_ENDPOINT
