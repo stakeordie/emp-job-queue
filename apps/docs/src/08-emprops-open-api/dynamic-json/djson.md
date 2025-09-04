@@ -631,3 +631,188 @@ graph LR
 - **User Satisfaction**: Feedback scores for workflow creation experience
 
 This design provides a clear path toward the North Star Architecture goal of specialized machine pools by enabling more flexible job routing while dramatically simplifying the workflow creation experience for API-based use cases.
+
+---
+
+## Appendix: EmProps Open API Implementation Plan
+
+Based on analysis of the current emprops-open-api codebase, this section outlines the specific implementation steps needed to support dynamic JSON workflow components.
+
+### Current State Assessment
+
+**✅ Strong Existing Foundation:**
+- **Workflow CRUD System**: Complete workflow management with type-safe database operations via Prisma
+- **Component Type Architecture**: Extensible system already supporting `comfy_workflow`, `fetch_api`, `direct_job`, `basic`
+- **Form Generation Engine**: Sophisticated form generation from `workflow.data.form` JSON structures
+- **Job Integration**: Robust job submission pipeline with Redis WebSocket client and real-time progress tracking
+- **Database Schema**: Flexible `workflow` table with JSONB `data` field - no schema changes needed
+- **Input Processing**: Advanced variable substitution and dependency resolution systems
+- **API Key Management**: Secure handling of user API keys for external service integration
+
+**🔄 Foundation Gaps Identified:**
+- No `dynamic_json` component type registration in workflow processing system
+- Missing template variable extraction utilities for `{{variable}}` syntax
+- No JSON template validation and preview endpoints
+- Limited dynamic form field type definitions for complex templates
+
+### Phase 1: Core Dynamic JSON Infrastructure (Week 1-2)
+
+#### 1.1 Component Type Registration
+```typescript
+// Add to src/modules/art-gen/nodes-v2/index.ts
+export const COMPONENT_TYPES = {
+  COMFYUI: 'comfy_workflow',
+  FETCH_API: 'fetch_api', 
+  DIRECT_JOB: 'direct_job',
+  BASIC: 'basic',
+  DYNAMIC_JSON: 'dynamic_json' // NEW
+} as const;
+```
+
+#### 1.2 Template Processing Service
+Create `src/services/dynamic-json-template-processor.ts`:
+- **Template variable extraction** using regex `/\{\{(\w+)\}\}/g`
+- **Variable replacement engine** with type-safe substitution
+- **Template validation** ensuring JSON structure integrity
+- **Integration with existing input preprocessing** pipeline
+
+#### 1.3 Workflow Database Integration
+Extend existing workflow CRUD operations:
+- **Template storage** in `workflow.data.template` field (leveraging existing JSON storage)
+- **Variable definitions** in `workflow.data.variable_types` (using existing form field patterns)
+- **Job type specification** in `workflow.data.job_type` field
+- **Validation middleware** for dynamic JSON workflow creation
+
+#### 1.4 API Endpoints Enhancement
+Extend existing workflow endpoints:
+```typescript
+// Enhance existing endpoints
+PUT /api/workflows/:id    // Add dynamic_json template validation
+POST /api/workflows       // Support dynamic_json creation with template processing
+
+// New dynamic JSON specific endpoints  
+POST /api/workflows/validate-template    // Template syntax and variable validation
+POST /api/workflows/preview-template     // Generate form preview from template
+GET /api/workflows/:id/template-variables // Extract variables for form generation
+```
+
+### Phase 2: Form Generation Enhancement (Week 3)
+
+#### 2.1 Dynamic Form Schema Generation
+Extend existing form generation in `src/modules/art-gen/nodes-v2/`:
+- **Schema converter** from `variable_types` to existing form field format
+- **Advanced field types** beyond current text/number/select (date, file, color, etc.)
+- **Conditional field logic** based on other field values
+- **Form validation** integration with existing validation pipeline
+
+#### 2.2 Template Variable Integration
+Build on existing variable system (`BaseWorkflowNode.mapInputs()`):
+- **Template-based variable extraction** alongside existing `$ref` system
+- **Type conversion utilities** for template variable types
+- **Default value population** from template definitions
+- **Cross-template variable validation**
+
+### Phase 3: Job Submission Integration (Week 4)
+
+#### 3.1 Enhanced Job Processing Pipeline
+Extend existing job submission in `GeneratorV2`:
+- **Dynamic JSON workflow detection** in workflow processing loop  
+- **Template processing** before job submission via WebSocket
+- **Job type routing** to appropriate workers via existing `RedisServerClient` WebSocket connection
+- **Error handling** for template processing failures
+
+#### 3.2 Template-to-Job Conversion
+Create job payload processor integrated with existing workflow node system:
+```typescript
+// Create new WorkflowNode for dynamic_json type
+class DynamicJsonWorkflowNode extends BaseWorkflowNode {
+  async execute(context: WorkflowContext, inputs: Record<string, any>) {
+    // Extract template from workflow.data
+    const template = workflow.data.template;
+    const jobType = workflow.data.job_type;
+    
+    // Replace variables using existing input preprocessing
+    const processedPayload = this.replaceTemplateVariables(template, inputs);
+    
+    // Submit job via existing WebSocket client (not direct Redis)
+    const jobRequest = {
+      job_type: jobType,
+      payload: processedPayload,
+      workflow_id: context.workflow_id
+    };
+    
+    // Use existing RedisServerClient WebSocket submission
+    return await this.redisServerClient.submitJob(jobRequest, context);
+  }
+}
+```
+
+### Phase 4: Advanced Features (Week 5-6)
+
+#### 4.1 Template Management
+- **Template validation** with JSON schema checking
+- **Template preview** with mock data
+- **Template import/export** functionality
+- **Template versioning** using existing workflow history patterns
+
+#### 4.2 Enhanced User Experience
+- **Real-time template validation** during editing
+- **Variable auto-completion** in template editor
+- **Template examples** and starter galleries
+- **Error reporting** with specific line/column information
+
+### Phase 5: Production Readiness (Week 7-8)
+
+#### 5.1 Performance Optimization
+- **Template caching** for frequently used templates
+- **Form generation memoization** based on template hash
+- **Database query optimization** for template-based workflows
+- **Background processing** for complex template validation
+
+#### 5.2 Security and Validation
+- **Input sanitization** for template variables
+- **XSS prevention** in template rendering
+- **API key security** for template-based external API calls
+- **Rate limiting** on template processing endpoints
+
+#### 5.3 Monitoring and Observability
+- **Template processing metrics** (processing time, error rates)
+- **Usage analytics** for dynamic JSON workflows vs traditional workflows
+- **Error tracking** for template validation and processing failures
+- **Performance monitoring** for form generation and job submission
+
+### Implementation Strategy
+
+#### Leveraging Existing Infrastructure
+1. **Build on proven patterns**: Use existing workflow node architecture as foundation
+2. **Extend, don't replace**: Enhance existing form generation rather than creating new system
+3. **Reuse existing APIs**: Extend current workflow endpoints rather than creating parallel system
+4. **Maintain compatibility**: Ensure existing ComfyUI workflows continue working unchanged
+
+#### Risk Mitigation
+1. **Feature flagging**: Deploy dynamic JSON support behind feature flags
+2. **Gradual rollout**: Start with simple templates, expand complexity over time
+3. **Backward compatibility**: Maintain full compatibility with existing workflow types
+4. **Comprehensive testing**: Unit tests for template processing, integration tests for job submission
+
+#### Success Metrics
+- **Adoption rate**: Percentage of new workflows using dynamic_json vs existing types
+- **Creation time**: Reduction in average workflow creation time (target: 10x improvement)
+- **Error rates**: Template processing error rates vs existing workflow error rates
+- **User satisfaction**: User feedback scores for dynamic JSON workflow creation experience
+
+### Database Impact
+**No schema changes required** - the existing `workflow` table structure with flexible JSONB `data` field can store all dynamic JSON template information:
+- `workflow.data.template` - JSON template with `{{variables}}`
+- `workflow.data.variable_types` - Form field definitions
+- `workflow.data.job_type` - Target worker routing
+- `workflow.type = 'dynamic_json'` - Component type identification
+
+### Integration Points
+- **Job Queue**: Submit processed templates to emp-job-queue via existing `RedisServerClient` WebSocket connection (not direct Redis)
+- **Frontend**: Provide enhanced API endpoints for emprops-open-interface template editing  
+- **Workers**: Processed jobs route to appropriate workers through redis-server WebSocket gateway based on `job_type` field
+- **Database**: Store all template data in existing workflow table structure
+- **WebSocket Gateway**: Communication flows through redis-server service, not direct Redis communication
+
+This implementation leverages the strong existing foundation in emprops-open-api while adding the minimal necessary components to support sophisticated dynamic JSON workflow functionality.
