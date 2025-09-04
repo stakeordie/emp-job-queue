@@ -34,13 +34,7 @@ The EmProps Job Queue System is a distributed AI workload broker designed for el
 - **UI**: EmProps frontend already handles dynamic form generation from workflow.data.form
 
 ### Implementation Context
-This feature is being implemented on master branch across **three separate codebases**:
-
-1. **emp-job-queue** (this repo) - Core types, utilities, job routing
-2. **~/code/emprops/emprops-open-api** - Workflow CRUD, database, processing services  
-3. **~/code/emprops/core-services/emprops-open-interface** - Frontend UI components
-
-The design leverages existing infrastructure patterns while eliminating file management complexity for API-based workflows.
+This feature is being fast-tracked on master branch to avoid complexity from ongoing p2b_perm refactor. The design leverages existing infrastructure patterns while eliminating file management complexity for API-based workflows.
 
 ## Overview
 
@@ -476,128 +470,31 @@ graph TB
 - Backend validates against defined schemas
 - Prevents runtime errors from invalid inputs
 
-## Three-Codebase Implementation Plan
+## Implementation Phases
 
-This implementation spans **three separate repositories** in master branch production architecture:
+### Phase 1: Core Infrastructure (Week 1)
+- [ ] Add `dynamic_json` component type support
+- [ ] Implement template variable extraction logic
+- [ ] Create `DynamicJsonWorkflowProcessor` service
+- [ ] Update job submission endpoint
 
----
+### Phase 2: Frontend Integration (Week 2)
+- [ ] Build dynamic form generation system
+- [ ] Create component type selection UI
+- [ ] Implement template editor with preview
+- [ ] Add variable configuration interface
 
-## **Codebase 1: emp-job-queue** (this repo)
-**Role**: Core types, shared utilities, job routing, and worker processing
-**Repository**: `/Users/the_dusky/code/emprops/ai_infra/emp-job-queue/`
+### Phase 3: Worker Integration (Week 3)
+- [ ] Ensure OpenAI worker handles `openai_chat` job type
+- [ ] Add Claude API worker for `claude_api` job type
+- [ ] Create generic webhook worker for `custom_webhook` type
+- [ ] Test end-to-end job routing
 
-### Phase 1: Shared Core Infrastructure ✅ **(COMPLETED)**
-- [x] **Component type constants** - Added to `packages/core/src/types/index.ts`
-- [x] **TypeScript interfaces** - Created `packages/core/src/types/dynamic-json.ts`
-- [x] **Template utilities** - Created `apps/api/src/utils/template-utils.ts`
-- [x] **Template processor service** - Created `apps/api/src/services/dynamic-json-workflow-processor.ts`
-
-### Phase 2: Job Routing & Worker Integration 
-- [ ] **Verify existing connectors** support new job types (`openai_chat`, `claude_api`, etc.)
-- [ ] **Update Redis job routing** to handle `dynamic_json` component types
-- [ ] **Test job routing** from processed templates to appropriate workers
-- [ ] **Remove incorrect API endpoints** (workflow CRUD should be in emprops-open-api)
-
-### Phase 3: Package for Distribution
-- [ ] **Publish updated @emp/core** with new types for other codebases to consume
-- [ ] **Create example job submissions** demonstrating dynamic JSON workflows
-- [ ] **Document job routing** for dynamic JSON component types
-
----
-
-## **Codebase 2: emprops-open-api** 
-**Role**: Workflow CRUD operations, database integration, template processing
-**Repository**: `~/code/emprops/emprops-open-api/`
-
-### Phase 1: Workflow Management API
-- [ ] **Install updated @emp/core** dependency with dynamic JSON types
-- [ ] **Workflow CRUD endpoints**:
-  - `POST /api/workflows` - Create new dynamic JSON workflows
-  - `GET /api/workflows/:id` - Get workflow with template data
-  - `PUT /api/workflows/:id` - Update workflow template
-  - `DELETE /api/workflows/:id` - Delete workflow
-- [ ] **Database integration** for storing `dynamic_json` workflows in `workflow` table
-
-### Phase 2: Template Processing Services  
-- [ ] **Template validation endpoint** - `POST /api/workflows/validate-template`
-- [ ] **Template preview endpoint** - `POST /api/workflows/preview-template`
-- [ ] **Job submission integration** - Process dynamic JSON templates and submit to job-queue
-- [ ] **Variable extraction service** - Extract variables from templates for form generation
-
-### Phase 3: Integration with Job Queue
-- [ ] **Job submission client** - Submit processed jobs to emp-job-queue via Redis/HTTP
-- [ ] **Job status tracking** - Monitor dynamic JSON job progress
-- [ ] **Error handling** - Handle template processing failures gracefully
-- [ ] **User management** - Associate workflows with user accounts
-
-### Phase 4: Production Features
-- [ ] **Template caching** for performance optimization
-- [ ] **Input validation** and sanitization for security
-- [ ] **Rate limiting** on template processing endpoints
-- [ ] **Audit logging** for workflow creation and execution
-
----
-
-## **Codebase 3: emprops-open-interface**
-**Role**: Frontend UI components, template editor, form generation
-**Repository**: `~/code/emprops/core-services/emprops-open-interface/`
-
-### Phase 1: Component Type Integration
-- [ ] **Component type selector** - Add "Dynamic JSON" option to workflow creation
-- [ ] **Navigation updates** - Add routes for dynamic JSON workflow management
-- [ ] **Icon and styling** - Create visual identity for dynamic JSON workflows
-
-### Phase 2: Template Editor UI
-- [ ] **JSON template editor** with syntax highlighting and validation
-- [ ] **Variable extraction preview** - Show detected `{{variables}}` in real-time
-- [ ] **Job type selector** - Dropdown for selecting target worker types
-- [ ] **Template examples** - Provide sample templates for common use cases
-
-### Phase 3: Dynamic Form Generation
-- [ ] **Form generator service** - Generate React forms from `variable_types`
-- [ ] **Variable configuration UI** - Configure type, validation, defaults for each variable
-- [ ] **Form validation** - Client-side validation based on variable definitions
-- [ ] **Default value handling** - Pre-populate forms with defaults
-
-### Phase 4: Workflow Execution Interface  
-- [ ] **Workflow execution page** - Form-based interface for running dynamic JSON workflows
-- [ ] **Real-time progress** - WebSocket integration for job progress updates
-- [ ] **Result display** - Show job outputs and handle different result types
-- [ ] **Error handling UI** - Display validation errors and processing failures
-
-### Phase 5: Advanced Features
-- [ ] **Template library** - Browse and clone community templates
-- [ ] **Version control** - Template versioning and rollback capabilities
-- [ ] **Collaborative editing** - Multiple users editing templates
-- [ ] **Export/import** - Share templates between environments
-
----
-
-## **Cross-Codebase Integration Points**
-
-### Data Flow Architecture
-```mermaid
-graph LR
-    UI[emprops-open-interface] -->|Create/Edit| API[emprops-open-api]
-    UI -->|Execute Workflow| API
-    API -->|Process Template| API
-    API -->|Submit Job| JQ[emp-job-queue]
-    JQ -->|Route Job| Worker[Workers]
-    Worker -->|Job Results| JQ
-    JQ -->|Progress Updates| UI
-```
-
-### Shared Dependencies
-- **@emp/core package** - Shared types and interfaces from emp-job-queue
-- **Database schema** - Workflow table supports `dynamic_json` component type
-- **Redis job queue** - Job routing and progress updates
-- **WebSocket events** - Real-time job progress across codebases
-
-### Testing Strategy
-- **Unit tests** in each codebase for their specific logic
-- **Integration tests** spanning emprops-open-api → emp-job-queue job submission
-- **End-to-end tests** from UI template creation → job execution → results
-- **Performance tests** for template processing and job routing at scale
+### Phase 4: Production Readiness (Week 4)
+- [ ] Add comprehensive error handling
+- [ ] Implement template validation
+- [ ] Create migration scripts for existing workflows
+- [ ] Write documentation and examples
 
 ## Technical Considerations
 
