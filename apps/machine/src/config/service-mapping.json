@@ -68,9 +68,8 @@
         }
       ]
     },
-    
     "openai": {
-      "services": ["openai-text", "openai-image", "openai-img2img"],
+      "services": ["openai-text", "openai-image", "openai-img2img", "openai-responses"],
       "is_gpu_bound": false,
       "required_env": ["OPENAI_API_KEY", "OPENAI_IMAGE_MODEL", "CLOUD_STORAGE_PROVIDER"],
       "job_service_required_map": [
@@ -85,6 +84,20 @@
         {
           "job_service_required": "openai_img2img",
           "worker_service": "openai-img2img"
+        },
+        {
+          "job_service_required": "openai_responses",
+          "worker_service": "openai-responses"
+        }
+      ]
+    },
+    "openai-response": {
+      "services": ["openai-responses"],
+      "is_gpu_bound": false,
+      "job_service_required_map": [
+        {
+          "job_service_required": "openai",
+          "worker_service": "openai-responses"
         }
       ]
     }
@@ -154,6 +167,10 @@
     "OpenAIImg2ImgConnector": {
       "path": "./redis-direct-worker.js",
       "description": "OpenAI image-to-image generation API connector"
+    },
+    "OpenAIResponsesConnector": {
+      "path": "./redis-direct-worker.js",
+      "description": "OpenAI Responses API connector for dynamic JSON payloads"
     }
   },
 
@@ -384,6 +401,36 @@
           "path": "/workspace/logs/openai-errors-*.log",
           "name": "openai-errors", 
           "description": "OpenAI SDK error logs for troubleshooting and monitoring"
+        }
+      ]
+    },
+
+    "openai-responses": {
+      "connector": "OpenAIResponsesConnector",
+      "type": "external",
+      "installer": null,
+      "installer_filename": null,
+      "is_gpu_bound": false,
+      "build_stage": "base",
+      "required_env": ["OPENAI_API_KEY", "CLOUD_STORAGE_PROVIDER"],
+      "description": "OpenAI Responses API connector for dynamic JSON payloads",
+      "api_config": {
+        "base_url": "${OPENAI_BASE_URL}",
+        "timeout": "${OPENAI_TIMEOUT_SECONDS:-60}",
+        "max_retries": "${OPENAI_RETRY_ATTEMPTS:-3}",
+        "retry_delay": "${OPENAI_RETRY_DELAY_SECONDS:-5}",
+        "max_concurrent_jobs": "${OPENAI_RESPONSES_MAX_CONCURRENT_JOBS:-5}"
+      },
+      "telemetry_logs": [
+        {
+          "path": "/workspace/logs/openai-responses-*.log",
+          "name": "openai-responses-main",
+          "description": "OpenAI Responses API connector logs with requests, responses, and polling"
+        },
+        {
+          "path": "/workspace/logs/openai-responses-errors-*.log", 
+          "name": "openai-responses-errors",
+          "description": "OpenAI Responses API connector error logs for troubleshooting"
         }
       ]
     }

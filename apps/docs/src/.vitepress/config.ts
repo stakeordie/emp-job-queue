@@ -280,6 +280,7 @@ const config = defineConfig({
         {
           text: 'Recent Development Work',
           items: [
+            { text: '[2025-09-04] Connector Architecture & Inheritance Hierarchy 🏗️', link: '/10-development-notes/2025-09-04-connector-architecture' },
             { text: '[2025-09-03] Dynamic JSON Workflow Component 🚀', link: '/10-development-notes/2025-09-03-dynamic-json-workflow-component' },
             { text: '[2025-08-25] Webhook Persistence Reliability Fix 🔧', link: '/10-development-notes/2025-08-25-webhook-persistence-reliability-fix' },
             { text: '[2025-08-18] ComfyUI Startup Flow ✨', link: '/10-development-notes/comfyui-startup-flow' },

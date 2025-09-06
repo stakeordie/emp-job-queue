@@ -9,6 +9,7 @@ export * from './openai-base-connector.js';
 export * from './openai-text2img-connector.js';
 export * from './openai-img2img-connector.js';
 export * from './openai-text-connector.js';
+export * from './openai-responses-connector.js';
 export * from './rest-async-connector.js';
 export * from './rest-sync-connector.js';
 export * from './simulation-http-connector.js';
