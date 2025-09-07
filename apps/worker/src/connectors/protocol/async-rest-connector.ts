@@ -259,6 +259,55 @@ export abstract class AsyncRESTConnector extends BaseConnector {
 
     } catch (error) {
       const totalTime = Date.now() - startTime;
+      
+      // Extract detailed error information from AxiosError
+      if (error.isAxiosError) {
+        const axiosError = error as AxiosError;
+        const responseData = axiosError.response?.data;
+        const status = axiosError.response?.status;
+        const statusText = axiosError.response?.statusText;
+        
+        // Build enhanced error message with OpenAI details
+        let enhancedMessage = `Request failed with status code ${status}`;
+        if (responseData) {
+          // Try to extract the specific error from OpenAI's response
+          if (typeof responseData === 'object' && responseData && 'error' in responseData) {
+            const openaiError = (responseData as any).error;
+            if (typeof openaiError === 'object' && openaiError && 'message' in openaiError) {
+              enhancedMessage += ` - ${openaiError.message}`;
+              if ('type' in openaiError && openaiError.type) {
+                enhancedMessage += ` (${openaiError.type})`;
+              }
+            } else if (typeof openaiError === 'string') {
+              enhancedMessage += ` - ${openaiError}`;
+            }
+          } else if (typeof responseData === 'string') {
+            enhancedMessage += ` - ${responseData}`;
+          } else {
+            // Fallback: show truncated response data
+            const truncatedResponse = smartTruncateObject(responseData, 500);
+            enhancedMessage += ` - ${JSON.stringify(truncatedResponse)}`;
+          }
+        }
+        
+        logger.error(`AsyncREST job failed after ${totalTime}ms: ${enhancedMessage}`, {
+          connector: this.connector_id,
+          jobId: jobData.id,
+          status,
+          statusText,
+          error: enhancedMessage,
+          responseData: responseData ? smartTruncateObject(responseData, 1000) : null
+        });
+        
+        // Throw enhanced error with OpenAI details
+        const enhancedError = new Error(enhancedMessage);
+        (enhancedError as any).originalError = error;
+        (enhancedError as any).status = status;
+        (enhancedError as any).responseData = responseData;
+        throw enhancedError;
+      }
+      
+      // Non-Axios errors (network, timeout, etc.)
       logger.error(`AsyncREST job failed after ${totalTime}ms: ${error.message}`, {
         connector: this.connector_id,
         jobId: jobData.id,
@@ -388,7 +437,29 @@ export abstract class AsyncRESTConnector extends BaseConnector {
         await new Promise(resolve => setTimeout(resolve, pollInterval));
 
       } catch (error) {
-        logger.error(`Polling attempt ${pollAttempt} failed for async job ${asyncJobId}: ${error.message}`);
+        // Extract detailed error information for better debugging
+        let errorMessage = error.message;
+        if (error.isAxiosError) {
+          const axiosError = error as AxiosError;
+          const responseData = axiosError.response?.data;
+          const status = axiosError.response?.status;
+          
+          if (status && responseData) {
+            errorMessage = `HTTP ${status}`;
+            if (typeof responseData === 'object' && responseData && 'error' in responseData) {
+              const apiError = (responseData as any).error;
+              if (typeof apiError === 'object' && apiError && 'message' in apiError) {
+                errorMessage += ` - ${apiError.message}`;
+              } else if (typeof apiError === 'string') {
+                errorMessage += ` - ${apiError}`;
+              }
+            } else if (typeof responseData === 'string') {
+              errorMessage += ` - ${responseData}`;
+            }
+          }
+        }
+        
+        logger.error(`Polling attempt ${pollAttempt} failed for async job ${asyncJobId}: ${errorMessage}`);
         
         // If this is a completion error (job completed with failure), don't retry
         if ((error as any).isCompletionError) {
@@ -396,9 +467,11 @@ export abstract class AsyncRESTConnector extends BaseConnector {
           throw error;
         }
         
-        // If it's the last possible attempt within timeout, throw
+        // If it's the last possible attempt within timeout, throw enhanced error
         if (Date.now() - startTime + pollInterval >= pollTimeout) {
-          throw error;
+          const enhancedError = new Error(errorMessage);
+          (enhancedError as any).originalError = error;
+          throw enhancedError;
         }
         
         // Otherwise wait and retry (only for HTTP errors, network issues, etc.)
