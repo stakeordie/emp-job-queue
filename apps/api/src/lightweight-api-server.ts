@@ -2613,6 +2613,8 @@ export class LightweightAPIServer {
       workflow_datetime: jobData.workflow_datetime as number | undefined,
       step_number: jobData.step_number as number | undefined,
       total_steps: jobData.total_steps as number | undefined,
+      // Storage context (separate from payload to avoid sending to external APIs)
+      ctx: jobData.ctx as Record<string, unknown> | undefined,
     };
 
     logger.info(`Job:`, JSON.stringify(job, null, 2));
@@ -2655,6 +2657,8 @@ export class LightweightAPIServer {
       job_span_id: submitSpanContext.spanId,
       workflow_trace_id: workflowStepSpanContext?.traceId || '',
       workflow_span_id: workflowStepSpanContext?.spanId || '',
+      // Storage context (separate from payload to avoid sending to external APIs)
+      ctx: job.ctx ? JSON.stringify(job.ctx) : '',
     });
     logger.info(`🔍 [SUBMIT_JOB_DEBUG] Successfully stored job in Redis hash`);
     

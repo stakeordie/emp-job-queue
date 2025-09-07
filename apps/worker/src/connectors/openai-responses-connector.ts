@@ -144,12 +144,12 @@ export class OpenAIResponsesConnector extends AsyncRESTConnector {
    * Parse OpenAI polling response to check completion status
    * This ALWAYS gets called - no smart decisions about whether to poll
    */
-  protected parsePollingResponse(response: AxiosResponse, jobData: JobData): {
+  protected async parsePollingResponse(response: AxiosResponse, jobData: JobData): Promise<{
     completed: boolean;
     result?: JobResult;
     error?: string;
     progress?: number;
-  } {
+  }> {
     const responseData = response.data;
     
     logger.debug(`OpenAI polling response status: ${responseData.status}`, {
@@ -160,12 +160,31 @@ export class OpenAIResponsesConnector extends AsyncRESTConnector {
     if (responseData.status === 'completed') {
       logger.info(`OpenAI job ${responseData.id} completed - extracting content`);
       
-      // Extract text content from OpenAI response
+      // Check if this is an image generation response
+      let hasImageGeneration = false;
+      let imageBase64Data = null;
       let textContent = '';
       
       if (responseData.output && Array.isArray(responseData.output)) {
         for (const output of responseData.output) {
-          if (output.type === 'message' && output.content) {
+          // Handle image generation responses
+          if (output.type === 'image_generation_call' && output.status === 'completed') {
+            hasImageGeneration = true;
+            if (output.result) {
+              // Check if it's a data URL or raw base64
+              if (output.result.startsWith('data:image/')) {
+                // Extract base64 from data URL
+                imageBase64Data = output.result.replace(/^data:[^;]+;base64,/, '');
+                logger.info(`Found image generation result (data URL): ${output.output_format} format, ${imageBase64Data.length} chars`);
+              } else if (output.result.length > 100 && /^[A-Za-z0-9+/=]+$/.test(output.result)) {
+                // Raw base64 data
+                imageBase64Data = output.result;
+                logger.info(`Found image generation result (raw base64): ${output.output_format} format, ${imageBase64Data.length} chars`);
+              }
+            }
+          }
+          // Handle text content responses  
+          else if (output.type === 'message' && output.content) {
             for (const content of output.content) {
               if (content.type === 'output_text' && content.text) {
                 textContent += content.text + '\n';
@@ -175,24 +194,88 @@ export class OpenAIResponsesConnector extends AsyncRESTConnector {
         }
       }
 
-      // Build the job result with actual content
-      const jobResult: JobResult = {
-        success: true,
-        data: {
-          openai_response_id: responseData.id,
-          model_used: responseData.model,
-          usage: responseData.usage,
-          text_content: textContent.trim(), // The actual generated content
-          raw_output: responseData.output, // Full OpenAI response for debugging
-        },
-        processing_time_ms: 0, // Will be calculated by base class
-      };
+      // For image generation jobs, we need an actual image, not just text
+      if (hasImageGeneration) {
+        if (!imageBase64Data) {
+          return {
+            completed: true,
+            error: 'Image generation completed but no image data found in response'
+          };
+        }
 
-      return {
-        completed: true,
-        result: jobResult,
-        progress: 100
-      };
+        // Log image save details
+        logger.info(`🖼️ PREPARING IMAGE SAVE - Job: ${jobData.id}`);
+        logger.info(`🖼️ Image base64 length: ${imageBase64Data.length}`);
+        logger.info(`🖼️ JobData keys: ${Object.keys(jobData).join(', ')}`);
+        logger.info(`🖼️ JobData.ctx exists: ${!!(jobData as any).ctx}`);
+        logger.info(`🖼️ JobData.payload.ctx exists: ${!!(jobData.payload as any)?.ctx}`);
+        
+        if ((jobData as any).ctx) {
+          logger.info(`🖼️ JobData.ctx: ${JSON.stringify((jobData as any).ctx, null, 2)}`);
+        }
+        if ((jobData.payload as any)?.ctx) {
+          logger.info(`🖼️ JobData.payload.ctx: ${JSON.stringify((jobData.payload as any).ctx, null, 2)}`);
+        }
+        
+        // Try to save image to cloud storage
+        let savedImageUrl = null;
+        try {
+          logger.info(`🖼️ CALLING AssetSaver.saveAssetToCloud for image...`);
+          const savedAsset = await AssetSaver.saveAssetToCloud(
+            imageBase64Data,
+            jobData.id,
+            jobData,
+            'image/png'
+          );
+          savedImageUrl = savedAsset.cdnUrl || savedAsset.fileUrl;
+          logger.info(`🖼️ SUCCESS - Image saved to: ${savedImageUrl}`);
+        } catch (error) {
+          logger.error(`🖼️ FAILED to save image to cloud storage: ${error.message}`);
+          logger.error(`🖼️ Error stack: ${error.stack}`);
+        }
+
+        // Build successful image result  
+        const jobResult: JobResult = {
+          success: true,
+          data: {
+            openai_response_id: responseData.id,
+            model_used: responseData.model,
+            usage: responseData.usage,
+            content_type: 'image',
+            image_base64: imageBase64Data,
+            image_url: savedImageUrl, // Add the saved URL
+            text_description: textContent.trim(), // The description text if any
+            raw_output: responseData.output, // Full OpenAI response for debugging
+          },
+          processing_time_ms: 0, // Will be calculated by base class
+        };
+
+        return {
+          completed: true,
+          result: jobResult,
+          progress: 100
+        };
+      } else {
+        // Text-only response
+        const jobResult: JobResult = {
+          success: true,
+          data: {
+            openai_response_id: responseData.id,
+            model_used: responseData.model,
+            usage: responseData.usage,
+            content_type: 'text',
+            text_content: textContent.trim(), // The actual generated content
+            raw_output: responseData.output, // Full OpenAI response for debugging
+          },
+          processing_time_ms: 0, // Will be calculated by base class
+        };
+
+        return {
+          completed: true,
+          result: jobResult,
+          progress: 100
+        };
+      }
     } 
     else if (responseData.status === 'failed') {
       return {

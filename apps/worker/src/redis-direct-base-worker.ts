@@ -804,6 +804,8 @@ export class RedisDirectBaseWorker {
         workflow_trace_id: job.workflow_trace_id,
         workflow_span_id: job.workflow_span_id,
       },
+      // Pass storage context for asset saving (separate from payload to avoid sending to external APIs)
+      ctx: job.ctx,
     };
     
     // Process the job - the connector determines success/failure

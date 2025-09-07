@@ -442,6 +442,8 @@ export class RedisDirectWorkerClient {
       job_span_id: redisData.job_span_id,
       workflow_trace_id: redisData.workflow_trace_id,
       workflow_span_id: redisData.workflow_span_id,
+      // Storage context for asset saving (separate from payload to avoid sending to external APIs)
+      ctx: redisData.ctx ? this.safeJsonParse(redisData.ctx, undefined) : undefined,
     };
 
     // 🚨 BIG TRACE LOGGING: JOB RETRIEVED FROM REDIS
@@ -696,6 +698,8 @@ export class RedisDirectWorkerClient {
         last_failed_worker: jobData.last_failed_worker || undefined,
         processing_time: jobData.processing_time ? parseInt(jobData.processing_time) : undefined,
         estimated_completion: jobData.estimated_completion || undefined,
+        // Storage context for asset saving (separate from payload to avoid sending to external APIs)
+        ctx: jobData.ctx ? this.safeJsonParse(jobData.ctx, undefined) : undefined,
       };
     } catch (error) {
       logger.error(`Worker ${this.workerId} failed to get job ${jobId}:`, error);

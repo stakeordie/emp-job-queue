@@ -100,6 +100,8 @@ export interface JobData {
   payload: Record<string, unknown>;
   requirements?: JobRequirements;
   metadata?: Record<string, unknown>;
+  // Storage context for asset saving (separate from payload to avoid sending to external APIs)
+  ctx?: Record<string, unknown>;
 }
 
 export interface JobResult {

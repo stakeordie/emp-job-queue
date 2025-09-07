@@ -134,6 +134,11 @@ export class RedisService implements RedisServiceInterface {
       jobData.total_steps = job.total_steps.toString();
     }
 
+    // Add storage context if it exists (separate from payload to avoid sending to external APIs)
+    if (job.ctx) {
+      jobData.ctx = JSON.stringify(job.ctx);
+    }
+
     await this.redis.hmset(`job:${jobId}`, jobData);
 
     // Add to priority queue with workflow-aware scoring
@@ -208,6 +213,8 @@ export class RedisService implements RedisServiceInterface {
       last_failed_worker: jobData.last_failed_worker || undefined,
       processing_time: jobData.processing_time ? parseInt(jobData.processing_time) : undefined,
       estimated_completion: jobData.estimated_completion || undefined,
+      // Parse storage context from JSON
+      ctx: jobData.ctx ? JSON.parse(jobData.ctx) : undefined,
     };
   }
 

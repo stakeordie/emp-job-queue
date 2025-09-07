@@ -490,7 +490,11 @@ function Home({ isJobPanelOpen }: HomeProps) {
               ) : (
                 <div className="space-y-2">
                   {completedJobsList.map((job, index) => (
-                    <div key={job.id} className="flex items-center justify-between p-2 border rounded text-sm">
+                    <div 
+                      key={job.id} 
+                      className="flex items-center justify-between p-2 border rounded text-sm cursor-pointer hover:bg-accent/50 transition-colors"
+                      onClick={() => setSelectedJob(job)}
+                    >
                       <div className="flex items-center gap-3">
                         <span className="text-base font-bold text-muted-foreground w-6">{index + 1}</span>
                         <Badge variant="default">
@@ -566,7 +570,11 @@ function Home({ isJobPanelOpen }: HomeProps) {
               ) : (
                 <div className="space-y-2">
                   {failedJobsList.map((job, index) => (
-                    <div key={job.id} className="flex items-center justify-between p-2 border rounded text-sm">
+                    <div 
+                      key={job.id} 
+                      className="flex items-center justify-between p-2 border rounded text-sm cursor-pointer hover:bg-accent/50 transition-colors"
+                      onClick={() => setSelectedJob(job)}
+                    >
                       <div className="flex items-center gap-3">
                         <span className="text-base font-bold text-muted-foreground w-6">{index + 1}</span>
                         <Badge variant="destructive">

@@ -34,6 +34,8 @@ export interface Job {
   job_span_id?: string; // Span ID from job submission span
   workflow_trace_id?: string; // Trace ID from workflow step span (if applicable)
   workflow_span_id?: string; // Span ID from workflow step span (if applicable)
+  // Storage context for asset saving (separate from payload to avoid sending to external APIs)
+  ctx?: Record<string, unknown>; // Storage configuration (bucket, CDN, etc.)
 }
 
 export enum JobStatus {

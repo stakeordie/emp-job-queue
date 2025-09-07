@@ -340,6 +340,53 @@ export function JobDetailsModal({ job, workers, isOpen, onClose }: JobDetailsMod
               )}
             </div>
 
+            {/* Error Details (for failed jobs) */}
+            {(job.status === 'failed' || job.error) && (
+              <>
+                <Separator />
+                <div className="space-y-2">
+                  <h3 className="text-sm font-semibold text-muted-foreground">Error Information</h3>
+                  {job.error && (
+                    <div className="p-3 border rounded-lg bg-red-50 dark:bg-red-950">
+                      <p className="text-sm text-red-700 dark:text-red-300 font-medium">Error Message:</p>
+                      <pre className="text-xs text-red-600 dark:text-red-400 mt-1 whitespace-pre-wrap">
+                        {job.error}
+                      </pre>
+                    </div>
+                  )}
+                  {job.failed_at && (
+                    <div>
+                      <p className="text-sm font-medium">Failed At:</p>
+                      <p className="text-sm text-muted-foreground">
+                        {new Date(job.failed_at).toLocaleString()}
+                      </p>
+                    </div>
+                  )}
+                  {job.failure_count && (
+                    <div>
+                      <p className="text-sm font-medium">Failure Count:</p>
+                      <p className="text-sm text-muted-foreground">{job.failure_count}</p>
+                    </div>
+                  )}
+                </div>
+              </>
+            )}
+
+            {/* Result (for completed jobs) */}
+            {job.status === 'completed' && (
+              <>
+                <Separator />
+                <details className="space-y-2">
+                  <summary className="text-sm font-semibold text-muted-foreground cursor-pointer hover:text-foreground">
+                    Job Result
+                  </summary>
+                  <pre className="text-xs bg-muted p-3 rounded-lg overflow-x-auto">
+                    {job.result ? JSON.stringify(job.result, null, 2) : 'No result data available'}
+                  </pre>
+                </details>
+              </>
+            )}
+
             {/* Payload (collapsed by default) */}
             <details className="space-y-2">
               <summary className="text-sm font-semibold text-muted-foreground cursor-pointer hover:text-foreground">

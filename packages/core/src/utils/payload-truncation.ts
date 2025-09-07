@@ -1,0 +1,164 @@
+/**
+ * Smart payload truncation utilities for telemetry and logging
+ * Preserves JSON structure while truncating large values (base64, etc.)
+ */
+
+export interface TruncationOptions {
+  maxTotalSize: number;
+  maxValueSize: number;
+  preserveStructure: boolean;
+  truncateMarker: string;
+}
+
+const DEFAULT_OPTIONS: TruncationOptions = {
+  maxTotalSize: 8000,
+  maxValueSize: 100,
+  preserveStructure: true,
+  truncateMarker: '...[TRUNCATED]'
+};
+
+/**
+ * Detects if a string is likely base64 data
+ */
+function isBase64Like(value: string): boolean {
+  if (value.length < 20) return false;
+  
+  // Check for base64 patterns
+  const base64Pattern = /^[A-Za-z0-9+/=]+$/;
+  const dataUrlPattern = /^data:[^;]+;base64,/;
+  
+  return base64Pattern.test(value) || dataUrlPattern.test(value);
+}
+
+/**
+ * Detects if a string is likely binary/encoded data
+ */
+function isBinaryLike(value: string): boolean {
+  if (value.length < 50) return false;
+  
+  // Check for long strings with repetitive patterns
+  const hasRepeatingChars = /(.)\1{10,}/.test(value);
+  const hasHexPattern = /^[0-9a-fA-F]{50,}$/.test(value);
+  const hasUrlSafeBase64 = /^[A-Za-z0-9_-]{50,}$/.test(value);
+  
+  return hasRepeatingChars || hasHexPattern || hasUrlSafeBase64 || isBase64Like(value);
+}
+
+/**
+ * Smart truncation of a single value
+ */
+function truncateValue(value: any, options: TruncationOptions): any {
+  if (typeof value === 'string') {
+    if (isBinaryLike(value) && value.length > options.maxValueSize) {
+      const start = value.substring(0, 20);
+      const end = value.substring(value.length - 20);
+      return `${start}${options.truncateMarker}(${value.length} chars)...${end}`;
+    }
+    
+    if (value.length > options.maxValueSize) { // Truncate individual values > threshold
+      return `${value.substring(0, options.maxValueSize)}${options.truncateMarker}(${value.length} chars)`;
+    }
+  }
+  
+  return value;
+}
+
+/**
+ * Recursively truncate an object while preserving structure
+ */
+function truncateObject(obj: any, options: TruncationOptions, currentSize: { value: number }): any {
+  // Remove total size check - only truncate individual values
+
+  if (obj === null || obj === undefined) {
+    return obj;
+  }
+
+  if (typeof obj === 'string') {
+    const truncated = truncateValue(obj, options);
+    currentSize.value += JSON.stringify(truncated).length;
+    return truncated;
+  }
+
+  if (typeof obj === 'number' || typeof obj === 'boolean') {
+    currentSize.value += JSON.stringify(obj).length;
+    return obj;
+  }
+
+  if (Array.isArray(obj)) {
+    const result = [];
+    for (let i = 0; i < obj.length; i++) {
+      result.push(truncateObject(obj[i], options, currentSize));
+    }
+    return result;
+  }
+
+  if (typeof obj === 'object') {
+    const result: any = {};
+    const entries = Object.entries(obj);
+    
+    for (let i = 0; i < entries.length; i++) {
+      const [key, value] = entries[i];
+      result[key] = truncateObject(value, options, currentSize);
+    }
+    
+    return result;
+  }
+
+  return obj;
+}
+
+/**
+ * Smart truncate a payload string - tries to parse as JSON first
+ */
+export function smartTruncatePayload(
+  payload: string, 
+  maxSize: number = DEFAULT_OPTIONS.maxTotalSize,
+  options: Partial<TruncationOptions> = {}
+): string {
+  const opts = { ...DEFAULT_OPTIONS, maxTotalSize: maxSize, ...options };
+  
+  if (payload.length <= maxSize && !options.preserveStructure) {
+    return payload;
+  }
+
+  try {
+    // Try to parse as JSON for smart truncation
+    const parsed = JSON.parse(payload);
+    const currentSize = { value: 0 };
+    const truncated = truncateObject(parsed, opts, currentSize);
+    const result = JSON.stringify(truncated, null, 0);
+    
+    // If smart truncation didn't help much, fall back to simple truncation
+    if (result.length > maxSize * 1.2) {
+      return payload.substring(0, maxSize) + opts.truncateMarker;
+    }
+    
+    return result;
+  } catch {
+    // Not JSON, apply simple truncation with binary detection
+    if (isBinaryLike(payload)) {
+      const start = payload.substring(0, 100);
+      const end = payload.substring(payload.length - 100);
+      return `${start}${opts.truncateMarker}(${payload.length} chars)...${end}`;
+    }
+    
+    if (payload.length > maxSize) {
+      return payload.substring(0, maxSize) + opts.truncateMarker;
+    }
+    
+    return payload;
+  }
+}
+
+/**
+ * Smart truncate an object directly
+ */
+export function smartTruncateObject(
+  obj: any,
+  maxSize: number = DEFAULT_OPTIONS.maxTotalSize,
+  options: Partial<TruncationOptions> = {}
+): any {
+  const opts = { ...DEFAULT_OPTIONS, maxTotalSize: maxSize, ...options };
+  const currentSize = { value: 0 };
+  return truncateObject(obj, opts, currentSize);
+}

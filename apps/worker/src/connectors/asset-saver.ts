@@ -3,6 +3,7 @@
 
 import * as crypto from 'crypto';
 import { logger } from '@emp/core';
+import { trace } from '@opentelemetry/api';
 
 /**
  * Utility class for saving assets to cloud storage
@@ -20,6 +21,16 @@ export class AssetSaver {
     mimeType: string = 'image/png',
     format?: string
   ): Promise<{ filePath: string; fileName: string; fileUrl: string; cdnUrl?: string }> {
+    const tracer = trace.getTracer('asset-saver');
+    
+    return await tracer.startActiveSpan('saveAssetToCloud', {
+      attributes: {
+        'asset.jobId': jobId,
+        'asset.mimeType': mimeType,
+        'asset.base64Length': base64Data.length,
+        'asset.format': format || 'auto'
+      }
+    }, async (span) => {
     try {
       // Validate and normalize MIME type first
       const { contentType, fileExtension, assetCategory } = AssetSaver.validateMimeType(mimeType);
@@ -28,8 +39,8 @@ export class AssetSaver {
       const actualFormat = format || fileExtension;
 
       // Get cloud storage configuration from job data (environment agnostic)
-      // Storage configuration should be provided in job payload ctx
-      const ctx = jobData.payload?.ctx || {};
+      // Storage configuration is now provided at jobData.ctx (API change)
+      const ctx = jobData.ctx || {};
       const storageConfig = ctx.storage || {};
       
       // Storage configuration MUST come from job payload - no environment variable fallbacks
@@ -40,19 +51,19 @@ export class AssetSaver {
 
       if (!provider) {
         throw new Error(
-          'Storage provider is required. Job payload must include either "ctx.provider" or "ctx.storage.provider".'
+          'Storage provider is required. Job must include either "ctx.provider" or "ctx.storage.provider".'
         );
       }
 
       if (!bucket) {
         throw new Error(
-          'Storage bucket is required. Job payload must include either "ctx.bucket" or "ctx.storage.bucket".'
+          'Storage bucket is required. Job must include either "ctx.bucket" or "ctx.storage.bucket".'
         );
       }
 
       if (!prefix) {
         throw new Error(
-          'Storage prefix is required. Job payload must include "ctx.prefix".'
+          'Storage prefix is required. Job must include "ctx.prefix".'
         );
       }
 
@@ -134,6 +145,15 @@ export class AssetSaver {
 
       logger.info(`Saved ${assetCategory} asset (${contentType}): ${fileName} | URL: ${fileUrl}`);
 
+      // Add trace attributes for successful completion
+      span.setAttributes({
+        'asset.provider': provider,
+        'asset.bucket': bucket,
+        'asset.fileName': fileName,
+        'asset.contentType': contentType,
+        'asset.success': true
+      });
+
       return {
         filePath: storageKey,
         fileName,
@@ -141,10 +161,18 @@ export class AssetSaver {
         cdnUrl: fileUrl, // CDN URL is now the primary fileUrl
       };
     } catch (error) {
+      // Add trace attributes for error
+      span.recordException(error);
+      span.setAttributes({
+        'asset.success': false,
+        'asset.error': error.message
+      });
+      
       const assetCategory = AssetSaver.getMimeTypeCategory(mimeType);
       logger.error(`Failed to save ${assetCategory} asset for job ${jobId}: ${error.message}`);
       throw new Error(`Asset saving failed: ${error.message}`);
     }
+    });
   }
 
   /**

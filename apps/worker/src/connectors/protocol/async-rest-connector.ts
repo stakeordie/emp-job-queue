@@ -15,7 +15,8 @@
 
 import axios, { AxiosInstance, AxiosRequestConfig, AxiosResponse, AxiosError } from 'axios';
 import { BaseConnector, ConnectorConfig } from '../base-connector.js';
-import { JobData, JobResult, ProgressCallback, ServiceInfo, logger, ProcessingInstrumentation, sendTrace, SpanContext } from '@emp/core';
+import { JobData, JobResult, ProgressCallback, ServiceInfo, logger, ProcessingInstrumentation, sendTrace, SpanContext, smartTruncateObject } from '@emp/core';
+import { trace } from '@opentelemetry/api';
 
 // AsyncREST-specific configuration
 export interface AsyncRESTConnectorConfig {
@@ -61,6 +62,7 @@ export interface AsyncRESTConnectorConfig {
 export abstract class AsyncRESTConnector extends BaseConnector {
   protected httpClient: AxiosInstance;
   protected asyncRestConfig: AsyncRESTConnectorConfig;
+  protected lastPollingResponse: any = null; // Store for telemetry
 
   constructor(connectorId: string, config: AsyncRESTConnectorConfig) {
     super(connectorId, {
@@ -150,12 +152,12 @@ export abstract class AsyncRESTConnector extends BaseConnector {
   /**
    * Parse the polling response to determine completion status
    */
-  protected abstract parsePollingResponse(response: AxiosResponse, jobData: JobData): {
+  protected abstract parsePollingResponse(response: AxiosResponse, jobData: JobData): Promise<{
     completed: boolean;
     result?: JobResult;
     error?: string;
     progress?: number; // 0-100
-  };
+  }>;
 
   // ========================================
   // Base Connector Implementation
@@ -297,7 +299,31 @@ export abstract class AsyncRESTConnector extends BaseConnector {
         logger.debug(`Polling attempt ${pollAttempt} for async job ${asyncJobId}`);
 
         const statusResponse = await this.httpClient.get(pollingUrl);
-        const pollingResult = this.parsePollingResponse(statusResponse, jobData);
+        
+        // Store response for telemetry (will be included in job completion attributes)
+        this.lastPollingResponse = smartTruncateObject(statusResponse.data, 4000, {
+          maxValueSize: 200, // Show more detail for debugging
+          preserveStructure: true
+        });
+
+        // Log response for immediate debugging
+        logger.info(`🔍 Polling response ${pollAttempt} for ${asyncJobId}:`, {
+          status: statusResponse.data.status,
+          id: statusResponse.data.id,
+          hasOutput: !!statusResponse.data.output,
+          outputCount: Array.isArray(statusResponse.data.output) ? statusResponse.data.output.length : 0,
+          rawResponseSize: JSON.stringify(statusResponse.data).length
+        });
+        
+        const pollingResult = await this.parsePollingResponse(statusResponse, jobData);
+
+        // Log parsing result for debugging
+        logger.info(`🎯 Parsing result ${pollAttempt} for ${asyncJobId}:`, {
+          completed: pollingResult.completed,
+          hasError: !!pollingResult.error,
+          error: pollingResult.error || '',
+          hasResult: !!pollingResult.result
+        });
 
         // Update progress if available
         if (progressCallback && pollingResult.progress !== undefined) {
@@ -315,14 +341,31 @@ export abstract class AsyncRESTConnector extends BaseConnector {
 
         if (pollingResult.completed) {
           if (pollingResult.error) {
-            throw new Error(`Async job failed: ${pollingResult.error}`);
+            // Job completed with error - create enhanced error with response data
+            const completionError = new Error(`Async job failed: ${pollingResult.error}`);
+            (completionError as any).isCompletionError = true; // Mark as completion error
+            
+            // Add OpenAI response data to error for telemetry
+            if (this.lastPollingResponse) {
+              (completionError as any).openaiResponseData = JSON.stringify(this.lastPollingResponse);
+              logger.error(`📡 Job completion error with OpenAI response data:`, {
+                error: pollingResult.error,
+                asyncJobId: asyncJobId,
+                openaiResponse: this.lastPollingResponse
+              });
+            }
+            
+            throw completionError;
           }
 
           if (!pollingResult.result) {
-            throw new Error(`Async job completed but no result provided`);
+            // Job completed but no result - fail immediately, don't retry  
+            const completionError = new Error(`Async job completed but no result provided`);
+            (completionError as any).isCompletionError = true; // Mark as completion error
+            throw completionError;
           }
 
-          logger.info(`Async job ${asyncJobId} completed after ${pollAttempt} polls`);
+          logger.info(`Async job ${asyncJobId} completed successfully after ${pollAttempt} polls`);
           
           if (progressCallback) {
             await progressCallback({
@@ -347,12 +390,19 @@ export abstract class AsyncRESTConnector extends BaseConnector {
       } catch (error) {
         logger.error(`Polling attempt ${pollAttempt} failed for async job ${asyncJobId}: ${error.message}`);
         
+        // If this is a completion error (job completed with failure), don't retry
+        if ((error as any).isCompletionError) {
+          logger.error(`Async job ${asyncJobId} completed with error, stopping polling immediately`);
+          throw error;
+        }
+        
         // If it's the last possible attempt within timeout, throw
         if (Date.now() - startTime + pollInterval >= pollTimeout) {
           throw error;
         }
         
-        // Otherwise wait and retry
+        // Otherwise wait and retry (only for HTTP errors, network issues, etc.)
+        logger.warn(`Retrying polling for ${asyncJobId} after HTTP/network error (attempt ${pollAttempt})`);
         await new Promise(resolve => setTimeout(resolve, pollInterval));
       }
     }
