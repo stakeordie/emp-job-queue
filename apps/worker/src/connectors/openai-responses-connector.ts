@@ -50,7 +50,7 @@ export class OpenAIResponsesConnector extends AsyncRESTConnector {
       connector_id: connectorId,
       service_type: serviceConfig?.service_type || 'openai_responses',
       base_url: process.env.OPENAI_BASE_URL || 'https://api.openai.com/v1',
-      timeout_seconds: parseInt(process.env.OPENAI_TIMEOUT_SECONDS || '60'),
+      timeout_seconds: parseInt(process.env.OPENAI_TIMEOUT_SECONDS || '180'),
       retry_attempts: parseInt(process.env.OPENAI_RETRY_ATTEMPTS || '3'),
       retry_delay_seconds: parseInt(process.env.OPENAI_RETRY_DELAY_SECONDS || '5'),
       max_concurrent_jobs: parseInt(process.env.OPENAI_RESPONSES_MAX_CONCURRENT_JOBS || '5'),
@@ -116,8 +116,12 @@ export class OpenAIResponsesConnector extends AsyncRESTConnector {
       cleanPayload.model = 'gpt-4.1'; // Default model
     }
 
+    // CRITICAL: Enable background processing to get immediate ID response
+    cleanPayload.background = true;
+
     logger.info(`🧹 Cleaned payload for OpenAI - removed EmProps metadata fields`);
     logger.info(`🎯 Final OpenAI payload keys: ${Object.keys(cleanPayload).join(', ')}`);
+    logger.info(`🚀 Background processing enabled - will get immediate ID response`);
 
     return cleanPayload;
   }
