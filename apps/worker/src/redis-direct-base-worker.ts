@@ -26,6 +26,7 @@ import {
   ConnectorStatus,
   logger,
   JobInstrumentation,
+  smartTruncateObject,
 } from '@emp/core';
 import { readFileSync } from 'fs';
 import * as os from 'os';
@@ -732,7 +733,9 @@ export class RedisDirectBaseWorker {
     try {
       await this.processJob(job);
     } catch (error) {
-      logger.error(`Worker ${this.workerId} job ${job.id} processing failed:`, error);
+      // Truncate error object for logging to avoid massive logs
+      const truncatedError = smartTruncateObject(error, 1000);
+      logger.error(`Worker ${this.workerId} job ${job.id} processing failed:`, truncatedError);
       await this.failJob(job.id, error instanceof Error ? error.message : 'Unknown error');
     }
   }
@@ -771,7 +774,7 @@ export class RedisDirectBaseWorker {
     }
 
     // Update connector to 'active' when job starts
-    await this.updateConnectorStatus(job.service_required, 'active');
+    await this.updateConnectorStatus(connector.service_type, 'active');
 
     // Set up progress callback - ensure all progress updates have status field
     const onProgress = async (progress: JobProgress) => {
@@ -859,7 +862,10 @@ export class RedisDirectBaseWorker {
 
       // Update connector to 'idle' when job completes
       if (job) {
-        await this.updateConnectorStatus(job.service_required, 'idle');
+        const connector = await this.connectorManager.getConnectorByService(job.service_required);
+        if (connector) {
+          await this.updateConnectorStatus(connector.service_type, 'idle');
+        }
       }
 
       //logger.info(`Worker ${this.workerId} completed job ${jobId}`);
@@ -931,7 +937,10 @@ export class RedisDirectBaseWorker {
 
       // Update connector to 'error' when job fails
       if (job) {
-        await this.updateConnectorStatus(job.service_required, 'error', error);
+        const connector = await this.connectorManager.getConnectorByService(job.service_required);
+        if (connector) {
+          await this.updateConnectorStatus(connector.service_type, 'error', error);
+        }
       }
 
       logger.error(`Worker ${this.workerId} failed job ${jobId}: ${error}`);

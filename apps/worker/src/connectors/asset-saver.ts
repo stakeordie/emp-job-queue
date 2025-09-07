@@ -278,13 +278,13 @@ export class AssetSaver {
     try {
       const { BlobServiceClient, StorageSharedKeyCredential } = await import('@azure/storage-blob');
 
-      // Get credentials from environment variables (Azure creds are provided to all machines)
-      const accountName = process.env.AZURE_STORAGE_ACCOUNT;
-      const accountKey = process.env.AZURE_STORAGE_KEY;
+      // Get credentials from ctx first, fallback to environment variables
+      const accountName = storageConfig?.accountName || storageConfig?.storageAccount || ctx?.storageAccount || ctx?.accountName || process.env.AZURE_STORAGE_ACCOUNT;
+      const accountKey = storageConfig?.accountKey || storageConfig?.storageKey || ctx?.storageKey || ctx?.accountKey || process.env.AZURE_STORAGE_KEY;
 
       if (!accountName || !accountKey) {
         throw new Error(
-          'Azure storage credentials are required. Job payload must include "ctx.storage.accountName" and "ctx.storage.accountKey" (or "ctx.storage.storageAccount" and "ctx.storage.storageKey").'
+          'Azure storage credentials are required. Job payload must include "ctx.storage.accountName" and "ctx.storage.accountKey" (or "ctx.storage.storageAccount" and "ctx.storage.storageKey"), or set AZURE_STORAGE_ACCOUNT and AZURE_STORAGE_KEY environment variables.'
         );
       }
 
@@ -329,11 +329,12 @@ export class AssetSaver {
     try {
       const { BlobServiceClient, StorageSharedKeyCredential } = await import('@azure/storage-blob');
 
-      // Get credentials from environment variables (Azure creds are provided to all machines)
-      const accountName = process.env.AZURE_STORAGE_ACCOUNT;
-      const accountKey = process.env.AZURE_STORAGE_KEY;
+      // Get credentials from ctx first, fallback to environment variables
+      const accountName = storageConfig?.accountName || storageConfig?.storageAccount || ctx?.storageAccount || ctx?.accountName || process.env.AZURE_STORAGE_ACCOUNT;
+      const accountKey = storageConfig?.accountKey || storageConfig?.storageKey || ctx?.storageKey || ctx?.accountKey || process.env.AZURE_STORAGE_KEY;
 
       if (!accountName || !accountKey) {
+        logger.warn('Azure storage credentials not available for verification');
         return false;
       }
 
