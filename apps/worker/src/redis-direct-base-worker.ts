@@ -652,6 +652,60 @@ export class RedisDirectBaseWorker {
     });
   }
 
+  /**
+   * Extract clean, essential error information for logging
+   * Removes massive HTTP internals, circular references, and socket details
+   */
+  private extractCleanErrorInfo(error: any): any {
+    if (!error) return 'Unknown error';
+
+    // For Axios errors, extract only the essential information
+    if (error.isAxiosError) {
+      return {
+        type: 'AxiosError',
+        message: error.message,
+        code: error.code,
+        status: error.response?.status,
+        statusText: error.response?.statusText,
+        method: error.config?.method?.toUpperCase(),
+        url: error.config?.url || error.config?.baseURL,
+        responseData: error.response?.data,
+        timeout: error.config?.timeout,
+        // Include enhanced error if available
+        enhancedMessage: error.enhancedMessage || error.message,
+      };
+    }
+
+    // For regular errors, keep essential fields
+    if (error instanceof Error) {
+      return {
+        type: error.constructor.name,
+        message: error.message,
+        stack: error.stack?.split('\n').slice(0, 5).join('\n'), // First 5 lines only
+        cause: error.cause ? this.extractCleanErrorInfo(error.cause) : undefined,
+      };
+    }
+
+    // For other error types, try to extract safely
+    if (typeof error === 'object') {
+      const cleanError: any = {
+        type: error.constructor?.name || 'Object',
+      };
+
+      // Only include safe, essential fields
+      const safeFields = ['message', 'code', 'status', 'statusText', 'name', 'type'];
+      for (const field of safeFields) {
+        if (error[field] !== undefined && typeof error[field] !== 'object') {
+          cleanError[field] = error[field];
+        }
+      }
+
+      return cleanError;
+    }
+
+    return String(error);
+  }
+
   private async handleJobAssignment(job: Job): Promise<void> {
     if (this.currentJobs.size >= this.maxConcurrentJobs) {
       //logger.warn(`Worker ${this.workerId} at max capacity, cannot take job ${job.id}`);
@@ -733,9 +787,9 @@ export class RedisDirectBaseWorker {
     try {
       await this.processJob(job);
     } catch (error) {
-      // Truncate error object for logging to avoid massive logs
-      const truncatedError = smartTruncateObject(error, 1000);
-      logger.error(`Worker ${this.workerId} job ${job.id} processing failed:`, truncatedError);
+      // Extract clean error information for logging
+      const cleanError = this.extractCleanErrorInfo(error);
+      logger.error(`Worker ${this.workerId} job ${job.id} processing failed:`, cleanError);
       await this.failJob(job.id, error instanceof Error ? error.message : 'Unknown error');
     }
   }
