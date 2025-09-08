@@ -66,9 +66,12 @@ function truncateValue(value: any, options: TruncationOptions): any {
 /**
  * Recursively truncate an object while preserving structure
  */
-function truncateObject(obj: any, options: TruncationOptions, currentSize: { value: number }): any {
-  // Remove total size check - only truncate individual values
-
+function truncateObject(obj: any, options: TruncationOptions, currentSize: { value: number }, visited?: WeakSet<any>): any {
+  // Initialize visited set to prevent circular references
+  if (!visited) {
+    visited = new WeakSet();
+  }
+  
   if (obj === null || obj === undefined) {
     return obj;
   }
@@ -84,21 +87,41 @@ function truncateObject(obj: any, options: TruncationOptions, currentSize: { val
     return obj;
   }
 
+  // Handle circular references for objects and arrays
+  if (typeof obj === 'object' && obj !== null) {
+    if (visited.has(obj)) {
+      return '[Circular]';
+    }
+    visited.add(obj);
+  }
+
   if (Array.isArray(obj)) {
     const result = [];
     for (let i = 0; i < obj.length; i++) {
-      result.push(truncateObject(obj[i], options, currentSize));
+      result.push(truncateObject(obj[i], options, currentSize, visited));
     }
     return result;
   }
 
   if (typeof obj === 'object') {
     const result: any = {};
-    const entries = Object.entries(obj);
     
-    for (let i = 0; i < entries.length; i++) {
-      const [key, value] = entries[i];
-      result[key] = truncateObject(value, options, currentSize);
+    // Use try-catch to handle objects that can't be enumerated
+    try {
+      const entries = Object.entries(obj);
+      
+      for (let i = 0; i < entries.length; i++) {
+        const [key, value] = entries[i];
+        try {
+          result[key] = truncateObject(value, options, currentSize, visited);
+        } catch (error) {
+          // If we can't process a property, just mark it as non-serializable
+          result[key] = '[Non-serializable]';
+        }
+      }
+    } catch (error) {
+      // If we can't enumerate the object at all, return a safe representation
+      return '[Non-enumerable object]';
     }
     
     return result;
