@@ -643,6 +643,7 @@ export class WebhookNotificationService extends EventEmitter {
   ): Promise<void> {
     const maxRetries = 10;
     const retryDelayMs = 2000; // 2 seconds between retries
+    let lastKnownStatus: string | null = null;
     
     logger.info('⏳ [WORKFLOW COMPLETION] Waiting for EMPROPS API to confirm workflow completion...');
     
@@ -653,6 +654,11 @@ export class WebhookNotificationService extends EventEmitter {
         const workflowDetails = await this.fetchWorkflowDetails(workflowId);
         const empStatus = workflowDetails?.data?.status;
         const hasOutputs = workflowDetails?.data?.data?.outputs && workflowDetails.data.data.outputs.length > 0;
+        
+        // Track the last known status
+        if (empStatus) {
+          lastKnownStatus = empStatus;
+        }
         
         logger.info(`📊 [WORKFLOW COMPLETION] EMPROPS Status Check:`);
         logger.info(`   Status: ${empStatus}`);
@@ -687,8 +693,15 @@ export class WebhookNotificationService extends EventEmitter {
       }
     }
     
-    // Fallback: Send completion event even if EMPROPS API never confirmed
-    logger.warn(`⚠️ [WORKFLOW COMPLETION] EMPROPS API never confirmed completion after ${maxRetries} attempts, sending webhook anyway`);
+    // FIXED: Check last known status before sending completion webhook
+    if (lastKnownStatus === 'processing' || lastKnownStatus === 'pending') {
+      logger.warn(`❌ [WEBHOOK-BUG-FIX] EMPROPS API still shows status '${lastKnownStatus}' after ${maxRetries} attempts. NOT sending premature completion webhook.`);
+      logger.warn(`   🔧 This prevents sending 'workflow complete' webhooks for jobs still in progress.`);
+      return; // Do NOT send completion webhook for jobs still processing
+    }
+    
+    // Only send fallback completion if status was unknown/unreachable or already completed
+    logger.warn(`⚠️ [WORKFLOW COMPLETION] EMPROPS API never confirmed completion after ${maxRetries} attempts (last status: ${lastKnownStatus}), sending webhook anyway`);
     await this.sendWorkflowEvent('workflow_completed', workflowId, triggeringEvent);
   }
 
