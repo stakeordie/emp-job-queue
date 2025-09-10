@@ -50,6 +50,9 @@
       "default",
       "local"
     ],
+    "gemini": [
+      "default"
+    ],
     "telemetry": [
       "default",
       "development"

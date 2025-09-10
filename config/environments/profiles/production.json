@@ -50,6 +50,9 @@
       "default",
       "production"
     ],
+    "gemini": [
+      "default"
+    ],
     "telemetry": [
       "default",
       "production"

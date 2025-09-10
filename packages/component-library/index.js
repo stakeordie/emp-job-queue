@@ -177,6 +177,31 @@ async function fetchCreateFormConfig(config, name, data) {
   }
 }
 
+async function fetchUpdateFormConfig(config, id, name, data) {
+  try {
+    const url = `${config.apiUrl}/form-configs/${id}`;
+    const response = await fetch(url, {
+      method: "PUT",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        name,
+        data,
+      }),
+    });
+    if (!response.ok) {
+      throw new Error(`HTTP error! status: ${response.status}`);
+    }
+    return response.json();
+  } catch (error) {
+    return {
+      data: null,
+      error: `Failed to update form config: ${error.message}`,
+    };
+  }
+}
+
 async function fetchDeleteFormConfig(config, id) {
   try {
     const url = `${config.apiUrl}/form-configs/${id}`;
@@ -1506,14 +1531,35 @@ async function newFormConfig(fileName) {
     }
 
     const fileData = await fs.readJson(formConfigPath);
-    const result = await fetchCreateFormConfig(config, fileName, fileData);
-
-    if (result.error) {
-      console.error(chalk.red(result.error));
-      return;
+    
+    // Check if form config already exists
+    const { data: existingFormConfig, error: getError } = await fetchGetFormConfig(config, fileName);
+    
+    let result;
+    if (existingFormConfig && !getError) {
+      // Update existing form config
+      console.log(chalk.yellow(`Form config ${fileName} already exists. Updating...`));
+      result = await fetchUpdateFormConfig(config, existingFormConfig.id, fileName, fileData);
+      
+      if (result.error) {
+        console.error(chalk.red(result.error));
+        return;
+      }
+      
+      console.log(chalk.green(`Successfully updated form config: ${fileName}`));
+    } else {
+      // Create new form config
+      console.log(chalk.blue(`Creating new form config: ${fileName}`));
+      result = await fetchCreateFormConfig(config, fileName, fileData);
+      
+      if (result.error) {
+        console.error(chalk.red(result.error));
+        return;
+      }
+      
+      console.log(chalk.green(`Successfully created form config: ${fileName}`));
     }
-
-    console.log(chalk.green(`Successfully created form config: ${fileName}`));
+    
     console.log(JSON.stringify(result.data, null, 2));
   } catch (error) {
     console.error(chalk.red(`Error: ${error.message}`));

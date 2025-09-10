@@ -7,7 +7,7 @@ import {
   JobData,
   JobResult,
   ProgressCallback,
-  RestConnectorConfig,
+  ConnectorConfig,
   ServiceInfo,
   logger,
   HealthCheckCapabilities,
@@ -15,20 +15,53 @@ import {
   ServiceSupportValidation,
 } from '@emp/core';
 
+// REST Sync Connector Configuration (flexible like AsyncRESTConnector)
+export interface RestSyncConnectorConfig extends ConnectorConfig {
+  // Base connector fields are inherited from ConnectorConfig
+  
+  // HTTP authentication configuration
+  auth?: {
+    type: 'none' | 'api_key' | 'bearer' | 'basic';
+    api_key?: string;
+    api_key_header?: string; // Default: 'Authorization'
+    bearer_token?: string;
+    username?: string;
+    password?: string;
+    token?: string;
+  };
+  
+  // HTTP client configuration
+  user_agent?: string;
+  accept_header?: string;
+  content_type?: string;
+  custom_headers?: Record<string, string>;
+  
+  // Request/Response configuration
+  request_timeout_ms?: number;
+  max_request_size_bytes?: number;
+  max_response_size_bytes?: number;
+  
+  // REST sync settings
+  settings?: {
+    method?: 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE';
+    response_format?: 'json' | 'text' | 'binary';
+  };
+}
+
 export class RestSyncConnector implements ConnectorInterface {
   connector_id: string;
-  service_type = 'rest_sync' as const;
+  service_type: string;
   version = '1.0.0';
-  private config: RestConnectorConfig;
-  private httpClient: AxiosInstance;
+  protected config: RestSyncConnectorConfig;
+  protected httpClient: AxiosInstance;
 
-  constructor(connectorId: string) {
+  constructor(connectorId: string, config?: RestSyncConnectorConfig) {
     this.connector_id = connectorId;
-
-    // Basic configuration - can be enhanced with environment variables
-    this.config = {
-      connector_id: this.connector_id,
-      service_type: this.service_type as 'rest_sync',
+    
+    // Use provided config or create default config
+    this.config = config || {
+      connector_id: connectorId,
+      service_type: 'rest_sync',
       base_url: process.env.WORKER_REST_SYNC_BASE_URL || 'http://localhost:8080',
       timeout_seconds: parseInt(process.env.WORKER_REST_SYNC_TIMEOUT_SECONDS || '60'),
       retry_attempts: parseInt(process.env.WORKER_REST_SYNC_RETRY_ATTEMPTS || '3'),
@@ -36,29 +69,61 @@ export class RestSyncConnector implements ConnectorInterface {
       health_check_interval_seconds: 30,
       max_concurrent_jobs: parseInt(process.env.WORKER_REST_SYNC_MAX_CONCURRENT_JOBS || '5'),
       settings: {
-        method:
-          (process.env.WORKER_REST_SYNC_METHOD as 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE') ||
-          'POST',
-        response_format:
-          (process.env.WORKER_REST_SYNC_RESPONSE_FORMAT as 'json' | 'text' | 'binary') || 'json',
+        method: (process.env.WORKER_REST_SYNC_METHOD as 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE') || 'POST',
+        response_format: (process.env.WORKER_REST_SYNC_RESPONSE_FORMAT as 'json' | 'text' | 'binary') || 'json',
       },
     };
+    
+    // Set service_type from config
+    this.service_type = this.config.service_type;
 
     // Initialize HTTP client
     this.httpClient = axios.create({
       baseURL: this.config.base_url,
-      timeout: this.config.timeout_seconds * 1000,
+      timeout: (this.config.request_timeout_ms || this.config.timeout_seconds * 1000),
+      maxContentLength: this.config.max_response_size_bytes || 10 * 1024 * 1024, // 10MB
+      maxBodyLength: this.config.max_request_size_bytes || 10 * 1024 * 1024, // 10MB
       headers: {
-        'Content-Type': 'application/json',
-        'User-Agent': `emp-redis-worker/${this.version}`,
+        'User-Agent': this.config.user_agent || `emp-redis-worker/${this.version}`,
+        'Accept': this.config.accept_header || 'application/json',
+        'Content-Type': this.config.content_type || 'application/json',
+        ...this.config.custom_headers,
       },
     });
+
+    // Configure authentication
+    this.configureAuth();
+  }
+
+  private configureAuth(): void {
+    const auth = this.config.auth;
+    if (!auth || auth.type === 'none') return;
+
+    switch (auth.type) {
+      case 'bearer':
+        if (auth.bearer_token || auth.token) {
+          this.httpClient.defaults.headers.common['Authorization'] = `Bearer ${auth.bearer_token || auth.token}`;
+        }
+        break;
+      case 'api_key':
+        if (auth.api_key) {
+          const header = auth.api_key_header || 'Authorization';
+          this.httpClient.defaults.headers.common[header] = auth.api_key;
+        }
+        break;
+      case 'basic':
+        if (auth.username && auth.password) {
+          const credentials = Buffer.from(`${auth.username}:${auth.password}`).toString('base64');
+          this.httpClient.defaults.headers.common['Authorization'] = `Basic ${credentials}`;
+        }
+        break;
+    }
   }
 
   async initialize(): Promise<void> {
     logger.info(`Initializing REST Sync connector ${this.connector_id} at ${this.config.base_url}`);
     logger.info(
-      `REST Sync settings: ${this.config.settings.method} requests, ${this.config.settings.response_format} responses`
+      `REST Sync settings: ${this.config.settings?.method || 'POST'} requests, ${this.config.settings?.response_format || 'json'} responses`
     );
   }
 
@@ -113,7 +178,7 @@ export class RestSyncConnector implements ConnectorInterface {
     try {
       // Extract endpoint and request configuration from job payload
       const endpoint = String(jobData.payload.endpoint || '/');
-      const method = String(jobData.payload.method || this.config.settings.method);
+      const method = String(jobData.payload.method || this.config.settings?.method || 'POST');
       const requestData = jobData.payload.data || jobData.payload.body || {};
       const headers = (jobData.payload.headers as Record<string, string>) || {};
 
@@ -178,7 +243,7 @@ export class RestSyncConnector implements ConnectorInterface {
         error: error instanceof Error ? error.message : 'REST Sync request failed',
         metadata: {
           endpoint: jobData.payload.endpoint,
-          method: jobData.payload.method || this.config.settings.method,
+          method: jobData.payload.method || this.config.settings?.method || 'POST',
         },
         processing_time_ms: processingTime,
         service_metadata: {
@@ -196,7 +261,7 @@ export class RestSyncConnector implements ConnectorInterface {
   private async makeRequestWithRetries(
     endpoint: string,
     method: string,
-    data,
+    data: any,
     headers: Record<string, string>,
     jobId: string,
     progressCallback: ProgressCallback
@@ -250,31 +315,42 @@ export class RestSyncConnector implements ConnectorInterface {
     return new Promise(resolve => setTimeout(resolve, ms));
   }
 
-  async updateConfiguration(config: RestConnectorConfig): Promise<void> {
+  async updateConfiguration(config: RestSyncConnectorConfig): Promise<void> {
     this.config = { ...this.config, ...config };
+
+    // Update service_type if changed
+    if (config.service_type) {
+      this.service_type = config.service_type;
+    }
 
     // Recreate HTTP client if base URL changed
     if (config.base_url) {
       this.httpClient = axios.create({
         baseURL: this.config.base_url,
-        timeout: this.config.timeout_seconds * 1000,
+        timeout: (this.config.request_timeout_ms || this.config.timeout_seconds * 1000),
+        maxContentLength: this.config.max_response_size_bytes || 10 * 1024 * 1024,
+        maxBodyLength: this.config.max_request_size_bytes || 10 * 1024 * 1024,
         headers: {
-          'Content-Type': 'application/json',
-          'User-Agent': `emp-redis-worker/${this.version}`,
-          ...(this.config.custom_headers || {}),
+          'User-Agent': this.config.user_agent || `emp-redis-worker/${this.version}`,
+          'Accept': this.config.accept_header || 'application/json',
+          'Content-Type': this.config.content_type || 'application/json',
+          ...this.config.custom_headers,
         },
       });
+
+      // Reconfigure authentication
+      this.configureAuth();
     }
 
     logger.info(`Updated configuration for REST Sync connector ${this.connector_id}`);
   }
 
-  getConfiguration(): RestConnectorConfig {
+  getConfiguration(): RestSyncConnectorConfig {
     return { ...this.config };
   }
 
   // Redis connection injection (required by ConnectorInterface)
-  setRedisConnection(redis: any, workerId: string, machineId?: string): void {
+  setRedisConnection(_redis: any, _workerId: string, _machineId?: string): void {
     // REST sync connector doesn't use Redis for status reporting
     // This is a no-op implementation to satisfy the interface
     logger.debug(`REST Sync connector ${this.connector_id} received Redis connection (not used)`);

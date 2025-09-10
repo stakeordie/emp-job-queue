@@ -107,7 +107,20 @@ export class WebhookProcessor extends EventEmitter {
   constructor(redis: Redis, telemetryClient?: any) {
     super();
     this.redis = redis;
-    this.subscriber = new Redis(redis.options);
+    
+    // Create subscriber with the same resilient options
+    this.subscriber = new Redis({
+      ...redis.options,
+      enableReadyCheck: false,
+      lazyConnect: true,
+      keepAlive: 30000,
+      connectTimeout: 60000,
+      commandTimeout: 5000,
+      maxRetriesPerRequest: 3,
+      autoResubscribe: true,
+      autoResendUnfulfilledCommands: true,
+    });
+    
     this.webhookStorage = new WebhookRedisStorage(redis);
     this.webhookService = new WebhookNotificationService(redis, telemetryClient);
     this.telemetryClient = telemetryClient || null;
@@ -121,9 +134,32 @@ export class WebhookProcessor extends EventEmitter {
       logger.info('✅ Webhook processor connected to Redis');
     });
 
+    this.subscriber.on('ready', () => {
+      logger.info('✅ Webhook processor Redis connection ready');
+    });
+
+    this.subscriber.on('reconnecting', (delay: number) => {
+      logger.warn('🔄 Webhook processor Redis reconnecting...', { delay });
+    });
+
     this.subscriber.on('error', error => {
+      // Handle ECONNRESET and other connection errors gracefully
+      const errorCode = (error as any).code;
+      if (errorCode === 'ECONNRESET' || errorCode === 'ENOTFOUND' || errorCode === 'ETIMEDOUT') {
+        logger.warn('⚠️ Webhook processor Redis connection error (will retry):', {
+          code: errorCode,
+          message: error.message,
+        });
+        // Don't emit these as errors - let ioredis handle reconnection
+        return;
+      }
+      
       logger.error('❌ Webhook processor Redis error:', error);
       this.emit('error', error);
+    });
+
+    this.subscriber.on('close', () => {
+      logger.warn('⚠️ Webhook processor Redis connection closed');
     });
 
     // Handle Redis messages

@@ -31,7 +31,36 @@ export class WebhookServer {
     this.config = config;
     this.app = express();
     this.httpServer = createServer(this.app);
-    this.redis = new Redis(config.redisUrl);
+    
+    // Configure Redis with retry options for production resilience
+    this.redis = new Redis(config.redisUrl, {
+      enableReadyCheck: false,
+      lazyConnect: true,
+      keepAlive: 30000,
+      connectTimeout: 60000,
+      commandTimeout: 5000,
+      maxRetriesPerRequest: 3,
+      autoResubscribe: true,
+      autoResendUnfulfilledCommands: true,
+    });
+    
+    // Add error handling for the main Redis connection
+    this.redis.on('error', (error) => {
+      const errorCode = (error as any).code;
+      if (errorCode === 'ECONNRESET' || errorCode === 'ENOTFOUND' || errorCode === 'ETIMEDOUT') {
+        logger.warn('⚠️ Webhook server Redis connection error (will retry):', {
+          code: errorCode,
+          message: error.message,
+        });
+        return;
+      }
+      logger.error('❌ Webhook server Redis error:', error);
+    });
+    
+    this.redis.on('reconnecting', (delay: number) => {
+      logger.warn('🔄 Webhook server Redis reconnecting...', { delay });
+    });
+    
     this.webhookProcessor = new WebhookProcessor(this.redis, config.telemetryClient);
 
     this.setupMiddleware();
