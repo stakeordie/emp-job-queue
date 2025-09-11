@@ -47,7 +47,7 @@ echo "✅ Redis setup complete - ready for development"
 # Stop the background Redis and restart in foreground for logs
 echo "🔄 Restarting Redis in foreground for log visibility..."
 pkill redis-server || true
-sleep 10
+sleep 4
 
 # Start Redis in foreground
 echo "📋 Starting Redis with live logs (use Ctrl+C to stop)..."
