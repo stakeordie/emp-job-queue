@@ -963,7 +963,7 @@ export class RedisDirectBaseWorker {
           error: error,
           // Include workflow metadata for webhook service workflow tracking
           ...(job.workflow_id && { workflow_id: job.workflow_id }),
-          ...(job.step_number && { step_number: job.step_number }),
+          ...(job.current_step && { current_step: job.current_step }),
           ...(job.total_steps && { total_steps: job.total_steps }),
           ...(job.workflow_priority && { workflow_priority: job.workflow_priority }),
           ...(job.workflow_datetime && { workflow_datetime: job.workflow_datetime }),
@@ -973,7 +973,7 @@ export class RedisDirectBaseWorker {
           jobId,
           hasWorkflowId: !!job.workflow_id,
           workflowId: job.workflow_id,
-          stepNumber: job.step_number,
+          stepNumber: job.current_step,
           totalSteps: job.total_steps,
           eventData: failureEventData
         });

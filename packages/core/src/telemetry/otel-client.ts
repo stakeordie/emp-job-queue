@@ -330,7 +330,7 @@ export const WorkflowInstrumentation = {
   stepSubmit: (data: WorkflowStepData, parent?: SpanContext): Promise<SpanContext> => {
     const attributes = {
       'workflow.id': data.workflowId,
-      'workflow.step_number': data.stepNumber,
+      'workflow.current_step': data.stepNumber,
       'workflow.total_steps': data.totalSteps,
       'workflow.step_type': data.stepType,
       'job.id': data.jobId,
@@ -361,7 +361,7 @@ export const WorkflowInstrumentation = {
   stepComplete: (data: WorkflowStepData, parent?: SpanContext): Promise<SpanContext> => {
     const attributes = {
       'workflow.id': data.workflowId,
-      'workflow.step_number': data.stepNumber,
+      'workflow.current_step': data.stepNumber,
       'workflow.total_steps': data.totalSteps,
       'workflow.step_type': data.stepType,
       'job.id': data.jobId,
@@ -429,7 +429,7 @@ export const WorkflowInstrumentation = {
   stepFail: (data: WorkflowStepFailData, parent?: SpanContext): Promise<SpanContext> => {
     const attributes = {
       'workflow.id': data.workflowId,
-      'workflow.step_number': data.stepNumber,
+      'workflow.current_step': data.stepNumber,
       'workflow.step_failure_type': data.failureType,
       'job.id': data.jobId,
       'job.error': data.error,

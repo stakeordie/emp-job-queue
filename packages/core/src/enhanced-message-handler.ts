@@ -227,7 +227,7 @@ export class EnhancedMessageHandler implements MessageHandlerInterface {
         workflow_id: message.workflow_id,
         workflow_priority: message.workflow_priority,
         workflow_datetime: message.workflow_datetime,
-        step_number: message.step_number,
+        current_step: message.current_step as number,
       });
 
       // Notify available workers about the new job

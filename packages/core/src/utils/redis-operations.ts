@@ -48,7 +48,7 @@ export class RedisOperations {
       workflow_id: job.workflow_id || '',
       workflow_priority: job.workflow_priority?.toString() || '',
       workflow_datetime: job.workflow_datetime?.toString() || '',
-      step_number: job.step_number?.toString() || '',
+      current_step: job.current_step?.toString() || '',
       created_at: job.created_at,
       ...(job.assigned_at && { assigned_at: job.assigned_at }),
       ...(job.started_at && { started_at: job.started_at }),
@@ -91,7 +91,7 @@ export class RedisOperations {
       if (jobData.workflow_id) job.workflow_id = jobData.workflow_id;
       if (jobData.workflow_priority) job.workflow_priority = parseInt(jobData.workflow_priority);
       if (jobData.workflow_datetime) job.workflow_datetime = parseInt(jobData.workflow_datetime);
-      if (jobData.step_number) job.step_number = parseInt(jobData.step_number);
+      if (jobData.current_step) job.current_step = parseInt(jobData.current_step);
       if (jobData.assigned_at) job.assigned_at = jobData.assigned_at;
       if (jobData.started_at) job.started_at = jobData.started_at;
       if (jobData.completed_at) job.completed_at = jobData.completed_at;

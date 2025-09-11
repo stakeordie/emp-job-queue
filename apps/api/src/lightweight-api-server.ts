@@ -1291,7 +1291,7 @@ export class LightweightAPIServer {
           // Only log workflow jobs
           if (jobDetails?.workflow_id) {
             logger.info(
-              `🎯 API-SERVER: Completing delegated workflow job ${jobId} (workflow: ${jobDetails.workflow_id}, step: ${jobDetails.step_number}/${jobDetails.total_steps})`
+              `🎯 API-SERVER: Completing delegated workflow job ${jobId} (workflow: ${jobDetails.workflow_id}, step: ${jobDetails.current_step}/${jobDetails.total_steps})`
             );
           } else {
             logger.info(`🎯 API-SERVER: Completing delegated job ${jobId} (no workflow)`);
@@ -2315,14 +2315,34 @@ export class LightweightAPIServer {
     // Get job details to check for workflow information
     const jobData = await this.redis.hgetall(`job:${jobId}`);
     
+    // 🚨 PROMINENT JOB WORKFLOW INFO LOGGING 🚨
+    logger.info(`🔍 JOB WORKFLOW INFO: ${jobId}`);
+    logger.info(`📋 workflow_id: ${jobData.workflow_id || 'NOT_SET'}`);
+    logger.info(`📊 current_step: ${jobData.current_step || 'NOT_SET'} (type: ${typeof jobData.current_step})`);
+    logger.info(`🔢 current_step: ${jobData.current_step || 'NOT_SET'} (type: ${typeof jobData.current_step})`);
+    logger.info(`📈 total_steps: ${jobData.total_steps || 'NOT_SET'} (type: ${typeof jobData.total_steps})`);
+    logger.info(`🚨 STEP FIELD ANALYSIS:`);
+    logger.info(`   - current_step present: ${jobData.current_step !== undefined}`);
+    logger.info(`   - current_step present: ${jobData.current_step !== undefined}`);
+    logger.info(`   - current_step field present: ${jobData.current_step !== undefined}`);
+    logger.info(`   - current_step value: ${jobData.current_step || 'N/A'}`);
+    logger.info(`✅ Has workflow fields: ${!!(jobData.workflow_id && jobData.current_step && jobData.total_steps)}`);
+    
     // Handle workflow step completion tracing
-    if (jobData.workflow_id && jobData.step_number && jobData.total_steps) {
+    if (jobData.workflow_id && jobData.current_step && jobData.total_steps) {
       const workflowId = jobData.workflow_id;
-      const stepNumber = parseInt(jobData.step_number);
-      const totalSteps = parseInt(jobData.total_steps);
+      // Use current_step (1-based)
+      const stepNumber = parseInt(jobData.current_step as string);
+      const totalSteps = parseInt(jobData.total_steps as string);
       
       // Get workflow context
       const workflowContext = this.workflowTraceContexts.get(workflowId);
+      logger.info(`🔍 WORKFLOW CONTEXT CHECK: ${workflowId}`);
+      logger.info(`   - Context exists: ${!!workflowContext}`);
+      logger.info(`   - Current step: ${stepNumber}`);
+      logger.info(`   - Total steps: ${totalSteps}`);
+      logger.info(`   - Is final step? ${stepNumber === totalSteps}`);
+      
       if (workflowContext) {
         // Trace workflow step completion
         await WorkflowInstrumentation.stepComplete({
@@ -2336,8 +2356,17 @@ export class LightweightAPIServer {
           spanId: workflowContext.spanId,
         });
         
-        // If this was the last step, complete the workflow
+        // If this was the last step, complete the workflow (ONLY check for exact match)
         if (stepNumber === totalSteps) {
+          // 🚨🚨🚨 PROMINENT WORKFLOW COMPLETION DETECTION 🚨🚨🚨
+          logger.info(`🚨🚨🚨 WORKFLOW COMPLETION DETECTED 🚨🚨🚨`);
+          logger.info(`📋 WORKFLOW_ID: ${workflowId}`);
+          logger.info(`📊 STEP: ${stepNumber}/${totalSteps}`);
+          logger.info(`🎯 JOB_ID: ${jobId}`);
+          logger.info(`📝 WORKFLOW_TYPE: ${totalSteps === 1 ? 'SINGLE-STEP' : 'MULTI-STEP'}`);
+          logger.info(`⏰ TIMESTAMP: ${new Date().toISOString()}`);
+          logger.info(`🚨🚨🚨 STARTING EMPROPS VERIFICATION 🚨🚨🚨`);
+          
           await WorkflowInstrumentation.complete({
             workflowId,
             totalSteps,
@@ -2352,6 +2381,55 @@ export class LightweightAPIServer {
           // Clean up workflow context
           this.workflowTraceContexts.delete(workflowId);
           logger.info(`🎯 WORKFLOW COMPLETED: ${workflowId} (${totalSteps} steps)`);
+          
+          // Verify workflow completion with EMPROPS before sending webhook
+          // Pass the original completion data so we can retry with the same message
+          this.verifyWorkflowWithEmprops(workflowId, {
+            job_id: jobId,
+            workflow_id: workflowId,
+            current_step: stepNumber,
+            total_steps: totalSteps,
+            status: 'completed',
+            completed_at: completionData.completed_at,
+            timestamp: completionData.timestamp,
+            worker_id: completionData.worker_id,
+            machine_id: completionData.machine_id,
+            result: completionData.result,
+            message: completionData.message
+          }).catch(error => {
+            logger.error(`Failed to verify workflow ${workflowId} with EMPROPS:`, error);
+          });
+        }
+      } else {
+        logger.warn(`⚠️ WORKFLOW CONTEXT MISSING: ${workflowId}`);
+        logger.warn(`   - Current step: ${stepNumber}`);
+        logger.warn(`   - Total steps: ${totalSteps}`);
+        logger.warn(`   - Should this be final step? ${stepNumber === totalSteps}`);
+        
+        // If this should be the final step and we don't have context,
+        // this indicates the workflow context was prematurely deleted
+        if (stepNumber === totalSteps) {
+          logger.error(`🚨 CRITICAL: Final step (${stepNumber}/${totalSteps}) has no workflow context!`);
+          logger.error(`   This suggests workflow completion was triggered prematurely on an earlier step.`);
+          
+          // For now, we'll still try to verify with EMPROPS even without the context
+          // This ensures the user gets their workflow_completed webhook
+          logger.info(`🔄 ATTEMPTING EMPROPS VERIFICATION WITHOUT WORKFLOW CONTEXT`);
+          this.verifyWorkflowWithEmprops(workflowId, {
+            job_id: jobId,
+            workflow_id: workflowId,
+            current_step: stepNumber,
+            total_steps: totalSteps,
+            status: 'completed',
+            completed_at: completionData.completed_at,
+            timestamp: completionData.timestamp,
+            worker_id: completionData.worker_id,
+            machine_id: completionData.machine_id,
+            result: completionData.result,
+            message: completionData.message
+          }).catch(error => {
+            logger.error(`Failed to verify workflow ${workflowId} with EMPROPS (no context):`, error);
+          });
         }
       }
     }
@@ -2402,9 +2480,9 @@ export class LightweightAPIServer {
     const jobData = await this.redis.hgetall(`job:${jobId}`);
     
     // Handle workflow step failure tracing
-    if (jobData.workflow_id && jobData.step_number && jobData.total_steps) {
+    if (jobData.workflow_id && jobData.current_step && jobData.total_steps) {
       const workflowId = jobData.workflow_id;
-      const stepNumber = parseInt(jobData.step_number);
+      const stepNumber = parseInt(jobData.current_step);
       const totalSteps = parseInt(jobData.total_steps);
       
       // Get workflow context
@@ -2494,14 +2572,25 @@ export class LightweightAPIServer {
     let workflowStepSpanContext: { traceId: string; spanId: string } | undefined;
     let parentSpanContext: { traceId: string; spanId: string } | undefined;
     
-    if (jobData.workflow_id && jobData.step_number && jobData.total_steps) {
+    if (jobData.workflow_id && jobData.current_step && jobData.total_steps) {
       const workflowId = jobData.workflow_id as string;
-      const stepNumber = jobData.step_number as number;
+      // Use current_step (1-based)
+      const stepNumber = (jobData.current_step as number);
       const totalSteps = jobData.total_steps as number;
       const workflowType = (jobData.service_required as string) || 'multi_step_workflow';
       
-      // Check if this is the first step - if so, start the workflow
-      if (stepNumber === 1) {
+      // Check if this is the first step - if so, start the workflow (handle 0-based indexing)
+      if (stepNumber === 1 || (stepNumber === 0 && totalSteps >= 1)) {
+        // 🚨🚨🚨 PROMINENT WORKFLOW SUBMISSION DETECTION 🚨🚨🚨
+        logger.info(`🚨🚨🚨 WORKFLOW SUBMISSION DETECTED 🚨🚨🚨`);
+        logger.info(`📋 WORKFLOW_ID: ${workflowId}`);
+        logger.info(`📊 TOTAL_STEPS: ${totalSteps}`);
+        logger.info(`🎯 FIRST_JOB_ID: ${jobId}`);
+        logger.info(`👤 CUSTOMER_ID: ${jobData.customer_id || 'NOT_SET'}`);
+        logger.info(`🔧 SERVICE_TYPE: ${workflowType}`);
+        logger.info(`⏰ TIMESTAMP: ${new Date().toISOString()}`);
+        logger.info(`🚨🚨🚨 PUBLISHING WORKFLOW_SUBMITTED EVENT 🚨🚨🚨`);
+        
         const workflowStartSpanContext = await WorkflowInstrumentation.start({
           workflowId,
           totalSteps,
@@ -2519,6 +2608,26 @@ export class LightweightAPIServer {
         });
         
         parentSpanContext = workflowStartSpanContext;
+        
+        // Publish workflow_submitted event to Redis for webhook notifications
+        try {
+          await this.redis.publish('workflow_submitted', JSON.stringify({
+            workflow_id: workflowId,
+            first_job_id: jobId,
+            total_steps: totalSteps,
+            workflow_priority: jobData.workflow_priority || jobData.priority || 50,
+            workflow_datetime: jobData.workflow_datetime || Date.now(),
+            customer_id: jobData.customer_id,
+            service_required: jobData.service_required,
+            timestamp: Date.now(),
+            workflow_type: workflowType,
+            message: 'Workflow started with first job submission'
+          }));
+          
+          logger.info(`📤 Published workflow_submitted event for workflow ${workflowId}`);
+        } catch (error) {
+          logger.error(`❌ Failed to publish workflow_submitted event for ${workflowId}:`, error);
+        }
       } else {
         // Use existing workflow context
         const existingWorkflowContext = this.workflowTraceContexts.get(workflowId);
@@ -2586,8 +2695,8 @@ export class LightweightAPIServer {
     logger.debug(`🔍 API SUBMIT DEBUG Job ${jobId}:`, {
       total_steps: jobData.total_steps,
       total_steps_type: typeof jobData.total_steps,
-      step_number: jobData.step_number,
-      step_number_type: typeof jobData.step_number,
+      current_step: jobData.current_step,
+      current_step_type: typeof jobData.current_step,
       workflow_id: jobData.workflow_id,
       full_jobData_keys: Object.keys(jobData),
     });
@@ -2611,7 +2720,7 @@ export class LightweightAPIServer {
       workflow_id: jobData.workflow_id as string | undefined,
       workflow_priority: jobData.workflow_priority as number | undefined,
       workflow_datetime: jobData.workflow_datetime as number | undefined,
-      step_number: jobData.step_number as number | undefined,
+      current_step: jobData.current_step as number | undefined,
       total_steps: jobData.total_steps as number | undefined,
       // Storage context (separate from payload to avoid sending to external APIs)
       ctx: jobData.ctx as Record<string, unknown> | undefined,
@@ -2650,7 +2759,7 @@ export class LightweightAPIServer {
       workflow_id: job.workflow_id || '',
       workflow_priority: job.workflow_priority?.toString() || '',
       workflow_datetime: job.workflow_datetime?.toString() || '',
-      step_number: job.step_number?.toString() || '',
+      current_step: job.current_step?.toString() || '',
       total_steps: job.total_steps?.toString() || '',
       // Trace context for cross-service propagation
       job_trace_id: submitSpanContext.traceId,
@@ -2733,7 +2842,7 @@ export class LightweightAPIServer {
         workflow_id: jobData.workflow_id as string,
         workflow_priority: jobData.workflow_priority as number,
         workflow_datetime: jobData.workflow_datetime as number,
-        step_number: jobData.step_number as number,
+        current_step: jobData.current_step as number,
         total_steps: jobData.total_steps as number,
         customer_id: job.customer_id,
         requirements: job.requirements,
@@ -2768,7 +2877,7 @@ export class LightweightAPIServer {
       workflow_id: job.workflow_id,
       workflow_priority: job.workflow_priority,
       workflow_datetime: job.workflow_datetime,
-      step_number: job.step_number,
+      current_step: job.current_step,
       total_steps: job.total_steps,
     };
     
@@ -2819,7 +2928,7 @@ export class LightweightAPIServer {
       workflow_datetime: jobData.workflow_datetime
         ? parseInt(jobData.workflow_datetime)
         : undefined,
-      step_number: jobData.step_number ? parseInt(jobData.step_number) : undefined,
+      current_step: jobData.current_step ? parseInt(jobData.current_step) : undefined,
       total_steps:
         jobData.total_steps && jobData.total_steps !== ''
           ? parseInt(jobData.total_steps)
@@ -2994,7 +3103,7 @@ export class LightweightAPIServer {
       workflow_datetime: jobData.workflow_datetime
         ? parseInt(jobData.workflow_datetime)
         : undefined,
-      step_number: jobData.step_number ? parseInt(jobData.step_number) : undefined,
+      current_step: jobData.current_step ? parseInt(jobData.current_step) : undefined,
       total_steps:
         jobData.total_steps && jobData.total_steps !== ''
           ? parseInt(jobData.total_steps)
@@ -3538,6 +3647,156 @@ export class LightweightAPIServer {
     await this.progressSubscriber.quit();
 
     logger.info('Lightweight API Server stopped');
+  }
+
+  /**
+   * Verify workflow completion with EMPROPS API
+   * Hits /api/jobs/{workflow_id} to confirm the workflow is actually completed
+   */
+  private async verifyWorkflowWithEmprops(workflowId: string, originalJobCompletion?: any): Promise<void> {
+    logger.info(`🔍 Verifying workflow ${workflowId} with EMPROPS API...`);
+    
+    const empropsApiUrl = process.env.EMPROPS_API_URL;
+    if (!empropsApiUrl) {
+      logger.error('EMPROPS_API_URL not configured, cannot verify workflow completion');
+      return;
+    }
+
+    const maxRetries = 3;
+    const retryDelay = 2000; // 2 seconds
+
+    for (let attempt = 1; attempt <= maxRetries; attempt++) {
+      try {
+        const url = `${empropsApiUrl}/jobs/${workflowId}`;
+        
+        // Build headers with optional auth
+        const headers: Record<string, string> = {
+          'Content-Type': 'application/json',
+          'Accept': 'application/json'
+        };
+        
+        // Add auth header if configured  
+        const empropsAuth = process.env.EMPROPS_API_KEY;
+        if (empropsAuth) {
+          headers['Authorization'] = `Bearer ${empropsAuth}`;
+        }
+        
+        // 🚨🚨🚨 PROMINENT EMPROPS API CALL LOGGING 🚨🚨🚨
+        logger.info(`🚨🚨🚨 EMPROPS API CALL 🚨🚨🚨`);
+        logger.info(`🎯 ENDPOINT: GET ${url}`);
+        logger.info(`🔄 ATTEMPT: ${attempt}/${maxRetries}`);
+        logger.info(`📋 WORKFLOW_ID: ${workflowId}`);
+        logger.info(`🔐 AUTH_CONFIGURED: ${!!empropsAuth}`);
+        logger.info(`🔐 HEADERS: ${JSON.stringify(headers, null, 2)}`);
+        logger.info(`⏰ TIMESTAMP: ${new Date().toISOString()}`);
+        logger.info(`🚨🚨🚨 MAKING REQUEST NOW 🚨🚨🚨`);
+        
+        const startTime = Date.now();
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 5000); // 5 second timeout
+        
+        const response = await fetch(url, {
+          method: 'GET',
+          headers,
+          signal: controller.signal
+        });
+        
+        clearTimeout(timeoutId);
+        const responseTime = Date.now() - startTime;
+        
+        // 🚨🚨🚨 PROMINENT RESPONSE LOGGING 🚨🚨🚨
+        logger.info(`🚨🚨🚨 EMPROPS API RESPONSE 🚨🚨🚨`);
+        logger.info(`📊 STATUS: ${response.status} ${response.statusText}`);
+        logger.info(`⏱️ RESPONSE_TIME: ${responseTime}ms`);
+        logger.info(`🎯 ENDPOINT: GET ${url}`);
+        logger.info(`🚨🚨🚨 RESPONSE RECEIVED 🚨🚨🚨`);
+        
+        if (!response.ok) {
+          throw new Error(`EMPROPS API returned ${response.status}: ${response.statusText}`);
+        }
+        
+        const workflowData = await response.json();
+        
+        // 🚨🚨🚨 PROMINENT EMPROPS RESPONSE DATA LOGGING 🚨🚨🚨
+        logger.info(`🚨🚨🚨 EMPROPS API RESPONSE DATA 🚨🚨🚨`);
+        logger.info(`📋 WORKFLOW_ID: ${workflowId}`);
+        logger.info(`📊 RESPONSE STATUS: ${workflowData.data?.status || 'NOT_SET'}`);
+        logger.info(`📈 PROGRESS: ${workflowData.data?.progress || 'NOT_SET'}`);
+        logger.info(`🖼️ HAS_OUTPUTS: ${!!workflowData.data?.data?.outputs}`);
+        logger.info(`📦 OUTPUT_COUNT: ${workflowData.data?.data?.outputs?.length || 0}`);
+        logger.info(`✅ COMPLETED_AT: ${workflowData.data?.completed_at || 'NOT_SET'}`);
+        logger.info(`🗂️ FULL_RESPONSE: ${JSON.stringify(workflowData, null, 2)}`);
+        logger.info(`🚨🚨🚨 END RESPONSE DATA 🚨🚨🚨`);
+        
+        if (workflowData.data?.status === 'completed') {
+          logger.info(`✅ EMPROPS confirms workflow ${workflowId} is completed`);
+          
+          // Publish workflow completion webhook event with full workflow details
+          await this.redis.publish('workflow_completed', JSON.stringify({
+            workflow_id: workflowId,
+            status: 'completed',
+            completed_at: workflowData.data.completed_at,
+            timestamp: Date.now(),
+            verified: true,
+            message: 'Workflow completed and verified with EMPROPS',
+            // Include full EMPROPS workflow data
+            workflow_details: {
+              id: workflowData.data.id,
+              name: workflowData.data.name,
+              job_type: workflowData.data.job_type,
+              status: workflowData.data.status,
+              progress: workflowData.data.progress,
+              created_at: workflowData.data.created_at,
+              completed_at: workflowData.data.completed_at
+            },
+            // Include outputs (image URLs, step results, etc.)
+            outputs: workflowData.data?.data?.outputs || []
+          }));
+          
+          logger.info(`📤 Published workflow_completed webhook for ${workflowId}`);
+          return;
+        } else {
+          logger.warn(`⏳ EMPROPS workflow ${workflowId} not ready (status: ${workflowData.data?.status || 'unknown'})`);
+          
+          if (attempt === maxRetries) {
+            logger.error(`❌ Workflow ${workflowId} verification failed after ${maxRetries} attempts`);
+            
+            // If we have the original job completion data, re-publish it to retry later
+            if (originalJobCompletion) {
+              logger.info(`🔄 Re-publishing original complete_job event to retry verification later`);
+              
+              // Add a delay before re-triggering to avoid immediate retry loops
+              setTimeout(async () => {
+                await this.redis.publish('complete_job', JSON.stringify({
+                  ...originalJobCompletion,
+                  retry_verification: true,
+                  retry_attempt: Date.now()
+                }));
+              }, 30000); // Wait 30 seconds before retrying
+              
+              logger.info(`⏰ Scheduled retry for workflow ${workflowId} verification in 30 seconds`);
+            }
+            
+            return;
+          }
+          
+          // Wait before retry
+          await new Promise(resolve => setTimeout(resolve, retryDelay));
+        }
+        
+      } catch (error) {
+        const errorMessage = error instanceof Error ? error.message : String(error);
+        logger.warn(`EMPROPS API request failed for workflow ${workflowId} (attempt ${attempt}):`, errorMessage);
+        
+        if (attempt === maxRetries) {
+          logger.error(`❌ Failed to verify workflow ${workflowId} with EMPROPS after ${maxRetries} attempts`);
+          return;
+        }
+        
+        // Wait before retry
+        await new Promise(resolve => setTimeout(resolve, retryDelay));
+      }
+    }
   }
 
   getConnectionStats() {

@@ -8,7 +8,7 @@ echo "🔄 Starting Redis for development..."
 # Kill any existing Redis instances
 echo "📋 Stopping existing Redis instances..."
 pkill redis-server || true
-sleep 2
+sleep 3
 
 # Start Redis server in foreground with logging
 echo "🚀 Starting fresh Redis server on port 6379..."
@@ -24,7 +24,7 @@ fi
 # Wait for Redis to be ready
 echo "⏳ Waiting for Redis to be ready..."
 until /opt/homebrew/bin/redis-cli ping > /dev/null 2>&1; do
-  sleep 1
+  sleep 2
 done
 echo "✅ Redis is ready for function installation"
 
@@ -47,7 +47,7 @@ echo "✅ Redis setup complete - ready for development"
 # Stop the background Redis and restart in foreground for logs
 echo "🔄 Restarting Redis in foreground for log visibility..."
 pkill redis-server || true
-sleep 3
+sleep 10
 
 # Start Redis in foreground
 echo "📋 Starting Redis with live logs (use Ctrl+C to stop)..."

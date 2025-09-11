@@ -436,7 +436,7 @@ export class RedisDirectWorkerClient {
       workflow_datetime: redisData.workflow_datetime
         ? parseInt(redisData.workflow_datetime)
         : undefined,
-      step_number: redisData.step_number ? parseInt(redisData.step_number) : undefined,
+      current_step: redisData.current_step ? parseInt(redisData.current_step) : undefined,
       // OTEL trace context for cross-service propagation
       job_trace_id: redisData.job_trace_id,
       job_span_id: redisData.job_span_id,
@@ -889,7 +889,7 @@ export class RedisDirectWorkerClient {
         timestamp: Date.now(),
         // Include workflow fields for webhook service workflow tracking
         ...(jobData.workflow_id && { workflow_id: jobData.workflow_id }),
-        ...(jobData.step_number && { step_number: parseInt(jobData.step_number) }),
+        ...(jobData.current_step && { current_step: parseInt(jobData.current_step) }),
         ...(jobData.total_steps && { total_steps: parseInt(jobData.total_steps) }),
         ...(jobData.workflow_priority && {
           workflow_priority: parseInt(jobData.workflow_priority),
@@ -901,7 +901,7 @@ export class RedisDirectWorkerClient {
 
       await this.redis.publish('complete_job', JSON.stringify(completionEvent));
       logger.info(
-        `📢 Worker ${this.workerId} published completion event for job ${jobId}${jobData.workflow_id ? ` (workflow: ${jobData.workflow_id}, step: ${jobData.step_number}/${jobData.total_steps})` : ''}`
+        `📢 Worker ${this.workerId} published completion event for job ${jobId}${jobData.workflow_id ? ` (workflow: ${jobData.workflow_id}, step: ${jobData.current_step}/${jobData.total_steps})` : ''}`
       );
 
       // Update worker status back to idle
@@ -1023,7 +1023,7 @@ export class RedisDirectWorkerClient {
           timestamp: Date.now(),
           // Include workflow fields for webhook service workflow tracking
           ...(job.workflow_id && { workflow_id: job.workflow_id }),
-          ...(job.step_number && { step_number: job.step_number }),
+          ...(job.current_step && { current_step: job.current_step }),
           ...(job.total_steps && { total_steps: job.total_steps }),
           ...(job.workflow_priority && { workflow_priority: job.workflow_priority }),
           ...(job.workflow_datetime && { workflow_datetime: job.workflow_datetime }),
@@ -1031,7 +1031,7 @@ export class RedisDirectWorkerClient {
 
         await this.redis.publish('job_failed', JSON.stringify(failureEvent));
         logger.info(
-          `📢 Worker ${this.workerId} published failure event for job ${jobId}${job.workflow_id ? ` (workflow: ${job.workflow_id}, step: ${job.step_number}/${job.total_steps})` : ''}`
+          `📢 Worker ${this.workerId} published failure event for job ${jobId}${job.workflow_id ? ` (workflow: ${job.workflow_id}, step: ${job.current_step}/${job.total_steps})` : ''}`
         );
       }
 

@@ -341,8 +341,8 @@ function Home({ isJobPanelOpen }: HomeProps) {
                             {job.workflow_id && (
                               <span className="text-purple-600 font-medium">
                                 {` | 🔗 Workflow: ${job.workflow_id}`}
-                                {job.step_number !== undefined && job.total_steps ? ` (Step ${job.step_number} of ${job.total_steps})` : ''}
-                                {job.step_number !== undefined && !job.total_steps && ` (step ${job.step_number})`}
+                                {(job.current_step || job.step_number) !== undefined && job.total_steps ? ` (Step ${(job.current_step || job.step_number)} of ${job.total_steps})` : ''}
+                                {(job.current_step || job.step_number) !== undefined && !job.total_steps && ` (step ${(job.current_step || job.step_number)})`}
                               </span>
                             )}
                             {job.workflow_datetime && (
@@ -444,8 +444,8 @@ function Home({ isJobPanelOpen }: HomeProps) {
                               {job.workflow_id && ` | Workflow: ${job.workflow_id}`}
                               {job.workflow_priority !== undefined && ` | W.Priority: ${job.workflow_priority}`}
                               {job.workflow_datetime && ` | ${new Date(job.workflow_datetime).toLocaleTimeString()}`}
-                              {job.step_number !== undefined && job.total_steps && ` | Step: ${job.step_number} of ${job.total_steps}`}
-                              {job.step_number !== undefined && !job.total_steps && ` | Step: ${job.step_number}`}
+                              {(job.current_step || job.step_number) !== undefined && job.total_steps && ` | Step: ${(job.current_step || job.step_number)} of ${job.total_steps}`}
+                              {(job.current_step || job.step_number) !== undefined && !job.total_steps && ` | Step: ${(job.current_step || job.step_number)}`}
                             </p>
                           </div>
                         </div>
@@ -514,8 +514,8 @@ function Home({ isJobPanelOpen }: HomeProps) {
                             {job.workflow_id && (
                               <span className="text-purple-600 font-medium">
                                 {` | 🔗 Workflow: ${job.workflow_id}`}
-                                {job.step_number !== undefined && job.total_steps ? ` (Step ${job.step_number} of ${job.total_steps})` : ''}
-                                {job.step_number !== undefined && !job.total_steps && ` (step ${job.step_number})`}
+                                {(job.current_step || job.step_number) !== undefined && job.total_steps ? ` (Step ${(job.current_step || job.step_number)} of ${job.total_steps})` : ''}
+                                {(job.current_step || job.step_number) !== undefined && !job.total_steps && ` (step ${(job.current_step || job.step_number)})`}
                               </span>
                             )}
                             {job.workflow_datetime && (
@@ -594,8 +594,8 @@ function Home({ isJobPanelOpen }: HomeProps) {
                             {job.workflow_id && (
                               <span className="text-purple-600 font-medium">
                                 {` | 🔗 Workflow: ${job.workflow_id}`}
-                                {job.step_number !== undefined && job.total_steps ? ` (Step ${job.step_number} of ${job.total_steps})` : ''}
-                                {job.step_number !== undefined && !job.total_steps && ` (step ${job.step_number})`}
+                                {(job.current_step || job.step_number) !== undefined && job.total_steps ? ` (Step ${(job.current_step || job.step_number)} of ${job.total_steps})` : ''}
+                                {(job.current_step || job.step_number) !== undefined && !job.total_steps && ` (step ${(job.current_step || job.step_number)})`}
                               </span>
                             )}
                             {job.workflow_datetime && (

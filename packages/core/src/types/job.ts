@@ -10,7 +10,7 @@ export interface Job {
   workflow_id?: string;
   workflow_priority?: number;
   workflow_datetime?: number;
-  step_number?: number;
+  current_step?: number;
   total_steps?: number;
   created_at: string;
   assigned_at?: string;
@@ -104,7 +104,7 @@ export interface JobSubmissionRequest {
   workflow_id?: string;
   workflow_priority?: number;
   workflow_datetime?: number;
-  step_number?: number;
+  current_step?: number;
   total_steps?: number;
   max_retries?: number;
   timeout_minutes?: number;

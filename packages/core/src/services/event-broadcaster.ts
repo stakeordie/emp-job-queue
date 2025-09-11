@@ -685,7 +685,7 @@ export class EventBroadcaster {
         workflow_id: jobData.workflow_id as string,
         workflow_priority: jobData.workflow_priority as number,
         workflow_datetime: jobData.workflow_datetime as number,
-        step_number: jobData.step_number as number,
+        current_step: jobData.current_step as number,
         customer_id: jobData.customer_id as string,
         requirements: jobData.requirements as JobRequirements,
         created_at: (jobData.created_at as number) || Date.now(),

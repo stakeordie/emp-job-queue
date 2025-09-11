@@ -38,13 +38,16 @@ export const ApiEnvInterface = {
     "FLUENTD_HOST": "TELEMETRY_FLUENTD_HOST",
     "FLUENTD_PORT": "TELEMETRY_FLUENTD_PORT",
     "FLUENTD_SECURE": "TELEMETRY_FLUENTD_SECURE",
-    "NODE_ENV": "API_NODE_ENV"
+    "NODE_ENV": "API_NODE_ENV",
+    "EMPROPS_API_URL":"EMPROPS_API_URL"
   },
   
   secret: {
     // Sensitive authentication tokens and API keys
     "AUTH_TOKEN": "AUTH_TOKEN",
-    "DASH0_API_KEY": "DASH0_API_KEY"
+    "DASH0_API_KEY": "DASH0_API_KEY",
+    "EMPROPS_API_AUTH": "EMPROPS_API_AUTH",
+    "EMPROPS_API_KEY": "EMPROPS_API_KEY"
   },
   
   optional: {

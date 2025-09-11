@@ -131,8 +131,8 @@ Recent Job Results ({recentCompletedJobs.length}/10)
                       {job.workflow_id && (
                         <span className="text-purple-600 font-medium">
                           {` • 🔗 ${job.workflow_id}`}
-                          {job.step_number !== undefined && job.total_steps ? ` (Step ${job.step_number} of ${job.total_steps})` : ''}
-                          {job.step_number !== undefined && !job.total_steps && ` (step ${job.step_number})`}
+                          {(job.current_step || job.step_number) !== undefined && job.total_steps ? ` (Step ${(job.current_step || job.step_number)} of ${job.total_steps})` : ''}
+                          {(job.current_step || job.step_number) !== undefined && !job.total_steps && ` (step ${(job.current_step || job.step_number)})`}
                         </span>
                       )}
                     </p>

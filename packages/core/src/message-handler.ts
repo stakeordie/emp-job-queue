@@ -161,7 +161,7 @@ export class MessageHandler implements MessageHandlerInterface {
         workflow_id: message.workflow_id,
         workflow_priority: message.workflow_priority,
         workflow_datetime: message.workflow_datetime,
-        step_number: message.step_number,
+        current_step: message.current_step as number,
       });
 
       // Notify available workers about the new job
@@ -175,7 +175,7 @@ export class MessageHandler implements MessageHandlerInterface {
           workflow_id: message.workflow_id,
           workflow_priority: message.workflow_priority,
           workflow_datetime: message.workflow_datetime,
-          step_number: message.step_number,
+          current_step: message.current_step as number,
           customer_id: message.customer_id,
           requirements: message.requirements,
           created_at: Date.now(),

@@ -22,7 +22,7 @@ fi
 # Wait for Redis to be ready
 echo "⏳ Waiting for Redis to be ready..."
 until /opt/homebrew/bin/redis-cli ping > /dev/null 2>&1; do
-  sleep 1
+  sleep 5
 done
 echo "✅ Redis is ready"
 

@@ -127,8 +127,8 @@ export class RedisService implements RedisServiceInterface {
     if (job.workflow_datetime !== undefined) {
       jobData.workflow_datetime = job.workflow_datetime.toString();
     }
-    if (job.step_number !== undefined) {
-      jobData.step_number = job.step_number.toString();
+    if (job.current_step !== undefined) {
+      jobData.current_step = job.current_step.toString();
     }
     if (job.total_steps !== undefined) {
       jobData.total_steps = job.total_steps.toString();
@@ -162,16 +162,15 @@ export class RedisService implements RedisServiceInterface {
       ...(job.workflow_id && { workflow_id: job.workflow_id }),
       ...(job.workflow_priority !== undefined && { workflow_priority: job.workflow_priority }),
       ...(job.workflow_datetime !== undefined && { workflow_datetime: job.workflow_datetime }),
-      ...(job.step_number !== undefined && { step_number: job.step_number }),
+      ...(job.current_step !== undefined && { current_step: job.current_step }),
       ...(job.total_steps !== undefined && { total_steps: job.total_steps }),
-      ...(job.step_number !== undefined && { current_step: job.step_number }), // webhook processor expects current_step
     };
     await this.redis.publish('job_submitted', JSON.stringify(submissionEvent));
 
     // Only log workflow jobs for debugging
     if (job.workflow_id) {
       logger.info(
-        `📝 REDIS-SERVICE: Submitted workflow job ${jobId} (workflow: ${job.workflow_id}, step: ${job.step_number}/${job.total_steps}, service: ${job.service_required})`
+        `📝 REDIS-SERVICE: Submitted workflow job ${jobId} (workflow: ${job.workflow_id}, step: ${job.current_step}/${job.total_steps}, service: ${job.service_required})`
       );
     } else {
       logger.info(
@@ -199,7 +198,7 @@ export class RedisService implements RedisServiceInterface {
       workflow_datetime: jobData.workflow_datetime
         ? parseInt(jobData.workflow_datetime)
         : undefined,
-      step_number: jobData.step_number ? parseInt(jobData.step_number) : undefined,
+      current_step: jobData.current_step ? parseInt(jobData.current_step) : undefined,
       total_steps: jobData.total_steps ? parseInt(jobData.total_steps) : undefined,
       created_at: jobData.created_at,
       assigned_at: jobData.assigned_at || undefined,
@@ -289,7 +288,7 @@ export class RedisService implements RedisServiceInterface {
       // Only log workflow jobs for debugging
       if (job.workflow_id) {
         logger.info(
-          `🔄 REDIS-SERVICE: Completing workflow job ${jobId} (workflow: ${job.workflow_id}, step: ${job.step_number}/${job.total_steps})`
+          `🔄 REDIS-SERVICE: Completing workflow job ${jobId} (workflow: ${job.workflow_id}, step: ${job.current_step}/${job.total_steps})`
         );
       }
 
@@ -323,9 +322,8 @@ export class RedisService implements RedisServiceInterface {
         workflow_id: job.workflow_id,
         workflow_priority: job.workflow_priority,
         workflow_datetime: job.workflow_datetime,
-        step_number: job.step_number,
+        current_step: job.current_step,
         total_steps: job.total_steps,
-        current_step: job.step_number, // webhook processor expects current_step
         worker_id: job.worker_id,
         service_required: job.service_required,
         customer_id: job.customer_id,

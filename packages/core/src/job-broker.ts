@@ -61,7 +61,7 @@ export class JobBroker implements JobBrokerInterface {
       workflow_id: workflowId,
       workflow_priority: workflowPriority,
       workflow_datetime: workflowDatetime,
-      step_number: request.step_number,
+      current_step: request.current_step,
       max_retries: request.max_retries || 3,
     };
 
@@ -109,7 +109,7 @@ export class JobBroker implements JobBrokerInterface {
       workflow_id: job.workflow_id || '',
       workflow_priority: job.workflow_priority?.toString() || '',
       workflow_datetime: job.workflow_datetime?.toString() || '',
-      step_number: job.step_number?.toString() || '',
+      current_step: job.current_step?.toString() || '',
       created_at: job.created_at,
       status: job.status,
       retry_count: job.retry_count.toString(),
@@ -525,7 +525,7 @@ export class JobBroker implements JobBrokerInterface {
       workflow_datetime: jobData.workflow_datetime
         ? parseInt(jobData.workflow_datetime as string)
         : undefined,
-      step_number: jobData.step_number ? parseInt(jobData.step_number as string) : undefined,
+      current_step: jobData.current_step ? parseInt(jobData.current_step as string) : undefined,
       created_at: parseInt((jobData.created_at as string) || Date.now().toString()),
       assigned_at: jobData.assigned_at ? parseInt(jobData.assigned_at as string) : undefined,
       started_at: jobData.started_at ? parseInt(jobData.started_at as string) : undefined,

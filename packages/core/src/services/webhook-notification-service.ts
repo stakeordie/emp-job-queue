@@ -96,7 +96,6 @@ export interface WebhookEventData {
   workflow_id?: string;
   workflow_priority?: number;
   workflow_datetime?: number;
-  step_number?: number;
   total_steps?: number;
   current_step?: number;
   [key: string]: unknown;
@@ -141,10 +140,10 @@ export class WebhookNotificationService extends EventEmitter {
   private workflowTracker = new Map<
     string,
     {
-      steps: Map<number, string>; // step_number -> job_id mapping
+      steps: Map<number, string>; // current_step -> job_id mapping
       completedSteps: Set<number>; // completed step numbers (1-indexed)
       failedSteps: Set<number>; // failed step numbers (1-indexed)
-      stepErrors: Map<number, string>; // step_number -> error message for failed steps
+      stepErrors: Map<number, string>; // current_step -> error message for failed steps
       totalSteps?: number; // total steps in workflow (from job submission)
       startTime: number;
       lastUpdate: number;
@@ -430,9 +429,9 @@ export class WebhookNotificationService extends EventEmitter {
       return; // Event not supported for webhooks
     }
 
-    // ALWAYS process workflow tracking events for workflow detection
-    // even if no webhooks are subscribed to individual job events
-    await this.processWorkflowTracking(event, webhookEvent);
+    // Note: Workflow tracking is now handled by API server with EMPROPS verification
+    // The old internal workflow tracking logic has been disabled to prevent duplicate webhooks
+    // await this.processWorkflowTracking(event, webhookEvent);
 
     // THROTTLING: Check if this is a progress update and if we should throttle it
     if (webhookEvent === 'update_job_progress') {
@@ -484,7 +483,7 @@ export class WebhookNotificationService extends EventEmitter {
     const workflowId = jobEvent.workflow_id as string;
     const jobId = jobEvent.job_id as string;
     const currentStep = jobEvent.current_step as number;
-    const stepNumber = jobEvent.step_number as number;
+    const stepNumber = jobEvent.current_step as number;
     const totalSteps = jobEvent.total_steps as number;
 
     // DEBUG: Log extracted data for workflow events
@@ -501,7 +500,6 @@ export class WebhookNotificationService extends EventEmitter {
           workflow_id: jobEvent.workflow_id,
           job_id: jobEvent.job_id,
           current_step: jobEvent.current_step,
-          step_number: jobEvent.step_number,
           total_steps: jobEvent.total_steps,
         },
       });
@@ -543,14 +541,8 @@ export class WebhookNotificationService extends EventEmitter {
     const effectiveStepNumber = currentStep || stepNumber || 1;
     workflow.steps.set(effectiveStepNumber, jobId);
 
-    // Check if this is the first step being submitted (workflow_submitted event)
-    if (
-      webhookEventType === 'job_submitted' &&
-      effectiveStepNumber === 1 &&
-      workflow.steps.size === 1
-    ) {
-      await this.sendWorkflowEvent('workflow_submitted', workflowId, event);
-    }
+    // Note: workflow_submitted events are handled by the API server when workflows are first created
+    // No need to duplicate that logic here
 
     // Handle completion/failure
     const wasCompleted = workflow.completedSteps.has(effectiveStepNumber);
@@ -594,8 +586,9 @@ export class WebhookNotificationService extends EventEmitter {
       });
     }
 
-    // Check for workflow completion
-    await this.checkWorkflowCompletion(workflowId, workflow, event);
+    // ❌ DISABLED: Internal workflow completion check has been disabled
+    // Workflow completion is now handled exclusively by the API server with EMPROPS verification
+    // await this.checkWorkflowCompletion(workflowId, workflow, event);
   }
 
   /**
@@ -938,13 +931,13 @@ export class WebhookNotificationService extends EventEmitter {
           const errorMessage = workflow.stepErrors.get(stepNum);
           
           const stepDetail: {
-            step_number: number;
+            current_step: number;
             job_id: string;
             completed: boolean;
             failed: boolean;
             error?: string;
           } = {
-            step_number: stepNum,
+            current_step: stepNum,
             job_id: stepJobId,
             completed: workflow.completedSteps.has(stepNum),
             failed: workflow.failedSteps.has(stepNum),
@@ -959,34 +952,38 @@ export class WebhookNotificationService extends EventEmitter {
         }),
       };
 
-      // For completed workflows, try to enhance with EMPROPS API data (already fetched in confirmation)
+      // For completed workflows, use Redis event data (already fetched from EMPROPS by API server)
       if (isSuccess) {
-        try {
-          logger.info(`🔍 [WEBHOOK] Attempting to enhance workflow_completed event with EMPROPS API data for ${workflowId}`);
-          const workflowDetails = await this.fetchWorkflowDetails(workflowId);
+        const triggeringEventAny = triggeringEvent as any;
+        
+        // Check if the Redis event already contains workflow outputs and details
+        if (triggeringEventAny.outputs && Array.isArray(triggeringEventAny.outputs)) {
+          workflowEventData.outputs = triggeringEventAny.outputs;
+          logger.info(`✅ [WEBHOOK] Using workflow outputs from Redis event: ${triggeringEventAny.outputs.length} outputs`);
           
-          if (workflowDetails?.data?.data?.outputs) {
-            workflowEventData.outputs = workflowDetails.data.data.outputs;
-            logger.info(`   ✅ Added ${workflowDetails.data.data.outputs.length} outputs to webhook payload`);
-            
-            // Log the actual image URLs we're sending
-            workflowDetails.data.data.outputs.forEach((output: any, index: number) => {
-              if (output.steps) {
-                output.steps.forEach((step: any) => {
-                  if (step?.nodeResponse?.src) {
-                    logger.info(`   🖼️ Output ${index + 1} - ${step.nodeName}: ${step.nodeResponse.src}`);
-                  }
-                });
-              }
-            });
-            
-            logger.info(`📤 [WEBHOOK] Final enriched payload size: ${JSON.stringify(workflowEventData).length} bytes`);
-          } else {
-            logger.info(`   ⚠️ No outputs found in EMPROPS API response, sending basic workflow data`);
+          // Log the actual image URLs we're sending
+          triggeringEventAny.outputs.forEach((output: any, index: number) => {
+            if (output.steps) {
+              output.steps.forEach((step: any) => {
+                if (step?.nodeResponse?.src) {
+                  logger.info(`   🖼️ Output ${index + 1} - ${step.nodeName}: ${step.nodeResponse.src}`);
+                }
+              });
+            }
+          });
+          
+          logger.info(`📤 [WEBHOOK] Final payload size: ${JSON.stringify(workflowEventData).length} bytes`);
+        } else if (triggeringEventAny.workflow_details) {
+          // Fallback: try to extract from workflow_details
+          logger.info(`🔍 [WEBHOOK] Using workflow details from Redis event for ${workflowId}`);
+          workflowEventData.workflow_details = triggeringEventAny.workflow_details;
+          
+          if (triggeringEventAny.workflow_details.outputs) {
+            workflowEventData.outputs = triggeringEventAny.workflow_details.outputs;
+            logger.info(`   ✅ Extracted ${triggeringEventAny.workflow_details.outputs.length} outputs from workflow details`);
           }
-        } catch (error) {
-          // Fallback: If EMPROPS API fails (404, timeout, etc.), send basic workflow event
-          logger.warn(`⚠️ [WEBHOOK] Could not enhance with EMPROPS API data (${error.message}), sending basic workflow completion`);
+        } else {
+          logger.info(`⚠️ [WEBHOOK] No outputs found in Redis event data, sending basic workflow completion`);
         }
       }
 
@@ -1132,6 +1129,19 @@ export class WebhookNotificationService extends EventEmitter {
       case 'machine_startup_complete':
       case 'machine_shutdown':
         return 'machine_status';
+      case 'system_stats':
+        // Check if this is actually a workflow event disguised as system_stats
+        const eventAny = event as any;
+        if (eventAny.workflow_submitted) {
+          return 'workflow_submitted';
+        }
+        if (eventAny.workflow_completed) {
+          return 'workflow_completed';
+        }
+        if (eventAny.workflow_failed) {
+          return 'workflow_failed';
+        }
+        return null; // Regular system_stats events don't trigger webhooks
       default:
         return null;
     }
@@ -1281,7 +1291,6 @@ export class WebhookNotificationService extends EventEmitter {
     if (jobEvent.workflow_id) data.workflow_id = jobEvent.workflow_id as string;
     if (jobEvent.workflow_priority) data.workflow_priority = jobEvent.workflow_priority as number;
     if (jobEvent.workflow_datetime) data.workflow_datetime = jobEvent.workflow_datetime as number;
-    if (jobEvent.step_number) data.step_number = jobEvent.step_number as number;
     if (jobEvent.total_steps) data.total_steps = jobEvent.total_steps as number;
     if (jobEvent.current_step) data.current_step = jobEvent.current_step as number;
 
@@ -1324,6 +1333,62 @@ export class WebhookNotificationService extends EventEmitter {
       const failEvent = event as JobFailedEvent;
       data.error = failEvent.error;
       data.failed_at = failEvent.failed_at;
+    }
+
+    // Workflow completion events (system_stats with workflow_completed: true)
+    if (event.type === 'system_stats' && jobEvent.workflow_completed) {
+      logger.info(`🎯 [WEBHOOK] Extracting workflow completion data from Redis event:`, {
+        workflow_id: jobEvent.workflow_id,
+        status: jobEvent.status,
+        has_outputs: !!jobEvent.outputs,
+        outputs_count: jobEvent.outputs ? (jobEvent.outputs as any[]).length : 0,
+      });
+
+      // Include all workflow completion data from EMPROPS API
+      data.timestamp = jobEvent.timestamp as number;
+      data.status = jobEvent.status as string;
+      data.completed_at = jobEvent.completed_at as string;
+      data.verified = jobEvent.verified as boolean;
+      data.message = jobEvent.message as string;
+      
+      // Include workflow details from EMPROPS
+      if (jobEvent.workflow_details) {
+        const workflowDetails = jobEvent.workflow_details as any;
+        data.workflow_details = {
+          id: workflowDetails.id,
+          name: workflowDetails.name,
+          job_type: workflowDetails.job_type,
+          status: workflowDetails.status,
+          progress: workflowDetails.progress,
+          created_at: workflowDetails.created_at,
+          completed_at: workflowDetails.completed_at,
+        };
+      }
+
+      // Include outputs (image URLs, step results, etc.)
+      if (jobEvent.outputs && Array.isArray(jobEvent.outputs)) {
+        data.outputs = jobEvent.outputs;
+        
+        // Log output details for debugging
+        logger.info(`✅ [WEBHOOK] Including workflow outputs in webhook: ${(jobEvent.outputs as any[]).length} outputs`);
+        (jobEvent.outputs as any[]).forEach((output: any, index: number) => {
+          if (output.steps) {
+            output.steps.forEach((step: any) => {
+              if (step?.nodeResponse?.src) {
+                logger.info(`   🖼️ Output ${index + 1} - ${step.nodeName}: ${step.nodeResponse.src}`);
+              }
+            });
+          }
+        });
+      }
+
+      logger.info(`🚀 [WEBHOOK] Final workflow completion webhook data:`, {
+        workflow_id: data.workflow_id,
+        status: data.status,
+        verified: data.verified,
+        outputs_count: data.outputs ? (data.outputs as any[]).length : 0,
+        has_workflow_details: !!data.workflow_details,
+      });
     }
 
     return data;
