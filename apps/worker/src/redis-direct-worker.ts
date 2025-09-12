@@ -51,7 +51,12 @@ If deploying to Railway, Vast.ai, or other platforms:
   3. Restart the container after setting the variable
 
 Current environment variables containing HUB or REDIS:
-${Object.keys(process.env).filter(k => k.includes('HUB') || k.includes('REDIS')).map(k => `  - ${k}=${process.env[k]}`).join('\n') || '  (none found)'}
+${
+  Object.keys(process.env)
+    .filter(k => k.includes('HUB') || k.includes('REDIS'))
+    .map(k => `  - ${k}=${process.env[k]}`)
+    .join('\n') || '  (none found)'
+}
 `;
     console.error(errorMsg);
     logger.error(errorMsg);
@@ -81,11 +86,12 @@ function logEnvironmentVariables() {
 
   logger.info('📋 Core Variables:');
   Object.entries(coreVars).forEach(([key, value]) => {
-    const displayValue = value !== undefined
-      ? key.includes('URL') && value
-        ? value.replace(/\/\/[^:]*:[^@]*@/, '//***:***@')
-        : value
-      : '<NOT SET>';
+    const displayValue =
+      value !== undefined
+        ? key.includes('URL') && value
+          ? value.replace(/\/\/[^:]*:[^@]*@/, '//***:***@')
+          : value
+        : '<NOT SET>';
     logger.info(`  - ${key}: ${displayValue}`);
   });
 
@@ -119,11 +125,12 @@ function logEnvironmentVariables() {
 
   logger.info('📋 Machine Interface Variables:');
   Object.entries(machineInterfaceVars).forEach(([key, value]) => {
-    const displayValue = value !== undefined 
-      ? (key.includes('URL') || key.includes('TOKEN') 
-         ? value.replace(/\/\/[^:]*:[^@]*@/, '//***:***@') 
-         : value)
-      : '<NOT SET>';
+    const displayValue =
+      value !== undefined
+        ? key.includes('URL') || key.includes('TOKEN')
+          ? value.replace(/\/\/[^:]*:[^@]*@/, '//***:***@')
+          : value
+        : '<NOT SET>';
     logger.info(`  - ${key}: ${displayValue}`);
   });
 
@@ -154,9 +161,12 @@ function logEnvironmentVariables() {
 
   logger.info('🔐 Secret Variables (masked):');
   Object.entries(secretVars).forEach(([key, value]) => {
-    const displayValue = value !== undefined 
-      ? (value.length > 8 ? `${value.slice(0, 4)}***${value.slice(-4)}` : '***MASKED***')
-      : '<NOT SET>';
+    const displayValue =
+      value !== undefined
+        ? value.length > 8
+          ? `${value.slice(0, 4)}***${value.slice(-4)}`
+          : '***MASKED***'
+        : '<NOT SET>';
     logger.info(`  - ${key}: ${displayValue}`);
   });
 
@@ -216,18 +226,19 @@ async function main() {
   // This is critical for diagnosing deployment problems
   logger.info(`🚀 Worker starting - timestamp: ${new Date().toISOString()}`);
   logger.info(`📋 Worker ID: ${WORKER_ID}`);
-  
+
   // Always log environment for production debugging
   logEnvironmentVariables();
 
   // CRITICAL: Log worker bundle source for CI/CD verification
   const workerBundleMode = process.env.WORKER_BUNDLE_MODE || 'unknown';
-  const bundleSource = workerBundleMode === 'local' 
-    ? '🎯 WORKER BUNDLE: LOCAL (bundled in container)' 
-    : workerBundleMode === 'remote'
-    ? '📥 WORKER BUNDLE: REMOTE (downloaded from GitHub releases)'
-    : `⚠️  WORKER BUNDLE: UNKNOWN MODE (${workerBundleMode})`;
-  
+  const bundleSource =
+    workerBundleMode === 'local'
+      ? '🎯 WORKER BUNDLE: LOCAL (bundled in container)'
+      : workerBundleMode === 'remote'
+        ? '📥 WORKER BUNDLE: REMOTE (downloaded from GitHub releases)'
+        : `⚠️  WORKER BUNDLE: UNKNOWN MODE (${workerBundleMode})`;
+
   logger.info('='.repeat(80));
   logger.info(bundleSource);
   logger.info(`🔍 Bundle Mode Environment: WORKER_BUNDLE_MODE=${workerBundleMode}`);

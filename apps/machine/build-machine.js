@@ -36,10 +36,21 @@ async function main() {
     // Parse command - handle build:push as single command
     const args = process.argv.slice(2);
     const command = args[0] === 'build:push' ? 'build:push' : 'build';
-    const remainingArgs = args[0] === 'build:push' ? args.slice(1) : args;
+    let remainingArgs = args[0] === 'build:push' ? args.slice(1) : args;
     
-    // Get profile from args (first non-command argument)
+    // Check for --no-cache flag and separate it from profile args
+    const noCacheFlag = remainingArgs.includes('--no-cache');
+    if (noCacheFlag) {
+      remainingArgs = remainingArgs.filter(arg => arg !== '--no-cache');
+    }
+    
+    // Get profile from args (first non-flag argument)
     const profile = remainingArgs[0];
+    
+    // Add --no-cache to remaining args if it was present
+    if (noCacheFlag) {
+      remainingArgs.push('--no-cache');
+    }
     
     console.log('🔧 Step 1: Preparing Docker build files...');
     await runCommand('node', ['prepare-docker-build.js'], __dirname, {

@@ -13,6 +13,7 @@ import {
   logger,
   ImageUrlConverter,
   imageUrlToMimeAndData,
+  smartTruncateObject,
 } from '@emp/core';
 import { AssetSaver } from './asset-saver.js';
 import { RestSyncConnector, RestSyncConnectorConfig } from './rest-sync-connector.js';
@@ -73,22 +74,17 @@ export class GeminiConnector extends RestSyncConnector {
       throw new Error('GEMINI_API_KEY environment variable is required');
     }
 
-    // Use custom URL if provided, otherwise default to Google's API
+    // Use your environment variable directly
     const fullUrl = process.env.GEMINI_NANO_BANANA_URL;
-    let baseUrl: string;
-    let endpoint: string;
-    
-    if (fullUrl && fullUrl.includes('/v1beta/models/')) {
-      // Full URL provided - extract base URL and endpoint
-      const urlParts = fullUrl.split('/v1beta/models/');
-      baseUrl = urlParts[0];
-      endpoint = '/v1beta/models/' + urlParts[1];
-    } else {
-      // Only base URL provided or use default
-      baseUrl = fullUrl || 'https://generativelanguage.googleapis.com';
-      endpoint = '/v1beta/models/imagen-3.0-generate-001:generateImage';
+    if (!fullUrl) {
+      throw new Error('GEMINI_NANO_BANANA_URL environment variable is required');
     }
-    
+
+    // Split the URL to get base and endpoint
+    const urlParts = fullUrl.split('/v1beta/models/');
+    const baseUrl = urlParts[0];
+    const endpoint = '/v1beta/models/' + urlParts[1];
+
     // Create config for Gemini
     const config: RestSyncConnectorConfig = {
       connector_id: connectorId,
@@ -111,15 +107,12 @@ export class GeminiConnector extends RestSyncConnector {
     };
 
     super(connectorId, config);
-    
+
     // Store the endpoint for later use (after super() call)
     this.geminiEndpoint = endpoint;
   }
 
-  async processJob(
-    jobData: JobData,
-    progressCallback: ProgressCallback
-  ): Promise<JobResult> {
+  async processJob(jobData: JobData, progressCallback: ProgressCallback): Promise<JobResult> {
     try {
       await progressCallback({
         job_id: jobData.id,
@@ -130,7 +123,7 @@ export class GeminiConnector extends RestSyncConnector {
 
       // Preprocess payload - convert image URLs to base64
       const processedPayload = await this.preprocessPayload(jobData.payload);
-      
+
       await progressCallback({
         job_id: jobData.id,
         progress: 20,
@@ -140,6 +133,17 @@ export class GeminiConnector extends RestSyncConnector {
 
       // Build the API endpoint and request
       const geminiRequest = this.buildGeminiRequest(processedPayload);
+
+      // Log the exact request being sent to Gemini API
+      logger.info('🚀 Sending request to Gemini API:', {
+        connector_id: this.connector_id,
+        job_id: jobData.id,
+        endpoint: this.geminiEndpoint,
+        method: 'POST',
+        base_url: this.config.base_url,
+        full_url: `${this.config.base_url}${this.geminiEndpoint}`,
+        request_payload: `[TRUNCATION-APPLIED-GEMINI-REQUEST] ${JSON.stringify(smartTruncateObject(geminiRequest), null, 2)}`,
+      });
 
       // Use parent connector to make the actual HTTP request
       const modifiedJobData = {
@@ -160,9 +164,9 @@ export class GeminiConnector extends RestSyncConnector {
       });
 
       // Execute the request via parent connector
-      const result = await super.processJob(modifiedJobData, async (progressData) => {
+      const result = await super.processJob(modifiedJobData, async progressData => {
         // Map base connector progress to our progress range (30-80)
-        const mappedProgress = 30 + (progressData.progress * 0.5);
+        const mappedProgress = 30 + progressData.progress * 0.5;
         await progressCallback({
           job_id: jobData.id,
           progress: mappedProgress,
@@ -205,7 +209,6 @@ export class GeminiConnector extends RestSyncConnector {
           api_version: 'v1beta',
         },
       };
-
     } catch (error) {
       logger.error('Gemini connector error:', {
         connector_id: this.connector_id,
@@ -237,7 +240,9 @@ export class GeminiConnector extends RestSyncConnector {
   /**
    * Convert image_url to Gemini format using the generic function
    */
-  private async convertImageUrlToGeminiFormat(imageUrl: string): Promise<{ mime_type: string; data: string }> {
+  private async convertImageUrlToGeminiFormat(
+    imageUrl: string
+  ): Promise<{ mime_type: string; data: string }> {
     return await imageUrlToMimeAndData(imageUrl, {
       maxSizeBytes: 20 * 1024 * 1024, // 20MB limit for Gemini
       timeout: 30000, // 30 second timeout
@@ -276,18 +281,17 @@ export class GeminiConnector extends RestSyncConnector {
               });
 
               const converted = await this.convertImageUrlToGeminiFormat(inlineData.image_url);
-              
+
               // Replace inline_data.image_url with inline_data.{mime_type, data}
               processed[key] = {
                 mime_type: converted.mime_type,
-                data: converted.data
+                data: converted.data,
               };
-              
+
               logger.info(`✅ Successfully converted inline_data.image_url`, {
                 connector_id: this.connector_id,
                 mime_type: converted.mime_type,
               });
-
             } catch (error) {
               logger.error(`❌ Failed to convert inline_data.image_url: ${error.message}`);
               throw new Error(`Image conversion failed: ${error.message}`);
@@ -313,11 +317,67 @@ export class GeminiConnector extends RestSyncConnector {
   }
 
   /**
-   * Build the request payload for Gemini API - just pass through
+   * Build the request payload for Gemini API in the correct format
    */
   private buildGeminiRequest(payload: any): any {
-    // Just pass through the payload as-is - no validation or reformatting
-    return payload;
+    // Transform the payload into Gemini's expected format
+    const geminiRequest: any = {
+      contents: [],
+    };
+
+    // Extract text prompt from various possible locations
+    let textPrompt = '';
+    if (payload.prompt) {
+      textPrompt = payload.prompt;
+    } else if (payload.text) {
+      textPrompt = payload.text;
+    } else if (
+      payload.contents &&
+      Array.isArray(payload.contents) &&
+      payload.contents[0]?.parts?.[0]?.text
+    ) {
+      // Already in Gemini format, pass through
+      return payload;
+    } else if (typeof payload === 'string') {
+      textPrompt = payload;
+    } else {
+      // Fallback: stringify the payload as a prompt
+      textPrompt = JSON.stringify(payload);
+    }
+
+    // Build contents array with text part
+    const contentParts: any[] = [{ text: textPrompt }];
+
+    // Add any inline_data parts (images) that were processed
+    if (payload.contents && Array.isArray(payload.contents)) {
+      payload.contents.forEach((content: any) => {
+        if (content.parts) {
+          content.parts.forEach((part: any) => {
+            if (part.inline_data || part.inlineData) {
+              contentParts.push({
+                inlineData: part.inline_data || part.inlineData,
+              });
+            }
+          });
+        }
+      });
+    }
+
+    geminiRequest.contents = [
+      {
+        parts: contentParts,
+      },
+    ];
+
+    logger.info('🔧 Built Gemini request:', {
+      connector_id: this.connector_id,
+      text_prompt_length: textPrompt.length,
+      parts_count: contentParts.length,
+      has_inline_data: contentParts.some(part => part.inlineData),
+      request_structure: `[TRUNCATION-APPLIED-GEMINI-BUILD] ${JSON.stringify(smartTruncateObject(geminiRequest), null, 2)}`,
+    });
+
+    return geminiRequest;
   }
 
   /**
@@ -329,7 +389,9 @@ export class GeminiConnector extends RestSyncConnector {
   ): Promise<any> {
     // Handle API errors
     if (geminiResponse.error) {
-      throw new Error(`Gemini API error: ${geminiResponse.error.message} (${geminiResponse.error.code})`);
+      throw new Error(
+        `Gemini API error: ${geminiResponse.error.message} (${geminiResponse.error.code})`
+      );
     }
 
     let imageBase64Data = null;
@@ -354,7 +416,49 @@ export class GeminiConnector extends RestSyncConnector {
     }
 
     if (!imageBase64Data) {
-      throw new Error('No images returned from Gemini API');
+      // Log detailed response structure for debugging when no images are returned
+      logger.error('❌ No images returned from Gemini API. Analyzing response structure:', {
+        connector_id: this.connector_id,
+        job_id: jobData.id,
+        has_candidates: !!(geminiResponse.candidates && geminiResponse.candidates.length > 0),
+        candidates_count: geminiResponse.candidates?.length || 0,
+        has_images_legacy: !!(geminiResponse.images && geminiResponse.images.length > 0),
+        images_count: geminiResponse.images?.length || 0,
+        has_error: !!geminiResponse.error,
+      });
+
+      // Log each candidate's parts structure in detail
+      if (geminiResponse.candidates) {
+        geminiResponse.candidates.forEach((candidate, candidateIndex) => {
+          logger.error(`Candidate ${candidateIndex} analysis:`, {
+            has_content: !!candidate.content,
+            has_parts: !!(candidate.content && candidate.content.parts),
+            parts_count: candidate.content?.parts?.length || 0,
+            finish_reason: candidate.finishReason,
+          });
+
+          if (candidate.content && candidate.content.parts) {
+            candidate.content.parts.forEach((part, partIndex) => {
+              logger.error(`  Part ${partIndex}:`, {
+                has_text: !!part.text,
+                text_preview: part.text ? part.text.substring(0, 100) + '...' : null,
+                has_inline_data: !!part.inlineData,
+                inline_data_keys: part.inlineData ? Object.keys(part.inlineData) : [],
+                part_keys: Object.keys(part),
+              });
+            });
+          }
+        });
+      }
+
+      // Log the response with smart truncation (preserves text, truncates base64)
+      const smartTruncatedResponse = smartTruncateObject(geminiResponse, 5000);
+      logger.error(
+        `[TRUNCATION-APPLIED-GEMINI-RESPONSE] Full raw response (smart truncation): ${JSON.stringify(smartTruncatedResponse)}`
+      );
+      throw new Error(
+        `No images returned from Gemini API. See logs for detailed response analysis.`
+      );
     }
 
     // Try to save image to cloud storage (identical to OpenAI pattern)
@@ -372,13 +476,25 @@ export class GeminiConnector extends RestSyncConnector {
       logger.error(`🖼️ FAILED to save Gemini image to cloud storage: ${error.message}`);
     }
 
-    // Return identical format to OpenAI connector
-    return {
+    // Return result optimized for webhooks - exclude base64 when image is saved to prevent payload size issues
+    const result: any = {
       content_type: 'image',
-      image_base64: imageBase64Data,
       image_url: savedImageUrl,
       raw_response: geminiResponse,
     };
+
+    // Only include base64 data if image couldn't be saved to cloud storage
+    // This prevents webhook payload size issues while maintaining fallback compatibility
+    if (!savedImageUrl) {
+      logger.warn(
+        `🖼️ Including base64 data in result since cloud storage failed for job ${jobData.id}`
+      );
+      result.image_base64 = imageBase64Data;
+    } else {
+      logger.info(`🖼️ Excluding base64 data from result - image available at: ${savedImageUrl}`);
+    }
+
+    return result;
   }
 
   async validateServiceSupport(): Promise<ServiceSupportValidation> {
@@ -395,12 +511,12 @@ export class GeminiConnector extends RestSyncConnector {
 
   async canProcessJob(jobData: JobData): Promise<boolean> {
     // Check if this is a Gemini job
-    return (jobData.type === this.service_type || jobData.type === 'gem_nano_banana');
+    return jobData.type === this.service_type || jobData.type === 'gem_nano_banana';
   }
 
   async getServiceInfo(): Promise<ServiceInfo> {
     const baseInfo = await super.getServiceInfo();
-    
+
     return {
       ...baseInfo,
       service_name: 'Google Gemini Image Generation',
@@ -410,7 +526,7 @@ export class GeminiConnector extends RestSyncConnector {
         features: [
           ...baseInfo.capabilities.features,
           'image_generation',
-          'text_to_image', 
+          'text_to_image',
           'style_reference',
           'aspect_ratio_control',
           'safety_filtering',

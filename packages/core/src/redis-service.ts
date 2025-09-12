@@ -8,6 +8,7 @@ import { Job, JobStatus, JobProgress, JobResult, JobFilter, JobSearchResult } fr
 import { WorkerCapabilities, WorkerInfo, WorkerFilter, WorkerStatus } from './types/worker.js';
 import { EventBroadcaster } from './services/event-broadcaster.js';
 import { logger } from './utils/logger.js';
+import { smartTruncateObject } from './utils/payload-truncation.js';
 import { RedisOperations } from './utils/redis-operations.js';
 
 export class RedisService implements RedisServiceInterface {
@@ -305,7 +306,9 @@ export class RedisService implements RedisServiceInterface {
       }
 
       // Store result with TTL (24 hours like Python version)
-      await this.redis.hset('jobs:completed', jobId, JSON.stringify(result));
+      // Apply truncation to avoid storing massive base64 data in Redis (words >25 chars get truncated)
+      const truncatedResult = smartTruncateObject(result);
+      await this.redis.hset('jobs:completed', jobId, JSON.stringify(truncatedResult));
       await this.redis.expire('jobs:completed', 24 * 60 * 60);
 
       // Update processing time
@@ -314,9 +317,10 @@ export class RedisService implements RedisServiceInterface {
       }
 
       // Create completion message with workflow fields for webhook tracking
+      // Use the same truncated result for publishing (avoid massive base64 in Redis channels)
       const completionMessage = {
         job_id: jobId,
-        result,
+        result: truncatedResult,
         completed_at: new Date().toISOString(),
         // Include workflow fields for webhook service workflow tracking
         workflow_id: job.workflow_id,

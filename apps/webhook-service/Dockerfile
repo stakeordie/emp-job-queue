@@ -45,7 +45,7 @@ FROM ubuntu:22.04
     # Copy OTEL collector configuration template
     COPY conf/otel-collector-webhook.yaml.template /webhook-server/otel/otel-collector-webhook.yaml.template
 
-    # Copy workspace packages first (for better layer caching)
+    # Copy workspace packages for dependencies (cached for install, fresh copy later)
     COPY .workspace-packages/ /webhook-server/.workspace-packages/
 
     # Copy package files and install dependencies during build (matching machine pattern)
@@ -54,6 +54,10 @@ FROM ubuntu:22.04
     
     # Install dependencies during Docker build (not at runtime)
     RUN pnpm install --prod --no-frozen-lockfile --ignore-workspace
+
+    # Copy workspace packages again (always fresh - no caching)
+    RUN date
+    COPY .workspace-packages/ /webhook-server/.workspace-packages/
 
     # Copy application source
     COPY dist/ /webhook-server/dist/

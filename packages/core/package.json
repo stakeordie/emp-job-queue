@@ -17,7 +17,7 @@
     }
   },
   "scripts": {
-    "build": "tsc",
+    "build": "tsc && node ../../scripts/generate-build-metadata.js @emp/core .",
     "dev": "tsc --watch",
     "test": "vitest run",
     "test:watch": "vitest",

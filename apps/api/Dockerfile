@@ -26,7 +26,7 @@ FROM ubuntu:22.04
     WORKDIR /api-server
     # Directories already created by install-telemetry-stack.sh
 
-    # Copy workspace packages for dependencies
+    # Copy workspace packages for dependencies (cached for install, fresh copy later)
     COPY .workspace-packages/ ./.workspace-packages/
 
     # Copy package files and install dependencies during build (matching machine pattern)
@@ -35,6 +35,10 @@ FROM ubuntu:22.04
     
     # Install dependencies during Docker build (not at runtime)
     RUN pnpm install --prod --no-frozen-lockfile --ignore-workspace
+
+    # Copy workspace packages again (always fresh - no caching)
+    RUN date
+    COPY .workspace-packages/ ./.workspace-packages/
 
     # Copy application source
     COPY src/ ./src/

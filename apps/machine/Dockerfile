@@ -70,6 +70,10 @@ FROM ai-base AS base-machine
     WORKDIR /service-manager
     RUN pnpm install --prod --no-frozen-lockfile --ignore-workspace
 
+    # Copy workspace packages again (always fresh - no caching)
+    RUN date
+    COPY .workspace-packages/ /service-manager/.workspace-packages/
+
     # Version injection will be moved to end to preserve cache
 
     # Copy all application files FIRST

@@ -38,8 +38,8 @@ export class WebhookServer {
       lazyConnect: true,
       keepAlive: 30000,
       connectTimeout: 60000,
-      commandTimeout: 5000,
-      maxRetriesPerRequest: 3,
+      commandTimeout: 15000, // Increased from 5s to 15s for Redis stability issues
+      maxRetriesPerRequest: 5, // Increased retries for unstable Redis
       autoResubscribe: true,
       autoResendUnfulfilledCommands: true,
     });

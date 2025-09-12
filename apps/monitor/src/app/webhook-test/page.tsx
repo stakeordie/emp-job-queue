@@ -8,7 +8,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { RefreshCw, Plus, Trash2, CheckCircle2, XCircle, Play, Copy, ExternalLink, Clock, AlertCircle, Info, Edit, ChevronDown, ChevronUp } from "lucide-react";
+import { RefreshCw, Plus, Trash2, CheckCircle2, XCircle, Play, Copy, ExternalLink, Clock, AlertCircle, Info, Edit, ChevronDown, ChevronUp, Monitor } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { ConnectionHeader } from "@/components/ConnectionHeader";
 import { JobSubmissionPanel } from "@/components/JobSubmissionPanel";
@@ -121,6 +121,7 @@ export default function WebhookManagementPage() {
   const [stats, setStats] = useState<WebhookStats | null>(null);
   const [loading, setLoading] = useState(false);
   const [showCreateForm, setShowCreateForm] = useState(false);
+  const [activeTab, setActiveTab] = useState("webhooks");
   const { toast } = useToast();
 
   // Create webhook form state
@@ -445,6 +446,26 @@ export default function WebhookManagementPage() {
     return statusTexts[status] || '';
   };
 
+  const isLocalTestReceiver = (url: string) => {
+    try {
+      const urlObj = new URL(url);
+      // Check for local test receiver patterns
+      const localTestDomains = [
+        'qwebhook.emerge.pizza',
+        'localhost',
+        '127.0.0.1',
+        '0.0.0.0',
+      ];
+      
+      return localTestDomains.some(domain => 
+        urlObj.hostname === domain || 
+        urlObj.hostname.endsWith(`.${domain}`)
+      );
+    } catch {
+      return false;
+    }
+  };
+
   const inferEventType = (eventId: string): WebhookEventType => {
     // Try to infer event type from event ID patterns
     if (eventId.includes('test_wh')) return 'complete_job'; // Test webhooks
@@ -697,6 +718,55 @@ export default function WebhookManagementPage() {
     });
   };
 
+  const monitorWebhook = async (webhookUrl: string) => {
+    // Extract the receiver ID from the webhook URL
+    // For URLs like https://qwebhook.emerge.pizza/test-receivers/s567AbWfpxpIbO6o/webhook
+    const urlMatch = webhookUrl.match(/\/test-receivers\/([^\/]+)\/webhook/);
+    if (!urlMatch) {
+      toast({
+        title: "Error",
+        description: "Could not extract receiver ID from webhook URL",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    const receiverId = urlMatch[1];
+    
+    try {
+      // Try to fetch the receiver to see if it exists
+      const response = await fetch(`${WEBHOOK_SERVICE_URL}/test-receivers/${receiverId}/requests`);
+      if (response.ok) {
+        // Create a test receiver object from the webhook URL
+        const mockReceiver: WebhookTestReceiver = {
+          id: receiverId,
+          url: webhookUrl,
+          view_url: webhookUrl.replace('/webhook', ''),
+          created_at: Date.now(),
+          expires_at: Date.now() + (24 * 60 * 60 * 1000), // 24 hours from now
+          expires_in_hours: 24,
+        };
+        
+        setTestReceiver(mockReceiver);
+        setActiveTab('test-receiver');
+        
+        toast({
+          title: "Monitoring Started",
+          description: `Now monitoring webhook: ${receiverId}`,
+        });
+      } else {
+        throw new Error('Test receiver not found or expired');
+      }
+    } catch (error) {
+      console.error('Failed to monitor webhook:', error);
+      toast({
+        title: "Error",
+        description: error instanceof Error ? error.message : "Failed to start monitoring",
+        variant: "destructive",
+      });
+    }
+  };
+
   // Auto-refresh data
   // Validate if a receiver still exists on the server
   const validateTestReceiver = async (receiver: WebhookTestReceiver) => {
@@ -827,7 +897,7 @@ export default function WebhookManagementPage() {
             </div>
           )}
 
-          <Tabs defaultValue="webhooks" className="w-full">
+          <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
             <TabsList className="grid w-full grid-cols-3">
               <TabsTrigger value="webhooks">Registered Webhooks</TabsTrigger>
               <TabsTrigger value="deliveries">Recent Deliveries</TabsTrigger>
@@ -886,6 +956,17 @@ export default function WebhookManagementPage() {
                               <span className="font-mono text-sm">{webhook.url}</span>
                             </div>
                             <div className="flex items-center gap-2">
+                              {isLocalTestReceiver(webhook.url) && (
+                                <Button
+                                  variant="outline"
+                                  size="sm"
+                                  onClick={() => monitorWebhook(webhook.url)}
+                                  className="text-blue-600 border-blue-200 hover:bg-blue-50"
+                                >
+                                  <Monitor className="h-3 w-3 mr-1" />
+                                  Monitor
+                                </Button>
+                              )}
                               <Button
                                 variant="outline"
                                 size="sm"

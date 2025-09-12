@@ -119,7 +119,11 @@ export class StreamingMixin {
         responseSize,
       };
     } catch (error) {
-      logger.error(`Stream processing failed for job ${jobId}:`, error);
+      const sanitizedError = {
+        message: error instanceof Error ? error.message : String(error),
+        name: error instanceof Error ? error.name : 'UnknownError',
+      };
+      logger.error(`Stream processing failed for job ${jobId}:`, sanitizedError);
 
       // Report error
       if (progressCallback) {

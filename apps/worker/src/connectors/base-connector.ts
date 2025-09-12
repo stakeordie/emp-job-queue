@@ -302,7 +302,11 @@ ${Object.keys(process.env).filter(k => k.includes('HUB') || k.includes('REDIS'))
         } status: ${statusReport.status}${errorMessage ? ` (${errorMessage})` : ''}`
       );
     } catch (error) {
-      logger.error(`Failed to report status for connector ${this.connector_id}:`, error);
+      const sanitizedError = {
+        message: error instanceof Error ? error.message : String(error),
+        name: error instanceof Error ? error.name : 'UnknownError',
+      };
+      logger.error(`Failed to report status for connector ${this.connector_id}:`, sanitizedError);
     }
   }
 

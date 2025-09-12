@@ -236,7 +236,15 @@ export class RestSyncConnector implements ConnectorInterface {
       };
     } catch (error) {
       const processingTime = Date.now() - startTime;
-      logger.error(`REST Sync job ${jobData.id} failed:`, error);
+      // Log sanitized error without axios connection details
+      const sanitizedError = {
+        message: error instanceof Error ? error.message : String(error),
+        name: error instanceof Error ? error.name : 'UnknownError',
+        status: (error as any)?.status || (error as any)?.response?.status,
+        statusText: (error as any)?.statusText || (error as any)?.response?.statusText,
+        code: (error as any)?.code,
+      };
+      logger.error(`REST Sync job ${jobData.id} failed:`, sanitizedError);
 
       return {
         success: false,

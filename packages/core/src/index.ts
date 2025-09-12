@@ -12,6 +12,10 @@ export * from './connection-manager.js';
 // Utilities
 export * from './utils/index.js';
 
+// Build Information
+export * from './utils/build-info.js';
+export * from './utils/build-info-endpoint.js';
+
 // Redis Functions
 export * from './redis-functions/installer.js';
 // export * from './redis-functions/manager.js'; // TODO: Implement manager

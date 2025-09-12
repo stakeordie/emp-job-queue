@@ -6,7 +6,7 @@
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
   "scripts": {
-    "build": "tsc",
+    "build": "tsc && node ../../scripts/generate-build-metadata.js @emp/telemetry .",
     "clean": "rm -rf dist",
     "dev": "tsc --watch",
     "test": "vitest run",

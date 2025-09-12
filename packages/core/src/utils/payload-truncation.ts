@@ -45,19 +45,60 @@ function isBinaryLike(value: string): boolean {
 }
 
 /**
+ * Detects if a string is human-readable text (for preserving in logs)
+ */
+function isReadableText(value: string): boolean {
+  // If it's very short, consider it readable
+  if (value.length < 50) return true;
+  
+  // Check for common readable text patterns
+  const hasLetters = /[a-zA-Z]/.test(value);
+  const hasSpaces = /\s/.test(value);
+  const hasPunctuation = /[.,!?;:]/.test(value);
+  
+  // If it has letters and spaces/punctuation, likely readable
+  if (hasLetters && (hasSpaces || hasPunctuation)) return true;
+  
+  // Check for common English words
+  const commonWords = ['the', 'and', 'for', 'are', 'but', 'not', 'you', 'all', 'can', 'had', 'her', 'was', 'one', 'our', 'out', 'day', 'get', 'has', 'him', 'his', 'how', 'its', 'may', 'new', 'now', 'old', 'see', 'two', 'way', 'who', 'boy', 'did', 'man', 'she', 'use', 'your'];
+  const lowerValue = value.toLowerCase();
+  const hasCommonWords = commonWords.some(word => lowerValue.includes(word));
+  
+  return hasCommonWords;
+}
+
+/**
  * Smart truncation of a single value
  */
 function truncateValue(value: any, options: TruncationOptions): any {
   if (typeof value === 'string') {
-    if (isBinaryLike(value) && value.length > options.maxValueSize) {
-      const start = value.substring(0, 20);
-      const end = value.substring(value.length - 20);
-      return `${start}${options.truncateMarker}(${value.length} chars)...${end}`;
+    // Check if string contains any "word" (continuous chars without spaces or backslashes) > 25 chars
+    // Split on whitespace AND backslashes since backslashes should be treated as word separators
+    const words = value.split(/[\s\\]+/);
+    let hasLongWord = false;
+    
+    for (const word of words) {
+      if (word.length > 25) {
+        hasLongWord = true;
+        break;
+      }
     }
     
-    if (value.length > options.maxValueSize) { // Truncate individual values > threshold
-      return `${value.substring(0, options.maxValueSize)}${options.truncateMarker}(${value.length} chars)`;
+    // If it has long words, truncate those words
+    if (hasLongWord) {
+      const processedWords = words.map(word => {
+        if (word.length > 25) {
+          const start = word.substring(0, 12);
+          const end = word.substring(word.length - 8);
+          return `${start}${options.truncateMarker}(${word.length} chars)...${end}`;
+        }
+        return word;
+      });
+      return processedWords.join(' ');
     }
+    
+    // All other strings (normal readable text) - preserve completely
+    return value;
   }
   
   return value;

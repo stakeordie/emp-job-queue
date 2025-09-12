@@ -10,7 +10,7 @@
 
 import axios, { AxiosInstance, AxiosRequestConfig, AxiosResponse, AxiosError } from 'axios';
 import { BaseConnector, ConnectorConfig } from '../base-connector.js';
-import { JobData, JobResult, ProgressCallback, ServiceInfo, logger, ProcessingInstrumentation, sendTrace, SpanContext } from '@emp/core';
+import { JobData, JobResult, ProgressCallback, ServiceInfo, logger, ProcessingInstrumentation, sendTrace, SpanContext, smartTruncateObject } from '@emp/core';
 
 // HTTP-specific configuration - contains base config fields
 export interface HTTPConnectorConfig {
@@ -300,6 +300,17 @@ export abstract class HTTPConnector extends BaseConnector {
     const httpError = new Error(error.message) as HTTPError;
     httpError.statusCode = error.response?.status;
 
+    // 🚨 GOOGLE API ERROR DEBUGGING: Log the exact error response
+    if (error.response) {
+      console.log(`🚨🚨🚨 [GOOGLE-API-ERROR-DEBUG] HTTP ${error.response.status} Response:`);
+      console.log(`🚨 URL: ${error.config?.url}`);
+      console.log(`🚨 Method: ${error.config?.method?.toUpperCase()}`);
+      console.log(`🚨 Status: ${error.response.status} ${error.response.statusText}`);
+      console.log(`🚨 Headers:`, JSON.stringify(error.response.headers, null, 2));
+      console.log(`🚨 Response Body:`, JSON.stringify(error.response.data, null, 2));
+      console.log(`🚨🚨🚨\n`);
+    }
+
     if (!error.response) {
       // Network/connection errors
       httpError.category = HTTPErrorCategory.NETWORK_ERROR;
@@ -475,10 +486,11 @@ export abstract class HTTPConnector extends BaseConnector {
       console.log(`🚨 URL: ${fullURL}`);
       console.log(`🚨 METHOD: ${requestConfig.method?.toUpperCase() || 'POST'}`);
       console.log(`🚨 REQUEST PAYLOAD SIZE: ${requestPayloadSize} bytes`);
-      console.log(`🚨 REQUEST PAYLOAD:`);
-      console.log(requestPayloadString.length > 1000 ? 
-        requestPayloadString.substring(0, 1000) + '\n... [TRUNCATED - ' + (requestPayloadSize - 1000) + ' more bytes]' : 
-        requestPayloadString);
+      console.log(`🚨 REQUEST PAYLOAD (SMART TRUNCATED):`);
+      // Use smart truncation to handle base64 data properly (words >25 chars get truncated)
+      const truncatedRequest = smartTruncateObject(requestConfig.data || requestPayloadString);
+      const requestOutput = typeof truncatedRequest === 'string' ? truncatedRequest : JSON.stringify(truncatedRequest);
+      console.log(`[TRUNCATION-APPLIED-REQUEST] ${requestOutput}`);
       console.log(`🚨🚨🚨\n`);
 
       // Send OTEL trace for HTTP request start with parent context
@@ -490,7 +502,7 @@ export abstract class HTTPConnector extends BaseConnector {
           requestSize: requestPayloadSize,
           timeout: this.httpConfig.request_timeout_ms || 30000,
           headers: undefined, // Headers are complex objects, skip for telemetry
-          payload: requestPayloadString.substring(0, 2000) // Truncate large payloads
+          payload: JSON.stringify(smartTruncateObject(requestConfig.data || requestPayloadString)).substring(0, 2000)
         }, parentSpan);
       } catch (traceError) {
         logger.debug('Failed to send HTTP request trace', { error: traceError.message });
@@ -514,10 +526,11 @@ export abstract class HTTPConnector extends BaseConnector {
         console.log(`🚨 STATUS: ${response.status}`);
         console.log(`🚨 DURATION: ${requestDurationMs}ms`);
         console.log(`🚨 RESPONSE PAYLOAD SIZE: ${responsePayloadSize} bytes`);
-        console.log(`🚨 RESPONSE PAYLOAD:`);
-        console.log(responsePayloadString.length > 1000 ? 
-          responsePayloadString.substring(0, 1000) + '\n... [TRUNCATED - ' + (responsePayloadSize - 1000) + ' more bytes]' : 
-          responsePayloadString);
+        console.log(`🚨 RESPONSE PAYLOAD (SMART TRUNCATED):`);
+        // Use smart truncation to handle base64 data properly (words >25 chars get truncated)
+        const truncatedResponse = smartTruncateObject(response.data || responsePayloadString);
+        const responseOutput = typeof truncatedResponse === 'string' ? truncatedResponse : JSON.stringify(truncatedResponse);
+        console.log(`[TRUNCATION-APPLIED-RESPONSE] ${responseOutput}`);
         console.log(`🚨🚨🚨\n`);
         
         await sendTrace('connector.http_response', {
@@ -530,8 +543,8 @@ export abstract class HTTPConnector extends BaseConnector {
           'http.status_code': response.status.toString(),
           'http.request_size': requestPayloadSize.toString(),
           'http.response_size': responsePayloadSize.toString(),
-          'http.request.payload': requestPayloadString.substring(0, 2000), // Truncate large payloads
-          'http.response.payload': responsePayloadString.substring(0, 2000), // Truncate large payloads
+          'http.request.payload': `[TELEMETRY-TRUNCATED] ${JSON.stringify(smartTruncateObject(requestConfig.data || requestPayloadString)).substring(0, 2000)}`,
+          'http.response.payload': `[TELEMETRY-TRUNCATED] ${JSON.stringify(smartTruncateObject(response.data || responsePayloadString)).substring(0, 2000)}`,
           'request.payload.size': requestPayloadSize.toString(),
           'response.payload.size': responsePayloadSize.toString(),
           'operation.success': (response.status >= 200 && response.status < 300).toString(),

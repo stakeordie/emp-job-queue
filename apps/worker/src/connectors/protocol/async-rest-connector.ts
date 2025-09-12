@@ -396,11 +396,11 @@ export abstract class AsyncRESTConnector extends BaseConnector {
             
             // Add OpenAI response data to error for telemetry
             if (this.lastPollingResponse) {
-              (completionError as any).openaiResponseData = JSON.stringify(this.lastPollingResponse);
+              (completionError as any).openaiResponseData = JSON.stringify(smartTruncateObject(this.lastPollingResponse));
               logger.error(`📡 Job completion error with OpenAI response data:`, {
                 error: pollingResult.error,
                 asyncJobId: asyncJobId,
-                openaiResponse: this.lastPollingResponse
+                openaiResponse: `[SMART-TRUNCATED] ${JSON.stringify(smartTruncateObject(this.lastPollingResponse))}`
               });
             }
             
