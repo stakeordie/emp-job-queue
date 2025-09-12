@@ -5,7 +5,8 @@
       "Bash(docker exec:*)",
       "Bash(pnpm build:*)",
       "Read(//Users/the_dusky/code/emprops/emprops-open-api/**)",
-      "Bash(pnpm typecheck:*)"
+      "Bash(pnpm typecheck:*)",
+      "Bash(redis-cli:*)"
     ],
     "deny": [],
     "ask": []
