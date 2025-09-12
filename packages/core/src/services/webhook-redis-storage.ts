@@ -7,6 +7,7 @@
 
 import { Redis } from 'ioredis';
 import { logger } from '../utils/logger.js';
+import { smartTruncateObject } from '../utils/payload-truncation.js';
 import { WebhookEndpoint, WebhookDeliveryAttempt } from './webhook-notification-service.js';
 
 export interface WebhookDeliveryStats {

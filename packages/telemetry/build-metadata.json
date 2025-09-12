@@ -1,17 +1,17 @@
 {
   "package_name": "@emp/telemetry",
-  "build_timestamp": "2025-09-12T01:18:10.062Z",
-  "build_timestamp_unix": 1757639890,
-  "build_date_readable": "9/11/2025, 9:18:10 PM",
+  "build_timestamp": "2025-09-12T03:08:58.071Z",
+  "build_timestamp_unix": 1757646538,
+  "build_date_readable": "9/11/2025, 11:08:58 PM",
   "node_version": "v24.1.0",
   "platform": "darwin",
   "arch": "arm64",
   "git": {
-    "hash": "137146dcdc755c0fdc2b4bd3ed8279cee8148f18",
-    "hash_short": "137146d",
+    "hash": "652173a595cab63e35d92b4a19327d5f45e5f0e9",
+    "hash_short": "652173a",
     "branch": "master",
-    "commit_date": "2025-09-11 12:06:09 -0400",
-    "commit_message": "fixed redis delay issue"
+    "commit_date": "2025-09-11 22:00:02 -0400",
+    "commit_message": "fix(logging): comprehensive base64 truncation and Google API error debugging"
   },
   "builder": {
     "user": "the_dusky",

@@ -18,6 +18,7 @@ import {
   JobAssignedEvent,
   JobStatusChangedEvent,
   JobProgressEvent,
+  smartTruncateObject,
   JobCompletedEvent,
   JobFailedEvent,
   WorkerStatusChangedEvent,
@@ -3725,13 +3726,15 @@ export class LightweightAPIServer {
         logger.info(`🖼️ HAS_OUTPUTS: ${!!workflowData.data?.data?.outputs}`);
         logger.info(`📦 OUTPUT_COUNT: ${workflowData.data?.data?.outputs?.length || 0}`);
         logger.info(`✅ COMPLETED_AT: ${workflowData.data?.completed_at || 'NOT_SET'}`);
-        logger.info(`🗂️ FULL_RESPONSE: ${JSON.stringify(workflowData, null, 2)}`);
+        // Apply smart truncation to prevent base64 floods in logs
+        logger.info(`🗂️ FULL_RESPONSE: ${JSON.stringify(smartTruncateObject(workflowData), null, 2)}`);
         logger.info(`🚨🚨🚨 END RESPONSE DATA 🚨🚨🚨`);
         
         if (workflowData.data?.status === 'completed') {
           logger.info(`✅ EMPROPS confirms workflow ${workflowId} is completed`);
           
-          // Publish workflow completion webhook event with full workflow details
+          // Publish workflow completion notification with metadata only (no outputs/results)
+          // Webhook service will query EmProps API directly if it needs full data
           await this.redis.publish('workflow_completed', JSON.stringify({
             workflow_id: workflowId,
             status: 'completed',
@@ -3739,7 +3742,7 @@ export class LightweightAPIServer {
             timestamp: Date.now(),
             verified: true,
             message: 'Workflow completed and verified with EMPROPS',
-            // Include full EMPROPS workflow data
+            // Include basic workflow metadata only
             workflow_details: {
               id: workflowData.data.id,
               name: workflowData.data.name,
@@ -3749,8 +3752,10 @@ export class LightweightAPIServer {
               created_at: workflowData.data.created_at,
               completed_at: workflowData.data.completed_at
             },
-            // Include outputs (image URLs, step results, etc.)
-            outputs: workflowData.data?.data?.outputs || []
+            // 🚨 CRITICAL: NO outputs included - webhook service should query EmProps API directly
+            // This prevents massive base64 data from accumulating in Redis
+            outputs_available: !!(workflowData.data?.data?.outputs?.length),
+            outputs_count: workflowData.data?.data?.outputs?.length || 0
           }));
           
           logger.info(`📤 Published workflow_completed webhook for ${workflowId}`);

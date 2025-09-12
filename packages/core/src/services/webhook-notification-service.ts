@@ -455,7 +455,7 @@ export class WebhookNotificationService extends EventEmitter {
     }
 
     for (const webhook of matchingWebhooks) {
-      const payload = this.createWebhookPayload(webhook, webhookEvent, event);
+      const payload = await this.createWebhookPayload(webhook, webhookEvent, event);
 
       // Only log for non-progress events to reduce noise
       if (event.type !== 'update_job_progress') {
@@ -882,6 +882,26 @@ export class WebhookNotificationService extends EventEmitter {
   }
 
   /**
+   * Fetch workflow outputs from EMPROPS API directly
+   */
+  private async fetchWorkflowOutputsFromEmprops(workflowId: string): Promise<any[] | null> {
+    try {
+      const workflowDetails = await this.fetchWorkflowDetails(workflowId);
+      
+      if (workflowDetails?.data?.data?.outputs) {
+        logger.info(`📦 [WEBHOOK] Successfully fetched ${workflowDetails.data.data.outputs.length} outputs from EmProps for workflow ${workflowId}`);
+        return workflowDetails.data.data.outputs;
+      } else {
+        logger.warn(`📦 [WEBHOOK] No outputs found in EmProps response for workflow ${workflowId}`);
+        return null;
+      }
+    } catch (error) {
+      logger.error(`❌ [WEBHOOK] Failed to fetch workflow outputs from EmProps API for workflow ${workflowId}: ${error.message}`);
+      throw error;
+    }
+  }
+
+  /**
    * Create workflow event data
    */
   private async createWorkflowEvent(
@@ -1230,12 +1250,12 @@ export class WebhookNotificationService extends EventEmitter {
   /**
    * Create webhook payload from event
    */
-  private createWebhookPayload(
+  private async createWebhookPayload(
     webhook: WebhookEndpoint,
     eventType: WebhookEventType,
     event: MonitorEvent
-  ): WebhookPayload {
-    const eventData = this.extractEventData(event);
+  ): Promise<WebhookPayload> {
+    const eventData = await this.extractEventData(event);
 
     // Extract trace context for webhook hierarchy (especially from job completion)
     const jobEvent = event as unknown as Record<string, unknown>;
@@ -1277,7 +1297,7 @@ export class WebhookNotificationService extends EventEmitter {
   /**
    * Extract relevant data from monitor event
    */
-  private extractEventData(event: MonitorEvent): WebhookEventData {
+  private async extractEventData(event: MonitorEvent): Promise<WebhookEventData> {
     const data: WebhookEventData = {};
 
     // Common job event properties
@@ -1365,21 +1385,31 @@ export class WebhookNotificationService extends EventEmitter {
         };
       }
 
-      // Include outputs (image URLs, step results, etc.)
-      if (jobEvent.outputs && Array.isArray(jobEvent.outputs)) {
-        data.outputs = jobEvent.outputs;
-        
-        // Log output details for debugging
-        logger.info(`✅ [WEBHOOK] Including workflow outputs in webhook: ${(jobEvent.outputs as any[]).length} outputs`);
-        (jobEvent.outputs as any[]).forEach((output: any, index: number) => {
-          if (output.steps) {
-            output.steps.forEach((step: any) => {
-              if (step?.nodeResponse?.src) {
-                logger.info(`   🖼️ Output ${index + 1} - ${step.nodeName}: ${step.nodeResponse.src}`);
+      // Fetch outputs from EmProps API directly instead of expecting them from Redis
+      if (jobEvent.outputs_available && jobEvent.workflow_id) {
+        try {
+          const workflowOutputs = await this.fetchWorkflowOutputsFromEmprops(jobEvent.workflow_id as string);
+          if (workflowOutputs) {
+            data.outputs = workflowOutputs;
+            logger.info(`✅ [WEBHOOK] Fetched ${workflowOutputs.length} outputs from EmProps API for workflow ${jobEvent.workflow_id}`);
+            
+            // Log output details for debugging
+            workflowOutputs.forEach((output: any, index: number) => {
+              if (output.steps) {
+                output.steps.forEach((step: any) => {
+                  if (step?.nodeResponse?.src) {
+                    logger.info(`   🖼️ Output ${index + 1} - ${step.nodeName}: ${step.nodeResponse.src}`);
+                  }
+                });
               }
             });
           }
-        });
+        } catch (error) {
+          logger.warn(`⚠️ [WEBHOOK] Failed to fetch workflow outputs from EmProps API: ${error.message}`);
+          // Continue with webhook without outputs rather than failing
+        }
+      } else if (jobEvent.outputs_count) {
+        logger.info(`📊 [WEBHOOK] Workflow has ${jobEvent.outputs_count} outputs available (not fetched for webhook)`);
       }
 
       logger.info(`🚀 [WEBHOOK] Final workflow completion webhook data:`, {
