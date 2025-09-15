@@ -12,6 +12,10 @@ bundled/
 */worker-bundled/
 *.tsbuildinfo
 
+# Build metadata (generated during build)
+**/build-metadata.json
+build-metadata.json
+
 # Environment files - ALL .env files are ignored (no exceptions needed)
 .env
 .env.*

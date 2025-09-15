@@ -3027,7 +3027,9 @@ export class LightweightAPIServer {
     do {
       const [newCursor, keys] = await this.redis.scan(cursor, 'MATCH', 'job:*', 'COUNT', 100);
       cursor = newCursor;
-      jobKeys.push(...keys);
+      // Filter out progress streams - only include actual job data keys
+      const jobDataKeys = keys.filter(key => !key.includes(':progress'));
+      jobKeys.push(...jobDataKeys);
     } while (cursor !== '0');
 
     logger.debug(`SCAN found ${jobKeys.length} job keys in ${Date.now() - startTime}ms`);
@@ -3298,7 +3300,9 @@ export class LightweightAPIServer {
       do {
         const [newCursor, keys] = await this.redis.scan(cursor, 'MATCH', 'job:*', 'COUNT', 100);
         cursor = newCursor;
-        jobKeys.push(...keys);
+        // Filter out progress streams - only include actual job data keys
+        const jobDataKeys = keys.filter(key => !key.includes(':progress'));
+        jobKeys.push(...jobDataKeys);
       } while (cursor !== '0');
 
       for (const jobKey of jobKeys) {
