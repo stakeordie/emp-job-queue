@@ -27,6 +27,7 @@ import { useMonitorStore } from "@/store"
 import { useState, useMemo } from "react"
 import type { Job } from "@/types/job"
 import { WorkerStatus, WorkerInfo } from "@/types/worker"
+import Link from "next/link"
 
 // Environment presets moved to ConnectionHeader
 
@@ -165,6 +166,24 @@ function Home({ isJobPanelOpen }: HomeProps) {
     }`}>
       {/* Auto-connect if NEXT_PUBLIC_WS_URL is set */}
       <AutoConnector />
+
+      {/* Navigation */}
+      <div className="flex items-center justify-between p-4 bg-muted/50 rounded-lg">
+        <h1 className="text-2xl font-bold">Job Queue Monitor</h1>
+        <div className="flex gap-2">
+          <Link href="/database">
+            <Button variant="outline" size="sm">
+              Database Connections
+            </Button>
+          </Link>
+          <Link href="/northstar">
+            <Button variant="outline" size="sm">
+              North Star
+            </Button>
+          </Link>
+        </div>
+      </div>
+
       {/* Job Statistics - Now in main monitor */}
       <div className="grid grid-cols-4 gap-4">
         <Card>

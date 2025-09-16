@@ -8,6 +8,7 @@ import { WebSocketServer, WebSocket } from 'ws';
 import Redis from 'ioredis';
 import { v4 as uuidv4 } from 'uuid';
 import { existsSync } from 'fs';
+import { Pool } from 'pg';
 import {
   Job,
   JobStatus,
@@ -92,6 +93,7 @@ export class LightweightAPIServer {
   private redisService: RedisService;
   private eventBroadcaster: EventBroadcaster;
   private config: LightweightAPIConfig;
+  private dbPool?: Pool;
 
   // Connection tracking
   private wsConnections = new Map<string, WebSocketConnection>();
@@ -128,6 +130,19 @@ export class LightweightAPIServer {
     this.redis = new Redis(config.redisUrl);
     this.redisService = new RedisService(config.redisUrl);
     this.progressSubscriber = new Redis(config.redisUrl);
+
+    // Database connection for monitoring (prefer PgBouncer for better pool visibility)
+    const monitoringUrl = process.env.PGBOUNCER_URL || process.env.DATABASE_URL;
+    if (monitoringUrl) {
+      this.dbPool = new Pool({
+        connectionString: monitoringUrl,
+        max: 2, // Minimal pool for monitoring only
+        idleTimeoutMillis: 30000,
+        connectionTimeoutMillis: 5000,
+        application_name: `JobQueue-API-Monitor-${process.env.PGBOUNCER_URL ? 'PgBouncer' : 'Direct'}`,
+      });
+      logger.info(`🔍 Database monitoring enabled via ${process.env.PGBOUNCER_URL ? 'PgBouncer' : 'direct PostgreSQL'}`);
+    }
 
     // Event broadcaster for real-time updates
     this.eventBroadcaster = new EventBroadcaster();
@@ -411,6 +426,150 @@ export class LightweightAPIServer {
         timestamp: new Date().toISOString(),
       };
       res.json(connections);
+    });
+
+    // Database connection monitoring endpoint
+    this.app.get('/api/system/db-connections', async (_req: Request, res: Response) => {
+      try {
+        if (!this.dbPool) {
+          return res.status(503).json({
+            error: 'Database monitoring not available - PGBOUNCER_URL or DATABASE_URL not configured',
+            available: false
+          });
+        }
+
+        const client = await this.dbPool.connect();
+        try {
+          // Get connection statistics by application
+          const connectionStats = await client.query(`
+            SELECT
+              application_name,
+              client_addr,
+              usename,
+              count(*) as connections,
+              string_agg(DISTINCT state, ', ') as states,
+              max(now() - state_change) as max_idle_time
+            FROM pg_stat_activity
+            WHERE pid <> pg_backend_pid()
+            GROUP BY application_name, client_addr, usename
+            ORDER BY connections DESC
+          `);
+
+          // Get total connection info
+          const totalStats = await client.query(`
+            SELECT
+              count(*) as total_connections,
+              (SELECT setting::int FROM pg_settings WHERE name = 'max_connections') as max_connections,
+              count(*) FILTER (WHERE state = 'active') as active_connections,
+              count(*) FILTER (WHERE state = 'idle') as idle_connections,
+              count(*) FILTER (WHERE state = 'idle in transaction') as idle_in_transaction
+            FROM pg_stat_activity
+            WHERE pid <> pg_backend_pid()
+          `);
+
+          // Get long-running idle connections (potential leaks)
+          const leakyConnections = await client.query(`
+            SELECT pid, usename, application_name, state, client_addr,
+                   now() - state_change as idle_duration,
+                   left(query, 100) as query_preview
+            FROM pg_stat_activity
+            WHERE (state = 'idle in transaction'
+                   OR (state = 'idle' AND now() - state_change > interval '5 minutes'))
+              AND pid <> pg_backend_pid()
+            ORDER BY state_change
+          `);
+
+          res.json({
+            available: true,
+            timestamp: new Date().toISOString(),
+            summary: totalStats.rows[0],
+            connections_by_app: connectionStats.rows,
+            potential_leaks: leakyConnections.rows.map(row => ({
+              ...row,
+              idle_duration: `${row.idle_duration}`,
+            })),
+            pool_usage: Math.round((totalStats.rows[0].total_connections / totalStats.rows[0].max_connections) * 100)
+          });
+        } finally {
+          client.release();
+        }
+      } catch (error) {
+        logger.error('Database monitoring error:', error);
+        res.status(500).json({
+          error: error instanceof Error ? error.message : 'Unknown database error',
+          available: false
+        });
+      }
+    });
+
+    // Direct PostgreSQL connection monitoring (bypasses PgBouncer)
+    this.app.get('/api/system/postgres-connections', async (_req: Request, res: Response) => {
+      try {
+        if (!process.env.DATABASE_URL) {
+          return res.status(503).json({
+            error: 'Direct PostgreSQL monitoring not available - DATABASE_URL not configured',
+            available: false
+          });
+        }
+
+        // Create direct PostgreSQL connection
+        const directPool = new Pool({
+          connectionString: process.env.DATABASE_URL, // Direct to PostgreSQL
+          max: 1, // Single connection for monitoring
+          idleTimeoutMillis: 10000,
+          connectionTimeoutMillis: 5000,
+          application_name: 'JobQueue-API-Monitor-DirectPostgreSQL',
+        });
+
+        try {
+          const client = await directPool.connect();
+          try {
+            // Get direct PostgreSQL connection stats
+            const connectionStats = await client.query(`
+              SELECT
+                application_name,
+                client_addr,
+                usename,
+                count(*) as connections,
+                string_agg(DISTINCT state, ', ') as states
+              FROM pg_stat_activity
+              WHERE pid <> pg_backend_pid()
+              GROUP BY application_name, client_addr, usename
+              ORDER BY connections DESC
+            `);
+
+            const totalStats = await client.query(`
+              SELECT
+                count(*) as total_connections,
+                (SELECT setting::int FROM pg_settings WHERE name = 'max_connections') as max_connections,
+                count(*) FILTER (WHERE state = 'active') as active_connections,
+                count(*) FILTER (WHERE state = 'idle') as idle_connections,
+                count(*) FILTER (WHERE state = 'idle in transaction') as idle_in_transaction
+              FROM pg_stat_activity
+              WHERE pid <> pg_backend_pid()
+            `);
+
+            res.json({
+              available: true,
+              source: 'direct_postgresql',
+              timestamp: new Date().toISOString(),
+              summary: totalStats.rows[0],
+              connections_by_app: connectionStats.rows,
+              pool_usage: Math.round((totalStats.rows[0].total_connections / totalStats.rows[0].max_connections) * 100)
+            });
+          } finally {
+            client.release();
+          }
+        } finally {
+          await directPool.end();
+        }
+      } catch (error) {
+        logger.error('Direct PostgreSQL monitoring error:', error);
+        res.status(500).json({
+          error: error instanceof Error ? error.message : 'Unknown database error',
+          available: false
+        });
+      }
     });
 
     // Job submission (modern HTTP endpoint)
@@ -3746,6 +3905,11 @@ export class LightweightAPIServer {
     await new Promise<void>(resolve => {
       this.httpServer.close(() => resolve());
     });
+
+    // Close database pool
+    if (this.dbPool) {
+      await this.dbPool.end();
+    }
 
     // Disconnect Redis
     await this.redis.quit();

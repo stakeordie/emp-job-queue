@@ -125,16 +125,18 @@ export class EnvironmentBuilder {
           warnings.push(...validation.warnings.map(w => `[${serviceName}] ${w}`));
         }
 
-        // Add successful validation info for transparency  
+        // Add successful validation info for transparency
         if (validation.valid) {
           const serviceInterface = this.serviceInterfaces.getInterfaces().get(serviceName);
           const requiredCount = Object.keys(serviceInterface?.required || {}).length;
           const secretCount = Object.keys(serviceInterface?.secret || {}).length;
           const optionalCount = Object.keys(serviceInterface?.optional || {}).length;
           const totalRequired = requiredCount + secretCount;
-          
+
           if (totalRequired > 0) {
-            warnings.push(`[${serviceName}] ✅ ${totalRequired} required variables validated (${requiredCount} public, ${secretCount} secret, ${optionalCount} optional)`);
+            warnings.push(
+              `[${serviceName}] ✅ ${totalRequired} required variables validated (${requiredCount} public, ${secretCount} secret, ${optionalCount} optional)`
+            );
           }
         }
       }
@@ -486,7 +488,7 @@ export class EnvironmentBuilder {
     for (const [key, value] of Object.entries(vars)) {
       // Ensure value is a string
       const stringValue = typeof value === 'string' ? value : String(value);
-      
+
       resolved[key] = stringValue.replace(/\$\{([^}]+)\}/g, (match, varName) => {
         const replacement = vars[varName] || process.env[varName] || match;
         return replacement;

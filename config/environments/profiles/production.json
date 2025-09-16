@@ -6,6 +6,10 @@
       "default",
       "production"
     ],
+    "database": [
+      "default",
+      "production"
+    ],
     "emprops": [
       "default",
       "production"

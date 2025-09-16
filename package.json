@@ -33,6 +33,8 @@
     "dev:redis:stop": "pkill redis-server || echo '✅ Redis already stopped'",
     "dev:local-redis": "./scripts/dev-local-redis.sh",
     "dev:local-redis:stop": "brew services stop redis",
+    "redis-cli-local": "redis-cli -h host.docker.internal -p 6379",
+    "redis-cli-prod": "redis-cli -h ballast.proxy.rlwy.net -p 30645",
     "shutdown": "pnpm shutdown:container && ./scripts/shutdown-all.sh",
     "shutdown:container": "./scripts/shutdown-docker.sh",
     "setup:developer": "pnpm install && pnpm dev:local-redis",
