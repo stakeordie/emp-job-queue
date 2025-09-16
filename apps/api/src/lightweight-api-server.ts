@@ -7,6 +7,7 @@ import { createServer, Server as HTTPServer } from 'http';
 import { WebSocketServer, WebSocket } from 'ws';
 import Redis from 'ioredis';
 import { v4 as uuidv4 } from 'uuid';
+import { existsSync } from 'fs';
 import {
   Job,
   JobStatus,
@@ -300,10 +301,21 @@ export class LightweightAPIServer {
           }
           return process.env.NODE_ENV;
         })(),
-        // CRITICAL: BUILD_DATE must be explicitly set - NO FALLBACKS
+        // BUILD_DATE: Required in containers, fallback to current time for local dev
         build_date: (() => {
           if (!process.env.BUILD_DATE) {
-            throw new Error('FATAL: BUILD_DATE environment variable is required. No defaults allowed.');
+            // Check if running in container (has /.dockerenv or cgroup info)
+            const isContainer = existsSync('/.dockerenv') || 
+                              existsSync('/proc/1/cgroup');
+            
+            if (isContainer) {
+              throw new Error('FATAL: BUILD_DATE environment variable is required in container environments.');
+            }
+            
+            // Local development fallback
+            const fallbackDate = new Date().toISOString();
+            logger.warn(`BUILD_DATE not set in local environment, using current time: ${fallbackDate}`);
+            return fallbackDate;
           }
           return process.env.BUILD_DATE;
         })(),
@@ -687,6 +699,7 @@ export class LightweightAPIServer {
     ws.on('message', async (data: Buffer) => {
       try {
         const message = JSON.parse(data.toString());
+        logger.info(`🔍 [WS_DEBUG] Monitor ${monitorId} raw message received:`, message);
         await this.handleMonitorMessage(connection, message);
       } catch (error) {
         logger.error(`Monitor message handling failed for ${monitorId}:`, error);
@@ -1102,40 +1115,42 @@ export class LightweightAPIServer {
   ): Promise<void> {
     const { ws, monitorId } = connection;
 
+    logger.info(`🔍 [MONITOR_DEBUG] Received message from ${monitorId}:`, JSON.stringify(message));
+
     switch (message.type) {
-      case 'monitor_connect':
-        const connectTime = Date.now();
-        logger.info(
-          `Monitor ${monitorId} requesting connection at ${new Date(connectTime).toISOString()}`
-        );
+      // case 'monitor_connect':
+      //   const connectTime = Date.now();
+      //   logger.info(
+      //     `Monitor ${monitorId} requesting connection at ${new Date(connectTime).toISOString()}`
+      //   );
 
-        // Send acknowledgment
-        ws.send(
-          JSON.stringify({
-            type: 'monitor_connected',
-            monitor_id: monitorId,
-            timestamp: new Date().toISOString(),
-          })
-        );
+      //   // Send acknowledgment
+      //   ws.send(
+      //     JSON.stringify({
+      //       type: 'monitor_connected',
+      //       monitor_id: monitorId,
+      //       timestamp: new Date().toISOString(),
+      //     })
+      //   );
 
-        // Send full state if requested
-        if (message.request_full_state) {
-          logger.info(`Monitor ${monitorId} requested full state, sending...`);
-          const beforeSnapshot = Date.now();
-          await this.sendFullStateSnapshot(connection, {
-            finishedJobsPagination: (
-              message as { finishedJobsPagination?: { page: number; pageSize: number } }
-            ).finishedJobsPagination || {
-              page: 1,
-              pageSize: 20,
-            },
-          });
-          logger.info(
-            `Full state snapshot for ${monitorId} completed in ${Date.now() - beforeSnapshot}ms (${Date.now() - connectTime}ms since connect)`
-          );
-        }
+      //   // Send full state if requested
+      //   if (message.request_full_state) {
+      //     logger.info(`Monitor ${monitorId} requested full state, sending...`);
+      //     const beforeSnapshot = Date.now();
+      //     await this.sendFullStateSnapshot(connection, {
+      //       finishedJobsPagination: (
+      //         message as { finishedJobsPagination?: { page: number; pageSize: number } }
+      //       ).finishedJobsPagination || {
+      //         page: 1,
+      //         pageSize: 20,
+      //       },
+      //     });
+      //     logger.info(
+      //       `Full state snapshot for ${monitorId} completed in ${Date.now() - beforeSnapshot}ms (${Date.now() - connectTime}ms since connect)`
+      //     );
+      //   }
 
-        break;
+      //   break;
 
       case 'subscribe':
         const subscribeTime = Date.now();
@@ -1413,7 +1428,10 @@ export class LightweightAPIServer {
             id: workerId,
             machine_id: machineId,
             status: workerStatus.status || 'unknown',
-            last_activity: workerStatus.last_activity ? new Date(workerStatus.last_activity).toISOString() : null,
+            last_activity: workerStatus.last_activity ? (() => {
+              const date = new Date(workerStatus.last_activity);
+              return isNaN(date.getTime()) ? null : date.toISOString();
+            })() : null,
             current_job_id: workerStatus.current_job_id || null,
             total_jobs_completed: parseInt(workerStatus.total_jobs_completed || '0'),
             total_jobs_failed: parseInt(workerStatus.total_jobs_failed || '0'),
@@ -1449,9 +1467,9 @@ export class LightweightAPIServer {
       const allJobs = await this.getAllJobs();
       logger.debug(`Fetched ${allJobs.length} jobs in ${Date.now() - jobsStart}ms`);
 
-      // Get paginated completed jobs
+      // Get paginated completed jobs from already-loaded jobs (avoid duplicate loading)
       const paginationOptions = options?.finishedJobsPagination || { page: 1, pageSize: 20 };
-      const completedJobsResult = await this.getCompletedJobsPaginated(paginationOptions);
+      const completedJobsResult = await this.getCompletedJobsPaginatedFromJobs(allJobs, paginationOptions);
 
       // Organize jobs by status for monitor compatibility
       const jobsByStatus = {
@@ -1462,10 +1480,22 @@ export class LightweightAPIServer {
       };
 
       for (const job of allJobs) {
-        // Convert job for monitor compatibility
+        // Convert job for monitor compatibility - EXCLUDE large payload data
         const monitorJob = {
-          ...job,
+          id: job.id,
+          status: job.status,
           job_type: job.service_required, // Map service_required to job_type for monitor
+          worker_id: job.worker_id,
+          created_at: job.created_at,
+          started_at: job.started_at,
+          completed_at: job.completed_at,
+          assigned_at: job.assigned_at,
+          priority: job.priority,
+          retry_count: job.retry_count,
+          max_retries: job.max_retries,
+          workflow_id: job.workflow_id,
+          customer_id: job.customer_id,
+          // EXPLICITLY EXCLUDE: payload, requirements, ctx, and other large fields
         };
 
         // Categorize by status (excluding completed jobs - they're handled separately)
@@ -1494,14 +1524,38 @@ export class LightweightAPIServer {
         }
       }
 
-      // Add paginated completed jobs
+      // Add paginated completed jobs - EXCLUDE large payload data
       jobsByStatus.completed = completedJobsResult.jobs.map(job => ({
-        ...job,
+        id: job.id,
+        status: job.status,
         job_type: job.service_required, // Map service_required to job_type for monitor
+        worker_id: job.worker_id,
+        created_at: job.created_at,
+        started_at: job.started_at,
+        completed_at: job.completed_at,
+        assigned_at: job.assigned_at,
+        priority: job.priority,
+        retry_count: job.retry_count,
+        max_retries: job.max_retries,
+        workflow_id: job.workflow_id,
+        customer_id: job.customer_id,
+        // EXPLICITLY EXCLUDE: payload, requirements, ctx, and other large fields
       }));
 
-      // Get machines from in-memory unified machine status
-      const machines = Array.from(this.unifiedMachineStatus.values());
+      // Get machines from in-memory unified machine status - EXCLUDE large nested data
+      const machines = Array.from(this.unifiedMachineStatus.values()).map(machineData => {
+        const machine = machineData as any;
+        return {
+          machine_id: machine.machine_id,
+          gpu_count: machine.structure?.gpu_count || 0,
+          capabilities: machine.structure?.capabilities || [],
+          phase: machine.status_data?.machine?.phase || 'unknown',
+          uptime_ms: machine.status_data?.machine?.uptime_ms || 0,
+          worker_count: Object.keys(machine.structure?.workers || {}).length,
+          timestamp: machine.timestamp || Date.now(),
+          // EXPLICITLY EXCLUDE: structure.workers, structure.services, status_data.workers, status_data.services
+        };
+      });
 
       const snapshot = {
         workers,
@@ -1523,18 +1577,22 @@ export class LightweightAPIServer {
         },
       };
 
-      connection.ws.send(
-        JSON.stringify({
-          type: 'full_state_snapshot',
-          data: snapshot,
-          monitor_id: connection.monitorId,
-          timestamp: new Date().toISOString(),
-        })
-      );
-
-      logger.info(
-        `Sent full state snapshot to monitor ${connection.monitorId}: ${workers.length} workers, ${allJobs.length} jobs (total time: ${Date.now() - startTime}ms)`
-      );
+      // Prepare the WebSocket message
+      const wsMessage = {
+        type: 'full_state_snapshot',
+        data: snapshot,
+        monitor_id: connection.monitorId,
+        timestamp: new Date().toISOString(),
+      };
+      
+      logger.info(`🚀 [SNAPSHOT] About to send full_state_snapshot to monitor ${connection.monitorId}`);
+      logger.debug(`🚀 [SNAPSHOT] WebSocket readyState: ${connection.ws.readyState}, workers: ${workers.length}, jobs: ${allJobs.length}`);
+      
+      // Send the WebSocket message
+      connection.ws.send(JSON.stringify(wsMessage));
+      
+      logger.info(`✅ [SNAPSHOT] Successfully sent full_state_snapshot to monitor ${connection.monitorId}: ${workers.length} workers, ${allJobs.length} total jobs (${jobsByStatus.pending.length} pending, ${jobsByStatus.active.length} active, ${jobsByStatus.completed.length} completed, ${jobsByStatus.failed.length} failed) - total time: ${Date.now() - startTime}ms`);
+      logger.debug(`✅ [SNAPSHOT] Message sent with type: ${wsMessage.type}, monitor_id: ${wsMessage.monitor_id}`);
     } catch (error) {
       logger.error(`Failed to send full state snapshot to monitor ${connection.monitorId}:`, error);
     }
@@ -3123,6 +3181,49 @@ export class LightweightAPIServer {
     return result;
   }
 
+  private async getCompletedJobsPaginatedFromJobs(allJobs: Job[], options: { page: number; pageSize: number }): Promise<{
+    jobs: Job[];
+    pagination: {
+      page: number;
+      pageSize: number;
+      totalCount: number;
+      hasNextPage: boolean;
+      hasPreviousPage: boolean;
+    };
+  }> {
+    const startTime = Date.now();
+    const offset = (options.page - 1) * options.pageSize;
+
+    // Filter and sort completed jobs from already-loaded jobs (avoid duplicate loading)
+    const completedJobs = allJobs
+      .filter(job => job.status === 'completed')
+      .sort((a, b) => {
+        // Sort by completion time DESC (newest first)
+        const aTime = new Date(a.completed_at || a.created_at).getTime();
+        const bTime = new Date(b.completed_at || b.created_at).getTime();
+        return bTime - aTime;
+      });
+
+    const totalCount = completedJobs.length;
+    const paginatedJobs = completedJobs.slice(offset, offset + options.pageSize);
+
+    logger.info(
+      `getCompletedJobsPaginatedFromJobs completed in ${Date.now() - startTime}ms, returning ${paginatedJobs.length}/${totalCount} jobs (page ${options.page}, size ${options.pageSize}) - NO DUPLICATE LOADING`
+    );
+
+    return {
+      jobs: paginatedJobs,
+      pagination: {
+        page: options.page,
+        pageSize: options.pageSize,
+        totalCount,
+        hasNextPage: offset + options.pageSize < totalCount,
+        hasPreviousPage: options.page > 1,
+      },
+    };
+  }
+
+  // Keep the original function for other use cases
   private async getCompletedJobsPaginated(options: { page: number; pageSize: number }): Promise<{
     jobs: Job[];
     pagination: {
@@ -3136,8 +3237,8 @@ export class LightweightAPIServer {
     const startTime = Date.now();
     const offset = (options.page - 1) * options.pageSize;
 
-    // Get all completed jobs first to get total count
-    const allJobs = await this.getAllJobs();
+    // Get all jobs directly (not through getAllJobs which skips completed jobs in snapshot context)
+    const allJobs = await this.getJobs({ limit: 10000, offset: 0 });
     const completedJobs = allJobs
       .filter(job => job.status === 'completed')
       .sort((a, b) => {
