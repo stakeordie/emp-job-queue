@@ -1,0 +1,674 @@
+'use client';
+
+import { useState } from 'react';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { AlertTriangle, Database, RefreshCw, Search, Info } from 'lucide-react';
+
+interface WorkflowStep {
+  id: number;
+  alias?: string;
+  nodeName: string;
+  nodeAlias?: string;
+  nodeResponse?: {
+    src?: string;
+    mimeType?: string;
+  };
+}
+
+interface WorkflowOutput {
+  steps: WorkflowStep[];
+  generation?: {
+    id: number;
+    hash: string;
+  };
+}
+
+interface JobPayload {
+  _collection?: Record<string, unknown>;
+  variables?: Record<string, unknown>;
+  outputs?: WorkflowOutput[];
+  collectionId?: string;
+}
+
+interface JobForensicsData {
+  job: {
+    payload: JobPayload;
+    [key: string]: unknown;
+  };
+  forensics: Record<string, unknown>;
+  similar_failures: Record<string, unknown>[];
+  recovery_suggestions: Record<string, unknown>[];
+}
+
+export default function JobForensics() {
+  const [jobId, setJobId] = useState('');
+  const [forensicsData, setForensicsData] = useState<JobForensicsData | null>(null);
+  const [failedAnalysis, setFailedAnalysis] = useState<Record<string, unknown> | null>(null);
+  const [allJobs, setAllJobs] = useState<Record<string, unknown>[]>([]);
+  const [jobsLoading, setJobsLoading] = useState(false);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const searchJob = async () => {
+    if (!jobId.trim()) return;
+
+    setLoading(true);
+    setError(null);
+
+    try {
+      const response = await fetch(`/api/jobs/${jobId}/forensics`);
+      const data = await response.json();
+
+      if (data.success) {
+        setForensicsData(data);
+      } else {
+        setError(data.error || 'Job not found');
+        setForensicsData(null);
+      }
+    } catch (error) {
+      setError(error instanceof Error ? error.message : 'Failed to fetch job forensics');
+      setForensicsData(null);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const loadFailedAnalysis = async () => {
+    setLoading(true);
+    try {
+      const response = await fetch('/api/jobs/failed-analysis?limit=100');
+      const data = await response.json();
+      if (data.success) {
+        setFailedAnalysis(data.analysis);
+      }
+    } catch {
+      setError('Failed to load failed job analysis');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const loadAllJobs = async () => {
+    setJobsLoading(true);
+    try {
+      const response = await fetch('/api/jobs/all?limit=50');
+      const data = await response.json();
+      if (data.success) {
+        setAllJobs(data.jobs);
+      }
+    } catch {
+      setError('Failed to load jobs list');
+    } finally {
+      setJobsLoading(false);
+    }
+  };
+
+  const formatDuration = (ms: number) => {
+    if (ms < 1000) return `${ms}ms`;
+    const seconds = ms / 1000;
+    if (seconds < 60) return `${seconds.toFixed(1)}s`;
+    const minutes = seconds / 60;
+    if (minutes < 60) return `${minutes.toFixed(1)}m`;
+    const hours = minutes / 60;
+    return `${hours.toFixed(1)}h`;
+  };
+
+  const getStatusColor = (status: string) => {
+    switch (status) {
+      case 'completed': return 'bg-green-100 text-green-800';
+      case 'failed': return 'bg-red-100 text-red-800';
+      case 'pending': return 'bg-yellow-100 text-yellow-800';
+      case 'in_progress': return 'bg-blue-100 text-blue-800';
+      default: return 'bg-gray-100 text-gray-800';
+    }
+  };
+
+  const getErrorCategoryColor = (category: string) => {
+    switch (category) {
+      case 'timeout': return 'bg-orange-100 text-orange-800';
+      case 'network': return 'bg-purple-100 text-purple-800';
+      case 'validation': return 'bg-red-100 text-red-800';
+      case 'resource': return 'bg-yellow-100 text-yellow-800';
+      case 'external_api': return 'bg-blue-100 text-blue-800';
+      default: return 'bg-gray-100 text-gray-800';
+    }
+  };
+
+  return (
+    <div className="container mx-auto py-6 space-y-6">
+      <div className="space-y-2">
+        <h1 className="text-3xl font-bold">Job Forensics & Analysis</h1>
+        <p className="text-muted-foreground">
+          Deep investigation of job failures across all systems for debugging and recovery
+        </p>
+      </div>
+
+      <Tabs defaultValue="search" className="space-y-6">
+        <TabsList className="grid w-full grid-cols-2">
+          <TabsTrigger value="search">Job Investigation</TabsTrigger>
+          <TabsTrigger value="analysis">Failure Analysis</TabsTrigger>
+        </TabsList>
+
+        <TabsContent value="search" className="space-y-6">
+          {/* Job Search */}
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <Search className="h-5 w-5" />
+                Job Search
+              </CardTitle>
+              <CardDescription>
+                Enter a job ID to get comprehensive forensics data across all systems
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <div className="flex gap-2">
+                <Input
+                  placeholder="Enter job ID..."
+                  value={jobId}
+                  onChange={(e) => setJobId(e.target.value)}
+                  onKeyPress={(e) => e.key === 'Enter' && searchJob()}
+                  className="flex-1"
+                />
+                <Button onClick={searchJob} disabled={loading || !jobId.trim()}>
+                  {loading ? <RefreshCw className="h-4 w-4 animate-spin" /> : <Search className="h-4 w-4" />}
+                  Search
+                </Button>
+              </div>
+              {error && (
+                <div className="mt-4 p-3 bg-red-50 border border-red-200 rounded-md text-red-700">
+                  {error}
+                </div>
+              )}
+            </CardContent>
+          </Card>
+
+          {/* All Jobs List */}
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <Database className="h-5 w-5" />
+                Recent Workflows
+              </CardTitle>
+              <CardDescription>
+                All workflow jobs from EmProps API database (most recent first)
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <div className="space-y-4">
+                <Button onClick={loadAllJobs} disabled={jobsLoading}>
+                  {jobsLoading ? <RefreshCw className="h-4 w-4 animate-spin mr-2" /> : <RefreshCw className="h-4 w-4 mr-2" />}
+                  Load Jobs
+                </Button>
+
+                {allJobs.length > 0 && (
+                  <div className="space-y-2">
+                    <div className="text-sm font-medium text-muted-foreground">
+                      {allJobs.length} jobs found
+                    </div>
+                    <div className="border rounded-lg overflow-hidden">
+                      <div className="max-h-96 overflow-y-auto">
+                        {allJobs.map((job, idx) => (
+                          <div
+                            key={idx}
+                            className="flex items-center justify-between p-3 border-b last:border-b-0 hover:bg-gray-50 cursor-pointer"
+                            onClick={() => setJobId(String(job.id))}
+                          >
+                            <div className="flex items-center gap-3">
+                              <code className="text-xs bg-gray-100 px-2 py-1 rounded font-mono">
+                                {String(job.id).substring(0, 8)}...
+                              </code>
+                              <div className="flex flex-col">
+                                <div className="text-sm font-medium">
+                                  {String(job.name || job.description || 'Unnamed Workflow')}
+                                </div>
+                                <div className="text-xs text-muted-foreground flex items-center gap-2">
+                                  <span>
+                                    {job.created_at ? new Date(String(job.created_at)).toLocaleString() : 'Unknown date'}
+                                  </span>
+                                  {job.job_type != null && String(job.job_type).trim() !== '' && (
+                                    <span className="px-1.5 py-0.5 bg-blue-100 text-blue-800 rounded text-xs">
+                                      {String(job.job_type)}
+                                    </span>
+                                  )}
+                                  {job.progress != null && Number(job.progress) > 0 && (
+                                    <span className="text-green-600">
+                                      {String(job.progress)}%
+                                    </span>
+                                  )}
+                                </div>
+                              </div>
+                            </div>
+                            <div className="flex items-center gap-2">
+                              <Badge className={getStatusColor(String(job.status))}>
+                                {String(job.status)}
+                              </Badge>
+                              {job.user_id != null && (
+                                <span className="text-xs text-muted-foreground">
+                                  User: {String(job.user_id).substring(0, 8)}...
+                                </span>
+                              )}
+                              {job.error_message != null && String(job.error_message).trim() !== '' && (
+                                <div title={String(job.error_message)}>
+                                  <AlertTriangle className="h-4 w-4 text-red-500" />
+                                </div>
+                              )}
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+                )}
+              </div>
+            </CardContent>
+          </Card>
+
+          {/* Job Forensics Results */}
+          {forensicsData && (
+            <div className="space-y-6">
+              {/* Job Overview */}
+              <Card>
+                <CardHeader>
+                  <CardTitle className="flex items-center gap-2">
+                    <Database className="h-5 w-5" />
+                    Job Overview
+                  </CardTitle>
+                </CardHeader>
+                <CardContent className="space-y-4">
+                  <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                    <div>
+                      <div className="text-sm font-medium text-muted-foreground">Status</div>
+                      <Badge className={getStatusColor(String(forensicsData.job.status))}>
+                        {String(forensicsData.job.status)}
+                      </Badge>
+                    </div>
+                    <div>
+                      <div className="text-sm font-medium text-muted-foreground">Created</div>
+                      <div className="text-sm">{new Date(String(forensicsData.job.created_at)).toLocaleString()}</div>
+                    </div>
+                    <div>
+                      <div className="text-sm font-medium text-muted-foreground">Retries</div>
+                      <div className="text-sm">{String(forensicsData.job.retry_count)}/{String(forensicsData.job.max_retries)}</div>
+                    </div>
+                    <div>
+                      <div className="text-sm font-medium text-muted-foreground">Worker</div>
+                      <div className="text-sm">{String(forensicsData.job.worker_id || 'None')}</div>
+                    </div>
+                  </div>
+
+                  {forensicsData.forensics.last_known_error != null && String(forensicsData.forensics.last_known_error).trim() !== '' && (
+                    <div className="mt-4 p-3 bg-red-50 border border-red-200 rounded-md">
+                      <div className="font-medium text-red-800">Error Message:</div>
+                      <div className="text-red-700 text-sm mt-1">{String(forensicsData.forensics.last_known_error)}</div>
+                    </div>
+                  )}
+                </CardContent>
+              </Card>
+
+              {/* Collection & Workflow Details */}
+              <Card>
+                <CardHeader>
+                  <CardTitle className="flex items-center gap-2">
+                    <Database className="h-5 w-5" />
+                    Collection & Workflow Details
+                  </CardTitle>
+                </CardHeader>
+                <CardContent className="space-y-6">
+                  {/* Collection Information */}
+                  {forensicsData.job.payload._collection && (
+                    <div className="space-y-3">
+                      <div className="text-lg font-semibold text-blue-700 border-b border-blue-200 pb-2">
+                        Collection Information
+                      </div>
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <div>
+                          <div className="text-sm font-medium text-muted-foreground">Collection Name</div>
+                          <div className="text-sm font-medium">{String(forensicsData.job.payload._collection.title || 'Untitled Collection')}</div>
+                        </div>
+                        <div>
+                          <div className="text-sm font-medium text-muted-foreground">Collection ID</div>
+                          <code className="text-xs bg-gray-100 px-2 py-1 rounded font-mono">
+                            {String(forensicsData.job.payload._collection.id)}
+                          </code>
+                        </div>
+                        {forensicsData.job.payload._collection.description != null && String(forensicsData.job.payload._collection.description).trim() !== '' && (
+                          <div className="md:col-span-2">
+                            <div className="text-sm font-medium text-muted-foreground">Description</div>
+                            <div className="text-sm">{String(forensicsData.job.payload._collection.description)}</div>
+                          </div>
+                        )}
+                        <div>
+                          <div className="text-sm font-medium text-muted-foreground">Collection Status</div>
+                          <Badge className={getStatusColor(String(forensicsData.job.payload._collection.status))}>
+                            {String(forensicsData.job.payload._collection.status)}
+                          </Badge>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Parameters */}
+                  {forensicsData.job.payload.variables && Object.keys(forensicsData.job.payload.variables).length > 0 && (
+                    <div className="space-y-3">
+                      <div className="text-lg font-semibold text-green-700 border-b border-green-200 pb-2">
+                        Input Parameters
+                      </div>
+                      <div className="space-y-2">
+                        {Object.entries(forensicsData.job.payload.variables || {}).map(([key, value]) => (
+                          <div key={key} className="flex flex-col sm:flex-row sm:items-center gap-2 p-3 bg-green-50 rounded-md">
+                            <div className="text-sm font-medium text-green-800 min-w-0 flex-shrink-0">
+                              {key}:
+                            </div>
+                            <div className="text-sm text-green-700 font-mono break-all">
+                              {typeof value === 'string' && value.startsWith('http') ? (
+                                <a href={String(value)} target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:underline">
+                                  {String(value)}
+                                </a>
+                              ) : (
+                                String(value)
+                              )}
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Job-Test IDs (Workflow Steps) */}
+                  {forensicsData.job.payload.outputs && forensicsData.job.payload.outputs.length > 0 && (
+                    <div className="space-y-3">
+                      <div className="text-lg font-semibold text-purple-700 border-b border-purple-200 pb-2">
+                        Workflow Steps (Job-Test IDs)
+                      </div>
+                      <div className="space-y-3">
+                        {forensicsData.job.payload.outputs.map((output, outputIndex) => (
+                          <div key={outputIndex} className="border border-purple-200 rounded-lg p-4 bg-purple-50">
+                            <div className="text-sm font-medium text-purple-800 mb-3">
+                              Generation {output.generation?.id || outputIndex}
+                              {output.generation?.hash && (
+                                <span className="ml-2 text-xs text-purple-600 font-mono">
+                                  Hash: {String(output.generation.hash).substring(0, 16)}...
+                                </span>
+                              )}
+                            </div>
+                            {output.steps && Array.isArray(output.steps) && (
+                              <div className="space-y-2">
+                                {output.steps.map((step: WorkflowStep, stepIndex: number) => (
+                                  <div key={stepIndex} className="flex items-center gap-3 p-2 bg-white rounded border">
+                                    <code className="text-xs bg-purple-100 text-purple-800 px-2 py-1 rounded font-mono font-bold">
+                                      ID: {step.id}
+                                    </code>
+                                    <div className="flex-grow">
+                                      <div className="text-sm font-medium">
+                                        {step.nodeAlias || step.nodeName}
+                                      </div>
+                                      {step.nodeName !== step.nodeAlias && step.nodeAlias && (
+                                        <div className="text-xs text-muted-foreground">
+                                          Node: {step.nodeName}
+                                        </div>
+                                      )}
+                                    </div>
+                                    {step.nodeResponse?.mimeType && (
+                                      <Badge variant="outline" className="text-xs">
+                                        {step.nodeResponse.mimeType}
+                                      </Badge>
+                                    )}
+                                    {step.nodeResponse?.src && (
+                                      <a
+                                        href={step.nodeResponse.src}
+                                        target="_blank"
+                                        rel="noopener noreferrer"
+                                        className="text-blue-600 hover:underline text-xs"
+                                      >
+                                        View Output
+                                      </a>
+                                    )}
+                                  </div>
+                                ))}
+                              </div>
+                            )}
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </CardContent>
+              </Card>
+
+              {/* Forensics Data */}
+              {forensicsData.forensics && (
+                <Card>
+                  <CardHeader>
+                    <CardTitle className="flex items-center gap-2">
+                      <Info className="h-5 w-5" />
+                      Forensics Analysis
+                    </CardTitle>
+                  </CardHeader>
+                  <CardContent className="space-y-4">
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                      {forensicsData.forensics.source_system != null && (
+                        <div>
+                          <div className="text-sm font-medium text-muted-foreground">Source System</div>
+                          <Badge variant="outline">{String(forensicsData.forensics.source_system)}</Badge>
+                        </div>
+                      )}
+
+                      {forensicsData.forensics.error_category != null && (
+                        <div>
+                          <div className="text-sm font-medium text-muted-foreground">Error Category</div>
+                          <Badge className={getErrorCategoryColor(String(forensicsData.forensics.error_category))}>
+                            {String(forensicsData.forensics.error_category)}
+                          </Badge>
+                        </div>
+                      )}
+
+                      {forensicsData.forensics.queue_wait_time_ms != null && (
+                        <div>
+                          <div className="text-sm font-medium text-muted-foreground">Queue Wait Time</div>
+                          <div className="text-sm">{formatDuration(Number(forensicsData.forensics.queue_wait_time_ms))}</div>
+                        </div>
+                      )}
+                    </div>
+
+                    {forensicsData.forensics.attempted_workers != null && Array.isArray(forensicsData.forensics.attempted_workers) && forensicsData.forensics.attempted_workers.length > 0 && (
+                      <div>
+                        <div className="text-sm font-medium text-muted-foreground mb-2">Attempted Workers</div>
+                        <div className="flex flex-wrap gap-2">
+                          {forensicsData.forensics.attempted_workers.map((worker: unknown, idx: number) => (
+                            <Badge key={idx} variant="outline">{String(worker)}</Badge>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+
+                    {forensicsData.forensics.cross_system_refs != null && Array.isArray(forensicsData.forensics.cross_system_refs) && forensicsData.forensics.cross_system_refs.length > 0 && (
+                      <div>
+                        <div className="text-sm font-medium text-muted-foreground mb-2">Cross-System References</div>
+                        <div className="space-y-2">
+                          {forensicsData.forensics.cross_system_refs.map((ref: Record<string, unknown>, idx: number) => (
+                            <div key={idx} className="flex items-center gap-2 p-2 border rounded">
+                              <Badge variant="outline">{String(ref.system)}</Badge>
+                              <div className="text-sm">{String(ref.reference_type)}: {String(ref.reference_id).substring(0, 8)}...</div>
+                              <Badge className={getStatusColor(String(ref.status))}>{String(ref.status)}</Badge>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                  </CardContent>
+                </Card>
+              )}
+
+              {/* Recovery Suggestions */}
+              {forensicsData.recovery_suggestions != null && Array.isArray(forensicsData.recovery_suggestions) && forensicsData.recovery_suggestions.length > 0 && (
+                <Card>
+                  <CardHeader>
+                    <CardTitle className="flex items-center gap-2">
+                      <RefreshCw className="h-5 w-5" />
+                      Recovery Suggestions
+                    </CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    <div className="space-y-3">
+                      {forensicsData.recovery_suggestions.map((suggestion: Record<string, unknown>, idx: number) => (
+                        <div key={idx} className="p-3 border rounded-lg">
+                          <div className="flex items-center gap-2 mb-2">
+                            <Badge variant="outline">{String(suggestion.type)}</Badge>
+                            <Badge className={
+                              suggestion.confidence === 'high' ? 'bg-green-100 text-green-800' :
+                              suggestion.confidence === 'medium' ? 'bg-yellow-100 text-yellow-800' :
+                              'bg-gray-100 text-gray-800'
+                            }>
+                              {String(suggestion.confidence)} confidence
+                            </Badge>
+                            {suggestion.estimated_success_rate != null && (
+                              <span className="text-sm text-muted-foreground">
+                                {String(suggestion.estimated_success_rate)}% success rate
+                              </span>
+                            )}
+                          </div>
+                          <div className="text-sm">{String(suggestion.description)}</div>
+                          {suggestion.automated_action_available != null && (
+                            <div className="mt-2">
+                              <Badge variant="outline" className="text-xs">Automated action available</Badge>
+                            </div>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  </CardContent>
+                </Card>
+              )}
+
+              {/* Similar Failures */}
+              {forensicsData.similar_failures != null && Array.isArray(forensicsData.similar_failures) && forensicsData.similar_failures.length > 0 && (
+                <Card>
+                  <CardHeader>
+                    <CardTitle className="flex items-center gap-2">
+                      <AlertTriangle className="h-5 w-5" />
+                      Similar Failures ({forensicsData.similar_failures.length})
+                    </CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    <div className="space-y-2">
+                      {forensicsData.similar_failures.map((job: Record<string, unknown>, idx: number) => (
+                        <div key={idx} className="flex items-center justify-between p-2 border rounded">
+                          <div className="flex items-center gap-2">
+                            <code className="text-xs bg-gray-100 px-2 py-1 rounded">{String(job.id).substring(0, 8)}...</code>
+                            <div className="text-sm">{new Date(String(job.created_at)).toLocaleDateString()}</div>
+                          </div>
+                          <div className="text-xs text-muted-foreground max-w-xs truncate">
+                            {String(job.error || '')}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </CardContent>
+                </Card>
+              )}
+            </div>
+          )}
+        </TabsContent>
+
+        <TabsContent value="analysis" className="space-y-6">
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <AlertTriangle className="h-5 w-5" />
+                Failed Jobs Analysis
+              </CardTitle>
+              <CardDescription>
+                Pattern analysis of recent failed jobs to identify systemic issues
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <Button onClick={loadFailedAnalysis} disabled={loading}>
+                {loading ? <RefreshCw className="h-4 w-4 animate-spin mr-2" /> : <RefreshCw className="h-4 w-4 mr-2" />}
+                Load Analysis
+              </Button>
+            </CardContent>
+          </Card>
+
+          {failedAnalysis && (
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+              <Card>
+                <CardHeader>
+                  <CardTitle>Error Categories</CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <div className="space-y-2">
+                    {Object.entries(failedAnalysis.error_categories as Record<string, unknown>).map(([category, count]) => (
+                      <div key={category} className="flex justify-between items-center">
+                        <Badge className={getErrorCategoryColor(category)}>{category}</Badge>
+                        <span className="text-sm font-medium">{count as number}</span>
+                      </div>
+                    ))}
+                  </div>
+                </CardContent>
+              </Card>
+
+              <Card>
+                <CardHeader>
+                  <CardTitle>Source Systems</CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <div className="space-y-2">
+                    {Object.entries(failedAnalysis.source_systems as Record<string, unknown>).map(([system, count]) => (
+                      <div key={system} className="flex justify-between items-center">
+                        <Badge variant="outline">{system}</Badge>
+                        <span className="text-sm font-medium">{count as number}</span>
+                      </div>
+                    ))}
+                  </div>
+                </CardContent>
+              </Card>
+
+              <Card>
+                <CardHeader>
+                  <CardTitle>Worker Failures</CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <div className="space-y-2">
+                    {Object.entries(failedAnalysis.worker_failures as Record<string, unknown>).slice(0, 5).map(([worker, count]) => (
+                      <div key={worker} className="flex justify-between items-center">
+                        <code className="text-xs bg-gray-100 px-2 py-1 rounded">{worker.substring(0, 12)}...</code>
+                        <span className="text-sm font-medium">{count as number}</span>
+                      </div>
+                    ))}
+                  </div>
+                </CardContent>
+              </Card>
+
+              <Card>
+                <CardHeader>
+                  <CardTitle>Summary Stats</CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <div className="space-y-2 text-sm">
+                    <div className="flex justify-between">
+                      <span>Total Failed Jobs:</span>
+                      <span className="font-medium">{String(failedAnalysis.total_failed_jobs)}</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span>Cross-System Refs:</span>
+                      <span className="font-medium">{String(failedAnalysis.jobs_with_cross_system_refs)}</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span>Avg Retry Count:</span>
+                      <span className="font-medium">{Number(failedAnalysis.avg_retry_count || 0).toFixed(1)}</span>
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+            </div>
+          )}
+        </TabsContent>
+      </Tabs>
+    </div>
+  );
+}

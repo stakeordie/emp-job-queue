@@ -1,0 +1,90 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// Job tracking from EmProps API
+model job {
+  id            String        @id @db.Uuid
+  name          String
+  description   String?
+  status        String        @default("pending")
+  data          Json?
+  progress      Int?
+  error_message String?
+  created_at    DateTime      @default(now())
+  updated_at    DateTime
+  started_at    DateTime?
+  completed_at  DateTime?
+  user_id       String        @db.Uuid
+  job_type      String
+  priority      Int           @default(1)
+  job_history   job_history[]
+}
+
+// Job history for tracking changes
+model job_history {
+  id         String   @id @db.Uuid
+  job_id     String   @db.Uuid
+  status     String
+  message    String?
+  created_at DateTime @default(now())
+  job        job      @relation(fields: [job_id], references: [id], onDelete: Cascade)
+}
+
+// Workflow definitions
+model workflow {
+  id               String    @id @db.Uuid
+  name             String    @unique
+  description      String?
+  data             Json?
+  created_at       DateTime  @default(now())
+  server_id        String?   @db.Uuid
+  output_mime_type String?
+  display          Boolean?  @default(false)
+  label            String?
+  order            Int?
+  type             String?
+  est_gen_time     Json?
+  machine_type     String?
+  min_vram         Int?
+}
+
+// Collection for grouping related jobs
+model collection {
+  id           String   @id @db.Uuid
+  name         String
+  description  String?
+  created_at   DateTime @default(now())
+  updated_at   DateTime
+  user_id      String   @db.Uuid
+  status       String   @default("active")
+  data         Json?
+}
+
+// API keys for tracking job origins
+model api_key {
+  id            String   @id @db.Uuid
+  alias         String   @unique
+  key           String   @unique
+  workflow_name String
+  user_id       String   @db.Uuid
+  created_at    DateTime @default(now())
+}
+
+// Mini app generations for cross-system tracking
+model miniapp_generation {
+  id           String   @id @db.Uuid
+  user_id      String   @db.Uuid
+  workflow_id  String   @db.Uuid
+  status       String
+  error        String?
+  created_at   DateTime @default(now())
+  updated_at   DateTime
+  completed_at DateTime?
+  data         Json?
+}

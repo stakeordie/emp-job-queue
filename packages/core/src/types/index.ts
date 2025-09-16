@@ -9,7 +9,7 @@ export * from './messages.js';
 export { SystemInfo as MessageSystemInfo } from './messages.js';
 
 // Job types - export canonical types
-export { Job, JobRequirements, JobProgress, JobStatus } from './job.js';
+export { Job, JobRequirements, JobProgress, JobStatus, JobForensics } from './job.js';
 
 // Worker types (may override some message types)
 export {
