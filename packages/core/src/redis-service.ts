@@ -300,6 +300,11 @@ export class RedisService implements RedisServiceInterface {
         worker_id: job.worker_id,
       });
 
+      // Remove delegated jobs from pending queue (they bypass normal worker claim process)
+      if (job.worker_id && job.worker_id.startsWith('delegated_client_')) {
+        await this.redis.zrem('jobs:pending', jobId);
+      }
+
       // Remove from worker's active jobs
       if (job.worker_id) {
         await this.redis.hdel(`jobs:active:${job.worker_id}`, jobId);
