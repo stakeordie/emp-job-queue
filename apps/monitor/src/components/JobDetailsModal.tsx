@@ -19,10 +19,12 @@ export function JobDetailsModal({ job, workers, isOpen, onClose }: JobDetailsMod
   const checkWorkerMatch = (worker: Worker, job: Job): boolean => {
     const capabilities = worker.capabilities;
     const requirements = job.requirements || {};
-    
+
     // Primary service check - worker must support the job type
     const workerServices = new Set(capabilities.services || []);
-    if (!workerServices.has(job.job_type)) {
+    // Check both job_type and service_required for compatibility
+    const jobServiceType = (job as any).service_required || job.job_type;
+    if (!workerServices.has(jobServiceType)) {
       return false;
     }
     
@@ -100,7 +102,7 @@ export function JobDetailsModal({ job, workers, isOpen, onClose }: JobDetailsMod
                 </div>
                 <div>
                   <p className="text-sm font-medium">Type</p>
-                  <p className="text-sm text-muted-foreground">{job.job_type}</p>
+                  <p className="text-sm text-muted-foreground">{(job as any).service_required || job.job_type}</p>
                 </div>
                 <div>
                   <p className="text-sm font-medium">Status</p>
@@ -168,7 +170,7 @@ export function JobDetailsModal({ job, workers, isOpen, onClose }: JobDetailsMod
                   <span className="text-sm font-medium">Service Type:</span>
                   <div className="flex gap-1 mt-1">
                     <Badge variant="default" className="text-xs">
-                      {job.job_type}
+                      {(job as any).service_required || job.job_type}
                     </Badge>
                   </div>
                 </div>
@@ -238,7 +240,7 @@ export function JobDetailsModal({ job, workers, isOpen, onClose }: JobDetailsMod
                 {/* Show message if only primary service requirement exists */}
                 {!job.requirements && (
                   <div className="col-span-2">
-                    <p className="text-sm text-muted-foreground">Only requires a worker that supports {job.job_type}</p>
+                    <p className="text-sm text-muted-foreground">Only requires a worker that supports {(job as any).service_required || job.job_type}</p>
                   </div>
                 )}
               </div>
