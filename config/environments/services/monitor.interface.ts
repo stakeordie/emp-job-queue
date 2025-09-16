@@ -31,6 +31,9 @@ export const MonitorEnvInterface = {
     // Development
     "LOG_LEVEL": "MONITOR_LOG_LEVEL",
   },
+  secret: {
+    "DATABASE_URL": "DATABASE_URL"
+  },
   defaults: {
     "SERVICE_TYPE": "monitor",
     "LOG_TO_FILE": "true"

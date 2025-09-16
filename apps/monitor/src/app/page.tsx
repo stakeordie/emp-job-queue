@@ -176,6 +176,11 @@ function Home({ isJobPanelOpen }: HomeProps) {
               Database Connections
             </Button>
           </Link>
+          <Link href="/forensics">
+            <Button variant="outline" size="sm">
+              Job Forensics
+            </Button>
+          </Link>
           <Link href="/northstar">
             <Button variant="outline" size="sm">
               North Star

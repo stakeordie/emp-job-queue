@@ -1,0 +1,12 @@
+[
+  {
+    "id": "payload",
+    "pathJq": "payload",
+    "is_required": true
+  },
+  {
+    "id": "job_type",
+    "pathJq": "service_required",
+    "is_required": true
+  }
+]

@@ -1,0 +1,46 @@
+{
+  "config": {
+    "groupOrder": [
+      "basic",
+      "advanced"
+    ],
+    "maxNumberOfGenerations": 5,
+    "componentGroup": "api"
+  },
+  "fields": [
+    {
+      "id": "seed",
+      "name": "Seed",
+      "type": "optional_input",
+      "display": true,
+      "group": "advanced",
+      "input_type": "number",
+      "constraints": {
+        "min": 0,
+        "max": 999999,
+        "step": 1
+      }
+    },
+    {
+      "id": "job_type",
+      "name": "Job Type",
+      "type": "select",
+      "conf_file": "job_types.json",
+      "display": true,
+      "group": [
+        "basic",
+        "advanced"
+      ]
+    },
+    {
+      "id": "payload",
+      "name": "API Payload",
+      "type": "prompt_editor",
+      "display": true,
+      "group": [
+        "basic",
+        "advanced"
+      ]
+    }
+  ]
+}

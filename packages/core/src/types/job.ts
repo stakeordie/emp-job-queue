@@ -36,6 +36,8 @@ export interface Job {
   workflow_span_id?: string; // Span ID from workflow step span (if applicable)
   // Storage context for asset saving (separate from payload to avoid sending to external APIs)
   ctx?: Record<string, unknown>; // Storage configuration (bucket, CDN, etc.)
+  // Forensics and debugging data
+  forensics?: JobForensics;
 }
 
 export enum JobStatus {
@@ -158,4 +160,158 @@ export interface JobSearchResult {
   page: number;
   page_size: number;
   has_more: boolean;
+}
+
+// Comprehensive job forensics for debugging and recovery
+export interface JobForensics {
+  // Creation source tracking
+  source_system?: string; // 'emprops-api', 'mini-app', 'direct-api', etc.
+  source_user_id?: string; // User who triggered the job
+  source_session_id?: string; // Session/request ID
+  source_ip?: string; // IP address of origin
+  source_user_agent?: string; // User agent if web request
+  created_by_api_key?: string; // API key used (anonymized)
+
+  // Submission pathway
+  submission_method?: 'http' | 'websocket' | 'direct' | 'webhook';
+  original_request_id?: string; // Original HTTP request ID
+  emprops_collection_id?: string; // EmProps collection that generated this
+  emprops_workflow_name?: string; // EmProps workflow name
+
+  // Processing lifecycle events
+  lifecycle_events?: JobLifecycleEvent[];
+
+  // Error tracking
+  error_chain?: JobError[];
+  last_known_error?: string;
+  error_category?: 'network' | 'timeout' | 'validation' | 'resource' | 'external_api' | 'internal' | 'unknown';
+
+  // Worker and machine tracking
+  attempted_workers?: string[]; // All workers that tried this job
+  worker_assignment_history?: WorkerAssignment[];
+  machine_locations?: string[]; // Geographic/cloud regions attempted
+
+  // External system interaction
+  external_api_calls?: ExternalApiCall[];
+  webhook_attempts?: WebhookAttempt[];
+
+  // Recovery and retry tracking
+  recovery_attempts?: RecoveryAttempt[];
+  manual_interventions?: ManualIntervention[];
+
+  // Performance and resource usage
+  queue_wait_time_ms?: number; // Time spent in queue before assignment
+  total_processing_time_ms?: number; // Total time from creation to completion/failure
+  resource_usage?: ResourceUsage;
+
+  // State consistency tracking
+  state_checks?: StateCheck[];
+  cross_system_refs?: CrossSystemReference[];
+}
+
+export interface JobLifecycleEvent {
+  timestamp: string;
+  event: 'created' | 'queued' | 'assigned' | 'started' | 'progress_update' | 'completed' | 'failed' | 'retry' | 'cancelled' | 'stuck_detected' | 'released';
+  actor: string; // worker_id, system component, user_id
+  details?: Record<string, unknown>;
+  system_state?: Record<string, unknown>; // Redis state snapshot at time of event
+}
+
+export interface JobError {
+  timestamp: string;
+  source: 'worker' | 'api' | 'external_service' | 'timeout' | 'validation' | 'system';
+  error_code?: string;
+  error_message: string;
+  stack_trace?: string;
+  context?: Record<string, unknown>;
+  recovery_suggested?: string;
+  permanent?: boolean; // True if this is a permanent failure that shouldn't be retried
+}
+
+export interface WorkerAssignment {
+  worker_id: string;
+  machine_id?: string;
+  assigned_at: string;
+  released_at?: string;
+  assignment_duration_ms?: number;
+  assignment_reason: 'capability_match' | 'retry' | 'manual' | 'failover';
+  result: 'completed' | 'failed' | 'timeout' | 'worker_disconnect' | 'manual_release';
+}
+
+export interface ExternalApiCall {
+  timestamp: string;
+  api_endpoint: string;
+  method: string;
+  request_id?: string;
+  response_status?: number;
+  response_time_ms?: number;
+  error?: string;
+  retry_count?: number;
+}
+
+export interface WebhookAttempt {
+  timestamp: string;
+  webhook_url: string;
+  attempt_number: number;
+  response_status?: number;
+  response_time_ms?: number;
+  error?: string;
+  will_retry: boolean;
+  retry_at?: string;
+}
+
+export interface RecoveryAttempt {
+  timestamp: string;
+  recovery_type: 'automatic_retry' | 'worker_reassignment' | 'manual_retry' | 'state_reset' | 'external_api_retry';
+  triggered_by: string;
+  success: boolean;
+  details?: Record<string, unknown>;
+}
+
+export interface ManualIntervention {
+  timestamp: string;
+  operator: string; // Who performed the intervention
+  action: 'retry' | 'cancel' | 'reset' | 'reassign' | 'debug' | 'force_complete';
+  reason: string;
+  notes?: string;
+}
+
+export interface ResourceUsage {
+  peak_memory_mb?: number;
+  cpu_time_ms?: number;
+  disk_io_mb?: number;
+  network_io_mb?: number;
+  gpu_time_ms?: number;
+}
+
+export interface StateCheck {
+  timestamp: string;
+  check_type: 'cross_system_consistency' | 'redis_integrity' | 'external_api_sync';
+  expected_state: Record<string, unknown>;
+  actual_state: Record<string, unknown>;
+  discrepancies?: string[];
+  auto_resolved?: boolean;
+}
+
+export interface CrossSystemReference {
+  system: 'emprops-api' | 'mini-app' | 'external-webhook';
+  reference_id: string; // Database ID, request ID, etc.
+  reference_type: 'database_record' | 'api_request' | 'webhook_delivery' | 'user_session';
+  last_verified?: string;
+  status?: 'active' | 'completed' | 'failed' | 'unknown';
+}
+
+// Enhanced job status response with forensics
+export interface JobStatusResponseWithForensics extends JobStatusResponse {
+  forensics?: JobForensics;
+  similar_failures?: Job[]; // Other jobs that failed with similar patterns
+  recovery_suggestions?: RecoverySuggestion[];
+}
+
+export interface RecoverySuggestion {
+  type: 'retry' | 'reassign' | 'manual_review' | 'system_fix' | 'user_contact';
+  confidence: 'high' | 'medium' | 'low';
+  description: string;
+  automated_action_available: boolean;
+  estimated_success_rate?: number;
 }

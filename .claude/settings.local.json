@@ -6,7 +6,10 @@
       "Bash(pnpm build:*)",
       "Read(//Users/the_dusky/code/emprops/emprops-open-api/**)",
       "Bash(pnpm typecheck:*)",
-      "Bash(redis-cli:*)"
+      "Bash(redis-cli:*)",
+      "Read(//Users/the_dusky/code/emprops/**)",
+      "Bash(find:*)",
+      "Bash(pnpm install:*)"
     ],
     "deny": [],
     "ask": []

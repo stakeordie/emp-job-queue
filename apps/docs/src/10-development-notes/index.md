@@ -9,6 +9,8 @@ This section serves as a development journal and technical analysis feed, docume
 
 ## Recent Entries
 
+- **[2025-09-16 12:00] - [Resilience Implementation Guide](./2025-09-16-resilience-implementation-guide.md)** - Detailed step-by-step implementation guide for building resilience across emp-job-queue, emprops-open-api, and emerge-mini-app with event-driven saga pattern, circuit breakers, and guaranteed delivery
+- **[2025-09-16 11:30] - [Resilience Plan](./2025-09-16-resilience-plan.md)** - Comprehensive architecture design for system-wide resilience using event sourcing, workflow orchestration, and automatic recovery to ensure eventual consistency across all three interconnected systems
 - **[2025-08-25 21:00] - [Modernization Detailed TODO List](./2025-08-25-modernization-detailed-todo-list.md)** - Comprehensive, sequenced task breakdown for the 4-week modernization initiative with 23 detailed issues across cleanup, service refactor, and EmProps integration, optimized for execution order and risk management
 - **[2025-08-25 20:00] - [GitHub Project Management Setup](./2025-08-25-github-project-management-setup.md)** - Comprehensive setup for GitHub Projects, Issues, and Milestones to track TODOs and longer-term plans while maintaining the direct-commit workflow, including automation, templates, and integration strategies
 - **[2025-08-25 19:15] - [Webhook Persistence Reliability Fix](./2025-08-25-webhook-persistence-reliability-fix.md)** - Root cause analysis and solution for webhook disappearance bug: cache-only visibility issue where refreshCache() clears inactive webhooks, plus comprehensive reliability improvements
