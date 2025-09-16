@@ -447,6 +447,9 @@ function Home({ isJobPanelOpen }: HomeProps) {
                               {(job.current_step || job.step_number) !== undefined && job.total_steps && ` | Step: ${(job.current_step || job.step_number)} of ${job.total_steps}`}
                               {(job.current_step || job.step_number) !== undefined && !job.total_steps && ` | Step: ${(job.current_step || job.step_number)}`}
                             </p>
+                            <p className="text-xs text-muted-foreground" title={new Date(job.created_at).toLocaleString()}>
+                              📅 Created: {formatRelativeTime(job.created_at)} ({new Date(job.created_at).toLocaleString()})
+                            </p>
                           </div>
                         </div>
                         
@@ -603,6 +606,9 @@ function Home({ isJobPanelOpen }: HomeProps) {
                                 {` | ⏱️ ${formatRelativeTime(job.workflow_datetime)} (${new Date(job.workflow_datetime).toLocaleString()})`}
                               </span>
                             )}
+                          </p>
+                          <p className="text-xs text-muted-foreground" title={new Date(job.created_at).toLocaleString()}>
+                            📅 Created: {formatRelativeTime(job.created_at)} ({new Date(job.created_at).toLocaleString()})
                           </p>
                         </div>
                       </div>

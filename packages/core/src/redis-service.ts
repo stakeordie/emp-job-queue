@@ -378,6 +378,7 @@ export class RedisService implements RedisServiceInterface {
         // Phase 1A: Simple job retry instead of Lua scripts
         await this.redis.hmset(`job:${jobId}`, {
           status: JobStatus.PENDING,
+          error: error,
           worker_id: '',
           assigned_at: '',
           retry_count: newRetryCount.toString(),
@@ -402,6 +403,7 @@ export class RedisService implements RedisServiceInterface {
         // Phase 1A: Simple job failure instead of Lua scripts
         await this.redis.hmset(`job:${jobId}`, {
           status: JobStatus.FAILED,
+          error: error,
           failed_at: new Date().toISOString(),
           retry_count: newRetryCount.toString(),
           last_failed_worker: workerId,
@@ -430,6 +432,7 @@ export class RedisService implements RedisServiceInterface {
 
       // Update job with error details
       await this.redis.hmset(`job:${jobId}`, {
+        error: error,
         retry_count: newRetryCount.toString(),
         failed_at: new Date().toISOString(),
         last_failed_worker: workerId,

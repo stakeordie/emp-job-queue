@@ -15,13 +15,16 @@
  * 
  * Flags:
  *   --test-decryption                       # Test mode: Only pass decryption key to test env.encrypted
- * 
+ *   --env-var=KEY=VALUE                    # Pass specific environment variables only
+ *
  * Examples:
  *   pnpm machine:up:build comfy-remote     # Instance 0 (default)
  *   pnpm machine:up:build comfy-remote 1   # Instance 1 (ports +10)
  *   pnpm machine:down comfy-remote 2       # Instance 2 (ports +20)
  *   pnpm machine:logs openai 0             # Instance 0
  *   pnpm d:machine:run comfyui --test-decryption # Test environment decryption
+ *   pnpm d:machine:run comfyui-production --env-var="ENV_ENCRYPT_KEY=rjI76MTrJEW2pfqb4f92g/NCrMoVX5zKX4OdTZ+nVOM=" # Test with specific encryption key
+ *   pnpm d:machine:pull:run comfyui-production --env-var="ENV_ENCRYPT_KEY=xyz" --env-var="DEBUG=true" # Multiple env vars
  */
 
 import { spawn } from 'child_process';
@@ -302,16 +305,30 @@ class MachineCompose {
       cmd.push('-p', mapping);
     });
     
-    // Add environment variables as -e flags (production hosting style)
-    if (envName) {
+    // Check for custom --env-var flags FIRST
+    const envVarFlags = flags.filter(flag => flag.startsWith('--env-var='));
+    const hasCustomEnvVars = envVarFlags.length > 0;
+
+    if (hasCustomEnvVars) {
+      // Custom env vars mode: Only pass specified environment variables
+      envVarFlags.forEach(flag => {
+        const envVar = flag.substring('--env-var='.length);
+        cmd.push('-e', envVar);
+        const [key] = envVar.split('=');
+        console.log(chalk.yellow(`🔐 Custom env mode: Passing ${key}`));
+      });
+      console.log(chalk.dim(`  Only the specified environment variables will be available`));
+      console.log(chalk.dim(`  Perfect for testing encryption/decryption flow`));
+    } else if (envName) {
+      // Add environment variables as -e flags (production hosting style)
       // Check for decryption test mode
       const testDecryption = flags.includes('--test-decryption');
-      
+
       if (testDecryption) {
         // Test mode: Only pass the decryption key to test encrypted environment
         const allEnvVars = this.loadAllEnvVars(envName);
         const decryptKey = allEnvVars.ENV_ENCRYPT_KEY;
-        
+
         if (decryptKey) {
           cmd.push('-e', `EMP_ENV_DECRYPT_KEY=${decryptKey}`);
           console.log(chalk.yellow(`🔐 DECRYPTION TEST MODE: Only passing EMP_ENV_DECRYPT_KEY`));
@@ -327,14 +344,19 @@ class MachineCompose {
         Object.entries(allEnvVars).forEach(([key, value]) => {
           cmd.push('-e', `${key}=${value}`);
         });
-        
+
         console.log(chalk.blue(`🌐 Added ${Object.keys(allEnvVars).length} environment variables as -e flags`));
         console.log(chalk.dim(`  Environment variables: ${Object.keys(allEnvVars).join(', ')}`));
       }
     }
     
     // Add additional flags (BEFORE image name)
-    flags.forEach(flag => {
+    // Filter out --env-var and --test-decryption flags as they've been processed
+    const additionalFlags = flags.filter(flag =>
+      !flag.startsWith('--env-var=') &&
+      flag !== '--test-decryption'
+    );
+    additionalFlags.forEach(flag => {
       if (!flag.startsWith('--')) {
         cmd.push(flag);
       }
