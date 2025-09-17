@@ -52,6 +52,7 @@ export default function JobForensics() {
   const [jobsLoading, setJobsLoading] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [searchQuery, setSearchQuery] = useState('');
 
   const searchJob = async () => {
     if (!jobId.trim()) return;
@@ -141,6 +142,24 @@ export default function JobForensics() {
   // Helper variable for miniapp data access
   const miniappData = (forensicsData?.job?.payload as any)?._miniapp_data;
 
+  // Filter jobs based on search query
+  const filteredJobs = allJobs.filter((job) => {
+    if (!searchQuery.trim()) return true;
+
+    const searchLower = searchQuery.toLowerCase();
+    const jobId = String(job.id).toLowerCase();
+    const jobName = String(job.name || job.description || '').toLowerCase();
+    const jobType = String(job.job_type || '').toLowerCase();
+    const userId = String(job.user_id || '').toLowerCase();
+    const status = String(job.status || '').toLowerCase();
+
+    return jobId.includes(searchLower) ||
+           jobName.includes(searchLower) ||
+           jobType.includes(searchLower) ||
+           userId.includes(searchLower) ||
+           status.includes(searchLower);
+  });
+
   return (
     <div className="container mx-auto py-6 space-y-6">
       <div className="space-y-2">
@@ -157,85 +176,65 @@ export default function JobForensics() {
         </TabsList>
 
         <TabsContent value="search" className="space-y-6">
-          {/* Job Search */}
-          <Card>
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <Search className="h-5 w-5" />
-                Job Search
-              </CardTitle>
-              <CardDescription>
-                Enter a job ID to get comprehensive forensics data across all systems
-              </CardDescription>
-            </CardHeader>
-            <CardContent>
-              <div className="flex gap-2">
-                <Input
-                  placeholder="Enter job ID..."
-                  value={jobId}
-                  onChange={(e) => setJobId(e.target.value)}
-                  onKeyPress={(e) => e.key === 'Enter' && searchJob()}
-                  className="flex-1"
-                />
-                <Button onClick={searchJob} disabled={loading || !jobId.trim()}>
-                  {loading ? <RefreshCw className="h-4 w-4 animate-spin" /> : <Search className="h-4 w-4" />}
-                  Search
-                </Button>
-              </div>
-              {error && (
-                <div className="mt-4 p-3 bg-red-50 border border-red-200 rounded-md text-red-700">
-                  {error}
-                </div>
-              )}
-            </CardContent>
-          </Card>
-
-          {/* All Jobs List */}
+          {/* Workflows List */}
           <Card>
             <CardHeader>
               <CardTitle className="flex items-center gap-2">
                 <Database className="h-5 w-5" />
-                Recent Workflows
+                Workflows
               </CardTitle>
               <CardDescription>
-                All workflow jobs from EmProps API database (most recent first)
+                Search and browse workflow jobs from EmProps API database
               </CardDescription>
             </CardHeader>
             <CardContent>
               <div className="space-y-4">
-                <Button onClick={loadAllJobs} disabled={jobsLoading}>
-                  {jobsLoading ? <RefreshCw className="h-4 w-4 animate-spin mr-2" /> : <RefreshCw className="h-4 w-4 mr-2" />}
-                  Load Jobs
-                </Button>
+                <div className="flex gap-2">
+                  <Input
+                    placeholder="Search by job ID, name, type, user, or status..."
+                    value={searchQuery}
+                    onChange={(e) => setSearchQuery(e.target.value)}
+                    className="flex-1"
+                  />
+                  <Button onClick={loadAllJobs} disabled={jobsLoading}>
+                    {jobsLoading ? <RefreshCw className="h-4 w-4 animate-spin mr-2" /> : <RefreshCw className="h-4 w-4 mr-2" />}
+                    Load Jobs
+                  </Button>
+                </div>
 
                 {allJobs.length > 0 && (
                   <div className="space-y-2">
                     <div className="text-sm font-medium text-muted-foreground">
-                      {allJobs.length} jobs found
+                      {filteredJobs.length} of {allJobs.length} jobs {searchQuery.trim() && 'matching search'}
                     </div>
                     <div className="border rounded-lg overflow-hidden">
                       <div className="max-h-96 overflow-y-auto">
-                        {allJobs.map((job, idx) => (
+                        {filteredJobs.map((job, idx) => (
                           <div
                             key={idx}
-                            className="flex items-center justify-between p-3 border-b last:border-b-0 hover:bg-gray-50 cursor-pointer"
-                            onClick={() => setJobId(String(job.id))}
+                            className="flex items-center justify-between p-3 border-b last:border-b-0 hover:bg-gray-50"
                           >
-                            <div className="flex items-center gap-3">
+                            <div className="flex items-center gap-3 flex-1">
                               <code className="text-xs bg-gray-100 px-2 py-1 rounded font-mono">
                                 {String(job.id).substring(0, 8)}...
                               </code>
-                              <div className="flex flex-col">
+                              <div className="flex flex-col flex-1">
                                 <div className="text-sm font-medium">
                                   {String(job.name || job.description || 'Unnamed Workflow')}
                                 </div>
-                                <div className="text-xs text-muted-foreground flex items-center gap-2">
+                                <div className="text-xs text-muted-foreground flex items-center gap-2 flex-wrap">
                                   <span>
                                     {job.created_at ? new Date(String(job.created_at)).toLocaleString() : 'Unknown date'}
                                   </span>
                                   {job.job_type != null && String(job.job_type).trim() !== '' && (
                                     <span className="px-1.5 py-0.5 bg-blue-100 text-blue-800 rounded text-xs">
                                       {String(job.job_type)}
+                                    </span>
+                                  )}
+                                  {job.user_id != null && (
+                                    <span className="flex items-center gap-1 px-1.5 py-0.5 bg-purple-100 text-purple-800 rounded text-xs">
+                                      <User className="h-3 w-3" />
+                                      {String(job.user_id).substring(0, 8)}...
                                     </span>
                                   )}
                                   {job.progress != null && Number(job.progress) > 0 && (
@@ -250,21 +249,55 @@ export default function JobForensics() {
                               <Badge className={getStatusColor(String(job.status))}>
                                 {String(job.status)}
                               </Badge>
-                              {job.user_id != null && (
-                                <span className="text-xs text-muted-foreground">
-                                  User: {String(job.user_id).substring(0, 8)}...
-                                </span>
-                              )}
                               {job.error_message != null && String(job.error_message).trim() !== '' && (
                                 <div title={String(job.error_message)}>
                                   <AlertTriangle className="h-4 w-4 text-red-500" />
                                 </div>
                               )}
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                onClick={async () => {
+                                  const id = String(job.id);
+                                  setJobId(id);
+
+                                  // Trigger the search with the new job ID
+                                  setLoading(true);
+                                  setError(null);
+
+                                  try {
+                                    const response = await fetch(`/api/jobs/${id}/forensics`);
+                                    const data = await response.json();
+
+                                    if (data.success) {
+                                      setForensicsData(data);
+                                    } else {
+                                      setError(data.error || 'Job not found');
+                                      setForensicsData(null);
+                                    }
+                                  } catch (error) {
+                                    setError(error instanceof Error ? error.message : 'Failed to fetch job forensics');
+                                    setForensicsData(null);
+                                  } finally {
+                                    setLoading(false);
+                                  }
+                                }}
+                                className="ml-2"
+                              >
+                                <Info className="h-3 w-3 mr-1" />
+                                More Info
+                              </Button>
                             </div>
                           </div>
                         ))}
                       </div>
                     </div>
+                  </div>
+                )}
+
+                {error && (
+                  <div className="mt-4 p-3 bg-red-50 border border-red-200 rounded-md text-red-700">
+                    {error}
                   </div>
                 )}
               </div>
