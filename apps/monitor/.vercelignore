@@ -1,0 +1,41 @@
+# Exclude other apps and packages from Vercel build
+../api/
+../worker/
+../machines/
+../docs/
+../../packages/docs/
+../../tools/
+../../scripts/
+../../logs/
+../../.git/
+../../.turbo/
+../../node_modules/.cache/
+../../.vscode/
+
+# Exclude large build artifacts
+**/.next/
+**/dist/
+**/build/
+**/coverage/
+**/.turbo/
+**/node_modules/.cache/
+
+# Exclude documentation and non-runtime files
+**/*.md
+**/README*
+**/CHANGELOG*
+**/LICENSE*
+**/.gitignore
+**/.eslintrc*
+**/.prettierrc*
+**/tsconfig.json
+**/vitest.config.*
+**/package-lock.json
+**/pnpm-lock.yaml
+
+# Exclude test files
+**/__tests__/
+**/*.test.*
+**/*.spec.*
+**/test/
+**/tests/

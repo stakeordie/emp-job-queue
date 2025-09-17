@@ -9,6 +9,37 @@ const nextConfig: NextConfig = {
     // Skip ESLint errors during build if SKIP_TYPE_CHECK is set
     ignoreDuringBuilds: process.env.SKIP_TYPE_CHECK === 'true',
   },
+  experimental: {
+    outputFileTracingIgnores: [
+      '**/apps/api/**/*',
+      '**/apps/worker/**/*',
+      '**/apps/machines/**/*',
+      '**/apps/docs/**/*',
+      '**/packages/docs/**/*',
+      '**/tools/**/*',
+      '**/scripts/**/*',
+      '**/logs/**/*',
+      '**/.git/**/*',
+      '**/.turbo/**/*',
+      '**/node_modules/.cache/**/*',
+      '**/*.md',
+      '**/README*',
+      '**/CHANGELOG*',
+      '**/LICENSE*',
+      '**/.gitignore',
+      '**/.eslintrc*',
+      '**/.prettierrc*',
+      '**/tsconfig.json',
+      '**/vitest.config.*',
+      '**/package-lock.json',
+      '**/pnpm-lock.yaml',
+      '**/__tests__/**/*',
+      '**/*.test.*',
+      '**/*.spec.*',
+      '**/test/**/*',
+      '**/tests/**/*'
+    ]
+  }
 };
 
 export default nextConfig;
