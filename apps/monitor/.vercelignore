@@ -31,7 +31,9 @@
 **/tsconfig.json
 **/vitest.config.*
 **/package-lock.json
-**/pnpm-lock.yaml
+# Keep root pnpm-lock.yaml but exclude others
+apps/**/pnpm-lock.yaml
+packages/**/pnpm-lock.yaml
 
 # Exclude test files
 **/__tests__/
