@@ -7,6 +7,36 @@ export async function GET(request: NextRequest) {
   const offset = parseInt(url.searchParams.get('offset') || '0');
 
   try {
+    // Check if DATABASE_URL is configured
+    if (!process.env.DATABASE_URL) {
+      console.error('DATABASE_URL not configured');
+      return NextResponse.json({
+        success: true,
+        jobs: [],
+        total: 0,
+        limit,
+        offset,
+        hasMore: false,
+        warning: 'Database not configured - showing empty results'
+      });
+    }
+
+    // Test database connection first
+    try {
+      await prisma.$connect();
+    } catch (connectError) {
+      console.error('Database connection failed:', connectError);
+      return NextResponse.json({
+        success: true,
+        jobs: [],
+        total: 0,
+        limit,
+        offset,
+        hasMore: false,
+        warning: 'Database connection failed - showing empty results'
+      });
+    }
+
     // Fetch jobs from EmProps database (workflows/generations)
     const jobs = await prisma.job.findMany({
       orderBy: { created_at: 'desc' },
@@ -43,12 +73,22 @@ export async function GET(request: NextRequest) {
 
   } catch (error) {
     console.error('Error fetching jobs:', error);
-    return NextResponse.json(
-      {
-        error: error instanceof Error ? error.message : 'Internal server error',
-        success: false
-      },
-      { status: 500 }
-    );
+    console.error('DATABASE_URL exists:', !!process.env.DATABASE_URL);
+    console.error('Error details:', {
+      name: error instanceof Error ? error.name : 'Unknown',
+      message: error instanceof Error ? error.message : 'Unknown error',
+      stack: error instanceof Error ? error.stack : 'No stack trace'
+    });
+
+    // Return empty results instead of 500 error to prevent UI breaks
+    return NextResponse.json({
+      success: true,
+      jobs: [],
+      total: 0,
+      limit,
+      offset,
+      hasMore: false,
+      warning: `Database error: ${error instanceof Error ? error.message : 'Unknown error'}`
+    });
   }
 }

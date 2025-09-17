@@ -2,7 +2,9 @@
   "framework": "nextjs",
   "buildCommand": "cd ../.. && pnpm install --frozen-lockfile && SKIP_TYPE_CHECK=true pnpm build --filter=monitor...",
   "env": {
-    "SKIP_TYPE_CHECK": "true"
+    "SKIP_TYPE_CHECK": "true",
+    "DATABASE_URL": "postgresql://postgres:BFKhIErfHuyMJSOGQqNuTweKjoubHOGS@maglev.proxy.rlwy.net:18261/emprops_open_api",
+    "HUB_REDIS_URL": "redis://default:JQSoNVpIPsuaDQYicNvocglialxPrTjj@ballast.proxy.rlwy.net:30645"
   },
   "installCommand": "cd ../.. && pnpm install --frozen-lockfile"
 }
