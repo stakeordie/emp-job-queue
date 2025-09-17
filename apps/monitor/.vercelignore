@@ -28,7 +28,7 @@
 **/.gitignore
 **/.eslintrc*
 **/.prettierrc*
-**/tsconfig.json
+# Exclude test configs only, keep build configs
 **/vitest.config.*
 **/package-lock.json
 # Keep root pnpm-lock.yaml but exclude others
