@@ -4,6 +4,5 @@
   "env": {
     "SKIP_TYPE_CHECK": "true"
   },
-  "installCommand": "cd ../.. && pnpm install --frozen-lockfile",
-  "outputDirectory": ".next/standalone"
+  "installCommand": "cd ../.. && pnpm install --frozen-lockfile"
 }
