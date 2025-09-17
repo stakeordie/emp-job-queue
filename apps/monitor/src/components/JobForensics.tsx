@@ -6,7 +6,7 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { AlertTriangle, Database, RefreshCw, Search, Info } from 'lucide-react';
+import { AlertTriangle, Database, RefreshCw, Search, Info, Image as ImageIcon, Download, ExternalLink } from 'lucide-react';
 
 interface WorkflowStep {
   id: number;
@@ -435,6 +435,301 @@ export default function JobForensics() {
                           </div>
                         ))}
                       </div>
+                    </div>
+                  )}
+                </CardContent>
+              </Card>
+
+              {/* Job Queue Results & Image Outputs */}
+              <Card>
+                <CardHeader>
+                  <CardTitle className="flex items-center gap-2">
+                    <ImageIcon className="h-5 w-5" />
+                    Job Queue Results & Image Outputs
+                  </CardTitle>
+                  <CardDescription>
+                    Generated images, files, and processing results from the job queue system
+                  </CardDescription>
+                </CardHeader>
+                <CardContent className="space-y-6">
+                  {/* Job Result Data */}
+                  {forensicsData.job.result && (
+                    <div className="space-y-4">
+                      <div className="text-lg font-semibold text-blue-700 border-b border-blue-200 pb-2">
+                        Job Queue Processing Results
+                      </div>
+
+                      {/* Processing Metadata */}
+                      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                        {forensicsData.job.result.success !== undefined && (
+                          <div>
+                            <div className="text-sm font-medium text-muted-foreground">Success Status</div>
+                            <Badge className={forensicsData.job.result.success ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'}>
+                              {forensicsData.job.result.success ? 'Success' : 'Failed'}
+                            </Badge>
+                          </div>
+                        )}
+                        {forensicsData.job.result.processing_time && (
+                          <div>
+                            <div className="text-sm font-medium text-muted-foreground">Processing Time</div>
+                            <div className="text-sm">{formatDuration(Number(forensicsData.job.result.processing_time))}</div>
+                          </div>
+                        )}
+                        {forensicsData.job.result.connector_info?.connector_type && (
+                          <div>
+                            <div className="text-sm font-medium text-muted-foreground">Connector Type</div>
+                            <Badge variant="outline">{String(forensicsData.job.result.connector_info.connector_type)}</Badge>
+                          </div>
+                        )}
+                      </div>
+
+                      {/* Generated Images/Files */}
+                      {forensicsData.job.result.output_files && Array.isArray(forensicsData.job.result.output_files) && forensicsData.job.result.output_files.length > 0 && (
+                        <div className="space-y-3">
+                          <div className="text-md font-semibold text-green-700">Generated Files ({forensicsData.job.result.output_files.length})</div>
+                          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                            {forensicsData.job.result.output_files.map((fileUrl: string, idx: number) => (
+                              <div key={idx} className="border border-green-200 rounded-lg p-4 bg-green-50">
+                                <div className="flex items-center justify-between mb-3">
+                                  <div className="text-sm font-medium text-green-800">File {idx + 1}</div>
+                                  <div className="flex gap-2">
+                                    <Button size="sm" variant="outline" onClick={() => window.open(fileUrl, '_blank')}>
+                                      <ExternalLink className="h-3 w-3 mr-1" />
+                                      View
+                                    </Button>
+                                    <Button size="sm" variant="outline" onClick={() => {
+                                      const a = document.createElement('a');
+                                      a.href = fileUrl;
+                                      a.download = fileUrl.split('/').pop() || 'download';
+                                      a.click();
+                                    }}>
+                                      <Download className="h-3 w-3 mr-1" />
+                                      Download
+                                    </Button>
+                                  </div>
+                                </div>
+
+                                {/* Image Preview */}
+                                {(fileUrl.includes('.png') || fileUrl.includes('.jpg') || fileUrl.includes('.jpeg') || fileUrl.includes('.webp') || fileUrl.includes('.gif')) && (
+                                  <div className="mb-3">
+                                    <img
+                                      src={fileUrl}
+                                      alt={`Generated image ${idx + 1}`}
+                                      className="w-full h-32 object-cover rounded border"
+                                      onError={(e) => {
+                                        const target = e.target as HTMLImageElement;
+                                        target.style.display = 'none';
+                                      }}
+                                    />
+                                  </div>
+                                )}
+
+                                {/* File URL */}
+                                <div className="text-xs text-green-700 font-mono break-all bg-white p-2 rounded border">
+                                  {fileUrl}
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Generation Metadata */}
+                      {forensicsData.job.result.metadata && (
+                        <div className="space-y-3">
+                          <div className="text-md font-semibold text-orange-700">Generation Metadata</div>
+                          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                            {Object.entries(forensicsData.job.result.metadata).map(([key, value]) => (
+                              <div key={key} className="flex flex-col gap-1 p-3 bg-orange-50 rounded border border-orange-200">
+                                <div className="text-sm font-medium text-orange-800">{key}</div>
+                                <div className="text-sm text-orange-700 font-mono">
+                                  {typeof value === 'object' ? JSON.stringify(value, null, 2) : String(value)}
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Connector Performance Stats */}
+                      {forensicsData.job.result.connector_info?.processing_stats && (
+                        <div className="space-y-3">
+                          <div className="text-md font-semibold text-purple-700">Performance Statistics</div>
+                          <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                            {Object.entries(forensicsData.job.result.connector_info.processing_stats).map(([key, value]) => (
+                              <div key={key} className="flex flex-col gap-1 p-3 bg-purple-50 rounded border border-purple-200">
+                                <div className="text-sm font-medium text-purple-800">{key}</div>
+                                <div className="text-sm text-purple-700 font-mono">
+                                  {typeof value === 'number' && (key.includes('time') || key.includes('ms'))
+                                    ? formatDuration(value)
+                                    : String(value)
+                                  }
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Raw Job Result (Collapsible) */}
+                      <details className="space-y-2">
+                        <summary className="text-md font-semibold text-gray-700 cursor-pointer hover:text-gray-900">
+                          Raw Job Result Data (Click to expand)
+                        </summary>
+                        <pre className="text-xs bg-gray-100 p-3 rounded overflow-x-auto border max-h-64 overflow-y-auto">
+                          {JSON.stringify(forensicsData.job.result, null, 2)}
+                        </pre>
+                      </details>
+                    </div>
+                  )}
+
+                  {/* Job Data (from EmProps) */}
+                  {forensicsData.job.data && (
+                    <div className="space-y-4">
+                      <div className="text-lg font-semibold text-indigo-700 border-b border-indigo-200 pb-2">
+                        EmProps Job Data
+                      </div>
+
+                      {/* Progress Information */}
+                      {forensicsData.job.progress !== undefined && (
+                        <div className="flex items-center gap-3">
+                          <div className="text-sm font-medium text-muted-foreground">Progress</div>
+                          <div className="flex-1 bg-gray-200 rounded-full h-2">
+                            <div
+                              className="bg-blue-600 h-2 rounded-full transition-all"
+                              style={{ width: `${Math.min(100, Math.max(0, Number(forensicsData.job.progress)))}%` }}
+                            ></div>
+                          </div>
+                          <div className="text-sm font-medium">{forensicsData.job.progress}%</div>
+                        </div>
+                      )}
+
+                      {/* Raw EmProps Data (Collapsible) */}
+                      <details className="space-y-2">
+                        <summary className="text-md font-semibold text-indigo-700 cursor-pointer hover:text-indigo-900">
+                          Raw EmProps Data (Click to expand)
+                        </summary>
+                        <pre className="text-xs bg-indigo-50 p-3 rounded overflow-x-auto border max-h-64 overflow-y-auto">
+                          {JSON.stringify(forensicsData.job.data, null, 2)}
+                        </pre>
+                      </details>
+                    </div>
+                  )}
+
+                  {/* EmProps Database Images */}
+                  {forensicsData.job.payload._flat_files && Array.isArray(forensicsData.job.payload._flat_files) && forensicsData.job.payload._flat_files.length > 0 && (
+                    <div className="space-y-4">
+                      <div className="text-lg font-semibold text-cyan-700 border-b border-cyan-200 pb-2">
+                        EmProps Database Images ({forensicsData.job.payload._flat_files.length})
+                      </div>
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        {forensicsData.job.payload._flat_files.map((file: any, idx: number) => (
+                          <div key={idx} className="border border-cyan-200 rounded-lg p-4 bg-cyan-50">
+                            <div className="flex items-center justify-between mb-3">
+                              <div className="text-sm font-medium text-cyan-800">
+                                {file.name || `Image ${idx + 1}`}
+                              </div>
+                              <div className="flex gap-2">
+                                {file.url && (
+                                  <>
+                                    <Button size="sm" variant="outline" onClick={() => window.open(file.url, '_blank')}>
+                                      <ExternalLink className="h-3 w-3 mr-1" />
+                                      View
+                                    </Button>
+                                    <Button size="sm" variant="outline" onClick={() => {
+                                      const a = document.createElement('a');
+                                      a.href = file.url;
+                                      a.download = file.name || 'download';
+                                      a.click();
+                                    }}>
+                                      <Download className="h-3 w-3 mr-1" />
+                                      Download
+                                    </Button>
+                                  </>
+                                )}
+                              </div>
+                            </div>
+
+                            {/* Image Preview */}
+                            {file.url && file.mime_type?.includes('image') && (
+                              <div className="mb-3">
+                                <img
+                                  src={file.url}
+                                  alt={file.name || `Generated image ${idx + 1}`}
+                                  className="w-full h-32 object-cover rounded border"
+                                  onError={(e) => {
+                                    const target = e.target as HTMLImageElement;
+                                    target.style.display = 'none';
+                                  }}
+                                />
+                              </div>
+                            )}
+
+                            {/* Metadata */}
+                            <div className="space-y-2 text-xs">
+                              <div className="grid grid-cols-2 gap-2">
+                                <div>
+                                  <span className="font-medium text-cyan-800">ID:</span>
+                                  <span className="text-cyan-700 ml-1">{file.id}</span>
+                                </div>
+                                <div>
+                                  <span className="font-medium text-cyan-800">Type:</span>
+                                  <span className="text-cyan-700 ml-1">{file.mime_type || 'unknown'}</span>
+                                </div>
+                                <div>
+                                  <span className="font-medium text-cyan-800">Relation:</span>
+                                  <span className="text-cyan-700 ml-1">{file.rel_type}</span>
+                                </div>
+                                <div>
+                                  <span className="font-medium text-cyan-800">Created:</span>
+                                  <span className="text-cyan-700 ml-1">
+                                    {file.created_at ? new Date(file.created_at).toLocaleDateString() : 'Unknown'}
+                                  </span>
+                                </div>
+                              </div>
+
+                              {/* File URL */}
+                              {file.url && (
+                                <div className="text-cyan-700 font-mono break-all bg-white p-2 rounded border mt-2">
+                                  {file.url}
+                                </div>
+                              )}
+
+                              {/* Generation Input Data */}
+                              {file.gen_in_data && (
+                                <details className="mt-2">
+                                  <summary className="font-medium text-cyan-800 cursor-pointer hover:text-cyan-900">
+                                    Generation Input
+                                  </summary>
+                                  <pre className="text-xs bg-white p-2 rounded border mt-1 max-h-24 overflow-y-auto">
+                                    {JSON.stringify(file.gen_in_data, null, 2)}
+                                  </pre>
+                                </details>
+                              )}
+
+                              {/* Generation Output Data */}
+                              {file.gen_out_data && (
+                                <details className="mt-2">
+                                  <summary className="font-medium text-cyan-800 cursor-pointer hover:text-cyan-900">
+                                    Generation Output
+                                  </summary>
+                                  <pre className="text-xs bg-white p-2 rounded border mt-1 max-h-24 overflow-y-auto">
+                                    {JSON.stringify(file.gen_out_data, null, 2)}
+                                  </pre>
+                                </details>
+                              )}
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* No Results Message */}
+                  {!forensicsData.job.result && !forensicsData.job.data && (!forensicsData.job.payload._flat_files || forensicsData.job.payload._flat_files.length === 0) && (
+                    <div className="text-center py-8 text-muted-foreground">
+                      <ImageIcon className="h-12 w-12 mx-auto mb-2 opacity-50" />
+                      <div className="text-sm">No image outputs or processing results available for this job</div>
                     </div>
                   )}
                 </CardContent>

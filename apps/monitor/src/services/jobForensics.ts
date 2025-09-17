@@ -181,11 +181,25 @@ export class JobForensicsService {
         total_steps: 100 // Default for EmProps jobs
       } as Job;
 
-      // Add collection info to payload for forensics display
-      if (collectionInfo) {
-        job.payload = {
-          ...job.payload,
-          _collection: collectionInfo
+      // Get related flat files (generated images) for this job
+      const flatFiles = await this.getJobFlatFiles(empropsJob.id, jobData?.collectionId);
+
+      // Add collection info and images to payload for forensics display
+      job.payload = {
+        ...job.payload,
+        _collection: collectionInfo,
+        _flat_files: flatFiles
+      };
+
+      // Also add result field with image outputs if available
+      if (flatFiles.length > 0) {
+        (job as any).result = {
+          success: true,
+          output_files: flatFiles.map(f => f.url).filter(Boolean),
+          metadata: {
+            total_images: flatFiles.length,
+            generation_source: 'emprops-api'
+          }
         };
       }
 
@@ -193,6 +207,76 @@ export class JobForensicsService {
     } catch (error) {
       console.error(`Error getting EmProps job ${jobId}:`, error);
       return null;
+    }
+  }
+
+  /**
+   * Get flat files (images) related to a job/collection
+   */
+  private async getJobFlatFiles(jobId: string, collectionId?: string) {
+    try {
+      const flatFiles = [];
+
+      // Get images directly related to the job ID
+      const directImages = await prisma.flat_file.findMany({
+        where: {
+          rel_id: jobId,
+          rel_type: {
+            in: ['component_test', 'workflow_test', 'preview', 'collection_generation']
+          }
+        },
+        select: {
+          id: true,
+          url: true,
+          name: true,
+          mime_type: true,
+          gen_in_data: true,
+          gen_out_data: true,
+          created_at: true,
+          rel_type: true,
+          rel_id: true
+        },
+        orderBy: { created_at: 'desc' }
+      });
+
+      flatFiles.push(...directImages);
+
+      // If collection ID exists, also get images related to that collection
+      if (collectionId) {
+        const collectionImages = await prisma.flat_file.findMany({
+          where: {
+            rel_id: String(collectionId),
+            rel_type: {
+              in: ['component_test', 'workflow_test', 'preview']
+            }
+          },
+          select: {
+            id: true,
+            url: true,
+            name: true,
+            mime_type: true,
+            gen_in_data: true,
+            gen_out_data: true,
+            created_at: true,
+            rel_type: true,
+            rel_id: true
+          },
+          orderBy: { created_at: 'desc' }
+        });
+
+        // Add collection images that aren't already included
+        const existingIds = new Set(flatFiles.map(f => f.id));
+        collectionImages.forEach(img => {
+          if (!existingIds.has(img.id)) {
+            flatFiles.push(img);
+          }
+        });
+      }
+
+      return flatFiles;
+    } catch (error) {
+      console.error(`Error getting flat files for job ${jobId}:`, error);
+      return [];
     }
   }
 
