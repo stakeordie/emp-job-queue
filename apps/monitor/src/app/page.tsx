@@ -24,10 +24,12 @@ import { AutoConnector } from "@/components/AutoConnector"
 import { Pagination } from "@/components/Pagination"
 import { ConnectionsPanel } from "@/components/ConnectionsPanel"
 import { useMonitorStore } from "@/store"
-import { useState, useMemo } from "react"
+import { useState, useMemo, useEffect } from "react"
 import type { Job } from "@/types/job"
 import { WorkerStatus, WorkerInfo } from "@/types/worker"
 import Link from "next/link"
+import { LogOut, User } from "lucide-react"
+import { useRouter } from "next/navigation"
 
 // Environment presets moved to ConnectionHeader
 
@@ -39,6 +41,29 @@ function Home({ isJobPanelOpen }: HomeProps) {
   const { jobs, workers, machines, syncJobState, cancelJob, finishedJobsPagination, setFinishedJobsPagination, refreshJobsOnly } = useMonitorStore();
   const [cancelJobId, setCancelJobId] = useState<string | null>(null);
   const [selectedJob, setSelectedJob] = useState<Job | null>(null);
+  const [user, setUser] = useState<{ name: string; email: string } | null>(null);
+  const router = useRouter();
+
+  useEffect(() => {
+    // Get current user
+    fetch('/api/auth/user')
+      .then(res => res.json())
+      .then(data => {
+        if (data.user) {
+          setUser(data.user);
+        }
+      })
+      .catch(console.error);
+  }, []);
+
+  const handleLogout = async () => {
+    try {
+      await fetch('/api/auth/logout', { method: 'POST' });
+      router.push('/login');
+    } catch (error) {
+      console.error('Logout error:', error);
+    }
+  };
 
   // Format timestamp to relative time
   const formatRelativeTime = (timestamp: number | undefined): string => {
@@ -170,7 +195,7 @@ function Home({ isJobPanelOpen }: HomeProps) {
       {/* Navigation */}
       <div className="flex items-center justify-between p-4 bg-muted/50 rounded-lg">
         <h1 className="text-2xl font-bold">Job Queue Monitor</h1>
-        <div className="flex gap-2">
+        <div className="flex items-center gap-2">
           <Link href="/database">
             <Button variant="outline" size="sm">
               Database Connections
@@ -186,6 +211,21 @@ function Home({ isJobPanelOpen }: HomeProps) {
               North Star
             </Button>
           </Link>
+          {user && (
+            <div className="flex items-center gap-2 ml-4 px-3 py-1 bg-background border rounded-md">
+              <User className="h-4 w-4" />
+              <span className="text-sm">{user.name}</span>
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={handleLogout}
+                className="h-6 w-6 p-0 hover:bg-red-100"
+                title="Sign out"
+              >
+                <LogOut className="h-3 w-3" />
+              </Button>
+            </div>
+          )}
         </div>
       </div>
 

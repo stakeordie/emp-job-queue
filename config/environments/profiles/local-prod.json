@@ -6,6 +6,10 @@
       "default",
       "local"
     ],
+    "database": [
+      "default",
+      "production"
+    ],
     "emprops": [
       "default"
     ],
