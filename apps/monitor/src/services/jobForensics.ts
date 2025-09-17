@@ -184,11 +184,15 @@ export class JobForensicsService {
       // Get related flat files (generated images) for this job
       const flatFiles = await this.getJobFlatFiles(empropsJob.id, jobData?.collectionId);
 
-      // Add collection info and images to payload for forensics display
+      // Get mini-app user data for this job
+      const miniAppData = await this.getMiniAppUserData(empropsJob.id, jobData?.collectionId);
+
+      // Add collection info, images, and user data to payload for forensics display
       job.payload = {
         ...job.payload,
         _collection: collectionInfo,
-        _flat_files: flatFiles
+        _flat_files: flatFiles,
+        _miniapp_data: miniAppData
       };
 
       // Also add result field with image outputs if available
@@ -277,6 +281,123 @@ export class JobForensicsService {
     } catch (error) {
       console.error(`Error getting flat files for job ${jobId}:`, error);
       return [];
+    }
+  }
+
+  /**
+   * Get mini-app user data including Farcaster profile information
+   */
+  private async getMiniAppUserData(jobId: string, collectionId?: string) {
+    try {
+      const miniAppData: any = {
+        generation: null,
+        user: null,
+        payment: null,
+        social_links: []
+      };
+
+      // First, try to find miniapp_generation record by job_id
+      let generation = await prisma.miniapp_generation.findFirst({
+        where: { job_id: jobId },
+        include: {
+          miniapp_user: {
+            include: {
+              social_links: true
+            }
+          },
+          miniapp_payment: true,
+          collection: {
+            select: {
+              id: true,
+              title: true,
+              description: true,
+              status: true
+            }
+          }
+        }
+      });
+
+      // If not found by job_id, try to find by collection_id
+      if (!generation && collectionId) {
+        generation = await prisma.miniapp_generation.findFirst({
+          where: { collection_id: String(collectionId) },
+          include: {
+            miniapp_user: {
+              include: {
+                social_links: true
+              }
+            },
+            miniapp_payment: true,
+            collection: {
+              select: {
+                id: true,
+                title: true,
+                description: true,
+                status: true
+              }
+            }
+          },
+          orderBy: { created_at: 'desc' }
+        });
+      }
+
+      if (generation) {
+        // Generation data
+        miniAppData.generation = {
+          id: generation.id,
+          status: generation.status,
+          created_at: generation.created_at,
+          updated_at: generation.updated_at,
+          input_data: generation.input_data,
+          output_url: generation.output_url,
+          output_data: generation.output_data,
+          generated_image: generation.generated_image,
+          error_message: generation.error_message,
+          retry_count: generation.retry_count
+        };
+
+        // User data (Farcaster profile)
+        if (generation.miniapp_user) {
+          miniAppData.user = {
+            id: generation.miniapp_user.id,
+            farcaster_id: generation.miniapp_user.farcaster_id,
+            farcaster_username: generation.miniapp_user.farcaster_username,
+            farcaster_pfp: generation.miniapp_user.farcaster_pfp,
+            wallet_address: generation.miniapp_user.wallet_address,
+            created_at: generation.miniapp_user.created_at,
+            notification_token: generation.miniapp_user.notification_token ? 'Present' : null
+          };
+
+          // Social links
+          miniAppData.social_links = generation.miniapp_user.social_links.map(link => ({
+            id: link.id,
+            social_org: link.social_org,
+            identifier: link.identifier,
+            created_at: link.created_at
+          }));
+        }
+
+        // Payment data
+        if (generation.miniapp_payment) {
+          miniAppData.payment = {
+            id: generation.miniapp_payment.id,
+            amount: generation.miniapp_payment.amount,
+            currency: generation.miniapp_payment.currency,
+            status: generation.miniapp_payment.status,
+            created_at: generation.miniapp_payment.created_at
+          };
+        }
+      }
+
+      return miniAppData;
+    } catch (error) {
+      console.error(`Error getting mini-app user data for job ${jobId}:`, error);
+      return {
+        generation: null,
+        user: null,
+        payment: null,
+        social_links: []
+      };
     }
   }
 

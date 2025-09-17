@@ -6,7 +6,7 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { AlertTriangle, Database, RefreshCw, Search, Info, Image as ImageIcon, Download, ExternalLink } from 'lucide-react';
+import { AlertTriangle, Database, RefreshCw, Search, Info, Image as ImageIcon, Download, ExternalLink, User, Wallet, MessageCircle } from 'lucide-react';
 
 interface WorkflowStep {
   id: number;
@@ -439,6 +439,247 @@ export default function JobForensics() {
                   )}
                 </CardContent>
               </Card>
+
+              {/* Mini-App User & Farcaster Data */}
+              {forensicsData.job.payload._miniapp_data && (forensicsData.job.payload._miniapp_data.user || forensicsData.job.payload._miniapp_data.generation) && (
+                <Card>
+                  <CardHeader>
+                    <CardTitle className="flex items-center gap-2">
+                      <User className="h-5 w-5" />
+                      Mini-App User & Farcaster Data
+                    </CardTitle>
+                    <CardDescription>
+                      User profile and generation data from the Emerge mini-app integration
+                    </CardDescription>
+                  </CardHeader>
+                  <CardContent className="space-y-6">
+                    {/* Farcaster User Profile */}
+                    {forensicsData.job.payload._miniapp_data.user && (
+                      <div className="space-y-3">
+                        <div className="text-lg font-semibold text-violet-700 border-b border-violet-200 pb-2">
+                          Farcaster User Profile
+                        </div>
+
+                        <div className="flex items-start gap-4 p-4 bg-violet-50 rounded-lg border border-violet-200">
+                          {/* Profile Picture */}
+                          {forensicsData.job.payload._miniapp_data.user.farcaster_pfp && (
+                            <div className="flex-shrink-0">
+                              <img
+                                src={forensicsData.job.payload._miniapp_data.user.farcaster_pfp}
+                                alt="Farcaster Profile"
+                                className="w-16 h-16 rounded-full border-2 border-violet-300"
+                                onError={(e) => {
+                                  const target = e.target as HTMLImageElement;
+                                  target.style.display = 'none';
+                                }}
+                              />
+                            </div>
+                          )}
+
+                          {/* User Info */}
+                          <div className="flex-grow space-y-3">
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                              <div>
+                                <div className="text-sm font-medium text-violet-800">Farcaster Username</div>
+                                <div className="text-sm text-violet-700 font-medium">
+                                  {forensicsData.job.payload._miniapp_data.user.farcaster_username || 'Not set'}
+                                </div>
+                              </div>
+                              <div>
+                                <div className="text-sm font-medium text-violet-800">Farcaster ID</div>
+                                <code className="text-xs bg-violet-100 text-violet-800 px-2 py-1 rounded font-mono">
+                                  {forensicsData.job.payload._miniapp_data.user.farcaster_id}
+                                </code>
+                              </div>
+                              {forensicsData.job.payload._miniapp_data.user.wallet_address && (
+                                <div className="md:col-span-2">
+                                  <div className="text-sm font-medium text-violet-800 flex items-center gap-1">
+                                    <Wallet className="h-3 w-3" />
+                                    Wallet Address
+                                  </div>
+                                  <code className="text-xs bg-violet-100 text-violet-800 px-2 py-1 rounded font-mono break-all">
+                                    {forensicsData.job.payload._miniapp_data.user.wallet_address}
+                                  </code>
+                                </div>
+                              )}
+                              <div>
+                                <div className="text-sm font-medium text-violet-800">User Created</div>
+                                <div className="text-sm text-violet-700">
+                                  {new Date(forensicsData.job.payload._miniapp_data.user.created_at).toLocaleString()}
+                                </div>
+                              </div>
+                              {forensicsData.job.payload._miniapp_data.user.notification_token && (
+                                <div>
+                                  <div className="text-sm font-medium text-violet-800">Notifications</div>
+                                  <Badge variant="outline" className="text-xs text-violet-700">
+                                    {forensicsData.job.payload._miniapp_data.user.notification_token}
+                                  </Badge>
+                                </div>
+                              )}
+                            </div>
+                          </div>
+                        </div>
+
+                        {/* Social Links */}
+                        {forensicsData.job.payload._miniapp_data.social_links && forensicsData.job.payload._miniapp_data.social_links.length > 0 && (
+                          <div className="space-y-2">
+                            <div className="text-md font-semibold text-violet-700">Social Connections</div>
+                            <div className="flex flex-wrap gap-2">
+                              {forensicsData.job.payload._miniapp_data.social_links.map((link: any, idx: number) => (
+                                <div key={idx} className="flex items-center gap-2 p-2 bg-violet-100 rounded border border-violet-200">
+                                  <MessageCircle className="h-3 w-3 text-violet-600" />
+                                  <span className="text-xs font-medium text-violet-800">{link.social_org}</span>
+                                  <span className="text-xs text-violet-700">{link.identifier}</span>
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    )}
+
+                    {/* Mini-App Generation Data */}
+                    {forensicsData.job.payload._miniapp_data.generation && (
+                      <div className="space-y-3">
+                        <div className="text-lg font-semibold text-pink-700 border-b border-pink-200 pb-2">
+                          Mini-App Generation Record
+                        </div>
+
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                          <div className="space-y-3">
+                            <div>
+                              <div className="text-sm font-medium text-pink-800">Generation ID</div>
+                              <code className="text-xs bg-pink-100 text-pink-800 px-2 py-1 rounded font-mono">
+                                {forensicsData.job.payload._miniapp_data.generation.id}
+                              </code>
+                            </div>
+                            <div>
+                              <div className="text-sm font-medium text-pink-800">Status</div>
+                              <Badge className={getStatusColor(String(forensicsData.job.payload._miniapp_data.generation.status))}>
+                                {String(forensicsData.job.payload._miniapp_data.generation.status)}
+                              </Badge>
+                            </div>
+                            <div>
+                              <div className="text-sm font-medium text-pink-800">Created</div>
+                              <div className="text-sm text-pink-700">
+                                {new Date(forensicsData.job.payload._miniapp_data.generation.created_at).toLocaleString()}
+                              </div>
+                            </div>
+                            {forensicsData.job.payload._miniapp_data.generation.retry_count > 0 && (
+                              <div>
+                                <div className="text-sm font-medium text-pink-800">Retry Count</div>
+                                <Badge variant="outline" className="text-pink-700">
+                                  {forensicsData.job.payload._miniapp_data.generation.retry_count}
+                                </Badge>
+                              </div>
+                            )}
+                          </div>
+
+                          <div className="space-y-3">
+                            {forensicsData.job.payload._miniapp_data.generation.output_url && (
+                              <div>
+                                <div className="text-sm font-medium text-pink-800">Output URL</div>
+                                <div className="text-xs text-pink-700 font-mono break-all bg-pink-50 p-2 rounded border">
+                                  <a
+                                    href={forensicsData.job.payload._miniapp_data.generation.output_url}
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    className="text-pink-600 hover:underline"
+                                  >
+                                    {forensicsData.job.payload._miniapp_data.generation.output_url}
+                                  </a>
+                                </div>
+                              </div>
+                            )}
+                            {forensicsData.job.payload._miniapp_data.generation.generated_image && (
+                              <div>
+                                <div className="text-sm font-medium text-pink-800">Generated Image</div>
+                                <div className="text-xs text-pink-700 font-mono break-all bg-pink-50 p-2 rounded border">
+                                  <a
+                                    href={forensicsData.job.payload._miniapp_data.generation.generated_image}
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    className="text-pink-600 hover:underline"
+                                  >
+                                    {forensicsData.job.payload._miniapp_data.generation.generated_image}
+                                  </a>
+                                </div>
+                              </div>
+                            )}
+                            {forensicsData.job.payload._miniapp_data.generation.error_message && (
+                              <div>
+                                <div className="text-sm font-medium text-pink-800">Error Message</div>
+                                <div className="text-xs text-red-700 bg-red-50 p-2 rounded border border-red-200">
+                                  {forensicsData.job.payload._miniapp_data.generation.error_message}
+                                </div>
+                              </div>
+                            )}
+                          </div>
+                        </div>
+
+                        {/* Generation Input/Output Data */}
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                          {forensicsData.job.payload._miniapp_data.generation.input_data && (
+                            <details className="space-y-2">
+                              <summary className="text-sm font-medium text-pink-800 cursor-pointer hover:text-pink-900">
+                                Generation Input Data
+                              </summary>
+                              <pre className="text-xs bg-pink-50 p-3 rounded border max-h-32 overflow-y-auto">
+                                {JSON.stringify(forensicsData.job.payload._miniapp_data.generation.input_data, null, 2)}
+                              </pre>
+                            </details>
+                          )}
+                          {forensicsData.job.payload._miniapp_data.generation.output_data && (
+                            <details className="space-y-2">
+                              <summary className="text-sm font-medium text-pink-800 cursor-pointer hover:text-pink-900">
+                                Generation Output Data
+                              </summary>
+                              <pre className="text-xs bg-pink-50 p-3 rounded border max-h-32 overflow-y-auto">
+                                {JSON.stringify(forensicsData.job.payload._miniapp_data.generation.output_data, null, 2)}
+                              </pre>
+                            </details>
+                          )}
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Payment Information */}
+                    {forensicsData.job.payload._miniapp_data.payment && (
+                      <div className="space-y-3">
+                        <div className="text-lg font-semibold text-emerald-700 border-b border-emerald-200 pb-2">
+                          Payment Information
+                        </div>
+                        <div className="grid grid-cols-1 md:grid-cols-4 gap-3 p-3 bg-emerald-50 rounded border border-emerald-200">
+                          <div>
+                            <div className="text-sm font-medium text-emerald-800">Amount</div>
+                            <div className="text-sm text-emerald-700 font-medium">
+                              {forensicsData.job.payload._miniapp_data.payment.amount} {forensicsData.job.payload._miniapp_data.payment.currency}
+                            </div>
+                          </div>
+                          <div>
+                            <div className="text-sm font-medium text-emerald-800">Status</div>
+                            <Badge className={getStatusColor(String(forensicsData.job.payload._miniapp_data.payment.status))}>
+                              {String(forensicsData.job.payload._miniapp_data.payment.status)}
+                            </Badge>
+                          </div>
+                          <div>
+                            <div className="text-sm font-medium text-emerald-800">Payment ID</div>
+                            <code className="text-xs bg-emerald-100 text-emerald-800 px-2 py-1 rounded font-mono">
+                              {String(forensicsData.job.payload._miniapp_data.payment.id).substring(0, 8)}...
+                            </code>
+                          </div>
+                          <div>
+                            <div className="text-sm font-medium text-emerald-800">Created</div>
+                            <div className="text-sm text-emerald-700">
+                              {new Date(forensicsData.job.payload._miniapp_data.payment.created_at).toLocaleString()}
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    )}
+                  </CardContent>
+                </Card>
+              )}
 
               {/* Job Queue Results & Image Outputs */}
               <Card>
