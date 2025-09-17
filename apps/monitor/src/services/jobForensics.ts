@@ -197,7 +197,7 @@ export class JobForensicsService {
 
       // Also add result field with image outputs if available
       if (flatFiles.length > 0) {
-        (job as any).result = {
+        (job as Record<string, unknown>).result = {
           success: true,
           output_files: flatFiles.map(f => f.url).filter(Boolean),
           metadata: {
@@ -289,7 +289,7 @@ export class JobForensicsService {
    */
   private async getMiniAppUserData(jobId: string, collectionId?: string) {
     try {
-      const miniAppData: any = {
+      const miniAppData: Record<string, unknown> = {
         generation: null,
         user: null,
         payment: null,

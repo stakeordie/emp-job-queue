@@ -138,6 +138,9 @@ export default function JobForensics() {
     }
   };
 
+  // Helper variable for miniapp data access
+  const miniappData = (forensicsData?.job?.payload as any)?._miniapp_data;
+
   return (
     <div className="container mx-auto py-6 space-y-6">
       <div className="space-y-2">
@@ -301,147 +304,149 @@ export default function JobForensics() {
                     </div>
                   </div>
 
-                  {forensicsData.forensics.last_known_error != null && String(forensicsData.forensics.last_known_error).trim() !== '' && (
+                  {forensicsData.forensics.last_known_error != null && String(forensicsData.forensics.last_known_error).trim() !== '' ? (
                     <div className="mt-4 p-3 bg-red-50 border border-red-200 rounded-md">
                       <div className="font-medium text-red-800">Error Message:</div>
-                      <div className="text-red-700 text-sm mt-1">{String(forensicsData.forensics.last_known_error)}</div>
+                      <div className="text-red-700 text-sm mt-1">{String(forensicsData.forensics.last_known_error || 'Unknown error')}</div>
                     </div>
-                  )}
+                  ) : null}
                 </CardContent>
               </Card>
 
               {/* Collection & Workflow Details */}
-              <Card>
-                <CardHeader>
-                  <CardTitle className="flex items-center gap-2">
-                    <Database className="h-5 w-5" />
-                    Collection & Workflow Details
-                  </CardTitle>
-                </CardHeader>
-                <CardContent className="space-y-6">
-                  {/* Collection Information */}
-                  {forensicsData.job.payload._collection && (
-                    <div className="space-y-3">
-                      <div className="text-lg font-semibold text-blue-700 border-b border-blue-200 pb-2">
-                        Collection Information
-                      </div>
-                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                        <div>
-                          <div className="text-sm font-medium text-muted-foreground">Collection Name</div>
-                          <div className="text-sm font-medium">{String(forensicsData.job.payload._collection.title || 'Untitled Collection')}</div>
-                        </div>
-                        <div>
-                          <div className="text-sm font-medium text-muted-foreground">Collection ID</div>
-                          <code className="text-xs bg-gray-100 px-2 py-1 rounded font-mono">
-                            {String(forensicsData.job.payload._collection.id)}
-                          </code>
-                        </div>
-                        {forensicsData.job.payload._collection.description != null && String(forensicsData.job.payload._collection.description).trim() !== '' && (
-                          <div className="md:col-span-2">
-                            <div className="text-sm font-medium text-muted-foreground">Description</div>
-                            <div className="text-sm">{String(forensicsData.job.payload._collection.description)}</div>
-                          </div>
-                        )}
-                        <div>
-                          <div className="text-sm font-medium text-muted-foreground">Collection Status</div>
-                          <Badge className={getStatusColor(String(forensicsData.job.payload._collection.status))}>
-                            {String(forensicsData.job.payload._collection.status)}
-                          </Badge>
-                        </div>
-                      </div>
-                    </div>
-                  )}
-
-                  {/* Parameters */}
-                  {forensicsData.job.payload.variables && Object.keys(forensicsData.job.payload.variables).length > 0 && (
-                    <div className="space-y-3">
-                      <div className="text-lg font-semibold text-green-700 border-b border-green-200 pb-2">
-                        Input Parameters
-                      </div>
-                      <div className="space-y-2">
-                        {Object.entries(forensicsData.job.payload.variables || {}).map(([key, value]) => (
-                          <div key={key} className="flex flex-col sm:flex-row sm:items-center gap-2 p-3 bg-green-50 rounded-md">
-                            <div className="text-sm font-medium text-green-800 min-w-0 flex-shrink-0">
-                              {key}:
-                            </div>
-                            <div className="text-sm text-green-700 font-mono break-all">
-                              {typeof value === 'string' && value.startsWith('http') ? (
-                                <a href={String(value)} target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:underline">
-                                  {String(value)}
-                                </a>
-                              ) : (
-                                String(value)
-                              )}
-                            </div>
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-                  )}
-
-                  {/* Job-Test IDs (Workflow Steps) */}
-                  {forensicsData.job.payload.outputs && forensicsData.job.payload.outputs.length > 0 && (
-                    <div className="space-y-3">
-                      <div className="text-lg font-semibold text-purple-700 border-b border-purple-200 pb-2">
-                        Workflow Steps (Job-Test IDs)
-                      </div>
+              {(forensicsData?.job?.payload as any)?._collection && (
+                <Card>
+                  <CardHeader>
+                    <CardTitle className="flex items-center gap-2">
+                      <Database className="h-5 w-5" />
+                      Collection & Workflow Details
+                    </CardTitle>
+                  </CardHeader>
+                  <CardContent className="space-y-6">
+                    {/* Collection Information */}
+                    <div>
                       <div className="space-y-3">
-                        {forensicsData.job.payload.outputs.map((output, outputIndex) => (
-                          <div key={outputIndex} className="border border-purple-200 rounded-lg p-4 bg-purple-50">
-                            <div className="text-sm font-medium text-purple-800 mb-3">
-                              Generation {output.generation?.id || outputIndex}
-                              {output.generation?.hash && (
-                                <span className="ml-2 text-xs text-purple-600 font-mono">
-                                  Hash: {String(output.generation.hash).substring(0, 16)}...
-                                </span>
-                              )}
+                        <div className="text-lg font-semibold text-blue-700 border-b border-blue-200 pb-2">
+                          Collection Information
+                        </div>
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                          <div>
+                            <div className="text-sm font-medium text-muted-foreground">Collection Name</div>
+                            <div className="text-sm font-medium">{String((forensicsData.job.payload as any)._collection?.title || 'Untitled Collection')}</div>
+                          </div>
+                          <div>
+                            <div className="text-sm font-medium text-muted-foreground">Collection ID</div>
+                            <code className="text-xs bg-gray-100 px-2 py-1 rounded font-mono">
+                              {String((forensicsData.job.payload as any)._collection?.id)}
+                            </code>
+                          </div>
+                          {(forensicsData.job.payload as any)._collection?.description && String((forensicsData.job.payload as any)._collection.description).trim() !== '' && (
+                            <div className="md:col-span-2">
+                              <div className="text-sm font-medium text-muted-foreground">Description</div>
+                              <div className="text-sm">{String((forensicsData.job.payload as any)._collection.description)}</div>
                             </div>
-                            {output.steps && Array.isArray(output.steps) && (
-                              <div className="space-y-2">
-                                {output.steps.map((step: WorkflowStep, stepIndex: number) => (
-                                  <div key={stepIndex} className="flex items-center gap-3 p-2 bg-white rounded border">
-                                    <code className="text-xs bg-purple-100 text-purple-800 px-2 py-1 rounded font-mono font-bold">
-                                      ID: {step.id}
-                                    </code>
-                                    <div className="flex-grow">
-                                      <div className="text-sm font-medium">
-                                        {step.nodeAlias || step.nodeName}
-                                      </div>
-                                      {step.nodeName !== step.nodeAlias && step.nodeAlias && (
-                                        <div className="text-xs text-muted-foreground">
-                                          Node: {step.nodeName}
+                          )}
+                          <div>
+                            <div className="text-sm font-medium text-muted-foreground">Collection Status</div>
+                            <Badge className={getStatusColor(String((forensicsData.job.payload as any)._collection?.status))}>
+                              {String((forensicsData.job.payload as any)._collection?.status)}
+                            </Badge>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Parameters */}
+                    {forensicsData.job.payload.variables && Object.keys(forensicsData.job.payload.variables).length > 0 && (
+                      <div className="space-y-3">
+                        <div className="text-lg font-semibold text-green-700 border-b border-green-200 pb-2">
+                          Input Parameters
+                        </div>
+                        <div className="space-y-2">
+                          {Object.entries(forensicsData.job.payload.variables || {}).map(([key, value]) => (
+                            <div key={key} className="flex flex-col sm:flex-row sm:items-center gap-2 p-3 bg-green-50 rounded-md">
+                              <div className="text-sm font-medium text-green-800 min-w-0 flex-shrink-0">
+                                {key}:
+                              </div>
+                              <div className="text-sm text-green-700 font-mono break-all">
+                                {typeof value === 'string' && value.startsWith('http') ? (
+                                  <a href={String(value)} target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:underline">
+                                    {String(value)}
+                                  </a>
+                                ) : (
+                                  String(value)
+                                )}
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Job-Test IDs (Workflow Steps) */}
+                    {forensicsData.job.payload.outputs && Array.isArray(forensicsData.job.payload.outputs) && forensicsData.job.payload.outputs.length > 0 && (
+                      <div className="space-y-3">
+                        <div className="text-lg font-semibold text-purple-700 border-b border-purple-200 pb-2">
+                          Workflow Steps (Job-Test IDs)
+                        </div>
+                        <div className="space-y-3">
+                          {forensicsData.job.payload.outputs.map((output: object, outputIndex: number) => (
+                            <div key={outputIndex} className="border border-purple-200 rounded-lg p-4 bg-purple-50">
+                              <div className="text-sm font-medium text-purple-800 mb-3">
+                                Generation {output.generation?.id || outputIndex}
+                                {output.generation?.hash && (
+                                  <span className="ml-2 text-xs text-purple-600 font-mono">
+                                    Hash: {String(output.generation.hash).substring(0, 16)}...
+                                  </span>
+                                )}
+                              </div>
+                              {output.steps && Array.isArray(output.steps) && (
+                                <div className="space-y-2">
+                                  {output.steps.map((step: object, stepIndex: number) => (
+                                    <div key={stepIndex} className="flex items-center gap-3 p-2 bg-white rounded border">
+                                      <code className="text-xs bg-purple-100 text-purple-800 px-2 py-1 rounded font-mono font-bold">
+                                        ID: {step.id}
+                                      </code>
+                                      <div className="flex-grow">
+                                        <div className="text-sm font-medium">
+                                          {step.nodeAlias || step.nodeName}
                                         </div>
+                                        {step.nodeName !== step.nodeAlias && step.nodeAlias && (
+                                          <div className="text-xs text-muted-foreground">
+                                            Node: {step.nodeName}
+                                          </div>
+                                        )}
+                                      </div>
+                                      {step.nodeResponse?.mimeType && (
+                                        <Badge variant="outline" className="text-xs">
+                                          {step.nodeResponse.mimeType}
+                                        </Badge>
+                                      )}
+                                      {step.nodeResponse?.src && (
+                                        <a
+                                          href={step.nodeResponse.src}
+                                          target="_blank"
+                                          rel="noopener noreferrer"
+                                          className="text-blue-600 hover:underline text-xs"
+                                        >
+                                          View Output
+                                        </a>
                                       )}
                                     </div>
-                                    {step.nodeResponse?.mimeType && (
-                                      <Badge variant="outline" className="text-xs">
-                                        {step.nodeResponse.mimeType}
-                                      </Badge>
-                                    )}
-                                    {step.nodeResponse?.src && (
-                                      <a
-                                        href={step.nodeResponse.src}
-                                        target="_blank"
-                                        rel="noopener noreferrer"
-                                        className="text-blue-600 hover:underline text-xs"
-                                      >
-                                        View Output
-                                      </a>
-                                    )}
-                                  </div>
-                                ))}
-                              </div>
-                            )}
-                          </div>
-                        ))}
+                                  ))}
+                                </div>
+                              )}
+                            </div>
+                          ))}
+                        </div>
                       </div>
-                    </div>
-                  )}
-                </CardContent>
-              </Card>
+                    )}
+                  </CardContent>
+                </Card>
+              )}
 
               {/* Mini-App User & Farcaster Data */}
-              {forensicsData.job.payload._miniapp_data && (forensicsData.job.payload._miniapp_data.user || forensicsData.job.payload._miniapp_data.generation) && (
+              {miniappData && (miniappData.user || miniappData.generation) && (
                 <Card>
                   <CardHeader>
                     <CardTitle className="flex items-center gap-2">
@@ -454,7 +459,7 @@ export default function JobForensics() {
                   </CardHeader>
                   <CardContent className="space-y-6">
                     {/* Farcaster User Profile */}
-                    {forensicsData.job.payload._miniapp_data.user && (
+                    {user && (
                       <div className="space-y-3">
                         <div className="text-lg font-semibold text-violet-700 border-b border-violet-200 pb-2">
                           Farcaster User Profile
@@ -462,10 +467,10 @@ export default function JobForensics() {
 
                         <div className="flex items-start gap-4 p-4 bg-violet-50 rounded-lg border border-violet-200">
                           {/* Profile Picture */}
-                          {forensicsData.job.payload._miniapp_data.user.farcaster_pfp && (
+                          {miniappData.user.farcaster_pfp && (
                             <div className="flex-shrink-0">
                               <img
-                                src={forensicsData.job.payload._miniapp_data.user.farcaster_pfp}
+                                src={miniappData.user.farcaster_pfp as string}
                                 alt="Farcaster Profile"
                                 className="w-16 h-16 rounded-full border-2 border-violet-300"
                                 onError={(e) => {
@@ -482,37 +487,37 @@ export default function JobForensics() {
                               <div>
                                 <div className="text-sm font-medium text-violet-800">Farcaster Username</div>
                                 <div className="text-sm text-violet-700 font-medium">
-                                  {forensicsData.job.payload._miniapp_data.user.farcaster_username || 'Not set'}
+                                  {(miniappData.user.farcaster_username as string) || 'Not set'}
                                 </div>
                               </div>
                               <div>
                                 <div className="text-sm font-medium text-violet-800">Farcaster ID</div>
                                 <code className="text-xs bg-violet-100 text-violet-800 px-2 py-1 rounded font-mono">
-                                  {forensicsData.job.payload._miniapp_data.user.farcaster_id}
+                                  {miniappData.user.farcaster_id as string}
                                 </code>
                               </div>
-                              {forensicsData.job.payload._miniapp_data.user.wallet_address && (
+                              {miniappData.user.wallet_address && (
                                 <div className="md:col-span-2">
                                   <div className="text-sm font-medium text-violet-800 flex items-center gap-1">
                                     <Wallet className="h-3 w-3" />
                                     Wallet Address
                                   </div>
                                   <code className="text-xs bg-violet-100 text-violet-800 px-2 py-1 rounded font-mono break-all">
-                                    {forensicsData.job.payload._miniapp_data.user.wallet_address}
+                                    {miniappData.user.wallet_address}
                                   </code>
                                 </div>
                               )}
                               <div>
                                 <div className="text-sm font-medium text-violet-800">User Created</div>
                                 <div className="text-sm text-violet-700">
-                                  {new Date(forensicsData.job.payload._miniapp_data.user.created_at).toLocaleString()}
+                                  {new Date(miniappData.user.created_at).toLocaleString()}
                                 </div>
                               </div>
-                              {forensicsData.job.payload._miniapp_data.user.notification_token && (
+                              {miniappData.user.notification_token && (
                                 <div>
                                   <div className="text-sm font-medium text-violet-800">Notifications</div>
                                   <Badge variant="outline" className="text-xs text-violet-700">
-                                    {forensicsData.job.payload._miniapp_data.user.notification_token}
+                                    {miniappData.user.notification_token}
                                   </Badge>
                                 </div>
                               )}
@@ -521,11 +526,11 @@ export default function JobForensics() {
                         </div>
 
                         {/* Social Links */}
-                        {forensicsData.job.payload._miniapp_data.social_links && forensicsData.job.payload._miniapp_data.social_links.length > 0 && (
+                        {miniappData.social_links && miniappData.social_links.length > 0 && (
                           <div className="space-y-2">
                             <div className="text-md font-semibold text-violet-700">Social Connections</div>
                             <div className="flex flex-wrap gap-2">
-                              {forensicsData.job.payload._miniapp_data.social_links.map((link: any, idx: number) => (
+                              {miniappData.social_links.map((link: Record<string, unknown>, idx: number) => (
                                 <div key={idx} className="flex items-center gap-2 p-2 bg-violet-100 rounded border border-violet-200">
                                   <MessageCircle className="h-3 w-3 text-violet-600" />
                                   <span className="text-xs font-medium text-violet-800">{link.social_org}</span>
@@ -539,7 +544,7 @@ export default function JobForensics() {
                     )}
 
                     {/* Mini-App Generation Data */}
-                    {forensicsData.job.payload._miniapp_data.generation && (
+                    {generation && (
                       <div className="space-y-3">
                         <div className="text-lg font-semibold text-pink-700 border-b border-pink-200 pb-2">
                           Mini-App Generation Record
@@ -550,67 +555,67 @@ export default function JobForensics() {
                             <div>
                               <div className="text-sm font-medium text-pink-800">Generation ID</div>
                               <code className="text-xs bg-pink-100 text-pink-800 px-2 py-1 rounded font-mono">
-                                {forensicsData.job.payload._miniapp_data.generation.id}
+                                {miniappData.generation.id}
                               </code>
                             </div>
                             <div>
                               <div className="text-sm font-medium text-pink-800">Status</div>
-                              <Badge className={getStatusColor(String(forensicsData.job.payload._miniapp_data.generation.status))}>
-                                {String(forensicsData.job.payload._miniapp_data.generation.status)}
+                              <Badge className={getStatusColor(String(miniappData.generation.status))}>
+                                {String(miniappData.generation.status)}
                               </Badge>
                             </div>
                             <div>
                               <div className="text-sm font-medium text-pink-800">Created</div>
                               <div className="text-sm text-pink-700">
-                                {new Date(forensicsData.job.payload._miniapp_data.generation.created_at).toLocaleString()}
+                                {new Date(miniappData.generation.created_at).toLocaleString()}
                               </div>
                             </div>
-                            {forensicsData.job.payload._miniapp_data.generation.retry_count > 0 && (
+                            {miniappData.generation.retry_count > 0 && (
                               <div>
                                 <div className="text-sm font-medium text-pink-800">Retry Count</div>
                                 <Badge variant="outline" className="text-pink-700">
-                                  {forensicsData.job.payload._miniapp_data.generation.retry_count}
+                                  {miniappData.generation.retry_count}
                                 </Badge>
                               </div>
                             )}
                           </div>
 
                           <div className="space-y-3">
-                            {forensicsData.job.payload._miniapp_data.generation.output_url && (
+                            {miniappData.generation.output_url && (
                               <div>
                                 <div className="text-sm font-medium text-pink-800">Output URL</div>
                                 <div className="text-xs text-pink-700 font-mono break-all bg-pink-50 p-2 rounded border">
                                   <a
-                                    href={forensicsData.job.payload._miniapp_data.generation.output_url}
+                                    href={miniappData.generation.output_url}
                                     target="_blank"
                                     rel="noopener noreferrer"
                                     className="text-pink-600 hover:underline"
                                   >
-                                    {forensicsData.job.payload._miniapp_data.generation.output_url}
+                                    {miniappData.generation.output_url}
                                   </a>
                                 </div>
                               </div>
                             )}
-                            {forensicsData.job.payload._miniapp_data.generation.generated_image && (
+                            {miniappData.generation.generated_image && (
                               <div>
                                 <div className="text-sm font-medium text-pink-800">Generated Image</div>
                                 <div className="text-xs text-pink-700 font-mono break-all bg-pink-50 p-2 rounded border">
                                   <a
-                                    href={forensicsData.job.payload._miniapp_data.generation.generated_image}
+                                    href={miniappData.generation.generated_image}
                                     target="_blank"
                                     rel="noopener noreferrer"
                                     className="text-pink-600 hover:underline"
                                   >
-                                    {forensicsData.job.payload._miniapp_data.generation.generated_image}
+                                    {miniappData.generation.generated_image}
                                   </a>
                                 </div>
                               </div>
                             )}
-                            {forensicsData.job.payload._miniapp_data.generation.error_message && (
+                            {miniappData.generation.error_message && (
                               <div>
                                 <div className="text-sm font-medium text-pink-800">Error Message</div>
                                 <div className="text-xs text-red-700 bg-red-50 p-2 rounded border border-red-200">
-                                  {forensicsData.job.payload._miniapp_data.generation.error_message}
+                                  {miniappData.generation.error_message}
                                 </div>
                               </div>
                             )}
@@ -619,23 +624,23 @@ export default function JobForensics() {
 
                         {/* Generation Input/Output Data */}
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                          {forensicsData.job.payload._miniapp_data.generation.input_data && (
+                          {miniappData.generation.input_data && (
                             <details className="space-y-2">
                               <summary className="text-sm font-medium text-pink-800 cursor-pointer hover:text-pink-900">
                                 Generation Input Data
                               </summary>
                               <pre className="text-xs bg-pink-50 p-3 rounded border max-h-32 overflow-y-auto">
-                                {JSON.stringify(forensicsData.job.payload._miniapp_data.generation.input_data, null, 2)}
+                                {JSON.stringify(miniappData.generation.input_data, null, 2)}
                               </pre>
                             </details>
                           )}
-                          {forensicsData.job.payload._miniapp_data.generation.output_data && (
+                          {miniappData.generation.output_data && (
                             <details className="space-y-2">
                               <summary className="text-sm font-medium text-pink-800 cursor-pointer hover:text-pink-900">
                                 Generation Output Data
                               </summary>
                               <pre className="text-xs bg-pink-50 p-3 rounded border max-h-32 overflow-y-auto">
-                                {JSON.stringify(forensicsData.job.payload._miniapp_data.generation.output_data, null, 2)}
+                                {JSON.stringify(miniappData.generation.output_data, null, 2)}
                               </pre>
                             </details>
                           )}
@@ -644,7 +649,7 @@ export default function JobForensics() {
                     )}
 
                     {/* Payment Information */}
-                    {forensicsData.job.payload._miniapp_data.payment && (
+                    {payment && (
                       <div className="space-y-3">
                         <div className="text-lg font-semibold text-emerald-700 border-b border-emerald-200 pb-2">
                           Payment Information
@@ -653,25 +658,25 @@ export default function JobForensics() {
                           <div>
                             <div className="text-sm font-medium text-emerald-800">Amount</div>
                             <div className="text-sm text-emerald-700 font-medium">
-                              {forensicsData.job.payload._miniapp_data.payment.amount} {forensicsData.job.payload._miniapp_data.payment.currency}
+                              {miniappData.payment.amount} {miniappData.payment.currency}
                             </div>
                           </div>
                           <div>
                             <div className="text-sm font-medium text-emerald-800">Status</div>
-                            <Badge className={getStatusColor(String(forensicsData.job.payload._miniapp_data.payment.status))}>
-                              {String(forensicsData.job.payload._miniapp_data.payment.status)}
+                            <Badge className={getStatusColor(String(miniappData.payment.status))}>
+                              {String(miniappData.payment.status)}
                             </Badge>
                           </div>
                           <div>
                             <div className="text-sm font-medium text-emerald-800">Payment ID</div>
                             <code className="text-xs bg-emerald-100 text-emerald-800 px-2 py-1 rounded font-mono">
-                              {String(forensicsData.job.payload._miniapp_data.payment.id).substring(0, 8)}...
+                              {String(miniappData.payment.id).substring(0, 8)}...
                             </code>
                           </div>
                           <div>
                             <div className="text-sm font-medium text-emerald-800">Created</div>
                             <div className="text-sm text-emerald-700">
-                              {new Date(forensicsData.job.payload._miniapp_data.payment.created_at).toLocaleString()}
+                              {new Date(miniappData.payment.created_at).toLocaleString()}
                             </div>
                           </div>
                         </div>
@@ -858,13 +863,13 @@ export default function JobForensics() {
                   )}
 
                   {/* EmProps Database Images */}
-                  {forensicsData.job.payload._flat_files && Array.isArray(forensicsData.job.payload._flat_files) && forensicsData.job.payload._flat_files.length > 0 && (
+                  {(forensicsData.job.payload as any)._flat_files && Array.isArray((forensicsData.job.payload as any)._flat_files) && (forensicsData.job.payload as any)._flat_files.length > 0 && (
                     <div className="space-y-4">
                       <div className="text-lg font-semibold text-cyan-700 border-b border-cyan-200 pb-2">
-                        EmProps Database Images ({forensicsData.job.payload._flat_files.length})
+                        EmProps Database Images ({(forensicsData.job.payload as any)._flat_files.length})
                       </div>
                       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                        {forensicsData.job.payload._flat_files.map((file: any, idx: number) => (
+                        {(forensicsData.job.payload as any)._flat_files.map((file: object, idx: number) => (
                           <div key={idx} className="border border-cyan-200 rounded-lg p-4 bg-cyan-50">
                             <div className="flex items-center justify-between mb-3">
                               <div className="text-sm font-medium text-cyan-800">
@@ -967,7 +972,7 @@ export default function JobForensics() {
                   )}
 
                   {/* No Results Message */}
-                  {!forensicsData.job.result && !forensicsData.job.data && (!forensicsData.job.payload._flat_files || forensicsData.job.payload._flat_files.length === 0) && (
+                  {!forensicsData.job.result && !forensicsData.job.data && (!(forensicsData.job.payload as any)._flat_files || (forensicsData.job.payload as any)._flat_files.length === 0) && (
                     <div className="text-center py-8 text-muted-foreground">
                       <ImageIcon className="h-12 w-12 mx-auto mb-2 opacity-50" />
                       <div className="text-sm">No image outputs or processing results available for this job</div>

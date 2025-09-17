@@ -23,8 +23,8 @@ export function JobDetailsModal({ job, workers, isOpen, onClose }: JobDetailsMod
     // Primary service check - worker must support the job type
     const workerServices = new Set(capabilities.services || []);
     // Check both job_type and service_required for compatibility
-    const jobServiceType = (job as any).service_required || job.job_type;
-    if (!workerServices.has(jobServiceType)) {
+    const jobServiceType = (job as unknown as Record<string, unknown>).service_required || job.job_type;
+    if (!workerServices.has(jobServiceType as string)) {
       return false;
     }
     
@@ -102,7 +102,7 @@ export function JobDetailsModal({ job, workers, isOpen, onClose }: JobDetailsMod
                 </div>
                 <div>
                   <p className="text-sm font-medium">Type</p>
-                  <p className="text-sm text-muted-foreground">{(job as any).service_required || job.job_type}</p>
+                  <p className="text-sm text-muted-foreground">{((job as unknown as Record<string, unknown>).service_required || job.job_type) as string}</p>
                 </div>
                 <div>
                   <p className="text-sm font-medium">Status</p>
@@ -170,7 +170,7 @@ export function JobDetailsModal({ job, workers, isOpen, onClose }: JobDetailsMod
                   <span className="text-sm font-medium">Service Type:</span>
                   <div className="flex gap-1 mt-1">
                     <Badge variant="default" className="text-xs">
-                      {(job as any).service_required || job.job_type}
+                      {((job as unknown as Record<string, unknown>).service_required || job.job_type) as string}
                     </Badge>
                   </div>
                 </div>
@@ -240,7 +240,7 @@ export function JobDetailsModal({ job, workers, isOpen, onClose }: JobDetailsMod
                 {/* Show message if only primary service requirement exists */}
                 {!job.requirements && (
                   <div className="col-span-2">
-                    <p className="text-sm text-muted-foreground">Only requires a worker that supports {(job as any).service_required || job.job_type}</p>
+                    <p className="text-sm text-muted-foreground">Only requires a worker that supports {((job as unknown as Record<string, unknown>).service_required || job.job_type) as string}</p>
                   </div>
                 )}
               </div>
