@@ -69,6 +69,7 @@
     "d:webhook:pull:run": "pnpm d:webhook:pull && pnpm d:webhook:run",
     "d:webhook:status": "curl -s http://localhost:3332/health | jq || echo '❌ Webhook health check failed'",
     "d:webhook:env_gen": "node scripts/env/webhook-compose.js generate_args",
+    "d:monitor:env_gen": "node scripts/env/monitor-compose.js generate_args",
     "d:fluentd:build": "cd apps/fluentd && docker build --platform linux/amd64 --build-arg BUILD_DATE=$(date -u +%Y-%m-%dT%H:%M:%SZ) -t emprops/fluentd:latest .",
     "d:fluentd:build:nocache": "cd apps/fluentd && docker build --no-cache --platform linux/amd64 --build-arg BUILD_DATE=$(date -u +%Y-%m-%dT%H:%M:%SZ) -t emprops/fluentd:latest .",
     "d:fluentd:push": "docker push emprops/fluentd:latest",

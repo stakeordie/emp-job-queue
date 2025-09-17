@@ -32,7 +32,9 @@ export const MonitorEnvInterface = {
     "LOG_LEVEL": "MONITOR_LOG_LEVEL",
   },
   secret: {
-    "DATABASE_URL": "DATABASE_URL"
+    "DATABASE_URL": "DATABASE_URL",
+    "REDIS_URL": "REDIS_URL",
+    "HUB_REDIS_URL": "REDIS_URL"
   },
   defaults: {
     "SERVICE_TYPE": "monitor",
