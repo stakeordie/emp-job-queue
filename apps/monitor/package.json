@@ -5,13 +5,14 @@
   "packageManager": "pnpm@10.12.4",
   "scripts": {
     "dev": "mkdir -p ../../logs && (echo '   - Logs:         pnpm logs:monitor' && echo '   - All Logs:     pnpm logs:all' && echo && next dev -p 3333) 2>&1 | tee ../../logs/monitor.log",
-    "build": "next build",
+    "build": "prisma generate && next build",
     "start": "next start -p 3333",
     "lint": "next lint",
     "test": "vitest",
     "test:watch": "vitest --watch",
     "test:ui": "vitest --ui",
-    "type-check": "tsc --noEmit"
+    "type-check": "tsc --noEmit",
+    "postinstall": "prisma generate"
   },
   "dependencies": {
     "@emp/core": "workspace:*",
