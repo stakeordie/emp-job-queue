@@ -837,12 +837,16 @@ export class RedisDirectWorkerClient {
       // 🚨 CRITICAL: Create persistent completion attestation FIRST
       // This is the worker's authoritative "I finished this" record
       // Must happen BEFORE releasing the job to prevent orphaning
+
+      // Create sanitized result for attestation (URLs only, no base64 data)
+      const sanitizedResult = this.createSanitizedResultForAttestation(result as any);
+
       const workerCompletionRecord = {
         job_id: jobId,
         worker_id: this.workerId,
         status: 'completed',
         completed_at: completedAt,
-        result: JSON.stringify(result),
+        result: JSON.stringify(sanitizedResult),
         workflow_id: jobData.workflow_id || null,
         current_step: jobData.current_step || null,
         total_steps: jobData.total_steps || null,
@@ -1205,6 +1209,52 @@ export class RedisDirectWorkerClient {
    */
   getRedisConnection(): Redis | undefined {
     return this.isConnectedFlag ? this.redis : undefined;
+  }
+
+  /**
+   * Create sanitized result for attestation - removes base64 data but keeps URLs
+   * This prevents storing customer asset data in attestations
+   */
+  private createSanitizedResultForAttestation(result: any): any {
+    if (!result || typeof result !== 'object') {
+      return result;
+    }
+
+    const sanitized = { ...result };
+
+    // If this is a JobResult with data, sanitize the data
+    if (sanitized.data && typeof sanitized.data === 'object') {
+      const sanitizedData = { ...sanitized.data };
+
+      // Remove base64 image data but keep URLs and metadata
+      if (sanitizedData.image_base64) {
+        delete sanitizedData.image_base64;
+        // Log that we removed base64 for audit trail
+        sanitizedData._attestation_note = 'base64 image data removed for security';
+      }
+
+      // Remove any other large binary data fields
+      if (sanitizedData.raw_output && typeof sanitizedData.raw_output === 'object') {
+        // Keep raw_output structure but remove large content
+        sanitizedData.raw_output = Array.isArray(sanitizedData.raw_output)
+          ? sanitizedData.raw_output.map((item: any) => {
+              if (item && typeof item === 'object') {
+                const sanitizedItem = { ...item };
+                // Remove result field if it contains base64
+                if (sanitizedItem.result && typeof sanitizedItem.result === 'string' && sanitizedItem.result.length > 1000) {
+                  sanitizedItem.result = `[LARGE_DATA_REMOVED_${sanitizedItem.result.length}_CHARS]`;
+                }
+                return sanitizedItem;
+              }
+              return item;
+            })
+          : sanitizedData.raw_output;
+      }
+
+      sanitized.data = sanitizedData;
+    }
+
+    return sanitized;
   }
 
   /**
