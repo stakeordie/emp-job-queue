@@ -24,6 +24,8 @@ function AttestationRecords({ jobId, workflowId }: { jobId: string; workflowId?:
   const [apiAttestation, setApiAttestation] = useState<any>(null);
   const [loading, setLoading] = useState(false);
   const [hasChecked, setHasChecked] = useState(false);
+  const [webhookTriggerLoading, setWebhookTriggerLoading] = useState(false);
+  const [webhookTriggerResult, setWebhookTriggerResult] = useState<any>(null);
 
   const loadAttestations = async () => {
     setLoading(true);
@@ -70,6 +72,29 @@ function AttestationRecords({ jobId, workflowId }: { jobId: string; workflowId?:
 
   const hasAttestations = workerAttestation || apiAttestation;
 
+  // Trigger workflow completion webhook manually
+  const triggerWorkflowWebhook = async () => {
+    if (!workflowId) return;
+
+    setWebhookTriggerLoading(true);
+    setWebhookTriggerResult(null);
+
+    try {
+      const response = await fetch(`/api/workflows/${workflowId}/trigger-webhook`, {
+        method: 'POST'
+      });
+      const result = await response.json();
+      setWebhookTriggerResult(result);
+    } catch (error) {
+      setWebhookTriggerResult({
+        success: false,
+        error: 'Failed to trigger webhook'
+      });
+    } finally {
+      setWebhookTriggerLoading(false);
+    }
+  };
+
   // Auto-load attestations when component mounts
   useEffect(() => {
     loadAttestations();
@@ -85,17 +110,56 @@ function AttestationRecords({ jobId, workflowId }: { jobId: string; workflowId?:
       <div className="text-sm font-medium text-muted-foreground mb-2 flex items-center gap-2">
         <FileText className="h-4 w-4" />
         Completion Attestations
-        <Button
-          size="sm"
-          variant="outline"
-          onClick={loadAttestations}
-          disabled={loading}
-          className="ml-auto"
-        >
-          {loading ? <RefreshCw className="h-3 w-3 animate-spin mr-1" /> : <Search className="h-3 w-3 mr-1" />}
-          {hasAttestations ? 'Reload' : 'Load'} Attestations
-        </Button>
+        <div className="ml-auto flex gap-2">
+          {workflowId && (
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={triggerWorkflowWebhook}
+              disabled={webhookTriggerLoading}
+              className="text-orange-600 border-orange-200 hover:bg-orange-50"
+            >
+              {webhookTriggerLoading ? <RefreshCw className="h-3 w-3 animate-spin mr-1" /> : <Webhook className="h-3 w-3 mr-1" />}
+              Trigger Webhook
+            </Button>
+          )}
+          <Button
+            size="sm"
+            variant="outline"
+            onClick={loadAttestations}
+            disabled={loading}
+          >
+            {loading ? <RefreshCw className="h-3 w-3 animate-spin mr-1" /> : <Search className="h-3 w-3 mr-1" />}
+            {hasAttestations ? 'Reload' : 'Load'} Attestations
+          </Button>
+        </div>
       </div>
+
+      {/* Show webhook trigger result */}
+      {webhookTriggerResult && (
+        <div className={`text-sm p-3 border rounded mb-3 ${
+          webhookTriggerResult.success
+            ? 'bg-green-50 border-green-200 text-green-800'
+            : 'bg-red-50 border-red-200 text-red-800'
+        }`}>
+          <div className="flex items-center gap-2">
+            {webhookTriggerResult.success ? (
+              <CheckCircle className="h-4 w-4" />
+            ) : (
+              <XCircle className="h-4 w-4" />
+            )}
+            {webhookTriggerResult.success ? 'Webhook Triggered Successfully' : 'Webhook Trigger Failed'}
+          </div>
+          <div className="text-xs mt-1">
+            {webhookTriggerResult.message || webhookTriggerResult.error}
+          </div>
+          {webhookTriggerResult.success && webhookTriggerResult.outputs_count > 0 && (
+            <div className="text-xs mt-1">
+              Workflow has {webhookTriggerResult.outputs_count} outputs available
+            </div>
+          )}
+        </div>
+      )}
 
       {/* Show status when checked but no attestations found */}
       {hasChecked && !loading && !hasAttestations && (
