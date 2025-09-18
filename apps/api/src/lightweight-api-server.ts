@@ -131,17 +131,17 @@ export class LightweightAPIServer {
     this.redisService = new RedisService(config.redisUrl);
     this.progressSubscriber = new Redis(config.redisUrl);
 
-    // Database connection for monitoring (prefer PgBouncer for better pool visibility)
-    const monitoringUrl = process.env.PGBOUNCER_URL || process.env.DATABASE_URL;
+    // Database connection for monitoring (direct Neon PostgreSQL)
+    const monitoringUrl = process.env.DATABASE_URL;
     if (monitoringUrl) {
       this.dbPool = new Pool({
         connectionString: monitoringUrl,
         max: 2, // Minimal pool for monitoring only
         idleTimeoutMillis: 30000,
         connectionTimeoutMillis: 5000,
-        application_name: `JobQueue-API-Monitor-${process.env.PGBOUNCER_URL ? 'PgBouncer' : 'Direct'}`,
+        application_name: 'JobQueue-API-Monitor-Neon',
       });
-      logger.info(`🔍 Database monitoring enabled via ${process.env.PGBOUNCER_URL ? 'PgBouncer' : 'direct PostgreSQL'}`);
+      logger.info('🔍 Database monitoring enabled via Neon PostgreSQL');
     }
 
     // Event broadcaster for real-time updates
@@ -433,7 +433,7 @@ export class LightweightAPIServer {
       try {
         if (!this.dbPool) {
           return res.status(503).json({
-            error: 'Database monitoring not available - PGBOUNCER_URL or DATABASE_URL not configured',
+            error: 'Database monitoring not available - DATABASE_URL not configured',
             available: false
           });
         }
