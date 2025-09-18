@@ -12,6 +12,8 @@
     "test:watch": "vitest --watch",
     "test:ui": "vitest --ui",
     "type-check": "tsc --noEmit",
+    "format": "npx prisma format && prettier --write src/**/*.ts",
+    "setup": "prisma generate && prisma migrate deploy",
     "postinstall": "prisma generate"
   },
   "dependencies": {

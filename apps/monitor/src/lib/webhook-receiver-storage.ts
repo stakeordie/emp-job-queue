@@ -31,17 +31,17 @@ export const WEBHOOK_RECEIVER_CONFIG = {
 export const cleanupExpiredReceivers = () => {
   const now = Date.now();
   let cleanedCount = 0;
-  
+
   for (const [id, receiver] of webhookReceivers.entries()) {
     if (receiver.expires_at < now) {
       webhookReceivers.delete(id);
       cleanedCount++;
     }
   }
-  
+
   if (cleanedCount > 0) {
     console.log(`[WebhookReceiver] Cleaned up ${cleanedCount} expired receivers`);
   }
-  
+
   return cleanedCount;
 };

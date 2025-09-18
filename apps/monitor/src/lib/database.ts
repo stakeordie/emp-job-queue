@@ -11,9 +11,9 @@ export const prisma =
     log: ['query'],
     datasources: {
       db: {
-        url: process.env.DATABASE_URL + '?application_name=Monitor-Forensics'
-      }
-    }
+        url: process.env.DATABASE_URL + '?application_name=Monitor-Forensics',
+      },
+    },
   });
 
 if (process.env.NODE_ENV !== 'production') globalForPrisma.prisma = prisma;

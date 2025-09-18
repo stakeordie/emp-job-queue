@@ -1,6 +1,6 @@
-export type MessageType = 
+export type MessageType =
   | 'submit_job'
-  | 'job_assigned' 
+  | 'job_assigned'
   | 'update_job_progress'
   | 'complete_job'
   | 'job_failed'

@@ -12,17 +12,19 @@ export function useToast() {
 
   const toast = useCallback(({ title, description, variant = 'default' }: Omit<Toast, 'id'>) => {
     // For now, just log to console since we don't have a full toast implementation
-    console.log(`[Toast] ${variant === 'destructive' ? '❌' : '✅'} ${title}${description ? ': ' + description : ''}`);
-    
+    console.log(
+      `[Toast] ${variant === 'destructive' ? '❌' : '✅'} ${title}${description ? ': ' + description : ''}`
+    );
+
     // You could implement a full toast system here
     const id = Date.now().toString();
     const newToast: Toast = { id, title, description, variant };
-    
-    setToasts((prev) => [...prev, newToast]);
-    
+
+    setToasts(prev => [...prev, newToast]);
+
     // Auto-remove after 3 seconds
     setTimeout(() => {
-      setToasts((prev) => prev.filter((t) => t.id !== id));
+      setToasts(prev => prev.filter(t => t.id !== id));
     }, 3000);
   }, []);
 

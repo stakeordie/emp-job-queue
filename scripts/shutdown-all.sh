@@ -42,6 +42,11 @@ pkill -f "redis-cli"
 echo "🔥 Stopping all running Docker containers..."
 docker stop $(docker ps -q) 2>/dev/null || true
 
+# Kill EmProps API processes
+echo "🔥 Killing EmProps API processes..."
+pkill -f "emprops-open-api.*ts-node.*src/index.ts"
+pkill -f "emprops-open-api.*nodemon"
+
 # Kill any remaining node processes in the project
 echo "🔥 Killing any remaining project processes..."
 pkill -f "emp-job-queue"
@@ -51,7 +56,7 @@ sleep 2
 
 # Show what's still running
 echo "📊 Checking for remaining processes..."
-ps aux | grep -E "(emp-job-queue|redis-server|basic-machine)" | grep -v grep
+ps aux | grep -E "(emp-job-queue|redis-server|basic-machine|emprops-open-api.*ts-node)" | grep -v grep
 
 echo "✅ Shutdown complete!"
 echo ""

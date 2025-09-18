@@ -24,12 +24,15 @@ export interface Machine {
   structure?: {
     gpu_count: number;
     capabilities: string[];
-    workers: Record<string, {
-      worker_id: string;
-      gpu_id: number;
-      services: string[];
-      [key: string]: unknown;
-    }>;
+    workers: Record<
+      string,
+      {
+        worker_id: string;
+        gpu_id: number;
+        services: string[];
+        [key: string]: unknown;
+      }
+    >;
   };
 }
 

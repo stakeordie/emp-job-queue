@@ -10,7 +10,14 @@
       "Read(//Users/the_dusky/code/emprops/**)",
       "Bash(find:*)",
       "Bash(pnpm install:*)",
-      "Bash(node:*)"
+      "Bash(node:*)",
+      "Bash(pnpm type-check:*)",
+      "Bash(pnpm prisma generate:*)",
+      "Bash(cat:*)",
+      "Bash(code --version)",
+      "Bash(rm:*)",
+      "Bash(PGPASSWORD=\"BFKhIErfHuyMJSOGQqNuTweKjoubHOGS\" psql -h maglev.proxy.rlwy.net -p 18261 -U postgres -d emprops_open_api -c \"\\dt\")",
+      "Bash(PGPASSWORD=\"BFKhIErfHuyMJSOGQqNuTweKjoubHOGS\" psql -h maglev.proxy.rlwy.net -p 18261 -U postgres -d emprops_open_api -c \"\\d miniapp_generation\")"
     ],
     "deny": [],
     "ask": []

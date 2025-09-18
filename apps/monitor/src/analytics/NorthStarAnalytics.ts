@@ -1,9 +1,9 @@
 /**
  * North Star Analytics Engine
- * 
+ *
  * Analyzes current system patterns to measure progress toward the North Star architecture:
  * - Job duration analysis (pool candidates)
- * - Model usage patterns (affinity opportunities) 
+ * - Model usage patterns (affinity opportunities)
  * - Performance variance (contention identification)
  * - Machine utilization (pool readiness)
  */
@@ -13,8 +13,8 @@ import type { Job, Worker, Machine } from '@/types';
 export interface JobDurationPattern {
   fastLane: number; // Jobs <30s
   standard: number; // Jobs 30s-3min
-  heavy: number;    // Jobs >3min
-  unknown: number;  // Jobs with no duration data
+  heavy: number; // Jobs >3min
+  unknown: number; // Jobs with no duration data
 }
 
 export interface ModelUsagePattern {
@@ -35,9 +35,9 @@ export interface PerformanceVariance {
 
 export interface MachinePoolPotential {
   machineId: string;
-  fastLaneScore: number;    // 0-100, readiness for fast lane pool
-  standardScore: number;    // 0-100, readiness for standard pool  
-  heavyScore: number;       // 0-100, readiness for heavy pool
+  fastLaneScore: number; // 0-100, readiness for fast lane pool
+  standardScore: number; // 0-100, readiness for standard pool
+  heavyScore: number; // 0-100, readiness for heavy pool
   currentUtilization: number;
   recommendedPool: 'fast-lane' | 'standard' | 'heavy' | 'mixed';
 }
@@ -48,19 +48,19 @@ export interface NorthStarMetrics {
   modelIntelligenceReadiness: number | null;
   routingIntelligenceReadiness: number | null;
   overallNorthStarProgress: number | null;
-  
+
   // Detailed metrics (null if insufficient data)
   jobDurationDistribution: JobDurationPattern | null;
   performanceHeterogeneity: PerformanceVariance | null;
   machinePoolPotentials: MachinePoolPotential[];
   modelUsagePatterns: ModelUsagePattern[];
-  
+
   // Production health (real data only)
   systemHealthScore: number;
   jobCompletionRate: number | null;
   workerStabilityScore: number;
   averageQueueWaitTime: number | null;
-  
+
   // Data availability indicators
   hasJobData: boolean;
   hasModelData: boolean;
@@ -72,7 +72,7 @@ export class NorthStarAnalytics {
   private jobHistory: Job[] = [];
   private workerHistory: Worker[] = [];
   private machineHistory: Machine[] = [];
-  
+
   private readonly FAST_LANE_THRESHOLD = 30 * 1000; // 30 seconds
   private readonly HEAVY_THRESHOLD = 3 * 60 * 1000; // 3 minutes
 
@@ -91,51 +91,53 @@ export class NorthStarAnalytics {
    */
   calculateMetrics(): NorthStarMetrics {
     // Data availability checks
-    const completedJobs = this.jobHistory.filter(job => 
-      job.status === 'completed' && job.started_at && job.completed_at
+    const completedJobs = this.jobHistory.filter(
+      job => job.status === 'completed' && job.started_at && job.completed_at
     );
     const minimumJobsRequired = 10;
     const hasJobData = completedJobs.length >= minimumJobsRequired;
     const hasModelData = false; // Model tracking not implemented yet
     const hasPerformanceData = completedJobs.length >= 5;
-    
+
     // Analyze only if we have sufficient data
     const jobDuration = hasJobData ? this.analyzeJobDurations() : null;
     const performance = hasPerformanceData ? this.analyzePerformanceVariance() : null;
     const machinePool = this.analyzeMachinePoolPotential(); // Can work with any data
     const modelUsage: ModelUsagePattern[] = []; // Not implemented yet
-    
+
     // Calculate readiness scores only with sufficient data
-    const poolSeparationReadiness = (jobDuration && performance) ? 
-      this.calculatePoolSeparationReadiness(jobDuration, performance) : null;
+    const poolSeparationReadiness =
+      jobDuration && performance
+        ? this.calculatePoolSeparationReadiness(jobDuration, performance)
+        : null;
     const modelIntelligenceReadiness = null; // Not ready - no model tracking
-    const routingIntelligenceReadiness = machinePool.length > 0 ? 
-      this.calculateRoutingIntelligenceReadiness(machinePool) : null;
-    
+    const routingIntelligenceReadiness =
+      machinePool.length > 0 ? this.calculateRoutingIntelligenceReadiness(machinePool) : null;
+
     // Overall progress only if we have at least one component ready
-    const overallProgress = poolSeparationReadiness !== null ? 
-      Math.round(poolSeparationReadiness * 0.4) : null; // Only count implemented parts
+    const overallProgress =
+      poolSeparationReadiness !== null ? Math.round(poolSeparationReadiness * 0.4) : null; // Only count implemented parts
 
     return {
       poolSeparationReadiness,
       modelIntelligenceReadiness,
       routingIntelligenceReadiness,
       overallNorthStarProgress: overallProgress,
-      
+
       jobDurationDistribution: jobDuration,
       performanceHeterogeneity: performance,
       machinePoolPotentials: machinePool,
       modelUsagePatterns: modelUsage,
-      
+
       systemHealthScore: this.calculateSystemHealth(),
       jobCompletionRate: hasJobData ? this.calculateJobCompletionRate() : null,
       workerStabilityScore: this.calculateWorkerStability(),
       averageQueueWaitTime: hasJobData ? this.calculateAverageQueueWaitTime() : null,
-      
+
       hasJobData,
       hasModelData,
       hasPerformanceData,
-      minimumDataThreshold: minimumJobsRequired
+      minimumDataThreshold: minimumJobsRequired,
     };
   }
 
@@ -143,8 +145,8 @@ export class NorthStarAnalytics {
    * Analyze job duration patterns for pool classification
    */
   private analyzeJobDurations(): JobDurationPattern {
-    const completedJobs = this.jobHistory.filter(job => 
-      job.status === 'completed' && job.started_at && job.completed_at
+    const completedJobs = this.jobHistory.filter(
+      job => job.status === 'completed' && job.started_at && job.completed_at
     );
 
     let fastLane = 0;
@@ -159,7 +161,7 @@ export class NorthStarAnalytics {
       }
 
       const duration = job.completed_at - job.started_at;
-      
+
       if (duration < this.FAST_LANE_THRESHOLD) {
         fastLane++;
       } else if (duration < this.HEAVY_THRESHOLD) {
@@ -172,9 +174,9 @@ export class NorthStarAnalytics {
     const total = completedJobs.length || 1;
     return {
       fastLane: Math.round((fastLane / total) * 100),
-      standard: Math.round((standard / total) * 100), 
+      standard: Math.round((standard / total) * 100),
       heavy: Math.round((heavy / total) * 100),
-      unknown: Math.round((unknown / total) * 100)
+      unknown: Math.round((unknown / total) * 100),
     };
   }
 
@@ -193,18 +195,18 @@ export class NorthStarAnalytics {
         minProcessingTime: 0,
         maxProcessingTime: 0,
         variance: 0,
-        contentionScore: 0
+        contentionScore: 0,
       };
     }
 
     const avg = durations.reduce((sum, d) => sum + d, 0) / durations.length;
     const min = Math.min(...durations);
     const max = Math.max(...durations);
-    
+
     // Calculate variance
     const variance = durations.reduce((sum, d) => sum + Math.pow(d - avg, 2), 0) / durations.length;
     const stdDev = Math.sqrt(variance);
-    
+
     // Contention score: higher variance indicates more contention
     // Normalize to 0-100 scale based on coefficient of variation
     const coefficientOfVariation = avg > 0 ? stdDev / avg : 0;
@@ -215,7 +217,7 @@ export class NorthStarAnalytics {
       minProcessingTime: min,
       maxProcessingTime: max,
       variance: Math.round(variance),
-      contentionScore
+      contentionScore,
     };
   }
 
@@ -225,19 +227,17 @@ export class NorthStarAnalytics {
   private analyzeMachinePoolPotential(): MachinePoolPotential[] {
     return this.machineHistory.map(machine => {
       // Get workers for this machine
-      const machineWorkers = this.workerHistory.filter(w => 
-        machine.workers.includes(w.worker_id)
-      );
+      const machineWorkers = this.workerHistory.filter(w => machine.workers.includes(w.worker_id));
 
       // Get recent jobs for this machine
-      const machineJobs = this.jobHistory.filter(job => 
+      const machineJobs = this.jobHistory.filter(job =>
         machineWorkers.some(w => w.worker_id === job.worker_id)
       );
 
       // Analyze job patterns to determine pool suitability
       const fastLaneJobs = machineJobs.filter(job => {
         if (!job.started_at || !job.completed_at) return false;
-        return (job.completed_at - job.started_at) < this.FAST_LANE_THRESHOLD;
+        return job.completed_at - job.started_at < this.FAST_LANE_THRESHOLD;
       }).length;
 
       const standardJobs = machineJobs.filter(job => {
@@ -248,7 +248,7 @@ export class NorthStarAnalytics {
 
       const heavyJobs = machineJobs.filter(job => {
         if (!job.started_at || !job.completed_at) return false;
-        return (job.completed_at - job.started_at) >= this.HEAVY_THRESHOLD;
+        return job.completed_at - job.started_at >= this.HEAVY_THRESHOLD;
       }).length;
 
       const totalJobs = fastLaneJobs + standardJobs + heavyJobs || 1;
@@ -272,9 +272,8 @@ export class NorthStarAnalytics {
 
       // Calculate current utilization
       const activeWorkers = machineWorkers.filter(w => w.status === 'busy').length;
-      const currentUtilization = machineWorkers.length > 0 
-        ? Math.round((activeWorkers / machineWorkers.length) * 100)
-        : 0;
+      const currentUtilization =
+        machineWorkers.length > 0 ? Math.round((activeWorkers / machineWorkers.length) * 100) : 0;
 
       return {
         machineId: machine.machine_id,
@@ -282,7 +281,7 @@ export class NorthStarAnalytics {
         standardScore,
         heavyScore,
         currentUtilization,
-        recommendedPool
+        recommendedPool,
       };
     });
   }
@@ -299,16 +298,19 @@ export class NorthStarAnalytics {
   /**
    * Calculate pool separation readiness score
    */
-  private calculatePoolSeparationReadiness(jobDuration: JobDurationPattern, performance: PerformanceVariance): number {
+  private calculatePoolSeparationReadiness(
+    jobDuration: JobDurationPattern,
+    performance: PerformanceVariance
+  ): number {
     // High readiness if:
     // 1. Clear job duration separation (not all mixed together)
     // 2. High performance variance (indicating contention that pools would solve)
-    
+
     const durationSeparation = Math.max(jobDuration.fastLane, jobDuration.heavy);
     const contentionIndicator = performance.contentionScore;
-    
+
     // Weight: 60% duration patterns, 40% contention level
-    return Math.round((durationSeparation * 0.6) + (contentionIndicator * 0.4));
+    return Math.round(durationSeparation * 0.6 + contentionIndicator * 0.4);
   }
 
   /**
@@ -326,7 +328,7 @@ export class NorthStarAnalytics {
     // High readiness if machines show clear specialization potential
     const specializedMachines = machinePool.filter(m => m.recommendedPool !== 'mixed').length;
     const totalMachines = machinePool.length || 1;
-    
+
     return Math.round((specializedMachines / totalMachines) * 100);
   }
 
@@ -338,12 +340,12 @@ export class NorthStarAnalytics {
     const onlineWorkers = this.workerHistory.filter(w => w.status !== 'offline').length;
     const totalMachines = this.machineHistory.length;
     const readyMachines = this.machineHistory.filter(m => m.status === 'ready').length;
-    
+
     if (totalWorkers === 0 || totalMachines === 0) return 0;
-    
+
     const workerHealth = (onlineWorkers / totalWorkers) * 100;
     const machineHealth = (readyMachines / totalMachines) * 100;
-    
+
     return Math.round((workerHealth + machineHealth) / 2);
   }
 
@@ -353,10 +355,10 @@ export class NorthStarAnalytics {
   private calculateJobCompletionRate(): number {
     const recentJobs = this.jobHistory.slice(0, 100); // Last 100 jobs
     const completedJobs = recentJobs.filter(j => j.status === 'completed').length;
-    const totalFinished = recentJobs.filter(j => 
-      j.status === 'completed' || j.status === 'failed'
+    const totalFinished = recentJobs.filter(
+      j => j.status === 'completed' || j.status === 'failed'
     ).length;
-    
+
     if (totalFinished === 0) return 100;
     return Math.round((completedJobs / totalFinished) * 100);
   }
@@ -366,10 +368,10 @@ export class NorthStarAnalytics {
    */
   private calculateWorkerStability(): number {
     // Count workers that haven't failed recently
-    const stableWorkers = this.workerHistory.filter(w => 
-      w.status !== 'error' && w.total_jobs_failed < w.total_jobs_completed
+    const stableWorkers = this.workerHistory.filter(
+      w => w.status !== 'error' && w.total_jobs_failed < w.total_jobs_completed
     ).length;
-    
+
     const totalWorkers = this.workerHistory.length || 1;
     return Math.round((stableWorkers / totalWorkers) * 100);
   }
@@ -378,15 +380,11 @@ export class NorthStarAnalytics {
    * Calculate average queue wait time
    */
   private calculateAverageQueueWaitTime(): number {
-    const recentJobs = this.jobHistory
-      .filter(job => job.created_at && job.started_at)
-      .slice(0, 50); // Last 50 jobs with timing data
+    const recentJobs = this.jobHistory.filter(job => job.created_at && job.started_at).slice(0, 50); // Last 50 jobs with timing data
 
     if (recentJobs.length === 0) return 0;
 
-    const waitTimes = recentJobs.map(job => 
-      (job.started_at! - job.created_at) || 0
-    );
+    const waitTimes = recentJobs.map(job => job.started_at! - job.created_at || 0);
 
     return Math.round(waitTimes.reduce((sum, time) => sum + time, 0) / waitTimes.length);
   }

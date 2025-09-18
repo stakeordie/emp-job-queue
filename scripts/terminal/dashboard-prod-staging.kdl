@@ -1,0 +1,55 @@
+layout {
+    default_tab_template {
+        pane size=1 borderless=true {
+            plugin location="zellij:tab-bar"
+        }
+        children
+        pane size=2 borderless=true {
+            plugin location="zellij:status-bar"
+        }
+    }
+    
+    tab name="Development" {
+        pane split_direction="horizontal" {
+            pane split_direction="vertical" {
+                pane name="JOB QUEUE API" {
+                    command "bash"
+                    args "-c" "sleep 9 && cd ~/code/emprops/ai_infra/emp-job-queue && pnpm d:api:run prod-staging"
+                    start_suspended false
+                }
+                pane name="WEBHOOK SERVICE" {
+                    command "bash" 
+                    args "-c" "sleep 9 && cd ~/code/emprops/ai_infra/emp-job-queue && pnpm d:webhook:run prod-staging"
+                    start_suspended false
+                }
+                pane name="JOB NETWORK MONITOR" {
+                    command "bash"
+                    args "-c" "sleep 15 && cd ~/code/emprops/ai_infra/emp-job-queue && pnpm dev:monitor --env prod-staging"
+                    start_suspended false
+                }
+            }
+            pane split_direction="vertical" {
+                pane name="Redis Queue" {
+                    command "bash"
+                    args "-c" "cd ~/code/emprops/ai_infra/emp-job-queue && pnpm dev:redis"
+                    start_suspended false
+                }
+                pane name="Fluentd" {
+                    command "bash"
+                    args "-c" "sleep 9 && cd ~/code/emprops/ai_infra/emp-job-queue && pnpm d:fluentd:run prod-staging"
+                    start_suspended false
+                }
+                pane name="EmProps API Server" {
+                    command "bash" 
+                    args "-c" "sleep 15 && cd ~/code/emprops/emprops-open-api && yarn dev:local:staging"
+                    start_suspended false
+                }
+                pane name="EmProps UI" {
+                    command "bash"
+                    args "-c" "sleep 25 && cd ~/code/emprops/core-services/emprops-open-interface && yarn dev:local:dev"
+                    start_suspended false
+                }
+            }
+        }
+    }
+}

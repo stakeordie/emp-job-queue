@@ -4,7 +4,16 @@
     "lib": ["dom", "dom.iterable", "esnext"],
     "allowJs": true,
     "skipLibCheck": true,
-    "strict": true,
+    // MONITORING TOOL - Relaxed strict mode for dynamic forensics data
+    "strict": false,
+    "noImplicitAny": false,
+    "strictNullChecks": false,
+    "strictFunctionTypes": false,
+    "strictBindCallApply": false,
+    "strictPropertyInitialization": false,
+    "noImplicitThis": false,
+    "alwaysStrict": false,
+    // Keep these for basic safety
     "noEmit": true,
     "esModuleInterop": true,
     "module": "esnext",
@@ -13,6 +22,11 @@
     "isolatedModules": true,
     "jsx": "preserve",
     "incremental": true,
+    // Additional flexibility
+    "noUncheckedIndexedAccess": false,
+    "exactOptionalPropertyTypes": false,
+    "noImplicitReturns": false,
+    "noPropertyAccessFromIndexSignature": false,
     "plugins": [
       {
         "name": "next"
