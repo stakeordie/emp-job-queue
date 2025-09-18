@@ -47,7 +47,7 @@ export async function GET(request: NextRequest) {
     let searchJobIds: string[] = [];
 
     if (search && search.trim()) {
-      const searchTerm = search.trim();
+      const searchTerm = String(search.trim());
 
       // First, find job IDs from miniapp_generation that match farcaster usernames
       try {
@@ -55,8 +55,8 @@ export async function GET(request: NextRequest) {
           where: {
             miniapp_user: {
               OR: [
-                { farcaster_username: { contains: searchTerm } },
-                { wallet_address: { contains: searchTerm } }
+                { farcaster_username: { contains: searchTerm, mode: 'insensitive' } },
+                { wallet_address: { contains: searchTerm, mode: 'insensitive' } }
               ]
             }
           },
@@ -70,14 +70,14 @@ export async function GET(request: NextRequest) {
         console.warn('Failed to search miniapp_generation:', error);
       }
 
-      // Build the main search condition using PostgreSQL contains/startsWith
+      // Build the main search condition using PostgreSQL case-insensitive contains
       const searchConditions = [
-        { id: { contains: searchTerm } },
-        { name: { contains: searchTerm } },
-        { description: { contains: searchTerm } },
-        { job_type: { contains: searchTerm } },
-        { status: { contains: searchTerm } },
-        { user_id: { contains: searchTerm } }
+        { id: { contains: searchTerm, mode: 'insensitive' } },
+        { name: { contains: searchTerm, mode: 'insensitive' } },
+        { description: { contains: searchTerm, mode: 'insensitive' } },
+        { job_type: { contains: searchTerm, mode: 'insensitive' } },
+        { status: { contains: searchTerm, mode: 'insensitive' } },
+        { user_id: { contains: searchTerm, mode: 'insensitive' } }
       ];
 
       // Add job IDs from farcaster username search if any found
