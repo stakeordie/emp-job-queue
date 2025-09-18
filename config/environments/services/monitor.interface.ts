@@ -26,7 +26,7 @@ export const MonitorEnvInterface = {
     "NODE_ENV": "NODE_ENV",
     
     // Client-side auto-connect (exposed to browser)
-    "NEXT_PUBLIC_DEFAULT_REDIS_URL": "REDIS_URL",
+    "NEXT_PUBLIC_DEFAULT_REDIS_URL": "MONITOR_REDIS_URL",
     "NEXT_PUBLIC_DEFAULT_WS_URL": "API_WEBSOCKET_URL",
     
     // Development
@@ -34,8 +34,8 @@ export const MonitorEnvInterface = {
   },
   secret: {
     "DATABASE_URL": "DATABASE_URL",
-    "REDIS_URL": "REDIS_URL",
-    "HUB_REDIS_URL": "REDIS_URL",
+    "REDIS_URL": "MONITOR_REDIS_URL",
+    "HUB_REDIS_URL": "MONITOR_REDIS_URL",
     "EMPROPS_API_KEY": "EMPROPS_API_KEY",
     "AUTH_TOKEN": "API_AUTH_TOKEN"
   },

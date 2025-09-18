@@ -832,11 +832,38 @@ export class RedisDirectWorkerClient {
 
       // Fetch the job data to get workflow fields for completion event
       const jobData = await this.redis.hgetall(`job:${jobId}`);
+      const completedAt = new Date().toISOString();
+
+      // 🚨 CRITICAL: Create persistent completion attestation FIRST
+      // This is the worker's authoritative "I finished this" record
+      // Must happen BEFORE releasing the job to prevent orphaning
+      const workerCompletionRecord = {
+        job_id: jobId,
+        worker_id: this.workerId,
+        status: 'completed',
+        completed_at: completedAt,
+        result: JSON.stringify(result),
+        workflow_id: jobData.workflow_id || null,
+        current_step: jobData.current_step || null,
+        total_steps: jobData.total_steps || null,
+        machine_id: process.env.MACHINE_ID || 'unknown',
+        worker_version: process.env.VERSION || 'unknown',
+        attestation_created_at: Date.now()
+      };
+
+      // Store worker completion attestation with 7-day TTL for recovery
+      await this.redis.setex(
+        `worker:completion:${jobId}`,
+        7 * 24 * 60 * 60, // 7 days
+        JSON.stringify(workerCompletionRecord)
+      );
+
+      logger.info(`🔐 Worker ${this.workerId} created completion attestation for job ${jobId}`);
 
       // Update job status
       await this.redis.hmset(`job:${jobId}`, {
         status: JobStatus.COMPLETED,
-        completed_at: new Date().toISOString(),
+        completed_at: completedAt,
       });
 
       logger.info(`✅ Worker ${this.workerId} updated job:${jobId} status to COMPLETED`);
@@ -925,7 +952,7 @@ export class RedisDirectWorkerClient {
   async failJob(jobId: string, error: string, canRetry = true): Promise<void> {
     try {
       logger.info(`🔥 [DEBUG] Redis client failJob called: jobId=${jobId}, canRetry=${canRetry}, error="${error}"`);
-      
+
       const job = await this.getJob(jobId);
       if (!job) {
         logger.warn(`Worker ${this.workerId} cannot fail job ${jobId} - not found`);
@@ -933,11 +960,40 @@ export class RedisDirectWorkerClient {
       }
 
       logger.info(`🔥 [DEBUG] Job found: status=${job.status}, retry_count=${job.retry_count}, max_retries=${job.max_retries}`);
-      
+
       const newRetryCount = job.retry_count + 1;
       const shouldRetry = canRetry && newRetryCount < job.max_retries;
-      
+      const failedAt = new Date().toISOString();
+
       logger.info(`🔥 [DEBUG] Calculated: newRetryCount=${newRetryCount}, shouldRetry=${shouldRetry} (canRetry=${canRetry} && ${newRetryCount} < ${job.max_retries})`);
+
+      // 🚨 CRITICAL: Create persistent failure attestation FIRST (for permanent failures)
+      // This ensures we have proof the worker processed it, even if downstream verification fails
+      if (!shouldRetry) {
+        const workerFailureRecord = {
+          job_id: jobId,
+          worker_id: this.workerId,
+          status: 'failed',
+          failed_at: failedAt,
+          error: error,
+          retry_count: newRetryCount,
+          workflow_id: job.workflow_id || null,
+          current_step: job.current_step || null,
+          total_steps: job.total_steps || null,
+          machine_id: process.env.MACHINE_ID || 'unknown',
+          worker_version: process.env.VERSION || 'unknown',
+          attestation_created_at: Date.now()
+        };
+
+        // Store worker failure attestation with 7-day TTL for recovery
+        await this.redis.setex(
+          `worker:completion:${jobId}`,
+          7 * 24 * 60 * 60, // 7 days
+          JSON.stringify(workerFailureRecord)
+        );
+
+        logger.info(`🔐 Worker ${this.workerId} created failure attestation for job ${jobId}`);
+      }
 
       if (shouldRetry) {
         // Return to queue for retry

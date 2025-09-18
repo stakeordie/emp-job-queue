@@ -591,6 +591,133 @@ export function setupWebhookRoutes(app: Express, webhookProcessor: WebhookProces
     )[method]('/test-receivers/:id/webhook', handleTestReceiverRequest);
   });
 
+  // Simple webhook monitor endpoint - captures any request for monitoring
+  const webhookMonitorRequests = new Map<string, any[]>(); // In-memory storage by session
+
+  app.all('/webhook-monitor/:sessionId', (req: Request, res: Response) => {
+    const { sessionId } = req.params;
+
+    try {
+      // Parse request body
+      let body: unknown = null;
+      const contentType = req.headers['content-type'] || '';
+
+      if (contentType.includes('application/json')) {
+        body = req.body;
+      } else if (contentType.includes('application/x-www-form-urlencoded')) {
+        body = req.body;
+      } else {
+        body = req.body;
+      }
+
+      // Extract query parameters
+      const query: Record<string, string> = {};
+      Object.entries(req.query).forEach(([key, value]) => {
+        query[key] = String(value);
+      });
+
+      // Create request record
+      const webhookRequest = {
+        id: `req_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+        timestamp: Date.now(),
+        method: req.method,
+        headers: Object.fromEntries(
+          Object.entries(req.headers).map(([key, value]) => [key, String(value || '')])
+        ),
+        body: body,
+        query: query,
+        user_agent: req.headers['user-agent'] as string,
+        ip: req.ip || req.connection.remoteAddress || 'unknown',
+      };
+
+      // Store in memory (will be cleared when service restarts)
+      if (!webhookMonitorRequests.has(sessionId)) {
+        webhookMonitorRequests.set(sessionId, []);
+      }
+
+      const sessionRequests = webhookMonitorRequests.get(sessionId)!;
+      sessionRequests.unshift(webhookRequest); // Add to beginning
+
+      // Keep only last 100 requests per session
+      if (sessionRequests.length > 100) {
+        sessionRequests.splice(100);
+      }
+
+      logger.debug(`Webhook monitor captured request for session ${sessionId}`, {
+        request_id: webhookRequest.id,
+        method: req.method,
+        session_total: sessionRequests.length,
+      });
+
+      // Return success response
+      res.json({
+        success: true,
+        message: 'Webhook request captured for monitoring',
+        session_id: sessionId,
+        request_id: webhookRequest.id,
+        timestamp: webhookRequest.timestamp,
+      });
+    } catch (error) {
+      logger.error(`Error processing webhook monitor request for session ${sessionId}:`, error);
+      res.status(500).json({
+        success: false,
+        error: 'Failed to process webhook monitor request',
+        message: error instanceof Error ? error.message : 'Unknown error',
+      });
+    }
+  });
+
+  // Get captured requests for a monitor session
+  app.get('/webhook-monitor/:sessionId/requests', (req: Request, res: Response) => {
+    const { sessionId } = req.params;
+    const limit = parseInt(req.query.limit as string) || 50;
+
+    const sessionRequests = webhookMonitorRequests.get(sessionId) || [];
+    const limitedRequests = sessionRequests.slice(0, limit);
+
+    res.json({
+      success: true,
+      data: {
+        session_id: sessionId,
+        requests: limitedRequests,
+        total_requests: sessionRequests.length,
+        returned_count: limitedRequests.length,
+      },
+    });
+  });
+
+  // Clear captured requests for a monitor session
+  app.delete('/webhook-monitor/:sessionId/requests', (req: Request, res: Response) => {
+    const { sessionId } = req.params;
+    const sessionRequests = webhookMonitorRequests.get(sessionId) || [];
+    const clearedCount = sessionRequests.length;
+
+    webhookMonitorRequests.set(sessionId, []);
+
+    res.json({
+      success: true,
+      message: `Cleared ${clearedCount} requests for session ${sessionId}`,
+      cleared_count: clearedCount,
+    });
+  });
+
+  // Cleanup old sessions periodically (older than 1 hour)
+  setInterval(() => {
+    const oneHourAgo = Date.now() - (60 * 60 * 1000);
+
+    for (const [sessionId, requests] of webhookMonitorRequests.entries()) {
+      if (requests.length === 0) continue;
+
+      // Check if all requests are older than 1 hour
+      const hasRecentRequests = requests.some(req => req.timestamp > oneHourAgo);
+
+      if (!hasRecentRequests) {
+        webhookMonitorRequests.delete(sessionId);
+        logger.debug(`Cleaned up old webhook monitor session: ${sessionId}`);
+      }
+    }
+  }, 5 * 60 * 1000); // Clean up every 5 minutes
+
   logger.info('✅ Webhook routes configured', {
     endpoints: [
       'POST /webhooks',
@@ -608,6 +735,9 @@ export function setupWebhookRoutes(app: Express, webhookProcessor: WebhookProces
       'GET /test-receivers/:id/requests',
       'DELETE /test-receivers/:id/requests',
       'ALL /test-receivers/:id/webhook',
+      'ALL /webhook-monitor/:sessionId',
+      'GET /webhook-monitor/:sessionId/requests',
+      'DELETE /webhook-monitor/:sessionId/requests',
     ],
   });
 }
