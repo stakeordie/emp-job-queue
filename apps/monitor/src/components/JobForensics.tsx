@@ -93,15 +93,8 @@ export default function JobForensics() {
         return;
       }
 
-      // Get the EmProps API URL from environment
-      const empropsApiUrl = process.env.NEXT_PUBLIC_EMPROPS_API_URL;
-      if (!empropsApiUrl) {
-        alert('EmProps API URL not configured. Please set NEXT_PUBLIC_EMPROPS_API_URL environment variable.');
-        return;
-      }
-
-      // Call the EmProps API retry endpoint directly
-      const response = await fetch(`${empropsApiUrl}/jobs/${jobId}/retry`, {
+      // Call our server-side API route which will securely call EmProps API
+      const response = await fetch(`/api/jobs/${jobId}/retry`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
