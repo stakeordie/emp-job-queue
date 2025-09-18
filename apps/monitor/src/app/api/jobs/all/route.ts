@@ -44,31 +44,48 @@ export async function GET(request: NextRequest) {
 
     // Build search conditions
     let whereCondition = {};
+    let searchJobIds: string[] = [];
+
     if (search && search.trim()) {
       const searchTerm = search.trim();
-      whereCondition = {
-        OR: [
-          { id: { contains: searchTerm, mode: 'insensitive' } },
-          { name: { contains: searchTerm, mode: 'insensitive' } },
-          { description: { contains: searchTerm, mode: 'insensitive' } },
-          { job_type: { contains: searchTerm, mode: 'insensitive' } },
-          { status: { contains: searchTerm, mode: 'insensitive' } },
-          { user_id: { contains: searchTerm, mode: 'insensitive' } },
-          // Search through related miniapp_generation -> miniapp_user
-          {
-            miniapp_generation: {
-              some: {
-                miniapp_user: {
-                  OR: [
-                    { farcaster_username: { contains: searchTerm, mode: 'insensitive' } },
-                    { wallet_address: { contains: searchTerm, mode: 'insensitive' } }
-                  ]
-                }
-              }
+
+      // First, find job IDs from miniapp_generation that match farcaster usernames
+      try {
+        const matchingGenerations = await prisma.miniapp_generation.findMany({
+          where: {
+            miniapp_user: {
+              OR: [
+                { farcaster_username: { contains: searchTerm, mode: 'insensitive' } },
+                { wallet_address: { contains: searchTerm, mode: 'insensitive' } }
+              ]
             }
-          }
-        ]
-      };
+          },
+          select: { job_id: true }
+        });
+
+        searchJobIds = matchingGenerations
+          .map(gen => gen.job_id)
+          .filter(Boolean) as string[];
+      } catch (error) {
+        console.warn('Failed to search miniapp_generation:', error);
+      }
+
+      // Build the main search condition
+      const searchConditions = [
+        { id: { contains: searchTerm, mode: 'insensitive' } },
+        { name: { contains: searchTerm, mode: 'insensitive' } },
+        { description: { contains: searchTerm, mode: 'insensitive' } },
+        { job_type: { contains: searchTerm, mode: 'insensitive' } },
+        { status: { contains: searchTerm, mode: 'insensitive' } },
+        { user_id: { contains: searchTerm, mode: 'insensitive' } }
+      ];
+
+      // Add job IDs from farcaster username search if any found
+      if (searchJobIds.length > 0) {
+        searchConditions.push({ id: { in: searchJobIds } });
+      }
+
+      whereCondition = { OR: searchConditions };
     }
 
     // Fetch jobs from EmProps database (user job requests)
