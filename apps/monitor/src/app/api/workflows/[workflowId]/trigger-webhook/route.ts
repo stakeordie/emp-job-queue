@@ -29,7 +29,7 @@ export async function POST(
     const redis = new Redis(redisUrl);
 
     // First, verify the workflow exists and is completed in EmProps
-    const workflowResponse = await fetch(`${empropsApiUrl}/api/jobs/${workflowId}`, {
+    const workflowResponse = await fetch(`${empropsApiUrl}/jobs/${workflowId}`, {
       method: 'GET',
       headers: { 'Content-Type': 'application/json' }
     });
