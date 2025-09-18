@@ -4017,22 +4017,46 @@ export class LightweightAPIServer {
    * This is the API's proof that it determined a workflow should be complete
    * Records asset location and completion details for recovery purposes
    */
-  private async createWorkflowCompletionAttestation(workflowId: string, jobCompletion?: any): Promise<void> {
+  private async createWorkflowCompletionAttestation(workflowId: string, jobCompletion?: any, workflowOutputs?: any[]): Promise<void> {
     try {
+      // Extract asset locations from job result
+      const jobAssetLocations = this.extractAssetLocations(jobCompletion?.result);
+
+      // Extract output URLs from workflow outputs
+      const workflowOutputUrls: string[] = [];
+      if (workflowOutputs && Array.isArray(workflowOutputs)) {
+        for (const output of workflowOutputs) {
+          if (typeof output === 'string' && output.match(/^https?:\/\//)) {
+            workflowOutputUrls.push(output);
+          } else if (output && typeof output === 'object') {
+            // Handle output objects with URL fields
+            if (output.url) workflowOutputUrls.push(output.url);
+            if (output.output_url) workflowOutputUrls.push(output.output_url);
+            if (output.asset_url) workflowOutputUrls.push(output.asset_url);
+            if (output.image_url) workflowOutputUrls.push(output.image_url);
+            if (output.file_url) workflowOutputUrls.push(output.file_url);
+          }
+        }
+      }
+
+      // Combine and deduplicate all asset locations
+      const allAssetLocations = [...new Set([...jobAssetLocations, ...workflowOutputUrls])];
+
       const attestationData = {
         workflow_id: workflowId,
         api_determined_complete_at: new Date().toISOString(),
         job_completion_data: jobCompletion ? {
           job_id: jobCompletion.job_id,
           worker_id: jobCompletion.worker_id,
-          result: jobCompletion.result,
+          result: this.sanitizeResultForAttestation(jobCompletion.result),
           completed_at: jobCompletion.timestamp
         } : null,
+        workflow_outputs: workflowOutputUrls.length > 0 ? workflowOutputUrls : null,
         api_instance: process.env.HOSTNAME || process.env.SERVICE_NAME || 'unknown',
         api_version: process.env.VERSION || 'unknown',
         attestation_created_at: Date.now(),
         emprops_api_url: process.env.EMPROPS_API_URL,
-        asset_locations: this.extractAssetLocations(jobCompletion?.result)
+        asset_locations: allAssetLocations
       };
 
       // Store API workflow attestation with 30-day TTL for audit trail
@@ -4051,6 +4075,58 @@ export class LightweightAPIServer {
       logger.error(`Failed to create workflow completion attestation for ${workflowId}:`, error);
       // Don't throw - attestation failure shouldn't block verification
     }
+  }
+
+  /**
+   * Sanitize job result for attestation - removes base64 data but keeps URLs
+   */
+  private sanitizeResultForAttestation(result: any): any {
+    if (!result || typeof result !== 'object') {
+      return result;
+    }
+
+    // Parse if it's a JSON string
+    let parsed = result;
+    if (typeof result === 'string') {
+      try {
+        parsed = JSON.parse(result);
+      } catch {
+        return result; // Return as-is if not JSON
+      }
+    }
+
+    const sanitized = { ...parsed };
+
+    // If this has data field, sanitize it
+    if (sanitized.data && typeof sanitized.data === 'object') {
+      const sanitizedData = { ...sanitized.data };
+
+      // Remove base64 image data but keep URLs
+      if (sanitizedData.image_base64) {
+        delete sanitizedData.image_base64;
+        sanitizedData._attestation_note = 'base64 image data removed for security';
+      }
+
+      // Remove large raw_output content
+      if (sanitizedData.raw_output && typeof sanitizedData.raw_output === 'object') {
+        sanitizedData.raw_output = Array.isArray(sanitizedData.raw_output)
+          ? sanitizedData.raw_output.map((item: any) => {
+              if (item && typeof item === 'object') {
+                const sanitizedItem = { ...item };
+                if (sanitizedItem.result && typeof sanitizedItem.result === 'string' && sanitizedItem.result.length > 1000) {
+                  sanitizedItem.result = `[LARGE_DATA_REMOVED_${sanitizedItem.result.length}_CHARS]`;
+                }
+                return sanitizedItem;
+              }
+              return item;
+            })
+          : sanitizedData.raw_output;
+      }
+
+      sanitized.data = sanitizedData;
+    }
+
+    return sanitized;
   }
 
   /**

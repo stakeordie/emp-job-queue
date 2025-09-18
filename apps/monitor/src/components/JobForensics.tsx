@@ -23,23 +23,42 @@ function AttestationRecords({ jobId, workflowId }: { jobId: string; workflowId?:
   const [workerAttestation, setWorkerAttestation] = useState<any>(null);
   const [apiAttestation, setApiAttestation] = useState<any>(null);
   const [loading, setLoading] = useState(false);
+  const [hasChecked, setHasChecked] = useState(false);
 
   const loadAttestations = async () => {
     setLoading(true);
+    setHasChecked(true);
     try {
-      // Load worker attestation
-      const workerResponse = await fetch(`/api/jobs/${jobId}/worker-attestation`);
-      if (workerResponse.ok) {
-        const workerData = await workerResponse.json();
-        setWorkerAttestation(workerData.success ? workerData.attestation : null);
-      }
-
-      // Load API workflow attestation if workflow ID exists
+      // If we have a workflow ID, get all attestations for the workflow
       if (workflowId) {
-        const apiResponse = await fetch(`/api/workflows/${workflowId}/api-attestation`);
-        if (apiResponse.ok) {
-          const apiData = await apiResponse.json();
-          setApiAttestation(apiData.success ? apiData.attestation : null);
+        const response = await fetch(`/api/workflows/${workflowId}/all-attestations`);
+        if (response.ok) {
+          const data = await response.json();
+          if (data.success) {
+            setApiAttestation(data.api_attestation);
+            // For multi-step workflows, we may have multiple worker attestations
+            // For now, show the first one or combine them
+            if (data.worker_attestations && data.worker_attestations.length > 0) {
+              // If multiple steps, combine them into one view
+              if (data.worker_attestations.length === 1) {
+                setWorkerAttestation(data.worker_attestations[0]);
+              } else {
+                // Create a combined view for multi-step workflows
+                setWorkerAttestation({
+                  ...data.worker_attestations[0],
+                  _multi_step: true,
+                  _all_steps: data.worker_attestations
+                });
+              }
+            }
+          }
+        }
+      } else {
+        // Fallback to single job attestation if no workflow ID
+        const workerResponse = await fetch(`/api/jobs/${jobId}/worker-attestation`);
+        if (workerResponse.ok) {
+          const workerData = await workerResponse.json();
+          setWorkerAttestation(workerData.success ? workerData.attestation : null);
         }
       }
     } catch (error) {
@@ -78,10 +97,110 @@ function AttestationRecords({ jobId, workflowId }: { jobId: string; workflowId?:
         </Button>
       </div>
 
+      {/* Show status when checked but no attestations found */}
+      {hasChecked && !loading && !hasAttestations && (
+        <div className="text-sm text-muted-foreground p-3 bg-gray-50 border border-gray-200 rounded">
+          <div className="flex items-center gap-2">
+            <AlertTriangle className="h-4 w-4 text-yellow-600" />
+            No attestations found for this {workflowId ? 'workflow' : 'job'}
+          </div>
+          <div className="text-xs mt-1 text-gray-500">
+            This may be an older job that predates the attestation system.
+          </div>
+        </div>
+      )}
+
       {hasAttestations && (
         <div className="space-y-3 p-3 bg-yellow-50 border border-yellow-200 rounded">
-          {/* Worker Attestation */}
-          {workerAttestation && (
+          {/* Worker Attestations - Show each step separately */}
+          {workerAttestation && workerAttestation._multi_step && workerAttestation._all_steps ? (
+            // Multi-step workflow - show each step's attestation
+            <div className="space-y-4">
+              {workerAttestation._all_steps.map((step: any, idx: number) => (
+                <div key={idx}>
+                  <div className="text-sm font-medium text-green-800 mb-2 flex items-center gap-1">
+                    <CheckCircle className="h-4 w-4" />
+                    Worker Completion Proof - Step {step.current_step || idx + 1} of {step.total_steps || workerAttestation._all_steps.length}
+                  </div>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-3 text-xs">
+                    <div>
+                      <div className="font-medium text-muted-foreground">Job ID</div>
+                      <code className="bg-white px-2 py-1 rounded border text-[10px]">{step.job_id}</code>
+                    </div>
+                    <div>
+                      <div className="font-medium text-muted-foreground">Worker ID</div>
+                      <code className="bg-white px-2 py-1 rounded border text-[10px]">{step.worker_id}</code>
+                    </div>
+                    <div>
+                      <div className="font-medium text-muted-foreground">Completed At</div>
+                      <div>{new Date(step.completed_at).toLocaleString()}</div>
+                    </div>
+                    <div>
+                      <div className="font-medium text-muted-foreground">Status</div>
+                      <Badge variant={step.status === 'completed' ? 'default' : 'destructive'}>
+                        {step.status}
+                      </Badge>
+                    </div>
+                  </div>
+                  {/* Asset locations for this step */}
+                  {step.result && (
+                    <div className="mt-2">
+                      <div className="text-xs font-medium text-muted-foreground">Asset Locations</div>
+                      {(() => {
+                        try {
+                          const result = typeof step.result === 'string'
+                            ? JSON.parse(step.result)
+                            : step.result;
+
+                          const urls: string[] = [];
+
+                          // Extract URLs from the result - remove duplicates
+                          if (result?.data?.image_url) urls.push(result.data.image_url);
+                          if (result?.data?.file_url && !urls.includes(result.data.file_url)) urls.push(result.data.file_url);
+                          if (result?.data?.cdnUrl && !urls.includes(result.data.cdnUrl)) urls.push(result.data.cdnUrl);
+                          if (result?.data?.saved_asset?.fileUrl && !urls.includes(result.data.saved_asset.fileUrl)) urls.push(result.data.saved_asset.fileUrl);
+                          if (result?.data?.saved_asset?.cdnUrl && !urls.includes(result.data.saved_asset.cdnUrl)) urls.push(result.data.saved_asset.cdnUrl);
+
+                          if (urls.length > 0) {
+                            return (
+                              <div className="space-y-1 mt-1">
+                                {urls.map((url, urlIdx) => (
+                                  <div key={urlIdx} className="flex items-center gap-2">
+                                    <ExternalLink className="h-3 w-3 text-blue-600" />
+                                    <a
+                                      href={url}
+                                      target="_blank"
+                                      rel="noopener noreferrer"
+                                      className="text-xs text-blue-600 hover:underline break-all"
+                                    >
+                                      {url}
+                                    </a>
+                                  </div>
+                                ))}
+                              </div>
+                            );
+                          } else {
+                            return (
+                              <div className="text-xs text-gray-500 mt-1">
+                                No asset URLs found in this step
+                              </div>
+                            );
+                          }
+                        } catch (e) {
+                          return (
+                            <div className="text-xs text-red-500 mt-1">
+                              Error parsing asset locations
+                            </div>
+                          );
+                        }
+                      })()}
+                    </div>
+                  )}
+                </div>
+              ))}
+            </div>
+          ) : workerAttestation ? (
+            // Single-step job - show single attestation
             <div>
               <div className="text-sm font-medium text-green-800 mb-2 flex items-center gap-1">
                 <CheckCircle className="h-4 w-4" />
@@ -108,17 +227,60 @@ function AttestationRecords({ jobId, workflowId }: { jobId: string; workflowId?:
                 </div>
               </div>
               {workerAttestation.result && (
-                <details className="mt-2">
-                  <summary className="text-xs cursor-pointer hover:text-green-700">View Result</summary>
-                  <pre className="text-xs bg-white p-2 rounded border mt-1 max-h-32 overflow-y-auto">
-                    {typeof workerAttestation.result === 'string'
-                      ? workerAttestation.result
-                      : JSON.stringify(JSON.parse(workerAttestation.result), null, 2)}
-                  </pre>
-                </details>
+                <div className="mt-2">
+                  <div className="text-xs font-medium text-muted-foreground">Asset Locations</div>
+                  {(() => {
+                    try {
+                      const result = typeof workerAttestation.result === 'string'
+                        ? JSON.parse(workerAttestation.result)
+                        : workerAttestation.result;
+
+                      const urls: string[] = [];
+
+                      // Extract URLs from the result - remove duplicates
+                      if (result?.data?.image_url) urls.push(result.data.image_url);
+                      if (result?.data?.file_url && !urls.includes(result.data.file_url)) urls.push(result.data.file_url);
+                      if (result?.data?.cdnUrl && !urls.includes(result.data.cdnUrl)) urls.push(result.data.cdnUrl);
+                      if (result?.data?.saved_asset?.fileUrl && !urls.includes(result.data.saved_asset.fileUrl)) urls.push(result.data.saved_asset.fileUrl);
+                      if (result?.data?.saved_asset?.cdnUrl && !urls.includes(result.data.saved_asset.cdnUrl)) urls.push(result.data.saved_asset.cdnUrl);
+
+                      if (urls.length > 0) {
+                        return (
+                          <div className="space-y-1 mt-1">
+                            {urls.map((url, idx) => (
+                              <div key={idx} className="flex items-center gap-2">
+                                <ExternalLink className="h-3 w-3 text-blue-600" />
+                                <a
+                                  href={url}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  className="text-xs text-blue-600 hover:underline break-all"
+                                >
+                                  {url}
+                                </a>
+                              </div>
+                            ))}
+                          </div>
+                        );
+                      } else {
+                        return (
+                          <div className="text-xs text-gray-500 mt-1">
+                            No asset URLs found in attestation
+                          </div>
+                        );
+                      }
+                    } catch (e) {
+                      return (
+                        <div className="text-xs text-red-500 mt-1">
+                          Error parsing asset locations
+                        </div>
+                      );
+                    }
+                  })()}
+                </div>
               )}
             </div>
-          )}
+          ) : null}
 
           {/* API Workflow Attestation */}
           {apiAttestation && (
@@ -150,12 +312,13 @@ function AttestationRecords({ jobId, workflowId }: { jobId: string; workflowId?:
                   <div className="text-xs font-medium text-muted-foreground mb-1">Saved Assets</div>
                   <div className="space-y-1">
                     {apiAttestation.asset_locations.map((url: string, idx: number) => (
-                      <div key={idx} className="text-xs">
+                      <div key={idx} className="flex items-center gap-2">
+                        <ExternalLink className="h-3 w-3 text-blue-600" />
                         <a
                           href={url}
                           target="_blank"
                           rel="noopener noreferrer"
-                          className="text-blue-600 hover:underline font-mono break-all"
+                          className="text-xs text-blue-600 hover:underline break-all"
                         >
                           {url}
                         </a>
@@ -740,9 +903,6 @@ export default function JobForensics() {
                                     </div>
                                   </div>
                                 )}
-
-                                {/* Attestation Records */}
-                                <AttestationRecords jobId={String(job.id)} workflowId={job.workflow_id ? String(job.workflow_id) : undefined} />
 
                                 {/* Actions */}
                                 <div className="flex gap-2 pt-2 border-t">
