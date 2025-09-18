@@ -4013,12 +4013,297 @@ export class LightweightAPIServer {
   }
 
   /**
+   * Create API workflow completion attestation
+   * This is the API's proof that it determined a workflow should be complete
+   * Records asset location and completion details for recovery purposes
+   */
+  private async createWorkflowCompletionAttestation(workflowId: string, jobCompletion?: any): Promise<void> {
+    try {
+      const attestationData = {
+        workflow_id: workflowId,
+        api_determined_complete_at: new Date().toISOString(),
+        job_completion_data: jobCompletion ? {
+          job_id: jobCompletion.job_id,
+          worker_id: jobCompletion.worker_id,
+          result: jobCompletion.result,
+          completed_at: jobCompletion.timestamp
+        } : null,
+        api_instance: process.env.HOSTNAME || process.env.SERVICE_NAME || 'unknown',
+        api_version: process.env.VERSION || 'unknown',
+        attestation_created_at: Date.now(),
+        emprops_api_url: process.env.EMPROPS_API_URL,
+        asset_locations: this.extractAssetLocations(jobCompletion?.result)
+      };
+
+      // Store API workflow attestation with 30-day TTL for audit trail
+      await this.redis.setex(
+        `api:workflow:completion:${workflowId}`,
+        30 * 24 * 60 * 60, // 30 days
+        JSON.stringify(attestationData)
+      );
+
+      logger.info(`🔐 API created workflow completion attestation for ${workflowId}`, {
+        job_id: jobCompletion?.job_id,
+        asset_count: attestationData.asset_locations?.length || 0
+      });
+
+    } catch (error) {
+      logger.error(`Failed to create workflow completion attestation for ${workflowId}:`, error);
+      // Don't throw - attestation failure shouldn't block verification
+    }
+  }
+
+  /**
+   * Extract asset locations from job result for attestation
+   */
+  private extractAssetLocations(result: any): string[] {
+    if (!result) return [];
+
+    const locations: string[] = [];
+
+    try {
+      // Handle different result formats
+      if (typeof result === 'string') {
+        // Direct URL
+        if (result.match(/^https?:\/\//)) {
+          locations.push(result);
+        }
+      } else if (result && typeof result === 'object') {
+        // Object with various URL fields
+        const urlFields = ['url', 'output_url', 'asset_url', 'image_url', 'file_url'];
+        for (const field of urlFields) {
+          if (result[field] && typeof result[field] === 'string') {
+            locations.push(result[field]);
+          }
+        }
+
+        // Array of URLs
+        if (Array.isArray(result.outputs)) {
+          for (const output of result.outputs) {
+            if (typeof output === 'string' && output.match(/^https?:\/\//)) {
+              locations.push(output);
+            } else if (output && typeof output === 'object') {
+              for (const field of urlFields) {
+                if (output[field] && typeof output[field] === 'string') {
+                  locations.push(output[field]);
+                }
+              }
+            }
+          }
+        }
+      }
+    } catch (error) {
+      logger.warn('Failed to extract asset locations:', error);
+    }
+
+    return [...new Set(locations)]; // Remove duplicates
+  }
+
+  /**
+   * Publish workflow completion notification
+   */
+  private async publishWorkflowCompletion(workflowId: string, workflowData: any): Promise<void> {
+    // Publish workflow completion notification with metadata only (no outputs/results)
+    // Webhook service will query EmProps API directly if it needs full data
+    await this.redis.publish('workflow_completed', JSON.stringify({
+      workflow_id: workflowId,
+      status: 'completed',
+      completed_at: workflowData.completed_at,
+      timestamp: Date.now(),
+      verified: true,
+      message: 'Workflow completed and verified with EMPROPS',
+      // Include basic workflow metadata only
+      workflow_details: {
+        id: workflowData.id,
+        name: workflowData.name,
+        job_type: workflowData.job_type,
+        status: workflowData.status,
+        progress: workflowData.progress,
+        created_at: workflowData.created_at,
+        completed_at: workflowData.completed_at
+      },
+      // 🚨 CRITICAL: NO outputs included - webhook service should query EmProps API directly
+      // This prevents massive base64 data from accumulating in Redis
+      outputs_available: !!(workflowData?.data?.outputs?.length),
+      outputs_count: workflowData?.data?.outputs?.length || 0
+    }));
+
+    logger.info(`📤 Published workflow_completed webhook for ${workflowId}`);
+  }
+
+  /**
+   * Smart workflow recovery - goal: get the workflow completion webhook sent out
+   * Steps:
+   * 1. Check if workflow is complete
+   * 2. If not, check if last step is complete
+   * 3. If step not complete, call POST /steps/{stepId}/complete
+   * 4. Recheck workflow - if complete, send webhook
+   * 5. If still not complete, call POST /jobs/{jobId}/complete as failsafe
+   */
+  private async attemptWorkflowRecovery(workflowId: string, jobCompletion?: any): Promise<boolean> {
+    if (!jobCompletion) {
+      logger.warn(`No job completion data for recovery of workflow ${workflowId}`);
+      return false;
+    }
+
+    const empropsApiUrl = process.env.EMPROPS_API_URL;
+    if (!empropsApiUrl) {
+      logger.error('EMPROPS_API_URL not configured for recovery');
+      return false;
+    }
+
+    const headers: Record<string, string> = {
+      'Content-Type': 'application/json',
+      'Accept': 'application/json'
+    };
+
+    const empropsAuth = process.env.EMPROPS_API_KEY;
+    if (empropsAuth) {
+      headers['Authorization'] = `Bearer ${empropsAuth}`;
+    }
+
+    try {
+      // Step 1: Check if workflow is complete (this should fail, that's why we're here)
+      logger.info(`🔍 Step 1: Double-checking workflow ${workflowId} status...`);
+
+      const workflowResponse = await fetch(`${empropsApiUrl}/jobs/${workflowId}`, {
+        method: 'GET',
+        headers,
+        signal: AbortSignal.timeout(5000)
+      });
+
+      if (workflowResponse.ok) {
+        const workflowData = await workflowResponse.json();
+        if (workflowData.data?.status === 'completed') {
+          logger.info(`✅ Workflow ${workflowId} is actually completed - sending webhook`);
+          await this.publishWorkflowCompletion(workflowId, workflowData.data);
+          return true;
+        }
+        logger.info(`📋 Workflow ${workflowId} status: ${workflowData.data?.status || 'unknown'} - proceeding with recovery`);
+      }
+
+      // Step 2: Check the last step status
+      logger.info(`🔍 Step 2: Checking last step ${jobCompletion.job_id} status...`);
+
+      const stepsResponse = await fetch(`${empropsApiUrl}/jobs/${workflowId}/steps`, {
+        method: 'GET',
+        headers,
+        signal: AbortSignal.timeout(5000)
+      });
+
+      let lastStepCompleted = false;
+      if (stepsResponse.ok) {
+        const stepsData = await stepsResponse.json();
+        // Find the step that matches our job ID
+        const matchingStep = stepsData.steps?.find((step: any) => step.step_id === jobCompletion.job_id);
+        lastStepCompleted = matchingStep?.status === 'completed';
+        logger.info(`📋 Step ${jobCompletion.job_id} status: ${matchingStep?.status || 'not found'}`);
+      }
+
+      if (!lastStepCompleted) {
+        // Step 3: Complete the step
+        logger.info(`🔧 Step 3: Completing step ${jobCompletion.job_id}...`);
+
+        const completeStepResponse = await fetch(`${empropsApiUrl}/steps/${jobCompletion.job_id}/complete`, {
+          method: 'POST',
+          headers,
+          body: JSON.stringify({
+            output_data: jobCompletion.result,
+            completed_at: new Date(jobCompletion.timestamp).toISOString(),
+            worker_id: jobCompletion.worker_id,
+            job_queue_recovery: true
+          }),
+          signal: AbortSignal.timeout(10000)
+        });
+
+        if (!completeStepResponse.ok) {
+          logger.error(`❌ Failed to complete step: ${completeStepResponse.status}`);
+          // Continue to failsafe below
+        } else {
+          logger.info(`✅ Successfully completed step ${jobCompletion.job_id}`);
+
+          // Step 4: Wait and check if workflow is now complete
+          logger.info(`⏳ Step 4: Waiting 2 seconds then checking workflow status...`);
+          await new Promise(resolve => setTimeout(resolve, 2000));
+
+          const workflowRecheckResponse = await fetch(`${empropsApiUrl}/jobs/${workflowId}`, {
+            method: 'GET',
+            headers,
+            signal: AbortSignal.timeout(5000)
+          });
+
+          if (workflowRecheckResponse.ok) {
+            const workflowData = await workflowRecheckResponse.json();
+            if (workflowData.data?.status === 'completed') {
+              logger.info(`🎉 Workflow ${workflowId} completed after step completion!`);
+              await this.publishWorkflowCompletion(workflowId, workflowData.data);
+              return true;
+            }
+          }
+        }
+      }
+
+      // Step 5: Failsafe - force complete the entire job
+      logger.info(`🔧 Step 5: Failsafe - force completing entire job ${workflowId}...`);
+
+      const completeJobResponse = await fetch(`${empropsApiUrl}/jobs/${workflowId}/complete`, {
+        method: 'POST',
+        headers,
+        body: JSON.stringify({
+          outputs: jobCompletion.result,
+          metadata: {
+            completed_by_job_queue: true,
+            last_job_id: jobCompletion.job_id,
+            recovery_timestamp: new Date().toISOString()
+          }
+        }),
+        signal: AbortSignal.timeout(10000)
+      });
+
+      if (!completeJobResponse.ok) {
+        logger.error(`❌ Failed to force complete job: ${completeJobResponse.status}`);
+        return false;
+      }
+
+      logger.info(`✅ Force completed job ${workflowId}`);
+
+      // Step 6: Final check and send webhook
+      const finalCheckResponse = await fetch(`${empropsApiUrl}/jobs/${workflowId}`, {
+        method: 'GET',
+        headers,
+        signal: AbortSignal.timeout(5000)
+      });
+
+      if (finalCheckResponse.ok) {
+        const workflowData = await finalCheckResponse.json();
+        if (workflowData.data?.status === 'completed') {
+          logger.info(`🎉 Workflow ${workflowId} recovery successful - sending webhook!`);
+          await this.publishWorkflowCompletion(workflowId, workflowData.data);
+          return true;
+        }
+      }
+
+      logger.warn(`⚠️ Workflow ${workflowId} still not completed after all recovery attempts`);
+      return false;
+
+    } catch (error) {
+      logger.error(`❌ Error during workflow recovery for ${workflowId}:`, error);
+      return false;
+    }
+  }
+
+  /**
    * Verify workflow completion with EMPROPS API
    * Hits /api/jobs/{workflow_id} to confirm the workflow is actually completed
    */
   private async verifyWorkflowWithEmprops(workflowId: string, originalJobCompletion?: any): Promise<void> {
     logger.info(`🔍 Verifying workflow ${workflowId} with EMPROPS API...`);
-    
+
+    // 🚨 CRITICAL: Create API workflow completion attestation FIRST
+    // This is the API's authoritative "I believe this workflow is done" record
+    // Must happen BEFORE EmProps verification to prevent orphaning
+    await this.createWorkflowCompletionAttestation(workflowId, originalJobCompletion);
+
     const empropsApiUrl = process.env.EMPROPS_API_URL;
     if (!empropsApiUrl) {
       logger.error('EMPROPS_API_URL not configured, cannot verify workflow completion');
@@ -4094,44 +4379,27 @@ export class LightweightAPIServer {
         
         if (workflowData.data?.status === 'completed') {
           logger.info(`✅ EMPROPS confirms workflow ${workflowId} is completed`);
-          
-          // Publish workflow completion notification with metadata only (no outputs/results)
-          // Webhook service will query EmProps API directly if it needs full data
-          await this.redis.publish('workflow_completed', JSON.stringify({
-            workflow_id: workflowId,
-            status: 'completed',
-            completed_at: workflowData.data.completed_at,
-            timestamp: Date.now(),
-            verified: true,
-            message: 'Workflow completed and verified with EMPROPS',
-            // Include basic workflow metadata only
-            workflow_details: {
-              id: workflowData.data.id,
-              name: workflowData.data.name,
-              job_type: workflowData.data.job_type,
-              status: workflowData.data.status,
-              progress: workflowData.data.progress,
-              created_at: workflowData.data.created_at,
-              completed_at: workflowData.data.completed_at
-            },
-            // 🚨 CRITICAL: NO outputs included - webhook service should query EmProps API directly
-            // This prevents massive base64 data from accumulating in Redis
-            outputs_available: !!(workflowData.data?.data?.outputs?.length),
-            outputs_count: workflowData.data?.data?.outputs?.length || 0
-          }));
-          
-          logger.info(`📤 Published workflow_completed webhook for ${workflowId}`);
+          await this.publishWorkflowCompletion(workflowId, workflowData.data);
           return;
         } else {
           logger.warn(`⏳ EMPROPS workflow ${workflowId} not ready (status: ${workflowData.data?.status || 'unknown'})`);
-          
+
+          // 🚨 SMART RECOVERY: Try to resolve the completion issue
           if (attempt === maxRetries) {
-            logger.error(`❌ Workflow ${workflowId} verification failed after ${maxRetries} attempts`);
-            
+            logger.info(`🔧 Starting smart recovery for workflow ${workflowId}...`);
+            const recovered = await this.attemptWorkflowRecovery(workflowId, originalJobCompletion);
+
+            if (recovered) {
+              logger.info(`✅ Successfully recovered workflow ${workflowId}`);
+              return;
+            }
+
+            logger.error(`❌ Workflow ${workflowId} recovery failed - will retry later`);
+
             // If we have the original job completion data, re-publish it to retry later
             if (originalJobCompletion) {
               logger.info(`🔄 Re-publishing original complete_job event to retry verification later`);
-              
+
               // Add a delay before re-triggering to avoid immediate retry loops
               setTimeout(async () => {
                 await this.redis.publish('complete_job', JSON.stringify({
@@ -4140,10 +4408,10 @@ export class LightweightAPIServer {
                   retry_attempt: Date.now()
                 }));
               }, 30000); // Wait 30 seconds before retrying
-              
+
               logger.info(`⏰ Scheduled retry for workflow ${workflowId} verification in 30 seconds`);
             }
-            
+
             return;
           }
           
