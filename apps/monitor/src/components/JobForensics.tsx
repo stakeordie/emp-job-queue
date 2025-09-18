@@ -6,7 +6,7 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { AlertTriangle, Database, RefreshCw, Search, Info, Image as ImageIcon, Download, ExternalLink, User, Wallet, MessageCircle } from 'lucide-react';
+import { AlertTriangle, Database, RefreshCw, Search, Info, Image as ImageIcon, Download, ExternalLink, User, Wallet, MessageCircle, RotateCcw, Play, CheckCircle, XCircle, Clock, ArrowRight, Zap, FileText, Webhook } from 'lucide-react';
 import SmartImage from './SmartImage';
 import type {
   JobForensicsData,
@@ -30,6 +30,7 @@ export default function JobForensics() {
   const [totalJobs, setTotalJobs] = useState(0);
   const [hasMore, setHasMore] = useState(false);
   const [expandedJobId, setExpandedJobId] = useState<string | null>(null);
+  const [retryingJobIds, setRetryingJobIds] = useState<Set<string>>(new Set());
   const jobsPerPage = 20;
 
 
@@ -81,6 +82,60 @@ export default function JobForensics() {
     const nextPage = currentPage + 1;
     setCurrentPage(nextPage);
     loadJobs(nextPage, true, searchQuery);
+  };
+
+  const retryJob = async (jobId: string) => {
+    setRetryingJobIds(prev => new Set([...prev, jobId]));
+    try {
+      const job = allJobs.find(j => String(j.id) === jobId);
+      if (!job) {
+        alert('Job not found in current list');
+        return;
+      }
+
+      // Get the EmProps API URL from environment
+      const empropsApiUrl = process.env.NEXT_PUBLIC_EMPROPS_API_URL;
+      if (!empropsApiUrl) {
+        alert('EmProps API URL not configured. Please set NEXT_PUBLIC_EMPROPS_API_URL environment variable.');
+        return;
+      }
+
+      // Call the EmProps API retry endpoint directly
+      const response = await fetch(`${empropsApiUrl}/jobs/${jobId}/retry`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+      });
+
+      if (response.ok) {
+        const data = await response.json();
+        // Refresh the jobs list to show the new job
+        await loadJobs(currentPage, false, searchQuery);
+        alert(`Job retried successfully! ${data.message || 'Job has been resubmitted with preserved workflow context.'}`);
+      } else {
+        const errorData = await response.json().catch(() => ({}));
+
+        if (response.status === 404) {
+          alert(`Retry endpoint not found. Please ensure the EmProps API has implemented the retry endpoint at: POST /jobs/${jobId}/retry`);
+        } else if (response.status === 400) {
+          alert(`Bad request: ${errorData.error || 'Invalid job ID or job cannot be retried'}`);
+        } else if (response.status === 500) {
+          alert(`Server error: ${errorData.error || 'Internal server error during retry'}`);
+        } else {
+          alert(`Failed to retry job (${response.status}): ${errorData.error || 'Unknown error'}`);
+        }
+      }
+    } catch (error) {
+      console.error('Error retrying job:', error);
+      alert('Failed to retry job. Please check your connection and try again.');
+    } finally {
+      setRetryingJobIds(prev => {
+        const newSet = new Set(prev);
+        newSet.delete(jobId);
+        return newSet;
+      });
+    }
   };
 
   // Auto-load workflows on component mount
@@ -301,6 +356,17 @@ export default function JobForensics() {
                                 >
                                   <Info className="h-3 w-3 mr-1" />
                                   {expandedJobId === String(job.id) ? 'Hide Details' : 'More Info'}
+                                </Button>
+                                <Button
+                                  size="sm"
+                                  variant="outline"
+                                  onClick={() => retryJob(String(job.id))}
+                                  disabled={retryingJobIds.has(String(job.id))}
+                                  className="ml-2"
+                                  title="Retry this job with the same parameters"
+                                >
+                                  <RotateCcw className={`h-3 w-3 mr-1 ${retryingJobIds.has(String(job.id)) ? 'animate-spin' : ''}`} />
+                                  {retryingJobIds.has(String(job.id)) ? 'Retrying...' : 'Retry Job'}
                                 </Button>
                               </div>
                             </div>
@@ -1010,199 +1076,256 @@ export default function JobForensics() {
                 </Card>
               )}
 
-              {/* Job Queue Results & Image Outputs */}
+              {/* Job Pipeline */}
               <Card>
                 <CardHeader>
                   <CardTitle className="flex items-center gap-2">
-                    <ImageIcon className="h-5 w-5" />
-                    Job Queue Results & Image Outputs
+                    <Zap className="h-5 w-5" />
+                    Job Pipeline
                   </CardTitle>
                   <CardDescription>
-                    Generated images, files, and processing results from the job queue system
+                    Complete flow from generation request to final miniapp completion
                   </CardDescription>
                 </CardHeader>
                 <CardContent className="space-y-6">
-                  {/* Job Result Data */}
-                  {forensicsData.job.execution_result && (
-                    <div className="space-y-4">
-                      <div className="text-lg font-semibold text-blue-700 border-b border-blue-200 pb-2">
-                        Job Queue Processing Results
+                  {/* Pipeline Flow */}
+                  <div className="space-y-4">
+                    {/* Step 1: Generation Requested */}
+                    <div className="flex items-center gap-4 p-4 border border-blue-200 rounded-lg bg-blue-50">
+                      <div className="flex-shrink-0">
+                        <div className="w-8 h-8 bg-blue-600 text-white rounded-full flex items-center justify-center text-sm font-semibold">1</div>
                       </div>
-
-                      {/* Processing Metadata */}
-                      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                        {(forensicsData.job.execution_result as any)?.success !== undefined && (
-                          <div>
-                            <div className="text-sm font-medium text-muted-foreground">Success Status</div>
-                            <Badge className={forensicsData.job.execution_result.success ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'}>
-                              {forensicsData.job.execution_result.success ? 'Success' : 'Failed'}
-                            </Badge>
-                          </div>
-                        )}
-                        {forensicsData.job.execution_result?.processing_time && (
-                          <div>
-                            <div className="text-sm font-medium text-muted-foreground">Processing Time</div>
-                            <div className="text-sm">{formatDuration(Number(forensicsData.job.execution_result.processing_time))}</div>
-                          </div>
-                        )}
-                        {forensicsData.job.execution_result?.connector_info?.type && (
-                          <div>
-                            <div className="text-sm font-medium text-muted-foreground">Connector Type</div>
-                            <Badge variant="outline">{String(forensicsData.job.execution_result.connector_info.type)}</Badge>
+                      <div className="flex-1">
+                        <div className="font-medium text-blue-800">Generation Requested</div>
+                        <div className="text-sm text-blue-600">
+                          User requested generation via EmProps API
+                        </div>
+                        {forensicsData.job.created_at && (
+                          <div className="text-xs text-blue-500 mt-1">
+                            <Clock className="h-3 w-3 inline mr-1" />
+                            {new Date(forensicsData.job.created_at).toLocaleString()}
                           </div>
                         )}
                       </div>
-
-                      {/* Generated Images/Files */}
-                      {forensicsData.job.execution_result?.output_files && Array.isArray(forensicsData.job.execution_result.output_files) && forensicsData.job.execution_result.output_files.length > 0 && (
-                        <div className="space-y-3">
-                          <div className="text-md font-semibold text-green-700">Generated Files ({forensicsData.job.execution_result.output_files.length})</div>
-                          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                            {forensicsData.job.execution_result.output_files.map((file, idx: number) => (
-                              <div key={idx} className="border border-green-200 rounded-lg p-4 bg-green-50">
-                                <div className="flex items-center justify-between mb-3">
-                                  <div className="text-sm font-medium text-green-800">File {idx + 1}</div>
-                                  <div className="flex gap-2">
-                                    <Button size="sm" variant="outline" onClick={() => window.open(file.url, '_blank')}>
-                                      <ExternalLink className="h-3 w-3 mr-1" />
-                                      View
-                                    </Button>
-                                    <Button size="sm" variant="outline" onClick={() => {
-                                      const a = document.createElement('a');
-                                      a.href = file.url;
-                                      a.download = file.filename || 'download';
-                                      a.click();
-                                    }}>
-                                      <Download className="h-3 w-3 mr-1" />
-                                      Download
-                                    </Button>
-                                  </div>
-                                </div>
-
-                                {/* Image Preview */}
-                                {(file.mimeType?.includes('image/') || file.url.includes('.png') || file.url.includes('.jpg') || file.url.includes('.jpeg') || file.url.includes('.webp') || file.url.includes('.gif')) && (
-                                  <div className="mb-3">
-                                    <SmartImage
-                                      src={file.url}
-                                      alt={`Generated image ${idx + 1}`}
-                                      width={300}
-                                      height={128}
-                                      className="w-full h-32 object-cover rounded border"
-                                    />
-                                  </div>
-                                )}
-
-                                {/* File URL */}
-                                <div className="text-xs text-green-700 font-mono break-all bg-white p-2 rounded border">
-                                  {file.url}
-                                </div>
-                              </div>
-                            ))}
-                          </div>
-                        </div>
-                      )}
-
-                      {/* Generation Metadata */}
-                      {forensicsData.job.execution_result?.metadata && (
-                        <div className="space-y-3">
-                          <div className="text-md font-semibold text-orange-700">Generation Metadata</div>
-                          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                            {Object.entries(forensicsData.job.execution_result.metadata).map(([key, value]) => (
-                              <div key={key} className="flex flex-col gap-1 p-3 bg-orange-50 rounded border border-orange-200">
-                                <div className="text-sm font-medium text-orange-800">{key}</div>
-                                <div className="text-sm text-orange-700 font-mono">
-                                  {typeof value === 'object' ? JSON.stringify(value, null, 2) : String(value)}
-                                </div>
-                              </div>
-                            ))}
-                          </div>
-                        </div>
-                      )}
-
-                      {/* Connector Performance Stats */}
-                      {forensicsData.job.execution_result?.connector_info?.parameters && (
-                        <div className="space-y-3">
-                          <div className="text-md font-semibold text-purple-700">Performance Statistics</div>
-                          <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-                            {Object.entries(forensicsData.job.execution_result.connector_info.parameters).map(([key, value]) => (
-                              <div key={key} className="flex flex-col gap-1 p-3 bg-purple-50 rounded border border-purple-200">
-                                <div className="text-sm font-medium text-purple-800">{key}</div>
-                                <div className="text-sm text-purple-700 font-mono">
-                                  {typeof value === 'number' && (key.includes('time') || key.includes('ms'))
-                                    ? formatDuration(value)
-                                    : String(value)
-                                  }
-                                </div>
-                              </div>
-                            ))}
-                          </div>
-                        </div>
-                      )}
-
-                      {/* Raw Job Result (Collapsible) */}
-                      <details className="space-y-2">
-                        <summary className="text-md font-semibold text-gray-700 cursor-pointer hover:text-gray-900">
-                          Raw Job Result Data (Click to expand)
-                        </summary>
-                        <pre className="text-xs bg-gray-100 p-3 rounded overflow-x-auto border max-h-64 overflow-y-auto">
-                          {JSON.stringify(forensicsData.job.execution_result, null, 2)}
-                        </pre>
-                      </details>
+                      <CheckCircle className="h-5 w-5 text-blue-600" />
                     </div>
-                  )}
 
-                  {/* Job Data (from EmProps) */}
-                  {forensicsData.job.data && (
-                    <div className="space-y-4">
-                      <div className="text-lg font-semibold text-indigo-700 border-b border-indigo-200 pb-2">
-                        EmProps Job Data
-                      </div>
-
-                      {/* Progress Information */}
-                      {forensicsData.job.progress !== undefined && (
-                        <div className="flex items-center gap-3">
-                          <div className="text-sm font-medium text-muted-foreground">Progress</div>
-                          <div className="flex-1 bg-gray-200 rounded-full h-2">
-                            <div
-                              className="bg-blue-600 h-2 rounded-full transition-all"
-                              style={{ width: `${Math.min(100, Math.max(0, Number(forensicsData.job.progress)))}%` }}
-                            ></div>
-                          </div>
-                          <div className="text-sm font-medium">{forensicsData.job.progress}%</div>
-                        </div>
-                      )}
-
-                      {/* Raw EmProps Data (Collapsible) */}
-                      <details className="space-y-2">
-                        <summary className="text-md font-semibold text-indigo-700 cursor-pointer hover:text-indigo-900">
-                          Raw EmProps Data (Click to expand)
-                        </summary>
-                        <pre className="text-xs bg-indigo-50 p-3 rounded overflow-x-auto border max-h-64 overflow-y-auto">
-                          {JSON.stringify(forensicsData.job.data, null, 2)}
-                        </pre>
-                      </details>
+                    <div className="flex justify-center">
+                      <ArrowRight className="h-5 w-5 text-gray-400" />
                     </div>
-                  )}
 
-                  {/* EmProps Database Images */}
-                  {(forensicsData.job.payload as any)._flat_files && Array.isArray((forensicsData.job.payload as any)._flat_files) && (forensicsData.job.payload as any)._flat_files.length > 0 && (
-                    <div className="space-y-4">
-                      <div className="text-lg font-semibold text-cyan-700 border-b border-cyan-200 pb-2">
-                        EmProps Database Images ({(forensicsData.job.payload as any)._flat_files.length})
+                    {/* Step 2: Job Created (Job Table Record) */}
+                    <div className={`flex items-center gap-4 p-4 border rounded-lg ${
+                      forensicsData.job.id ? 'border-green-200 bg-green-50' : 'border-gray-200 bg-gray-50'
+                    }`}>
+                      <div className="flex-shrink-0">
+                        <div className={`w-8 h-8 rounded-full flex items-center justify-center text-sm font-semibold ${
+                          forensicsData.job.id ? 'bg-green-600 text-white' : 'bg-gray-400 text-white'
+                        }`}>2</div>
                       </div>
+                      <div className="flex-1">
+                        <div className={`font-medium ${forensicsData.job.id ? 'text-green-800' : 'text-gray-600'}`}>
+                          Job Record Created
+                        </div>
+                        <div className={`text-sm ${forensicsData.job.id ? 'text-green-600' : 'text-gray-500'}`}>
+                          {forensicsData.job.id ? `Job table record created: ${String(forensicsData.job.id).substring(0, 8)}...` : 'No job record found'}
+                        </div>
+                        {forensicsData.job.service_required && (
+                          <div className={`text-xs mt-1 ${forensicsData.job.id ? 'text-green-500' : 'text-gray-400'}`}>
+                            <FileText className="h-3 w-3 inline mr-1" />
+                            Service: {forensicsData.job.service_required}
+                          </div>
+                        )}
+                      </div>
+                      {forensicsData.job.id ? <CheckCircle className="h-5 w-5 text-green-600" /> : <XCircle className="h-5 w-5 text-gray-400" />}
+                    </div>
+
+                    <div className="flex justify-center">
+                      <ArrowRight className="h-5 w-5 text-gray-400" />
+                    </div>
+
+                    {/* Step 3: Workflow Requested (Redis Job Added) */}
+                    <div className={`flex items-center gap-4 p-4 border rounded-lg ${
+                      forensicsData.job.status !== 'pending' ? 'border-yellow-200 bg-yellow-50' : 'border-gray-200 bg-gray-50'
+                    }`}>
+                      <div className="flex-shrink-0">
+                        <div className={`w-8 h-8 rounded-full flex items-center justify-center text-sm font-semibold ${
+                          forensicsData.job.status !== 'pending' ? 'bg-yellow-600 text-white' : 'bg-gray-400 text-white'
+                        }`}>3</div>
+                      </div>
+                      <div className="flex-1">
+                        <div className={`font-medium ${forensicsData.job.status !== 'pending' ? 'text-yellow-800' : 'text-gray-600'}`}>
+                          Workflow Requested
+                        </div>
+                        <div className={`text-sm ${forensicsData.job.status !== 'pending' ? 'text-yellow-600' : 'text-gray-500'}`}>
+                          {forensicsData.job.status !== 'pending' ? 'Job submitted to Redis queue for processing' : 'Job still pending submission'}
+                        </div>
+                        {forensicsData.job.workflow_id && (
+                          <div className={`text-xs mt-1 ${forensicsData.job.status !== 'pending' ? 'text-yellow-500' : 'text-gray-400'}`}>
+                            <Database className="h-3 w-3 inline mr-1" />
+                            Workflow: {String(forensicsData.job.workflow_id).substring(0, 8)}...
+                          </div>
+                        )}
+                      </div>
+                      {forensicsData.job.status !== 'pending' ? <CheckCircle className="h-5 w-5 text-yellow-600" /> : <Clock className="h-5 w-5 text-gray-400" />}
+                    </div>
+
+                    <div className="flex justify-center">
+                      <ArrowRight className="h-5 w-5 text-gray-400" />
+                    </div>
+
+                    {/* Step 4: Workflow Processed (Redis Completion) */}
+                    <div className={`flex items-center gap-4 p-4 border rounded-lg ${
+                      forensicsData.job.status === 'completed' ? 'border-purple-200 bg-purple-50' :
+                      forensicsData.job.status === 'failed' ? 'border-red-200 bg-red-50' :
+                      forensicsData.job.status === 'in_progress' ? 'border-blue-200 bg-blue-50' : 'border-gray-200 bg-gray-50'
+                    }`}>
+                      <div className="flex-shrink-0">
+                        <div className={`w-8 h-8 rounded-full flex items-center justify-center text-sm font-semibold ${
+                          forensicsData.job.status === 'completed' ? 'bg-purple-600 text-white' :
+                          forensicsData.job.status === 'failed' ? 'bg-red-600 text-white' :
+                          forensicsData.job.status === 'in_progress' ? 'bg-blue-600 text-white' : 'bg-gray-400 text-white'
+                        }`}>4</div>
+                      </div>
+                      <div className="flex-1">
+                        <div className={`font-medium ${
+                          forensicsData.job.status === 'completed' ? 'text-purple-800' :
+                          forensicsData.job.status === 'failed' ? 'text-red-800' :
+                          forensicsData.job.status === 'in_progress' ? 'text-blue-800' : 'text-gray-600'
+                        }`}>
+                          Workflow Processing
+                        </div>
+                        <div className={`text-sm ${
+                          forensicsData.job.status === 'completed' ? 'text-purple-600' :
+                          forensicsData.job.status === 'failed' ? 'text-red-600' :
+                          forensicsData.job.status === 'in_progress' ? 'text-blue-600' : 'text-gray-500'
+                        }`}>
+                          Status: {forensicsData.job.status}
+                          {forensicsData.job.error_message && ` - ${forensicsData.job.error_message}`}
+                        </div>
+                        {forensicsData.job.started_at && (
+                          <div className={`text-xs mt-1 ${
+                            forensicsData.job.status === 'completed' ? 'text-purple-500' :
+                            forensicsData.job.status === 'failed' ? 'text-red-500' :
+                            forensicsData.job.status === 'in_progress' ? 'text-blue-500' : 'text-gray-400'
+                          }`}>
+                            <Play className="h-3 w-3 inline mr-1" />
+                            Started: {new Date(forensicsData.job.started_at).toLocaleString()}
+                          </div>
+                        )}
+                      </div>
+                      {forensicsData.job.status === 'completed' ? <CheckCircle className="h-5 w-5 text-purple-600" /> :
+                       forensicsData.job.status === 'failed' ? <XCircle className="h-5 w-5 text-red-600" /> :
+                       forensicsData.job.status === 'in_progress' ? <Clock className="h-5 w-5 text-blue-600" /> :
+                       <Clock className="h-5 w-5 text-gray-400" />}
+                    </div>
+
+                    <div className="flex justify-center">
+                      <ArrowRight className="h-5 w-5 text-gray-400" />
+                    </div>
+
+                    {/* Step 5: Job Completed EmProps (Job Table completed_at) */}
+                    <div className={`flex items-center gap-4 p-4 border rounded-lg ${
+                      forensicsData.job.completed_at ? 'border-emerald-200 bg-emerald-50' : 'border-gray-200 bg-gray-50'
+                    }`}>
+                      <div className="flex-shrink-0">
+                        <div className={`w-8 h-8 rounded-full flex items-center justify-center text-sm font-semibold ${
+                          forensicsData.job.completed_at ? 'bg-emerald-600 text-white' : 'bg-gray-400 text-white'
+                        }`}>5</div>
+                      </div>
+                      <div className="flex-1">
+                        <div className={`font-medium ${forensicsData.job.completed_at ? 'text-emerald-800' : 'text-gray-600'}`}>
+                          Job Completed (EmProps)
+                        </div>
+                        <div className={`text-sm ${forensicsData.job.completed_at ? 'text-emerald-600' : 'text-gray-500'}`}>
+                          {forensicsData.job.completed_at ? 'EmProps API received completion notification' : 'EmProps completion pending'}
+                        </div>
+                        {forensicsData.job.completed_at && (
+                          <div className="text-xs text-emerald-500 mt-1">
+                            <CheckCircle className="h-3 w-3 inline mr-1" />
+                            {new Date(forensicsData.job.completed_at).toLocaleString()}
+                          </div>
+                        )}
+                      </div>
+                      {forensicsData.job.completed_at ? <CheckCircle className="h-5 w-5 text-emerald-600" /> : <Clock className="h-5 w-5 text-gray-400" />}
+                    </div>
+
+                    <div className="flex justify-center">
+                      <ArrowRight className="h-5 w-5 text-gray-400" />
+                    </div>
+
+                    {/* Step 6: Job Completed Miniapp (miniapp_generation table) */}
+                    <div className={`flex items-center gap-4 p-4 border rounded-lg ${
+                      (forensicsData.job.payload as any)?._flat_files?.length > 0 ? 'border-teal-200 bg-teal-50' : 'border-gray-200 bg-gray-50'
+                    }`}>
+                      <div className="flex-shrink-0">
+                        <div className={`w-8 h-8 rounded-full flex items-center justify-center text-sm font-semibold ${
+                          (forensicsData.job.payload as any)?._flat_files?.length > 0 ? 'bg-teal-600 text-white' : 'bg-gray-400 text-white'
+                        }`}>6</div>
+                      </div>
+                      <div className="flex-1">
+                        <div className={`font-medium ${(forensicsData.job.payload as any)?._flat_files?.length > 0 ? 'text-teal-800' : 'text-gray-600'}`}>
+                          Miniapp Completion
+                        </div>
+                        <div className={`text-sm ${(forensicsData.job.payload as any)?._flat_files?.length > 0 ? 'text-teal-600' : 'text-gray-500'}`}>
+                          {(forensicsData.job.payload as any)?._flat_files?.length > 0
+                            ? `Webhook received, ${(forensicsData.job.payload as any)._flat_files.length} generated files`
+                            : 'Miniapp webhook completion pending'}
+                        </div>
+                        {(forensicsData.job.payload as any)?._flat_files?.length > 0 && (
+                          <div className="text-xs text-teal-500 mt-1">
+                            <Webhook className="h-3 w-3 inline mr-1" />
+                            Files available in miniapp_generation table
+                          </div>
+                        )}
+                      </div>
+                      {(forensicsData.job.payload as any)?._flat_files?.length > 0 ? <CheckCircle className="h-5 w-5 text-teal-600" /> : <Clock className="h-5 w-5 text-gray-400" />}
+                    </div>
+                  </div>
+
+                  {/* Pipeline Summary */}
+                  <div className="border-t pt-4">
+                    <div className="text-lg font-semibold text-gray-800 mb-3">Pipeline Summary</div>
+                    <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
+                      <div className="text-center p-3 bg-blue-50 rounded-lg border border-blue-200">
+                        <div className="text-lg font-semibold text-blue-600">
+                          {forensicsData.job.status === 'completed' ? '✓' :
+                           forensicsData.job.status === 'failed' ? '✗' :
+                           forensicsData.job.status === 'in_progress' ? '⏳' : '○'}
+                        </div>
+                        <div className="text-xs text-blue-600 font-medium">Redis Status</div>
+                      </div>
+                      <div className="text-center p-3 bg-emerald-50 rounded-lg border border-emerald-200">
+                        <div className="text-lg font-semibold text-emerald-600">
+                          {forensicsData.job.completed_at ? '✓' : '○'}
+                        </div>
+                        <div className="text-xs text-emerald-600 font-medium">EmProps Table</div>
+                      </div>
+                      <div className="text-center p-3 bg-teal-50 rounded-lg border border-teal-200">
+                        <div className="text-lg font-semibold text-teal-600">
+                          {(forensicsData.job.payload as any)?._flat_files?.length > 0 ? '✓' : '○'}
+                        </div>
+                        <div className="text-xs text-teal-600 font-medium">Miniapp Table</div>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Generated Content (if available) */}
+                  {(forensicsData.job.payload as any)?._flat_files?.length > 0 && (
+                    <div className="border-t pt-4">
+                      <div className="text-lg font-semibold text-gray-800 mb-3">Generated Content</div>
                       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                        {(forensicsData.job.payload as any)._flat_files.map((file: FlatFile, idx: number) => (
-                          <div key={idx} className="border border-cyan-200 rounded-lg p-4 bg-cyan-50">
-                            <div className="flex items-center justify-between mb-3">
-                              <div className="text-sm font-medium text-cyan-800">
-                                {file.name || `Image ${idx + 1}`}
+                        {(forensicsData.job.payload as any)._flat_files.slice(0, 4).map((file: FlatFile, idx: number) => (
+                          <div key={idx} className="border border-gray-200 rounded-lg p-3 bg-gray-50">
+                            <div className="flex items-center justify-between mb-2">
+                              <div className="text-sm font-medium text-gray-800">
+                                {file.name || `File ${idx + 1}`}
                               </div>
-                              <div className="flex gap-2">
+                              <div className="flex gap-1">
                                 {file.url && (
                                   <>
                                     <Button size="sm" variant="outline" onClick={() => window.open(file.url, '_blank')}>
-                                      <ExternalLink className="h-3 w-3 mr-1" />
-                                      View
+                                      <ExternalLink className="h-3 w-3" />
                                     </Button>
                                     <Button size="sm" variant="outline" onClick={() => {
                                       const a = document.createElement('a');
@@ -1210,92 +1333,29 @@ export default function JobForensics() {
                                       a.download = file.name || 'download';
                                       a.click();
                                     }}>
-                                      <Download className="h-3 w-3 mr-1" />
-                                      Download
+                                      <Download className="h-3 w-3" />
                                     </Button>
                                   </>
                                 )}
                               </div>
                             </div>
-
-                            {/* Image Preview */}
                             {file.url && file.mime_type?.includes('image') && (
-                              <div className="mb-3">
-                                <SmartImage
-                                  src={file.url}
-                                  alt={file.name || `Generated image ${idx + 1}`}
-                                  width={300}
-                                  height={128}
-                                  className="w-full h-32 object-cover rounded border"
-                                />
-                              </div>
+                              <SmartImage
+                                src={file.url}
+                                alt={file.name || `Generated image ${idx + 1}`}
+                                width={200}
+                                height={100}
+                                className="w-full h-24 object-cover rounded border"
+                              />
                             )}
-
-                            {/* Metadata */}
-                            <div className="space-y-2 text-xs">
-                              <div className="grid grid-cols-2 gap-2">
-                                <div>
-                                  <span className="font-medium text-cyan-800">ID:</span>
-                                  <span className="text-cyan-700 ml-1">{file.id}</span>
-                                </div>
-                                <div>
-                                  <span className="font-medium text-cyan-800">Type:</span>
-                                  <span className="text-cyan-700 ml-1">{file.mime_type || 'unknown'}</span>
-                                </div>
-                                <div>
-                                  <span className="font-medium text-cyan-800">Relation:</span>
-                                  <span className="text-cyan-700 ml-1">{file.rel_type}</span>
-                                </div>
-                                <div>
-                                  <span className="font-medium text-cyan-800">Created:</span>
-                                  <span className="text-cyan-700 ml-1">
-                                    {file.created_at ? new Date(file.created_at).toLocaleDateString() : 'Unknown'}
-                                  </span>
-                                </div>
-                              </div>
-
-                              {/* File URL */}
-                              {file.url && (
-                                <div className="text-cyan-700 font-mono break-all bg-white p-2 rounded border mt-2">
-                                  {file.url}
-                                </div>
-                              )}
-
-                              {/* Generation Input Data */}
-                              {file.gen_in_data && (
-                                <details className="mt-2">
-                                  <summary className="font-medium text-cyan-800 cursor-pointer hover:text-cyan-900">
-                                    Generation Input
-                                  </summary>
-                                  <pre className="text-xs bg-white p-2 rounded border mt-1 max-h-24 overflow-y-auto">
-                                    {JSON.stringify(file.gen_in_data, null, 2)}
-                                  </pre>
-                                </details>
-                              )}
-
-                              {/* Generation Output Data */}
-                              {file.gen_out_data && (
-                                <details className="mt-2">
-                                  <summary className="font-medium text-cyan-800 cursor-pointer hover:text-cyan-900">
-                                    Generation Output
-                                  </summary>
-                                  <pre className="text-xs bg-white p-2 rounded border mt-1 max-h-24 overflow-y-auto">
-                                    {JSON.stringify(file.gen_out_data, null, 2)}
-                                  </pre>
-                                </details>
-                              )}
-                            </div>
                           </div>
                         ))}
                       </div>
-                    </div>
-                  )}
-
-                  {/* No Results Message */}
-                  {!forensicsData.job.execution_result && !forensicsData.job.data && (!(forensicsData.job.payload as any)._flat_files || (forensicsData.job.payload as any)._flat_files.length === 0) && (
-                    <div className="text-center py-8 text-muted-foreground">
-                      <ImageIcon className="h-12 w-12 mx-auto mb-2 opacity-50" />
-                      <div className="text-sm">No image outputs or processing results available for this job</div>
+                      {(forensicsData.job.payload as any)._flat_files.length > 4 && (
+                        <div className="text-center mt-3 text-sm text-gray-600">
+                          ... and {(forensicsData.job.payload as any)._flat_files.length - 4} more files
+                        </div>
+                      )}
                     </div>
                   )}
                 </CardContent>

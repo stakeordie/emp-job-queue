@@ -48,8 +48,7 @@ export const ApiEnvInterface = {
     "DASH0_API_KEY": "DASH0_API_KEY",
     "EMPROPS_API_AUTH": "EMPROPS_API_AUTH",
     "EMPROPS_API_KEY": "EMPROPS_API_KEY",
-    "DATABASE_URL": "DATABASE_URL",
-    "PGBOUNCER_URL": "DATABASE_PGBOUNCER_URL"
+    "DATABASE_URL": "DATABASE_URL"
   },
   
   optional: {
