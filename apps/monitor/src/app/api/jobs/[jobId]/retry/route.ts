@@ -2,9 +2,9 @@ import { NextRequest, NextResponse } from 'next/server';
 
 export async function POST(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: { jobId: string } }
 ) {
-  const jobId = params.id;
+  const jobId = params.jobId;
 
   // Get EmProps API configuration from server-side environment variables
   const empropsApiUrl = process.env.EMPROPS_API_URL || process.env.NEXT_PUBLIC_EMPROPS_API_URL;
