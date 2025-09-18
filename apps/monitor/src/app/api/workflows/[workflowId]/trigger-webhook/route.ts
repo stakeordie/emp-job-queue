@@ -17,8 +17,10 @@ export async function POST(
       );
     }
 
-    // Get EmProps API URL
+    // Get EmProps API URL and key
     const empropsApiUrl = process.env.EMPROPS_API_URL;
+    const empropsApiKey = process.env.EMPROPS_API_KEY;
+
     if (!empropsApiUrl) {
       return NextResponse.json(
         { success: false, error: 'EmProps API URL not configured' },
@@ -26,12 +28,26 @@ export async function POST(
       );
     }
 
+    if (!empropsApiKey) {
+      return NextResponse.json(
+        { success: false, error: 'EmProps API key not configured' },
+        { status: 500 }
+      );
+    }
+
+    // Setup authentication headers
+    const headers: Record<string, string> = {
+      'Content-Type': 'application/json',
+      'Accept': 'application/json',
+      'Authorization': `Bearer ${empropsApiKey}`
+    };
+
     const redis = new Redis(redisUrl);
 
     // First, verify the workflow exists and is completed in EmProps
     const workflowResponse = await fetch(`${empropsApiUrl}/jobs/${workflowId}`, {
       method: 'GET',
-      headers: { 'Content-Type': 'application/json' }
+      headers
     });
 
     if (!workflowResponse.ok) {
