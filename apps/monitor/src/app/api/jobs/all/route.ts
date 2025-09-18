@@ -7,6 +7,7 @@ export async function GET(request: NextRequest) {
   const url = new URL(request.url);
   const limit = parseInt(url.searchParams.get('limit') || '20');
   const offset = parseInt(url.searchParams.get('offset') || '0');
+  const search = url.searchParams.get('search');
 
   try {
     // Check if DATABASE_URL is configured
@@ -41,8 +42,38 @@ export async function GET(request: NextRequest) {
       return NextResponse.json(connectionFailedResponse);
     }
 
+    // Build search conditions
+    let whereCondition = {};
+    if (search && search.trim()) {
+      const searchTerm = search.trim();
+      whereCondition = {
+        OR: [
+          { id: { contains: searchTerm, mode: 'insensitive' } },
+          { name: { contains: searchTerm, mode: 'insensitive' } },
+          { description: { contains: searchTerm, mode: 'insensitive' } },
+          { job_type: { contains: searchTerm, mode: 'insensitive' } },
+          { status: { contains: searchTerm, mode: 'insensitive' } },
+          { user_id: { contains: searchTerm, mode: 'insensitive' } },
+          // Search through related miniapp_generation -> miniapp_user
+          {
+            miniapp_generation: {
+              some: {
+                miniapp_user: {
+                  OR: [
+                    { farcaster_username: { contains: searchTerm, mode: 'insensitive' } },
+                    { wallet_address: { contains: searchTerm, mode: 'insensitive' } }
+                  ]
+                }
+              }
+            }
+          }
+        ]
+      };
+    }
+
     // Fetch jobs from EmProps database (user job requests)
     const empropsJobs = await prisma.job.findMany({
+      where: whereCondition,
       orderBy: { created_at: 'desc' },
       take: limit,
       skip: offset,
@@ -150,7 +181,9 @@ export async function GET(request: NextRequest) {
       };
     });
 
-    const total = await prisma.job.count();
+    const total = await prisma.job.count({
+      where: whereCondition
+    });
 
     const response: JobsAPIResponse = {
       success: true,

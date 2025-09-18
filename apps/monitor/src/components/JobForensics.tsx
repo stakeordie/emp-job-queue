@@ -48,11 +48,12 @@ export default function JobForensics() {
     }
   };
 
-  const loadJobs = async (page: number = 0, append: boolean = false) => {
+  const loadJobs = async (page: number = 0, append: boolean = false, searchTerm: string = '') => {
     setJobsLoading(true);
     try {
       const offset = page * jobsPerPage;
-      const response = await fetch(`/api/jobs/all?limit=${jobsPerPage}&offset=${offset}`);
+      const searchParam = searchTerm ? `&search=${encodeURIComponent(searchTerm)}` : '';
+      const response = await fetch(`/api/jobs/all?limit=${jobsPerPage}&offset=${offset}${searchParam}`);
       const data = await response.json();
       if (data.success) {
         if (append) {
@@ -71,13 +72,30 @@ export default function JobForensics() {
     }
   };
 
-  const loadAllJobs = () => loadJobs(0, false);
-  const loadMoreJobs = () => loadJobs(currentPage + 1, true);
+  const loadAllJobs = (searchTerm: string = '') => {
+    setCurrentPage(0);
+    loadJobs(0, false, searchTerm);
+  };
+
+  const loadMoreJobs = () => {
+    const nextPage = currentPage + 1;
+    setCurrentPage(nextPage);
+    loadJobs(nextPage, true, searchQuery);
+  };
 
   // Auto-load workflows on component mount
   useEffect(() => {
     loadAllJobs();
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Debounced search effect
+  useEffect(() => {
+    const timeoutId = setTimeout(() => {
+      loadAllJobs(searchQuery);
+    }, 300); // 300ms debounce
+
+    return () => clearTimeout(timeoutId);
+  }, [searchQuery]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const formatDuration = (ms: number) => {
     if (ms < 1000) return `${ms}ms`;
@@ -122,29 +140,8 @@ export default function JobForensics() {
   const payment = miniappData?.payment;
 
   // Filter jobs based on search query
-  const filteredJobs = allJobs.filter((job) => {
-    if (!searchQuery.trim()) return true;
-
-    const searchLower = searchQuery.toLowerCase();
-    const jobId = String(job.id).toLowerCase();
-    const jobName = String(job.name || job.description || '').toLowerCase();
-    const jobType = String(job.job_type || '').toLowerCase();
-    const userId = String(job.user_id || '').toLowerCase();
-    const status = String(job.status || '').toLowerCase();
-
-    // Enhanced user search with miniapp_user data
-    const userInfo = job.user_info;
-    const farcasterUsername = String(userInfo?.farcaster_username || '').toLowerCase();
-    const walletAddress = String(userInfo?.wallet_address || '').toLowerCase();
-
-    return jobId.includes(searchLower) ||
-           jobName.includes(searchLower) ||
-           jobType.includes(searchLower) ||
-           userId.includes(searchLower) ||
-           status.includes(searchLower) ||
-           farcasterUsername.includes(searchLower) ||
-           walletAddress.includes(searchLower);
-  });
+  // Server-side search is now handled in the API, so we use allJobs directly
+  const filteredJobs = allJobs;
 
   return (
     <div className="container mx-auto py-6 space-y-6">
@@ -232,6 +229,18 @@ export default function JobForensics() {
                                     <code className="text-xs bg-gray-100 px-2 py-1 rounded font-mono">
                                       {String(job.id).substring(0, 8)}...
                                     </code>
+                                    {/* Preview Image */}
+                                    {job.miniapp_data?.generated_image && (
+                                      <div className="flex-shrink-0">
+                                        <SmartImage
+                                          src={String(job.miniapp_data.generated_image)}
+                                          alt="Generated preview"
+                                          width={40}
+                                          height={40}
+                                          className="h-10 w-10 rounded border object-cover"
+                                        />
+                                      </div>
+                                    )}
                                     <div className="flex flex-col flex-1">
                                       <div className="text-sm font-medium">
                                         {String(job.name || job.description || 'Unnamed Workflow')}
@@ -402,6 +411,115 @@ export default function JobForensics() {
                                         {JSON.stringify(job.data, null, 2)}
                                       </pre>
                                     </details>
+                                  </div>
+                                )}
+
+                                {/* Miniapp Generation Data */}
+                                {job.miniapp_data && (
+                                  <div>
+                                    <div className="text-sm font-medium text-muted-foreground mb-2">Generation Details</div>
+                                    <div className="space-y-3 p-3 bg-white rounded border">
+                                      {/* Generated Images */}
+                                      {(job.miniapp_data.generated_image || job.miniapp_data.output_url) && (
+                                        <div>
+                                          <div className="text-sm font-medium text-purple-800 mb-2">Generated Output</div>
+                                          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                                            {job.miniapp_data.generated_image && (
+                                              <div>
+                                                <div className="text-xs text-muted-foreground mb-1">Generated Image</div>
+                                                <div className="space-y-2">
+                                                  <SmartImage
+                                                    src={String(job.miniapp_data.generated_image)}
+                                                    alt="Generated output"
+                                                    width={200}
+                                                    height={200}
+                                                    className="max-w-full h-auto rounded border"
+                                                  />
+                                                  <a
+                                                    href={String(job.miniapp_data.generated_image)}
+                                                    target="_blank"
+                                                    rel="noopener noreferrer"
+                                                    className="text-xs text-purple-600 hover:underline flex items-center gap-1"
+                                                  >
+                                                    <ExternalLink className="h-3 w-3" />
+                                                    View Full Size
+                                                  </a>
+                                                </div>
+                                              </div>
+                                            )}
+                                            {job.miniapp_data.output_url && (
+                                              <div>
+                                                <div className="text-xs text-muted-foreground mb-1">Output URL</div>
+                                                <div className="text-xs font-mono break-all bg-purple-50 p-2 rounded border">
+                                                  <a
+                                                    href={String(job.miniapp_data.output_url)}
+                                                    target="_blank"
+                                                    rel="noopener noreferrer"
+                                                    className="text-purple-600 hover:underline"
+                                                  >
+                                                    {String(job.miniapp_data.output_url)}
+                                                  </a>
+                                                </div>
+                                              </div>
+                                            )}
+                                          </div>
+                                        </div>
+                                      )}
+
+                                      {/* Input/Output Data */}
+                                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                        {job.miniapp_data.input_data && (
+                                          <div>
+                                            <details className="space-y-2">
+                                              <summary className="text-sm font-medium text-purple-800 cursor-pointer hover:text-purple-900">
+                                                Input Data
+                                              </summary>
+                                              <pre className="text-xs bg-purple-50 p-3 rounded border max-h-32 overflow-y-auto">
+                                                {JSON.stringify(job.miniapp_data.input_data, null, 2)}
+                                              </pre>
+                                            </details>
+                                          </div>
+                                        )}
+                                        {job.miniapp_data.output_data && (
+                                          <div>
+                                            <details className="space-y-2">
+                                              <summary className="text-sm font-medium text-purple-800 cursor-pointer hover:text-purple-900">
+                                                Output Data
+                                              </summary>
+                                              <pre className="text-xs bg-purple-50 p-3 rounded border max-h-32 overflow-y-auto">
+                                                {JSON.stringify(job.miniapp_data.output_data, null, 2)}
+                                              </pre>
+                                            </details>
+                                          </div>
+                                        )}
+                                      </div>
+
+                                      {/* Generation Status */}
+                                      <div className="grid grid-cols-1 md:grid-cols-3 gap-4 pt-3 border-t">
+                                        <div>
+                                          <div className="text-xs font-medium text-muted-foreground">Status</div>
+                                          <Badge className={getStatusColor(String(job.miniapp_data.status || 'unknown'))}>
+                                            {String(job.miniapp_data.status || 'Unknown')}
+                                          </Badge>
+                                        </div>
+                                        {job.miniapp_data.collection_id && (
+                                          <div>
+                                            <div className="text-xs font-medium text-muted-foreground">Collection</div>
+                                            <div className="text-xs font-mono">
+                                              {String(job.miniapp_data.collection_id).substring(0, 12)}...
+                                            </div>
+                                          </div>
+                                        )}
+                                        {job.miniapp_data.created_at && (
+                                          <div>
+                                            <div className="text-xs font-medium text-muted-foreground">Generated</div>
+                                            <div className="text-xs">
+                                              {new Date(String(job.miniapp_data.created_at)).toLocaleString()}
+                                            </div>
+                                          </div>
+                                        )}
+                                      </div>
+                                    </div>
                                   </div>
                                 )}
 
