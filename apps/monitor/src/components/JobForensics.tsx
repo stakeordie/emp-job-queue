@@ -92,7 +92,7 @@ export default function JobForensics() {
   useEffect(() => {
     const timeoutId = setTimeout(() => {
       loadAllJobs(searchQuery);
-    }, 300); // 300ms debounce
+    }, 800); // 800ms debounce for database search
 
     return () => clearTimeout(timeoutId);
   }, [searchQuery]); // eslint-disable-line react-hooks/exhaustive-deps
