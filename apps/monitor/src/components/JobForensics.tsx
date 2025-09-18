@@ -1,82 +1,37 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { AlertTriangle, Database, RefreshCw, Search, Info, Image as ImageIcon, Download, ExternalLink, User, Wallet, MessageCircle } from 'lucide-react';
-
-interface WorkflowStep {
-  id: number;
-  alias?: string;
-  nodeName: string;
-  nodeAlias?: string;
-  nodeResponse?: {
-    src?: string;
-    mimeType?: string;
-  };
-}
-
-interface WorkflowOutput {
-  steps: WorkflowStep[];
-  generation?: {
-    id: number;
-    hash: string;
-  };
-}
-
-interface JobPayload {
-  _collection?: Record<string, unknown>;
-  variables?: Record<string, unknown>;
-  outputs?: WorkflowOutput[];
-  collectionId?: string;
-}
-
-interface JobForensicsData {
-  job: {
-    payload: JobPayload;
-    [key: string]: unknown;
-  };
-  forensics: Record<string, unknown>;
-  similar_failures: Record<string, unknown>[];
-  recovery_suggestions: Record<string, unknown>[];
-}
+import SmartImage from './SmartImage';
+import type {
+  JobForensicsData,
+  JobWithUserInfo,
+  FailedJobsAnalysis,
+  WorkflowStep,
+  WorkflowOutput,
+  FlatFile
+} from './JobForensics.types';
+import { get as _get, renderValue as _renderValue } from './JobForensics.types';
 
 export default function JobForensics() {
-  const [jobId, setJobId] = useState('');
   const [forensicsData, setForensicsData] = useState<JobForensicsData | null>(null);
-  const [failedAnalysis, setFailedAnalysis] = useState<Record<string, unknown> | null>(null);
-  const [allJobs, setAllJobs] = useState<Record<string, unknown>[]>([]);
+  const [failedAnalysis, setFailedAnalysis] = useState<FailedJobsAnalysis | null>(null);
+  const [allJobs, setAllJobs] = useState<JobWithUserInfo[]>([]);
   const [jobsLoading, setJobsLoading] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
+  const [currentPage, setCurrentPage] = useState(0);
+  const [totalJobs, setTotalJobs] = useState(0);
+  const [hasMore, setHasMore] = useState(false);
+  const [expandedJobId, setExpandedJobId] = useState<string | null>(null);
+  const jobsPerPage = 20;
 
-  const searchJob = async () => {
-    if (!jobId.trim()) return;
-
-    setLoading(true);
-    setError(null);
-
-    try {
-      const response = await fetch(`/api/jobs/${jobId}/forensics`);
-      const data = await response.json();
-
-      if (data.success) {
-        setForensicsData(data);
-      } else {
-        setError(data.error || 'Job not found');
-        setForensicsData(null);
-      }
-    } catch (error) {
-      setError(error instanceof Error ? error.message : 'Failed to fetch job forensics');
-      setForensicsData(null);
-    } finally {
-      setLoading(false);
-    }
-  };
 
   const loadFailedAnalysis = async () => {
     setLoading(true);
@@ -93,13 +48,21 @@ export default function JobForensics() {
     }
   };
 
-  const loadAllJobs = async () => {
+  const loadJobs = async (page: number = 0, append: boolean = false) => {
     setJobsLoading(true);
     try {
-      const response = await fetch('/api/jobs/all?limit=50');
+      const offset = page * jobsPerPage;
+      const response = await fetch(`/api/jobs/all?limit=${jobsPerPage}&offset=${offset}`);
       const data = await response.json();
       if (data.success) {
-        setAllJobs(data.jobs);
+        if (append) {
+          setAllJobs(prev => [...prev, ...data.jobs]);
+        } else {
+          setAllJobs(data.jobs);
+        }
+        setTotalJobs(data.total);
+        setHasMore(data.hasMore);
+        setCurrentPage(page);
       }
     } catch {
       setError('Failed to load jobs list');
@@ -107,6 +70,14 @@ export default function JobForensics() {
       setJobsLoading(false);
     }
   };
+
+  const loadAllJobs = () => loadJobs(0, false);
+  const loadMoreJobs = () => loadJobs(currentPage + 1, true);
+
+  // Auto-load workflows on component mount
+  useEffect(() => {
+    loadAllJobs();
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   const formatDuration = (ms: number) => {
     if (ms < 1000) return `${ms}ms`;
@@ -140,7 +111,15 @@ export default function JobForensics() {
   };
 
   // Helper variable for miniapp data access
-  const miniappData = (forensicsData?.job?.payload as any)?._miniapp_data;
+  const miniappData = forensicsData?.job?.payload?._miniapp_data as {
+    user?: any;
+    generation?: any;
+    payment?: any;
+    social_links?: any[];
+  } | undefined;
+  const user = miniappData?.user;
+  const generation = miniappData?.generation;
+  const payment = miniappData?.payment;
 
   // Filter jobs based on search query
   const filteredJobs = allJobs.filter((job) => {
@@ -153,11 +132,18 @@ export default function JobForensics() {
     const userId = String(job.user_id || '').toLowerCase();
     const status = String(job.status || '').toLowerCase();
 
+    // Enhanced user search with miniapp_user data
+    const userInfo = job.user_info;
+    const farcasterUsername = String(userInfo?.farcaster_username || '').toLowerCase();
+    const walletAddress = String(userInfo?.wallet_address || '').toLowerCase();
+
     return jobId.includes(searchLower) ||
            jobName.includes(searchLower) ||
            jobType.includes(searchLower) ||
            userId.includes(searchLower) ||
-           status.includes(searchLower);
+           status.includes(searchLower) ||
+           farcasterUsername.includes(searchLower) ||
+           walletAddress.includes(searchLower);
   });
 
   return (
@@ -191,109 +177,298 @@ export default function JobForensics() {
               <div className="space-y-4">
                 <div className="flex gap-2">
                   <Input
-                    placeholder="Search by job ID, name, type, user, or status..."
+                    placeholder="Search by job ID, name, type, user, Farcaster username, wallet, or status..."
                     value={searchQuery}
                     onChange={(e) => setSearchQuery(e.target.value)}
                     className="flex-1"
                   />
                   <Button onClick={loadAllJobs} disabled={jobsLoading}>
                     {jobsLoading ? <RefreshCw className="h-4 w-4 animate-spin mr-2" /> : <RefreshCw className="h-4 w-4 mr-2" />}
-                    Load Jobs
+                    Refresh
                   </Button>
                 </div>
 
-                {allJobs.length > 0 && (
-                  <div className="space-y-2">
-                    <div className="text-sm font-medium text-muted-foreground">
-                      {filteredJobs.length} of {allJobs.length} jobs {searchQuery.trim() && 'matching search'}
+                {/* Always show workflows section */}
+                <div className="space-y-2">
+                  {/* Loading State */}
+                  {jobsLoading && allJobs.length === 0 && (
+                    <div className="flex items-center justify-center py-8 text-muted-foreground">
+                      <RefreshCw className="h-4 w-4 animate-spin mr-2" />
+                      Loading workflows...
                     </div>
-                    <div className="border rounded-lg overflow-hidden">
-                      <div className="max-h-96 overflow-y-auto">
-                        {filteredJobs.map((job, idx) => (
-                          <div
-                            key={idx}
-                            className="flex items-center justify-between p-3 border-b last:border-b-0 hover:bg-gray-50"
+                  )}
+
+                  {/* Jobs List */}
+                  {allJobs.length > 0 && (
+                    <>
+                      <div className="flex items-center justify-between text-sm font-medium text-muted-foreground">
+                        <span>
+                          {searchQuery.trim()
+                            ? `${filteredJobs.length} of ${allJobs.length} jobs matching search`
+                            : `Showing ${allJobs.length} of ${totalJobs} jobs (page ${currentPage + 1})`
+                          }
+                        </span>
+                        {!searchQuery.trim() && hasMore && (
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={loadMoreJobs}
+                            disabled={jobsLoading}
                           >
-                            <div className="flex items-center gap-3 flex-1">
-                              <code className="text-xs bg-gray-100 px-2 py-1 rounded font-mono">
-                                {String(job.id).substring(0, 8)}...
-                              </code>
-                              <div className="flex flex-col flex-1">
-                                <div className="text-sm font-medium">
-                                  {String(job.name || job.description || 'Unnamed Workflow')}
-                                </div>
-                                <div className="text-xs text-muted-foreground flex items-center gap-2 flex-wrap">
-                                  <span>
-                                    {job.created_at ? new Date(String(job.created_at)).toLocaleString() : 'Unknown date'}
-                                  </span>
-                                  {job.job_type != null && String(job.job_type).trim() !== '' && (
-                                    <span className="px-1.5 py-0.5 bg-blue-100 text-blue-800 rounded text-xs">
-                                      {String(job.job_type)}
-                                    </span>
-                                  )}
-                                  {job.user_id != null && (
-                                    <span className="flex items-center gap-1 px-1.5 py-0.5 bg-purple-100 text-purple-800 rounded text-xs">
-                                      <User className="h-3 w-3" />
-                                      {String(job.user_id).substring(0, 8)}...
-                                    </span>
-                                  )}
-                                  {job.progress != null && Number(job.progress) > 0 && (
-                                    <span className="text-green-600">
-                                      {String(job.progress)}%
-                                    </span>
-                                  )}
+                            {jobsLoading ? (
+                              <RefreshCw className="h-3 w-3 animate-spin mr-1" />
+                            ) : null}
+                            Load More ({totalJobs - allJobs.length} remaining)
+                          </Button>
+                        )}
+                      </div>
+                      <div className="border rounded-lg overflow-hidden">
+                        <div className="max-h-96 overflow-y-auto">
+                          {filteredJobs.length > 0 ? (
+                            filteredJobs.map((job, idx) => (
+                              <div key={idx}>
+                                <div className="flex items-center justify-between p-3 border-b hover:bg-gray-50">
+                                  <div className="flex items-center gap-3 flex-1">
+                                    <code className="text-xs bg-gray-100 px-2 py-1 rounded font-mono">
+                                      {String(job.id).substring(0, 8)}...
+                                    </code>
+                                    <div className="flex flex-col flex-1">
+                                      <div className="text-sm font-medium">
+                                        {String(job.name || job.description || 'Unnamed Workflow')}
+                                      </div>
+                                      <div className="text-xs text-muted-foreground flex items-center gap-2 flex-wrap">
+                                        <span>
+                                          {job.created_at ? new Date(String(job.created_at)).toLocaleString() : 'Unknown date'}
+                                        </span>
+                                        {job.job_type != null && String(job.job_type).trim() !== '' && (
+                                          <span className="px-1.5 py-0.5 bg-blue-100 text-blue-800 rounded text-xs">
+                                            {String(job.job_type)}
+                                          </span>
+                                        )}
+                                        {job.user_id != null && (
+                                          <div className="flex items-center gap-1 px-1.5 py-0.5 bg-purple-100 text-purple-800 rounded text-xs">
+                                        {job.user_info?.farcaster_pfp ? (
+                                          <SmartImage
+                                            src={job.user_info.farcaster_pfp}
+                                            alt="Profile"
+                                            width={12}
+                                            height={12}
+                                            className="h-3 w-3 rounded-full"
+                                          />
+                                        ) : (
+                                          <User className="h-3 w-3" />
+                                        )}
+                                        <span>
+                                          {job.user_info?.farcaster_username ||
+                                           `${String(job.user_id).substring(0, 8)}...`}
+                                        </span>
+                                      </div>
+                                    )}
+                                    {job.progress != null && Number(job.progress) > 0 && (
+                                      <span className="text-green-600">
+                                        {String(job.progress)}%
+                                      </span>
+                                    )}
+                                  </div>
                                 </div>
                               </div>
+                              <div className="flex items-center gap-2">
+                                <Badge className={getStatusColor(String(job.status))}>
+                                  {String(job.status)}
+                                </Badge>
+                                {job.error_message != null && String(job.error_message).trim() !== '' && (
+                                  <div title={String(job.error_message)}>
+                                    <AlertTriangle className="h-4 w-4 text-red-500" />
+                                  </div>
+                                )}
+                                <Button
+                                  size="sm"
+                                  variant="outline"
+                                  onClick={() => {
+                                    const id = String(job.id);
+                                    setExpandedJobId(expandedJobId === id ? null : id);
+                                  }}
+                                  className="ml-2"
+                                >
+                                  <Info className="h-3 w-3 mr-1" />
+                                  {expandedJobId === String(job.id) ? 'Hide Details' : 'More Info'}
+                                </Button>
+                              </div>
                             </div>
-                            <div className="flex items-center gap-2">
-                              <Badge className={getStatusColor(String(job.status))}>
-                                {String(job.status)}
-                              </Badge>
-                              {job.error_message != null && String(job.error_message).trim() !== '' && (
-                                <div title={String(job.error_message)}>
-                                  <AlertTriangle className="h-4 w-4 text-red-500" />
+
+                            {/* Expanded Job Details */}
+                            {expandedJobId === String(job.id) && (
+                              <div className="bg-gray-50 border-b p-4 space-y-4">
+                                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                                  <div>
+                                    <div className="text-sm font-medium text-muted-foreground">Full Job ID</div>
+                                    <code className="text-xs bg-white px-2 py-1 rounded border font-mono break-all">
+                                      {String(job.id)}
+                                    </code>
+                                  </div>
+                                  <div>
+                                    <div className="text-sm font-medium text-muted-foreground">Priority</div>
+                                    <div className="text-sm">{String(job.priority || 'N/A')}</div>
+                                  </div>
+                                  <div>
+                                    <div className="text-sm font-medium text-muted-foreground">Duration</div>
+                                    <div className="text-sm">
+                                      {job.started_at && job.completed_at
+                                        ? formatDuration(new Date(String(job.completed_at)).getTime() - new Date(String(job.started_at)).getTime())
+                                        : 'N/A'
+                                      }
+                                    </div>
+                                  </div>
                                 </div>
-                              )}
-                              <Button
-                                size="sm"
-                                variant="outline"
-                                onClick={async () => {
-                                  const id = String(job.id);
-                                  setJobId(id);
 
-                                  // Trigger the search with the new job ID
-                                  setLoading(true);
-                                  setError(null);
+                                {/* Enhanced User Info */}
+                                {job.user_info && (
+                                  <div>
+                                    <div className="text-sm font-medium text-muted-foreground mb-2">User Information</div>
+                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4 p-3 bg-white rounded border">
+                                      <div className="flex items-center gap-3">
+                                        {(job.user_info as any).farcaster_pfp && (
+                                          <SmartImage
+                                            src={(job.user_info as any).farcaster_pfp}
+                                            alt="Profile"
+                                            width={32}
+                                            height={32}
+                                            className="h-8 w-8 rounded-full border"
+                                          />
+                                        )}
+                                        <div>
+                                          <div className="text-sm font-medium">
+                                            {job.user_info?.farcaster_username || 'No username'}
+                                          </div>
+                                          <div className="text-xs text-muted-foreground">
+                                            ID: {String(job.user_id).substring(0, 12)}...
+                                          </div>
+                                        </div>
+                                      </div>
+                                      {job.user_info?.wallet_address && (
+                                        <div>
+                                          <div className="text-xs font-medium text-muted-foreground">Wallet</div>
+                                          <code className="text-xs bg-gray-100 px-2 py-1 rounded font-mono break-all">
+                                            {String(job.user_info.wallet_address).substring(0, 20)}...
+                                          </code>
+                                        </div>
+                                      )}
+                                    </div>
+                                  </div>
+                                )}
 
-                                  try {
-                                    const response = await fetch(`/api/jobs/${id}/forensics`);
-                                    const data = await response.json();
+                                
+                                <div>
+                                  <div className="text-sm font-medium text-muted-foreground mb-2">Timeline</div>
+                                  <div className="grid grid-cols-1 md:grid-cols-4 gap-4 text-xs">
+                                    <div>
+                                      <div className="font-medium">Created</div>
+                                      <div>{job.created_at ? new Date(String(job.created_at)).toLocaleString() : 'N/A'}</div>
+                                    </div>
+                                    <div>
+                                      <div className="font-medium">Started</div>
+                                      <div>{job.started_at ? new Date(String(job.started_at)).toLocaleString() : 'N/A'}</div>
+                                    </div>
+                                    <div>
+                                      <div className="font-medium">Updated</div>
+                                      <div>{job.updated_at ? new Date(String(job.updated_at)).toLocaleString() : 'N/A'}</div>
+                                    </div>
+                                    <div>
+                                      <div className="font-medium">Completed</div>
+                                      <div>{job.completed_at ? new Date(String(job.completed_at)).toLocaleString() : 'N/A'}</div>
+                                    </div>
+                                  </div>
+                                </div>
 
-                                    if (data.success) {
-                                      setForensicsData(data);
-                                    } else {
-                                      setError(data.error || 'Job not found');
-                                      setForensicsData(null);
-                                    }
-                                  } catch (error) {
-                                    setError(error instanceof Error ? error.message : 'Failed to fetch job forensics');
-                                    setForensicsData(null);
-                                  } finally {
-                                    setLoading(false);
-                                  }
-                                }}
-                                className="ml-2"
-                              >
-                                <Info className="h-3 w-3 mr-1" />
-                                More Info
-                              </Button>
+                                {/* Error Message */}
+                                {job.error_message && String(job.error_message).trim() !== '' && (
+                                  <div>
+                                    <div className="text-sm font-medium text-muted-foreground mb-2">Error Details</div>
+                                    <div className="p-3 bg-red-50 border border-red-200 rounded text-sm text-red-800">
+                                      {String(job.error_message)}
+                                    </div>
+                                  </div>
+                                )}
+
+                                {/* Job Data */}
+                                {job.data && (
+                                  <div>
+                                    <div className="text-sm font-medium text-muted-foreground mb-2">Job Data</div>
+                                    <details className="bg-white border rounded">
+                                      <summary className="p-2 cursor-pointer hover:bg-gray-50 text-sm">
+                                        View Raw Data
+                                      </summary>
+                                      <pre className="p-3 text-xs bg-gray-50 overflow-x-auto border-t max-h-64 overflow-y-auto">
+                                        {JSON.stringify(job.data, null, 2)}
+                                      </pre>
+                                    </details>
+                                  </div>
+                                )}
+
+                                {/* Actions */}
+                                <div className="flex gap-2 pt-2 border-t">
+                                  <Button
+                                    size="sm"
+                                    onClick={async () => {
+                                      const id = String(job.id);
+
+                                      // Load full forensics
+                                      setLoading(true);
+                                      setError(null);
+
+                                      try {
+                                        const response = await fetch(`/api/jobs/${id}/forensics`);
+                                        const data = await response.json();
+
+                                        if (data.success) {
+                                          setForensicsData(data);
+                                          setExpandedJobId(null); // Close expanded view
+                                        } else {
+                                          setError(data.error || 'Job not found');
+                                          setForensicsData(null);
+                                        }
+                                      } catch (error) {
+                                        setError(error instanceof Error ? error.message : 'Failed to fetch job forensics');
+                                        setForensicsData(null);
+                                      } finally {
+                                        setLoading(false);
+                                      }
+                                    }}
+                                    disabled={loading}
+                                  >
+                                    {loading ? <RefreshCw className="h-3 w-3 animate-spin mr-1" /> : <Search className="h-3 w-3 mr-1" />}
+                                    Full Forensics
+                                  </Button>
+                                </div>
+                              </div>
+                            )}
+                              </div>
+                            ))
+                          ) : (
+                            <div className="flex items-center justify-center py-8 text-muted-foreground">
+                              <div className="text-center">
+                                <div className="text-sm">No workflows match your search criteria</div>
+                                {searchQuery && (
+                                  <div className="text-xs mt-1">Try adjusting your search terms</div>
+                                )}
+                              </div>
                             </div>
-                          </div>
-                        ))}
+                          )}
+                        </div>
+                      </div>
+                    </>
+                  )}
+
+                  {/* Empty State */}
+                  {allJobs.length === 0 && !jobsLoading && (
+                    <div className="flex items-center justify-center py-8 text-muted-foreground">
+                      <div className="text-center">
+                        <div className="text-sm">No workflows found</div>
+                        <div className="text-xs mt-1">Check your database connection or try refreshing</div>
                       </div>
                     </div>
-                  </div>
-                )}
+                  )}
+                </div>
 
                 {error && (
                   <div className="mt-4 p-3 bg-red-50 border border-red-200 rounded-md text-red-700">
@@ -329,20 +504,20 @@ export default function JobForensics() {
                     </div>
                     <div>
                       <div className="text-sm font-medium text-muted-foreground">Retries</div>
-                      <div className="text-sm">{String(forensicsData.job.retry_count)}/{String(forensicsData.job.max_retries)}</div>
+                      <div className="text-sm">{String(forensicsData.job.retry_count)}/3</div>
                     </div>
                     <div>
                       <div className="text-sm font-medium text-muted-foreground">Worker</div>
-                      <div className="text-sm">{String(forensicsData.job.worker_id || 'None')}</div>
+                      <div className="text-sm">N/A</div>
                     </div>
                   </div>
 
-                  {forensicsData.forensics.last_known_error != null && String(forensicsData.forensics.last_known_error).trim() !== '' ? (
+                  {forensicsData.forensics.failure_analysis?.root_cause && (
                     <div className="mt-4 p-3 bg-red-50 border border-red-200 rounded-md">
                       <div className="font-medium text-red-800">Error Message:</div>
-                      <div className="text-red-700 text-sm mt-1">{String(forensicsData.forensics.last_known_error || 'Unknown error')}</div>
+                      <div className="text-red-700 text-sm mt-1">{forensicsData.forensics.failure_analysis.root_cause}</div>
                     </div>
-                  ) : null}
+                  )}
                 </CardContent>
               </Card>
 
@@ -423,7 +598,7 @@ export default function JobForensics() {
                           Workflow Steps (Job-Test IDs)
                         </div>
                         <div className="space-y-3">
-                          {forensicsData.job.payload.outputs.map((output: object, outputIndex: number) => (
+                          {forensicsData.job.payload.outputs?.map((output: WorkflowOutput, outputIndex: number) => (
                             <div key={outputIndex} className="border border-purple-200 rounded-lg p-4 bg-purple-50">
                               <div className="text-sm font-medium text-purple-800 mb-3">
                                 Generation {output.generation?.id || outputIndex}
@@ -435,7 +610,7 @@ export default function JobForensics() {
                               </div>
                               {output.steps && Array.isArray(output.steps) && (
                                 <div className="space-y-2">
-                                  {output.steps.map((step: object, stepIndex: number) => (
+                                  {output.steps.map((step: WorkflowStep, stepIndex: number) => (
                                     <div key={stepIndex} className="flex items-center gap-3 p-2 bg-white rounded border">
                                       <code className="text-xs bg-purple-100 text-purple-800 px-2 py-1 rounded font-mono font-bold">
                                         ID: {step.id}
@@ -502,14 +677,12 @@ export default function JobForensics() {
                           {/* Profile Picture */}
                           {miniappData.user.farcaster_pfp && (
                             <div className="flex-shrink-0">
-                              <img
+                              <SmartImage
                                 src={miniappData.user.farcaster_pfp as string}
                                 alt="Farcaster Profile"
+                                width={64}
+                                height={64}
                                 className="w-16 h-16 rounded-full border-2 border-violet-300"
-                                onError={(e) => {
-                                  const target = e.target as HTMLImageElement;
-                                  target.style.display = 'none';
-                                }}
                               />
                             </div>
                           )}
@@ -566,8 +739,8 @@ export default function JobForensics() {
                               {miniappData.social_links.map((link: Record<string, unknown>, idx: number) => (
                                 <div key={idx} className="flex items-center gap-2 p-2 bg-violet-100 rounded border border-violet-200">
                                   <MessageCircle className="h-3 w-3 text-violet-600" />
-                                  <span className="text-xs font-medium text-violet-800">{link.social_org}</span>
-                                  <span className="text-xs text-violet-700">{link.identifier}</span>
+                                  <span className="text-xs font-medium text-violet-800">{String(link.social_org)}</span>
+                                  <span className="text-xs text-violet-700">{String(link.identifier)}</span>
                                 </div>
                               ))}
                             </div>
@@ -732,7 +905,7 @@ export default function JobForensics() {
                 </CardHeader>
                 <CardContent className="space-y-6">
                   {/* Job Result Data */}
-                  {forensicsData.job.result && (
+                  {forensicsData.job.execution_result && (
                     <div className="space-y-4">
                       <div className="text-lg font-semibold text-blue-700 border-b border-blue-200 pb-2">
                         Job Queue Processing Results
@@ -740,46 +913,46 @@ export default function JobForensics() {
 
                       {/* Processing Metadata */}
                       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                        {forensicsData.job.result.success !== undefined && (
+                        {(forensicsData.job.execution_result as any)?.success !== undefined && (
                           <div>
                             <div className="text-sm font-medium text-muted-foreground">Success Status</div>
-                            <Badge className={forensicsData.job.result.success ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'}>
-                              {forensicsData.job.result.success ? 'Success' : 'Failed'}
+                            <Badge className={forensicsData.job.execution_result.success ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'}>
+                              {forensicsData.job.execution_result.success ? 'Success' : 'Failed'}
                             </Badge>
                           </div>
                         )}
-                        {forensicsData.job.result.processing_time && (
+                        {forensicsData.job.execution_result?.processing_time && (
                           <div>
                             <div className="text-sm font-medium text-muted-foreground">Processing Time</div>
-                            <div className="text-sm">{formatDuration(Number(forensicsData.job.result.processing_time))}</div>
+                            <div className="text-sm">{formatDuration(Number(forensicsData.job.execution_result.processing_time))}</div>
                           </div>
                         )}
-                        {forensicsData.job.result.connector_info?.connector_type && (
+                        {forensicsData.job.execution_result?.connector_info?.type && (
                           <div>
                             <div className="text-sm font-medium text-muted-foreground">Connector Type</div>
-                            <Badge variant="outline">{String(forensicsData.job.result.connector_info.connector_type)}</Badge>
+                            <Badge variant="outline">{String(forensicsData.job.execution_result.connector_info.type)}</Badge>
                           </div>
                         )}
                       </div>
 
                       {/* Generated Images/Files */}
-                      {forensicsData.job.result.output_files && Array.isArray(forensicsData.job.result.output_files) && forensicsData.job.result.output_files.length > 0 && (
+                      {forensicsData.job.execution_result?.output_files && Array.isArray(forensicsData.job.execution_result.output_files) && forensicsData.job.execution_result.output_files.length > 0 && (
                         <div className="space-y-3">
-                          <div className="text-md font-semibold text-green-700">Generated Files ({forensicsData.job.result.output_files.length})</div>
+                          <div className="text-md font-semibold text-green-700">Generated Files ({forensicsData.job.execution_result.output_files.length})</div>
                           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                            {forensicsData.job.result.output_files.map((fileUrl: string, idx: number) => (
+                            {forensicsData.job.execution_result.output_files.map((file, idx: number) => (
                               <div key={idx} className="border border-green-200 rounded-lg p-4 bg-green-50">
                                 <div className="flex items-center justify-between mb-3">
                                   <div className="text-sm font-medium text-green-800">File {idx + 1}</div>
                                   <div className="flex gap-2">
-                                    <Button size="sm" variant="outline" onClick={() => window.open(fileUrl, '_blank')}>
+                                    <Button size="sm" variant="outline" onClick={() => window.open(file.url, '_blank')}>
                                       <ExternalLink className="h-3 w-3 mr-1" />
                                       View
                                     </Button>
                                     <Button size="sm" variant="outline" onClick={() => {
                                       const a = document.createElement('a');
-                                      a.href = fileUrl;
-                                      a.download = fileUrl.split('/').pop() || 'download';
+                                      a.href = file.url;
+                                      a.download = file.filename || 'download';
                                       a.click();
                                     }}>
                                       <Download className="h-3 w-3 mr-1" />
@@ -789,23 +962,21 @@ export default function JobForensics() {
                                 </div>
 
                                 {/* Image Preview */}
-                                {(fileUrl.includes('.png') || fileUrl.includes('.jpg') || fileUrl.includes('.jpeg') || fileUrl.includes('.webp') || fileUrl.includes('.gif')) && (
+                                {(file.mimeType?.includes('image/') || file.url.includes('.png') || file.url.includes('.jpg') || file.url.includes('.jpeg') || file.url.includes('.webp') || file.url.includes('.gif')) && (
                                   <div className="mb-3">
-                                    <img
-                                      src={fileUrl}
+                                    <SmartImage
+                                      src={file.url}
                                       alt={`Generated image ${idx + 1}`}
+                                      width={300}
+                                      height={128}
                                       className="w-full h-32 object-cover rounded border"
-                                      onError={(e) => {
-                                        const target = e.target as HTMLImageElement;
-                                        target.style.display = 'none';
-                                      }}
                                     />
                                   </div>
                                 )}
 
                                 {/* File URL */}
                                 <div className="text-xs text-green-700 font-mono break-all bg-white p-2 rounded border">
-                                  {fileUrl}
+                                  {file.url}
                                 </div>
                               </div>
                             ))}
@@ -814,11 +985,11 @@ export default function JobForensics() {
                       )}
 
                       {/* Generation Metadata */}
-                      {forensicsData.job.result.metadata && (
+                      {forensicsData.job.execution_result?.metadata && (
                         <div className="space-y-3">
                           <div className="text-md font-semibold text-orange-700">Generation Metadata</div>
                           <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                            {Object.entries(forensicsData.job.result.metadata).map(([key, value]) => (
+                            {Object.entries(forensicsData.job.execution_result.metadata).map(([key, value]) => (
                               <div key={key} className="flex flex-col gap-1 p-3 bg-orange-50 rounded border border-orange-200">
                                 <div className="text-sm font-medium text-orange-800">{key}</div>
                                 <div className="text-sm text-orange-700 font-mono">
@@ -831,11 +1002,11 @@ export default function JobForensics() {
                       )}
 
                       {/* Connector Performance Stats */}
-                      {forensicsData.job.result.connector_info?.processing_stats && (
+                      {forensicsData.job.execution_result?.connector_info?.parameters && (
                         <div className="space-y-3">
                           <div className="text-md font-semibold text-purple-700">Performance Statistics</div>
                           <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-                            {Object.entries(forensicsData.job.result.connector_info.processing_stats).map(([key, value]) => (
+                            {Object.entries(forensicsData.job.execution_result.connector_info.parameters).map(([key, value]) => (
                               <div key={key} className="flex flex-col gap-1 p-3 bg-purple-50 rounded border border-purple-200">
                                 <div className="text-sm font-medium text-purple-800">{key}</div>
                                 <div className="text-sm text-purple-700 font-mono">
@@ -856,7 +1027,7 @@ export default function JobForensics() {
                           Raw Job Result Data (Click to expand)
                         </summary>
                         <pre className="text-xs bg-gray-100 p-3 rounded overflow-x-auto border max-h-64 overflow-y-auto">
-                          {JSON.stringify(forensicsData.job.result, null, 2)}
+                          {JSON.stringify(forensicsData.job.execution_result, null, 2)}
                         </pre>
                       </details>
                     </div>
@@ -902,7 +1073,7 @@ export default function JobForensics() {
                         EmProps Database Images ({(forensicsData.job.payload as any)._flat_files.length})
                       </div>
                       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                        {(forensicsData.job.payload as any)._flat_files.map((file: object, idx: number) => (
+                        {(forensicsData.job.payload as any)._flat_files.map((file: FlatFile, idx: number) => (
                           <div key={idx} className="border border-cyan-200 rounded-lg p-4 bg-cyan-50">
                             <div className="flex items-center justify-between mb-3">
                               <div className="text-sm font-medium text-cyan-800">
@@ -932,14 +1103,12 @@ export default function JobForensics() {
                             {/* Image Preview */}
                             {file.url && file.mime_type?.includes('image') && (
                               <div className="mb-3">
-                                <img
+                                <SmartImage
                                   src={file.url}
                                   alt={file.name || `Generated image ${idx + 1}`}
+                                  width={300}
+                                  height={128}
                                   className="w-full h-32 object-cover rounded border"
-                                  onError={(e) => {
-                                    const target = e.target as HTMLImageElement;
-                                    target.style.display = 'none';
-                                  }}
                                 />
                               </div>
                             )}
@@ -1005,7 +1174,7 @@ export default function JobForensics() {
                   )}
 
                   {/* No Results Message */}
-                  {!forensicsData.job.result && !forensicsData.job.data && (!(forensicsData.job.payload as any)._flat_files || (forensicsData.job.payload as any)._flat_files.length === 0) && (
+                  {!forensicsData.job.execution_result && !forensicsData.job.data && (!(forensicsData.job.payload as any)._flat_files || (forensicsData.job.payload as any)._flat_files.length === 0) && (
                     <div className="text-center py-8 text-muted-foreground">
                       <ImageIcon className="h-12 w-12 mx-auto mb-2 opacity-50" />
                       <div className="text-sm">No image outputs or processing results available for this job</div>

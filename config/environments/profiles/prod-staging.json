@@ -1,0 +1,66 @@
+{
+  "name": "Production Testing",
+  "description": "Production-like environment for testing with local Redis, debug logging, and webhook service integration",
+  "components": {
+    "api": [
+      "default",
+      "local"
+    ],
+    "database": [
+      "default",
+      "staging"
+    ],
+    "emprops": [
+      "default",
+      "production"
+    ],
+    "webhook-service": [
+      "default",
+      "production"
+    ],
+    "machine": [
+      "default",
+      "production"
+    ],
+    "worker": [
+      "default",
+      "production"
+    ],
+    "monitor": [
+      "default",
+      "production"
+    ],
+    "redis": [
+      "default",
+      "production"
+    ],
+    "storage-provider": [
+      "default",
+      "production"
+    ],
+    "api-tokens": [
+      "default"
+    ],
+    "comfyui": [
+      "default"
+    ],
+    "ollama": [
+      "default"
+    ],
+    "simulation": [
+      "local"
+    ],
+    "openai": [
+      "default",
+      "production"
+    ],
+    "gemini": [
+      "default"
+    ],
+    "telemetry": [
+      "default",
+      "production"
+    ]
+  },
+  "services": {}
+}

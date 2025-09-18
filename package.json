@@ -48,6 +48,7 @@
     "worker:bundle": "./scripts/bundle-worker.sh",
     "compose:profile": "node scripts/env/compose-build.js",
     "dash:dev": "./scripts/terminal/dashboard-dev.sh",
+    "dash:staging": "./scripts/terminal/dashboard-staging.sh",
     "d:api:build": "pnpm check:core && cd apps/api && node prepare-docker-build.js && docker build --platform linux/amd64 --build-arg BUILD_DATE=$(date -u +%Y-%m-%dT%H:%M:%SZ) -t emprops/api:latest .",
     "d:api:build:nocache": "pnpm check:core && cd apps/api && node prepare-docker-build.js && docker build --no-cache --platform linux/amd64 --build-arg BUILD_DATE=$(date -u +%Y-%m-%dT%H:%M:%SZ) -t emprops/api:latest .",
     "d:api:push": "docker push emprops/api:latest",

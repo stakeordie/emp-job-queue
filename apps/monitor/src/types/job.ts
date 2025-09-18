@@ -1,12 +1,12 @@
-export type JobStatus = 
-  | 'pending' 
+export type JobStatus =
+  | 'pending'
   | 'queued'
-  | 'assigned' 
+  | 'assigned'
   | 'accepted'
   | 'in_progress'
-  | 'completed' 
-  | 'failed' 
-  | 'cancelled' 
+  | 'completed'
+  | 'failed'
+  | 'cancelled'
   | 'timeout'
   | 'unworkable';
 
@@ -29,23 +29,23 @@ export interface Job {
   customer_id?: string;
   requirements?: JobRequirements;
   max_retries?: number;
-  
+
   // Workflow fields
   workflow_id?: string;
   workflow_priority?: number;
   workflow_datetime?: number;
   step_number?: number;
-  
+
   // Timestamps
   created_at: number;
   assigned_at?: number;
   started_at?: number;
   completed_at?: number;
   failed_at?: number;
-  
+
   // Worker assignment
   worker_id?: string;
-  
+
   // Progress and results
   progress?: number;
   progress_message?: string;

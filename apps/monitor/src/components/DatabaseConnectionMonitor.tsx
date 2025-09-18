@@ -204,41 +204,95 @@ export default function DatabaseConnectionMonitor() {
       {/* Direct PostgreSQL Pool */}
       {renderConnectionPool(postgresData, "PostgreSQL Connection Pool", "Direct connections to PostgreSQL database")}
 
-      {/* Connections by Application */}
+      {/* Connections by Application - Grouped */}
       {primaryData && (
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <Users className="h-5 w-5" />
-              Connections by Application
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="space-y-3">
-              {primaryData.connections_by_app.map((conn, index) => (
-                <div key={index} className="flex items-center justify-between p-3 border rounded-lg">
-                  <div className="flex-1">
-                    <div className="font-medium">
-                      {conn.application_name || 'Unknown App'}
-                    </div>
-                    <div className="text-sm text-muted-foreground">
-                      {conn.usename}@{conn.client_addr}
-                    </div>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <Badge variant="outline" className={getConnectionStateColor(conn.states)}>
-                      {conn.states || 'unknown'}
-                    </Badge>
-                    <div className="text-right">
-                      <div className="font-bold">{conn.connections}</div>
-                      <div className="text-xs text-muted-foreground">connections</div>
-                    </div>
-                  </div>
-                </div>
-              ))}
-            </div>
-          </CardContent>
-        </Card>
+        <div className="space-y-4">
+          <div className="flex items-center gap-2 mb-4">
+            <Users className="h-5 w-5" />
+            <h2 className="text-xl font-semibold">Connections by Application</h2>
+          </div>
+
+          {(() => {
+            // Group connections by application name
+            const groupedConnections = primaryData.connections_by_app.reduce((acc, conn) => {
+              const appName = conn.application_name || 'Unknown App';
+              if (!acc[appName]) {
+                acc[appName] = [];
+              }
+              acc[appName].push(conn);
+              return acc;
+            }, {} as Record<string, DatabaseConnection[]>);
+
+            return (
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                {Object.entries(groupedConnections).map(([appName, connections]) => {
+                  const totalConnections = connections.reduce((sum, conn) => sum + conn.connections, 0);
+                  const uniqueUsers = [...new Set(connections.map(conn => conn.usename))];
+                  const uniqueAddresses = [...new Set(connections.map(conn => conn.client_addr))];
+                  const allStates = connections.map(conn => conn.states).filter(Boolean);
+
+                  return (
+                    <Card key={appName} className="h-fit">
+                      <CardHeader className="pb-3">
+                        <CardTitle className="text-base font-medium truncate" title={appName}>
+                          {appName}
+                        </CardTitle>
+                        <CardDescription className="text-sm">
+                          {totalConnections} connection{totalConnections !== 1 ? 's' : ''}
+                        </CardDescription>
+                      </CardHeader>
+                      <CardContent className="space-y-3">
+                        {/* Summary Stats */}
+                        <div className="grid grid-cols-2 gap-2 text-sm">
+                          <div className="text-center p-2 bg-blue-50 rounded">
+                            <div className="font-bold text-lg text-blue-700">{totalConnections}</div>
+                            <div className="text-xs text-blue-600">connections</div>
+                          </div>
+                          <div className="text-center p-2 bg-gray-50 rounded">
+                            <div className="font-bold text-lg">{connections.length}</div>
+                            <div className="text-xs text-muted-foreground">instances</div>
+                          </div>
+                        </div>
+
+                        {/* Connection Details */}
+                        <div className="space-y-2">
+                          {connections.map((conn, index) => (
+                            <div key={index} className="p-2 border rounded text-sm">
+                              <div className="flex items-center justify-between">
+                                <div className="flex-1 min-w-0">
+                                  <div className="font-medium truncate">
+                                    {conn.usename}@{conn.client_addr}
+                                  </div>
+                                  {conn.states && (
+                                    <Badge
+                                      variant="outline"
+                                      className={`${getConnectionStateColor(conn.states)} text-xs mt-1`}
+                                    >
+                                      {conn.states}
+                                    </Badge>
+                                  )}
+                                </div>
+                                <div className="text-right ml-2">
+                                  <div className="font-bold">{conn.connections}</div>
+                                </div>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+
+                        {/* Quick Stats */}
+                        <div className="text-xs text-muted-foreground pt-2 border-t">
+                          <div>Users: {uniqueUsers.join(', ')}</div>
+                          <div>IPs: {uniqueAddresses.join(', ')}</div>
+                        </div>
+                      </CardContent>
+                    </Card>
+                  );
+                })}
+              </div>
+            );
+          })()}
+        </div>
       )}
 
       {/* Potential Connection Leaks */}

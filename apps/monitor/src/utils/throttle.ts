@@ -14,13 +14,13 @@ export function throttle<T extends (...args: any[]) => any>(
   let lastCall = 0;
   let timeoutId: NodeJS.Timeout | null = null;
   let lastArgs: Parameters<T> | null = null;
-  
+
   const { leading = true, trailing = true } = options;
 
   const throttled = (...args: Parameters<T>) => {
     const now = Date.now();
     lastArgs = args;
-    
+
     if (now - lastCall >= delay) {
       // Enough time has passed, execute immediately if leading is enabled
       if (leading) {
@@ -32,7 +32,7 @@ export function throttle<T extends (...args: any[]) => any>(
         if (timeoutId) {
           clearTimeout(timeoutId);
         }
-        
+
         timeoutId = setTimeout(() => {
           lastCall = Date.now();
           if (lastArgs) {
@@ -47,15 +47,18 @@ export function throttle<T extends (...args: any[]) => any>(
       if (timeoutId) {
         clearTimeout(timeoutId);
       }
-      
-      timeoutId = setTimeout(() => {
-        lastCall = Date.now();
-        if (lastArgs) {
-          func(...lastArgs);
-          lastArgs = null;
-        }
-        timeoutId = null;
-      }, delay - (now - lastCall));
+
+      timeoutId = setTimeout(
+        () => {
+          lastCall = Date.now();
+          if (lastArgs) {
+            func(...lastArgs);
+            lastArgs = null;
+          }
+          timeoutId = null;
+        },
+        delay - (now - lastCall)
+      );
     }
   };
 
