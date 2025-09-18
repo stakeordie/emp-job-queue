@@ -70,14 +70,14 @@ export async function GET(request: NextRequest) {
         console.warn('Failed to search miniapp_generation:', error);
       }
 
-      // Build the main search condition using PostgreSQL startsWith/endsWith
+      // Build the main search condition using PostgreSQL contains/startsWith
       const searchConditions = [
-        { id: { startsWith: searchTerm } },
+        { id: { contains: searchTerm } },
         { name: { contains: searchTerm } },
         { description: { contains: searchTerm } },
         { job_type: { contains: searchTerm } },
-        { status: { startsWith: searchTerm } },
-        { user_id: { startsWith: searchTerm } }
+        { status: { contains: searchTerm } },
+        { user_id: { contains: searchTerm } }
       ];
 
       // Add job IDs from farcaster username search if any found
