@@ -55,8 +55,8 @@ export async function GET(request: NextRequest) {
           where: {
             miniapp_user: {
               OR: [
-                { farcaster_username: { contains: searchTerm, mode: 'insensitive' } },
-                { wallet_address: { contains: searchTerm, mode: 'insensitive' } }
+                { farcaster_username: { contains: searchTerm } },
+                { wallet_address: { contains: searchTerm } }
               ]
             }
           },
@@ -70,14 +70,14 @@ export async function GET(request: NextRequest) {
         console.warn('Failed to search miniapp_generation:', error);
       }
 
-      // Build the main search condition
+      // Build the main search condition using PostgreSQL startsWith/endsWith
       const searchConditions = [
-        { id: { contains: searchTerm, mode: 'insensitive' } },
-        { name: { contains: searchTerm, mode: 'insensitive' } },
-        { description: { contains: searchTerm, mode: 'insensitive' } },
-        { job_type: { contains: searchTerm, mode: 'insensitive' } },
-        { status: { contains: searchTerm, mode: 'insensitive' } },
-        { user_id: { contains: searchTerm, mode: 'insensitive' } }
+        { id: { startsWith: searchTerm } },
+        { name: { contains: searchTerm } },
+        { description: { contains: searchTerm } },
+        { job_type: { contains: searchTerm } },
+        { status: { startsWith: searchTerm } },
+        { user_id: { startsWith: searchTerm } }
       ];
 
       // Add job IDs from farcaster username search if any found
