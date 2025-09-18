@@ -3,7 +3,7 @@
   "buildCommand": "cd ../.. && pnpm install --frozen-lockfile && SKIP_TYPE_CHECK=true pnpm build --filter=monitor...",
   "env": {
     "SKIP_TYPE_CHECK": "true",
-    "DATABASE_URL": "postgresql://postgres:BFKhIErfHuyMJSOGQqNuTweKjoubHOGS@maglev.proxy.rlwy.net:18261/emprops_open_api",
+    "DATABASE_URL": "postgresql://postgres:npg_itkeV7shFg3S@ep-summer-night-adnh3xt0-pooler.c-2.us-east-1.aws.neon.tech/emprops-open-api?sslmode=require&channel_binding=require&application_name=emp-job-queue-monitor",
     "HUB_REDIS_URL": "redis://default:JQSoNVpIPsuaDQYicNvocglialxPrTjj@ballast.proxy.rlwy.net:30645"
   },
   "installCommand": "cd ../.. && pnpm install --frozen-lockfile"
