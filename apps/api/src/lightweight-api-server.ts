@@ -549,13 +549,105 @@ export class LightweightAPIServer {
               WHERE pid <> pg_backend_pid()
             `);
 
+            // Get database size and storage metrics (Neon-specific)
+            const databaseStats = await client.query(`
+              SELECT
+                pg_size_pretty(pg_database_size(current_database())) as database_size,
+                pg_database_size(current_database()) as database_size_bytes,
+                (SELECT sum(pg_total_relation_size(schemaname||'.'||tablename))
+                 FROM pg_tables WHERE schemaname NOT IN ('information_schema', 'pg_catalog')) as tables_size_bytes,
+                (SELECT count(*) FROM pg_stat_user_tables) as table_count,
+                (SELECT count(*) FROM pg_stat_user_indexes) as index_count
+            `);
+
+            // Get query performance metrics from pg_stat_statements (if available)
+            let queryStats = null;
+            try {
+              const extensionCheck = await client.query(`
+                SELECT 1 FROM pg_extension WHERE extname = 'pg_stat_statements'
+              `);
+
+              if (extensionCheck.rows.length > 0) {
+                queryStats = await client.query(`
+                  SELECT
+                    calls,
+                    total_exec_time,
+                    mean_exec_time,
+                    rows,
+                    left(query, 100) as query_preview
+                  FROM pg_stat_statements
+                  ORDER BY total_exec_time DESC
+                  LIMIT 5
+                `);
+              }
+            } catch (e) {
+              // pg_stat_statements not available or not enabled
+            }
+
+            // Get slow/long-running queries
+            const slowQueries = await client.query(`
+              SELECT
+                pid,
+                usename,
+                application_name,
+                state,
+                query_start,
+                now() - query_start as duration,
+                left(query, 200) as query_preview
+              FROM pg_stat_activity
+              WHERE state = 'active'
+                AND query_start < now() - interval '10 seconds'
+                AND pid <> pg_backend_pid()
+                AND query NOT LIKE '%pg_stat_activity%'
+              ORDER BY query_start
+              LIMIT 10
+            `);
+
+            // Get connection leaks (idle in transaction for too long)
+            const connectionLeaks = await client.query(`
+              SELECT
+                pid,
+                usename,
+                application_name,
+                state,
+                client_addr,
+                now() - state_change as idle_duration,
+                left(query, 100) as query_preview
+              FROM pg_stat_activity
+              WHERE state = 'idle in transaction'
+                AND state_change < now() - interval '5 minutes'
+                AND pid <> pg_backend_pid()
+              ORDER BY state_change
+              LIMIT 10
+            `);
+
             res.json({
               available: true,
-              source: 'direct_postgresql',
+              source: 'neon_postgresql',
               timestamp: new Date().toISOString(),
               summary: totalStats.rows[0],
               connections_by_app: connectionStats.rows,
-              pool_usage: Math.round((totalStats.rows[0].total_connections / totalStats.rows[0].max_connections) * 100)
+              pool_usage: Math.round((totalStats.rows[0].total_connections / totalStats.rows[0].max_connections) * 100),
+              potential_leaks: connectionLeaks.rows.map(row => ({
+                ...row,
+                idle_duration: row.idle_duration
+              })),
+              // Neon-specific metrics
+              database_metrics: {
+                size: databaseStats.rows[0].database_size,
+                size_bytes: parseInt(databaseStats.rows[0].database_size_bytes),
+                tables_size_bytes: parseInt(databaseStats.rows[0].tables_size_bytes) || 0,
+                table_count: parseInt(databaseStats.rows[0].table_count),
+                index_count: parseInt(databaseStats.rows[0].index_count)
+              },
+              performance_metrics: {
+                pg_stat_statements_available: queryStats !== null,
+                top_queries: queryStats?.rows || [],
+                slow_queries: slowQueries.rows.map(row => ({
+                  ...row,
+                  duration_seconds: row.duration
+                }))
+              }
             });
           } finally {
             client.release();
