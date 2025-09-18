@@ -18,6 +18,165 @@ import type {
 } from './JobForensics.types';
 import { get as _get, renderValue as _renderValue } from './JobForensics.types';
 
+// Component to display worker and API attestation records for debugging
+function AttestationRecords({ jobId, workflowId }: { jobId: string; workflowId?: string }) {
+  const [workerAttestation, setWorkerAttestation] = useState<any>(null);
+  const [apiAttestation, setApiAttestation] = useState<any>(null);
+  const [loading, setLoading] = useState(false);
+
+  const loadAttestations = async () => {
+    setLoading(true);
+    try {
+      // Load worker attestation
+      const workerResponse = await fetch(`/api/jobs/${jobId}/worker-attestation`);
+      if (workerResponse.ok) {
+        const workerData = await workerResponse.json();
+        setWorkerAttestation(workerData.success ? workerData.attestation : null);
+      }
+
+      // Load API workflow attestation if workflow ID exists
+      if (workflowId) {
+        const apiResponse = await fetch(`/api/workflows/${workflowId}/api-attestation`);
+        if (apiResponse.ok) {
+          const apiData = await apiResponse.json();
+          setApiAttestation(apiData.success ? apiData.attestation : null);
+        }
+      }
+    } catch (error) {
+      console.error('Failed to load attestations:', error);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const hasAttestations = workerAttestation || apiAttestation;
+
+  // Auto-load attestations when component mounts
+  useEffect(() => {
+    loadAttestations();
+  }, [jobId, workflowId]);
+
+  // Always show the component - don't hide it
+  // if (!hasAttestations && !loading) {
+  //   return null;
+  // }
+
+  return (
+    <div>
+      <div className="text-sm font-medium text-muted-foreground mb-2 flex items-center gap-2">
+        <FileText className="h-4 w-4" />
+        Completion Attestations
+        <Button
+          size="sm"
+          variant="outline"
+          onClick={loadAttestations}
+          disabled={loading}
+          className="ml-auto"
+        >
+          {loading ? <RefreshCw className="h-3 w-3 animate-spin mr-1" /> : <Search className="h-3 w-3 mr-1" />}
+          {hasAttestations ? 'Reload' : 'Load'} Attestations
+        </Button>
+      </div>
+
+      {hasAttestations && (
+        <div className="space-y-3 p-3 bg-yellow-50 border border-yellow-200 rounded">
+          {/* Worker Attestation */}
+          {workerAttestation && (
+            <div>
+              <div className="text-sm font-medium text-green-800 mb-2 flex items-center gap-1">
+                <CheckCircle className="h-4 w-4" />
+                Worker Completion Proof
+              </div>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-3 text-xs">
+                <div>
+                  <div className="font-medium text-muted-foreground">Worker ID</div>
+                  <code className="bg-white px-2 py-1 rounded border">{workerAttestation.worker_id}</code>
+                </div>
+                <div>
+                  <div className="font-medium text-muted-foreground">Completed At</div>
+                  <div>{new Date(workerAttestation.completed_at).toLocaleString()}</div>
+                </div>
+                <div>
+                  <div className="font-medium text-muted-foreground">Status</div>
+                  <Badge variant={workerAttestation.status === 'completed' ? 'default' : 'destructive'}>
+                    {workerAttestation.status}
+                  </Badge>
+                </div>
+                <div>
+                  <div className="font-medium text-muted-foreground">Machine ID</div>
+                  <code className="bg-white px-2 py-1 rounded border text-xs">{workerAttestation.machine_id}</code>
+                </div>
+              </div>
+              {workerAttestation.result && (
+                <details className="mt-2">
+                  <summary className="text-xs cursor-pointer hover:text-green-700">View Result</summary>
+                  <pre className="text-xs bg-white p-2 rounded border mt-1 max-h-32 overflow-y-auto">
+                    {typeof workerAttestation.result === 'string'
+                      ? workerAttestation.result
+                      : JSON.stringify(JSON.parse(workerAttestation.result), null, 2)}
+                  </pre>
+                </details>
+              )}
+            </div>
+          )}
+
+          {/* API Workflow Attestation */}
+          {apiAttestation && (
+            <div>
+              <div className="text-sm font-medium text-blue-800 mb-2 flex items-center gap-1">
+                <Zap className="h-4 w-4" />
+                API Workflow Completion Proof
+              </div>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-3 text-xs">
+                <div>
+                  <div className="font-medium text-muted-foreground">Workflow ID</div>
+                  <code className="bg-white px-2 py-1 rounded border">{apiAttestation.workflow_id}</code>
+                </div>
+                <div>
+                  <div className="font-medium text-muted-foreground">API Determined Complete</div>
+                  <div>{new Date(apiAttestation.api_determined_complete_at).toLocaleString()}</div>
+                </div>
+                <div>
+                  <div className="font-medium text-muted-foreground">API Instance</div>
+                  <code className="bg-white px-2 py-1 rounded border text-xs">{apiAttestation.api_instance}</code>
+                </div>
+                <div>
+                  <div className="font-medium text-muted-foreground">Asset Count</div>
+                  <Badge variant="outline">{apiAttestation.asset_locations?.length || 0} assets</Badge>
+                </div>
+              </div>
+              {apiAttestation.asset_locations && apiAttestation.asset_locations.length > 0 && (
+                <div className="mt-2">
+                  <div className="text-xs font-medium text-muted-foreground mb-1">Saved Assets</div>
+                  <div className="space-y-1">
+                    {apiAttestation.asset_locations.map((url: string, idx: number) => (
+                      <div key={idx} className="text-xs">
+                        <a
+                          href={url}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="text-blue-600 hover:underline font-mono break-all"
+                        >
+                          {url}
+                        </a>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+
+          <div className="text-xs text-yellow-700 bg-yellow-100 p-2 rounded border">
+            <strong>💡 Attestations:</strong> These records prove the worker completed the job and API determined workflow completion,
+            even if EmProps verification failed. Used for recovery of orphaned workflows.
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 export default function JobForensics() {
   const [forensicsData, setForensicsData] = useState<JobForensicsData | null>(null);
   const [failedAnalysis, setFailedAnalysis] = useState<FailedJobsAnalysis | null>(null);
@@ -215,14 +374,14 @@ export default function JobForensics() {
                 Workflows
               </CardTitle>
               <CardDescription>
-                Search and browse workflow jobs from EmProps API database
+                Search and browse workflows from EmProps API database
               </CardDescription>
             </CardHeader>
             <CardContent>
               <div className="space-y-4">
                 <div className="flex gap-2">
                   <Input
-                    placeholder="Search by job ID, name, type, user, Farcaster username, wallet, or status..."
+                    placeholder="Search by workflow ID, job name, type, user, Farcaster username, wallet, or status..."
                     value={searchQuery}
                     onChange={(e) => setSearchQuery(e.target.value)}
                     className="flex-1"
@@ -581,6 +740,9 @@ export default function JobForensics() {
                                     </div>
                                   </div>
                                 )}
+
+                                {/* Attestation Records */}
+                                <AttestationRecords jobId={String(job.id)} workflowId={job.workflow_id ? String(job.workflow_id) : undefined} />
 
                                 {/* Actions */}
                                 <div className="flex gap-2 pt-2 border-t">
@@ -1414,6 +1576,27 @@ export default function JobForensics() {
                         </div>
                       </div>
                     )}
+                  </CardContent>
+                </Card>
+              )}
+
+              {/* Completion Attestations */}
+              {forensicsData.job?.id && (
+                <Card>
+                  <CardHeader>
+                    <CardTitle className="flex items-center gap-2">
+                      <FileText className="h-5 w-5" />
+                      Completion Attestations
+                    </CardTitle>
+                    <CardDescription>
+                      Persistent proof of job/workflow completion for recovery purposes
+                    </CardDescription>
+                  </CardHeader>
+                  <CardContent>
+                    <AttestationRecords
+                      jobId={String(forensicsData.job.id)}
+                      workflowId={forensicsData.job.workflow_id ? String(forensicsData.job.workflow_id) : undefined}
+                    />
                   </CardContent>
                 </Card>
               )}

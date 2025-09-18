@@ -555,6 +555,23 @@ export default function WebhookManagementPage() {
     };
   };
 
+  // Create Test Webhook (generates monitor URL with all events)
+  const createTestWebhook = () => {
+    const sessionId = `session_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+    const testUrl = `${WEBHOOK_SERVICE_URL}/webhook-monitor/${sessionId}`;
+
+    // Pre-fill form with all event types and test URL
+    setFormUrl(testUrl);
+    setFormEvents(Object.keys(EVENT_TYPE_LABELS) as WebhookEventType[]);
+    setFormActive(true);
+    setFormSecret(''); // Clear any existing secret
+
+    toast({
+      title: "Test Webhook Ready",
+      description: "All event types selected. Create webhook to start monitoring events.",
+    });
+  };
+
   // Test Receiver API Functions
   const createTestReceiver = async () => {
     try {
@@ -956,17 +973,15 @@ export default function WebhookManagementPage() {
                               <span className="font-mono text-sm">{webhook.url}</span>
                             </div>
                             <div className="flex items-center gap-2">
-                              {isLocalTestReceiver(webhook.url) && (
-                                <Button
-                                  variant="outline"
-                                  size="sm"
-                                  onClick={() => monitorWebhook(webhook.url)}
-                                  className="text-blue-600 border-blue-200 hover:bg-blue-50"
-                                >
-                                  <Monitor className="h-3 w-3 mr-1" />
-                                  Monitor
-                                </Button>
-                              )}
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                onClick={() => window.open(`/webhook-monitor/${webhook.id}`, '_blank')}
+                                className="text-blue-600 border-blue-200 hover:bg-blue-50"
+                              >
+                                <Monitor className="h-3 w-3 mr-1" />
+                                Monitor
+                              </Button>
                               <Button
                                 variant="outline"
                                 size="sm"
@@ -1017,7 +1032,19 @@ export default function WebhookManagementPage() {
                   </CardHeader>
                   <CardContent className="space-y-4">
                     <div>
-                      <Label htmlFor="webhook-url">Webhook URL</Label>
+                      <div className="flex items-center justify-between mb-2">
+                        <Label htmlFor="webhook-url">Webhook URL</Label>
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="sm"
+                          onClick={createTestWebhook}
+                          className="text-blue-600 border-blue-200 hover:bg-blue-50"
+                        >
+                          <Play className="h-3 w-3 mr-1" />
+                          Create Test
+                        </Button>
+                      </div>
                       <Input
                         id="webhook-url"
                         value={formUrl}
@@ -1025,6 +1052,12 @@ export default function WebhookManagementPage() {
                         placeholder="https://your-app.com/webhooks"
                         className="font-mono"
                       />
+                      {formUrl.includes('/webhook-monitor/') && (
+                        <div className="mt-2 p-2 bg-blue-50 border border-blue-200 rounded text-sm text-blue-800">
+                          <Info className="h-3 w-3 inline mr-1" />
+                          Test URL generated. Events will be captured in the monitor for real-time viewing.
+                        </div>
+                      )}
                     </div>
 
                     <div>

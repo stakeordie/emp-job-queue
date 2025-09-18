@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { JobForensicsService } from '@/services/jobForensics';
 
-const REDIS_URL = process.env.HUB_REDIS_URL || process.env.REDIS_URL || 'redis://localhost:6379';
+const REDIS_URL = process.env.NEXT_PUBLIC_DEFAULT_REDIS_URL || process.env.HUB_REDIS_URL || process.env.REDIS_URL || 'redis://localhost:6379';
 
 export async function GET(
   request: NextRequest,
