@@ -16,9 +16,7 @@ export type JobWithRelations = Prisma.jobGetPayload<{
     status: true;
     data: true;
     progress: true;
-    error: true;
     error_message: true;
-    retry_count: true;
     created_at: true;
     updated_at: true;
     started_at: true;
@@ -57,13 +55,17 @@ export type MiniappGeneration = Prisma.miniapp_generationGetPayload<{
   select: {
     id: true;
     user_id: true;
-    workflow_id: true;
-    status: true;
-    error: true;
+    collection_id: true;
+    payment_id: true;
+    input_data: true;
+    output_url: true;
+    output_data: true;
+    error_message: true;
     created_at: true;
     updated_at: true;
-    completed_at: true;
-    data: true;
+    generated_image: true;
+    job_id: true;
+    status: true;
   };
 }>;
 

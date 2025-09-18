@@ -64,44 +64,27 @@ export async function GET(request: NextRequest) {
       }
     });
 
-    // Get unique user IDs and fetch user info from miniapp_user
-    const userIds = Array.from(new Set(empropsJobs.map(job => job.user_id)));
-    const users = await prisma.miniapp_user.findMany({
-      where: {
-        id: { in: userIds }
-      },
-      select: {
-        id: true,
-        farcaster_username: true,
-        farcaster_pfp: true,
-        wallet_address: true,
-        created_at: true,
-        updated_at: true
-      }
-    });
+    // Get unique job IDs to find related miniapp_generation records
+    const jobIds = empropsJobs.map(job => job.id);
 
-    // Fetch miniapp generations for same user IDs (these are the workflow requests from the miniapp)
+    // Fetch miniapp generations linked to these jobs (these are the workflow requests from the miniapp)
     const miniappGenerations = await prisma.miniapp_generation.findMany({
       where: {
-        user_id: { in: userIds }
+        job_id: { in: jobIds }
       },
-      orderBy: { created_at: 'desc' },
-      take: limit,
-      select: {
-        id: true,
-        user_id: true,
-        collection_id: true,
-        payment_id: true,
-        input_data: true,
-        output_url: true,
-        output_data: true,
-        error_message: true,
-        created_at: true,
-        updated_at: true,
-        generated_image: true,
-        job_id: true,
-        status: true
-      }
+      include: {
+        miniapp_user: {
+          select: {
+            id: true,
+            farcaster_username: true,
+            farcaster_pfp: true,
+            wallet_address: true,
+            created_at: true,
+            updated_at: true
+          }
+        }
+      },
+      orderBy: { created_at: 'desc' }
     });
 
     // Fetch Redis workflow data (EmProps job.id maps to Redis job.workflow_id)
@@ -144,8 +127,7 @@ export async function GET(request: NextRequest) {
       console.warn('Redis connection failed, continuing without Redis data:', redisError);
     }
 
-    // Create lookup maps
-    const userMap = new Map(users.map((user: typeof users[0]) => [user.id, user]));
+    // Create lookup maps - now miniapp_user comes from miniapp_generation
     const miniappMap = new Map(miniappGenerations.map(gen => [gen.job_id, gen]));
 
     // Group Redis jobs by workflow_id (multiple Redis jobs can belong to one workflow)
@@ -158,12 +140,15 @@ export async function GET(request: NextRequest) {
     });
 
     // Create combined workflow data with all three perspectives
-    const enhancedJobs: JobWithUserInfo[] = empropsJobs.map(job => ({
-      ...job,
-      user_info: userMap.get(job.user_id) || null,
-      miniapp_data: miniappMap.get(job.id) || null,
-      redis_data: redisMap.get(job.id) || null
-    }));
+    const enhancedJobs: JobWithUserInfo[] = empropsJobs.map(job => {
+      const miniappData = miniappMap.get(job.id);
+      return {
+        ...job,
+        user_info: miniappData?.miniapp_user || null, // Get user from miniapp_generation
+        miniapp_data: miniappData || null,
+        redis_data: redisMap.get(job.id) || null
+      };
+    });
 
     const total = await prisma.job.count();
 
