@@ -37,7 +37,8 @@ export const MonitorEnvInterface = {
     "REDIS_URL": "MONITOR_REDIS_URL",
     "HUB_REDIS_URL": "MONITOR_REDIS_URL",
     "EMPROPS_API_KEY": "EMPROPS_API_KEY",
-    "AUTH_TOKEN": "API_AUTH_TOKEN"
+    "AUTH_TOKEN": "API_AUTH_TOKEN",
+    "AUTH_BYPASS": "MONITOR_AUTH_BYPASS"
   },
   defaults: {
     "SERVICE_TYPE": "monitor",
