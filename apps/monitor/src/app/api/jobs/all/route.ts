@@ -47,23 +47,32 @@ export async function GET(request: NextRequest) {
     let whereCondition = {};
     let searchJobIds: string[] = [];
 
+    let empropsJobs;
+
     if (search && search.trim()) {
       const searchTerm = String(search.trim());
+      const searchPattern = `%${searchTerm}%`;
 
-      // Use raw SQL for PostgreSQL compatibility
-      whereCondition = {
-        OR: [
-          { id: { contains: searchTerm } },
-          { name: { contains: searchTerm } },
-          { user_id: { contains: searchTerm } },
-          { status: searchTerm }
-        ]
-      };
-    }
-
-    // Fetch jobs from EmProps database (user job requests)
-    const empropsJobs = await prisma.job.findMany({
-      where: whereCondition,
+      // Use raw SQL to handle UUID casting properly
+      empropsJobs = await prisma.$queryRaw`
+        SELECT id, name, description, status, created_at, updated_at, user_id, job_type, priority, progress, data, error_message, started_at, completed_at
+        FROM job
+        WHERE (
+          id::text = ${searchTerm} OR
+          user_id::text = ${searchTerm} OR
+          name ILIKE ${searchPattern} OR
+          description ILIKE ${searchPattern} OR
+          job_type ILIKE ${searchPattern} OR
+          status = ${searchTerm}
+        )
+        ORDER BY created_at DESC
+        LIMIT ${limit}
+        OFFSET ${offset}
+      `;
+    } else {
+      // Fetch jobs from EmProps database (user job requests)
+      empropsJobs = await prisma.job.findMany({
+        where: whereCondition,
       orderBy: { created_at: 'desc' },
       take: limit,
       skip: offset,
@@ -84,6 +93,7 @@ export async function GET(request: NextRequest) {
         completed_at: true
       }
     });
+    }
 
     // Get unique job IDs to find related miniapp_generation records
     const jobIds = empropsJobs.map(job => job.id);
