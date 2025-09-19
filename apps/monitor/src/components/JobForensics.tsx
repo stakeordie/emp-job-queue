@@ -1635,30 +1635,32 @@ export default function JobForensics() {
 
                     {/* Step 6: Job Completed Miniapp (miniapp_generation table) */}
                     <div className={`flex items-center gap-4 p-4 border rounded-lg ${
-                      generation ? 'border-teal-200 bg-teal-50' : 'border-gray-200 bg-gray-50'
+                      generation && generation.status === 'completed' && generation.generated_image ? 'border-teal-200 bg-teal-50' : 'border-gray-200 bg-gray-50'
                     }`}>
                       <div className="flex-shrink-0">
                         <div className={`w-8 h-8 rounded-full flex items-center justify-center text-sm font-semibold ${
-                          generation ? 'bg-teal-600 text-white' : 'bg-gray-400 text-white'
+                          generation && generation.status === 'completed' && generation.generated_image ? 'bg-teal-600 text-white' : 'bg-gray-400 text-white'
                         }`}>6</div>
                       </div>
                       <div className="flex-1">
-                        <div className={`font-medium ${generation ? 'text-teal-800' : 'text-gray-600'}`}>
+                        <div className={`font-medium ${generation && generation.status === 'completed' && generation.generated_image ? 'text-teal-800' : 'text-gray-600'}`}>
                           Miniapp Completion
                         </div>
-                        <div className={`text-sm ${generation ? 'text-teal-600' : 'text-gray-500'}`}>
-                          {generation
-                            ? `Miniapp webhook received, generation record created`
+                        <div className={`text-sm ${generation && generation.status === 'completed' && generation.generated_image ? 'text-teal-600' : 'text-gray-500'}`}>
+                          {generation && generation.status === 'completed' && generation.generated_image
+                            ? `Miniapp completed with generated image`
+                            : generation
+                            ? `Miniapp generation status: ${generation.status}`
                             : 'Miniapp webhook completion pending'}
                         </div>
-                        {generation && (
+                        {generation && generation.status === 'completed' && generation.generated_image && (
                           <div className="text-xs text-teal-500 mt-1">
                             <CheckCircle className="h-3 w-3 inline mr-1" />
-                            Status: {generation.status} | ID: {generation.id.substring(0, 8)}...
+                            Generated image available | ID: {generation.id.substring(0, 8)}...
                           </div>
                         )}
                       </div>
-                      {generation ? <CheckCircle className="h-5 w-5 text-teal-600" /> : <Clock className="h-5 w-5 text-gray-400" />}
+                      {generation && generation.status === 'completed' && generation.generated_image ? <CheckCircle className="h-5 w-5 text-teal-600" /> : <Clock className="h-5 w-5 text-gray-400" />}
                     </div>
                   </div>
 
@@ -1682,7 +1684,7 @@ export default function JobForensics() {
                       </div>
                       <div className="text-center p-3 bg-teal-50 rounded-lg border border-teal-200">
                         <div className="text-lg font-semibold text-teal-600">
-                          {generation ? '✓' : '○'}
+                          {generation && generation.status === 'completed' && generation.generated_image ? '✓' : '○'}
                         </div>
                         <div className="text-xs text-teal-600 font-medium">Miniapp Table</div>
                       </div>
