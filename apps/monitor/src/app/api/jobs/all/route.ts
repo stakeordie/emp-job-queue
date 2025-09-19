@@ -126,28 +126,46 @@ export async function GET(request: NextRequest) {
     // Fetch Redis workflow data (EmProps job.id maps to Redis job.workflow_id)
     let redisWorkflows: any[] = [];
     try {
-      const redisConfig = {
-        host: process.env.REDIS_HOST || 'localhost',
-        port: parseInt(process.env.REDIS_PORT || '6379'),
-        password: process.env.REDIS_PASSWORD
-      };
+      // Use NEXT_PUBLIC_DEFAULT_REDIS_URL for local dev, fallback to individual config
+      const redisUrl = process.env.NEXT_PUBLIC_DEFAULT_REDIS_URL;
+      let redisConfig;
+
+      if (redisUrl) {
+        // Parse URL format: redis://[password@]host:port
+        const url = new URL(redisUrl);
+        redisConfig = {
+          host: url.hostname,
+          port: parseInt(url.port) || 6379,
+          password: url.password || undefined
+        };
+      } else {
+        redisConfig = {
+          host: process.env.REDIS_HOST || 'localhost',
+          port: parseInt(process.env.REDIS_PORT || '6379'),
+          password: process.env.REDIS_PASSWORD
+        };
+      }
 
       const redis = new RedisService(redisConfig);
       await redis.connect();
 
       // Get all Redis job keys and find ones with workflow_id matching our EmProps jobs
+      // Also look for step jobs that might not have workflow_id but match job IDs directly
       const jobKeys = await redis.redis.keys('job:*');
       const empropsJobIds = new Set(empropsJobs.map(job => job.id));
 
       for (const jobKey of jobKeys) {
         try {
-          const workflowId = await redis.redis.hget(jobKey, 'workflow_id');
-          if (workflowId && empropsJobIds.has(workflowId)) {
-            // This Redis job belongs to one of our EmProps workflows
-            const jobData = await redis.redis.hgetall(jobKey);
+          const jobData = await redis.redis.hgetall(jobKey);
+          const workflowId = jobData.workflow_id;
+          const jobId = jobData.id;
+
+          // Match by workflow_id (for workflow jobs) or by direct job ID (for step jobs)
+          if ((workflowId && empropsJobIds.has(workflowId)) ||
+              (jobId && empropsJobIds.has(jobId))) {
             redisWorkflows.push({
               redis_job_key: jobKey,
-              workflow_id: workflowId,
+              workflow_id: workflowId || jobId, // Use jobId if no workflow_id
               ...jobData,
               created_at: jobData.created_at ? new Date(jobData.created_at) : null,
               updated_at: jobData.updated_at ? new Date(jobData.updated_at) : null
