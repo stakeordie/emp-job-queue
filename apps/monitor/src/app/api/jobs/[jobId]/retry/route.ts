@@ -47,7 +47,8 @@ export async function POST(
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        'x-api-key': empropsApiKey,
+        'Accept': 'application/json',
+        'Authorization': `Bearer ${empropsApiKey}`,
       },
     });
 
