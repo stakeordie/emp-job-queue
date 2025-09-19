@@ -40,29 +40,8 @@ export function AppHeader() {
       </div>
 
       <nav className="flex items-center gap-2">
-        <Link href="/">
-          <Button variant="outline" size="sm">
-            Dashboard
-          </Button>
-        </Link>
-        <Link href="/database">
-          <Button variant="outline" size="sm">
-            Database Connections
-          </Button>
-        </Link>
-        <Link href="/forensics">
-          <Button variant="outline" size="sm">
-            Job Forensics
-          </Button>
-        </Link>
-        <Link href="/northstar">
-          <Button variant="outline" size="sm">
-            North Star
-          </Button>
-        </Link>
-
         {user && (
-          <div className="flex items-center gap-2 ml-4 px-3 py-1 bg-background border rounded-md">
+          <div className="flex items-center gap-2 px-3 py-1 bg-background border rounded-md">
             <User className="h-4 w-4" />
             <span className="text-sm">{user.name}</span>
             <Button
