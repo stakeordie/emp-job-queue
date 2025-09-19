@@ -418,6 +418,7 @@ export default function JobForensics() {
   const [expandedJobId, setExpandedJobId] = useState<string | null>(null);
   const [retryingJobIds, setRetryingJobIds] = useState<Set<string>>(new Set());
   const [resettingJobIds, setResettingJobIds] = useState<Set<string>>(new Set());
+  const [notification, setNotification] = useState<{message: string, type: 'success' | 'error'} | null>(null);
   const jobsPerPage = 20;
 
 
