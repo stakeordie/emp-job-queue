@@ -11,7 +11,7 @@ export const prisma =
     log: ['query'],
     datasources: {
       db: {
-        url: process.env.DATABASE_URL + '?application_name=Monitor-Forensics',
+        url: process.env.DATABASE_URL + '?application_name=Monitor-Forensics&connection_limit=50&pool_timeout=20',
       },
     },
   });
