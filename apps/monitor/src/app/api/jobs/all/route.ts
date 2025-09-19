@@ -48,6 +48,8 @@ export async function GET(request: NextRequest) {
 
     if (search && search.trim()) {
       const searchTerm = String(search.trim());
+      console.log('Search parameter type:', typeof search, 'value:', search);
+      console.log('Search term after String():', typeof searchTerm, 'value:', searchTerm);
 
       // First, find job IDs from miniapp_generation that match farcaster usernames
       try {
