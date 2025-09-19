@@ -1,5 +1,6 @@
 // Simple authentication using cookies and environment variables
 import { cookies } from 'next/headers';
+import { createHash } from 'crypto';
 
 export interface User {
   id: string;
@@ -13,15 +14,23 @@ const USERS: User[] = [
   { id: '2', email: 'admin@emprops.ai', name: 'Admin' },
 ];
 
-const PASSWORDS: Record<string, string> = {
-  'sandy@emprops.ai': '***REMOVED***',
-  'admin@emprops.ai': '***REMOVED***',
+// Hashed passwords using AUTH_BYPASS as salt
+// Pre-computed hashes for: sandy@emprops.ai:Ne1h810s, admin@emprops.ai:admin123
+const PASSWORD_HASHES: Record<string, string> = {
+  'sandy@emprops.ai': 'd3ff7c45387f1fd905c996d502f2e47b32201a825fc45a5b17c495abb2445b7d',
+  'admin@emprops.ai': 'e6facbe3483c7e08a2dc8bd51562d409d1b5a54d9783c2f63d169cce10c5ef54',
 };
 
 const AUTH_COOKIE = 'auth-token';
 
+function hashPassword(email: string, password: string): string {
+  const salt = process.env.AUTH_BYPASS || 'fallback-salt';
+  return createHash('sha256').update(`${email}:${password}:${salt}`).digest('hex');
+}
+
 export function validateCredentials(email: string, password: string): User | null {
-  if (PASSWORDS[email] === password) {
+  const hashedAttempt = hashPassword(email, password);
+  if (PASSWORD_HASHES[email] === hashedAttempt) {
     return USERS.find(u => u.email === email) || null;
   }
   return null;
