@@ -298,7 +298,7 @@ export class JobForensicsService {
         include: {
           miniapp_user: {
             include: {
-              social_links: true,
+              social_link: true,
             },
           },
           miniapp_payment: true,
@@ -320,7 +320,7 @@ export class JobForensicsService {
           include: {
             miniapp_user: {
               include: {
-                social_links: true,
+                social_link: true,
               },
             },
             miniapp_payment: true,
@@ -571,7 +571,7 @@ export class JobForensicsService {
         // Check mini-app generations
         const miniAppGen = await prisma.miniapp_generation.findFirst({
           where: {
-            workflow_id: job.workflow_id,
+            job_id: job.workflow_id,
           },
         });
 
