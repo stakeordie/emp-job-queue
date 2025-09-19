@@ -172,10 +172,43 @@ function truncateObject(obj: any, options: TruncationOptions, currentSize: { val
           const isImageField = /^(image_base64|base64_image|img_data|image_data|photo_base64)$/i.test(key);
           const isResultField = key === 'result' && typeof value === 'string' && value.length > 10000;
 
-          if ((isImageField || isResultField) && typeof value === 'string' && value.length > 1000) {
+          if (isImageField && typeof value === 'string' && value.length > 1000) {
             const start = value.substring(0, 50);
             const end = value.substring(value.length - 20);
-            result[key] = `${start}${options.truncateMarker}${isImageField ? 'BASE64_IMAGE' : 'LARGE_RESULT'}(${value.length} chars)...${end}`;
+            result[key] = `${start}${options.truncateMarker}BASE64_IMAGE(${value.length} chars)...${end}`;
+          } else if (isResultField && typeof value === 'string') {
+            // For large result fields, try to preserve asset URLs by parsing as JSON first
+            try {
+              const parsed = JSON.parse(value);
+              // Extract and preserve asset information
+              const assetInfo: any = {};
+
+              if (parsed.data?.saved_asset) {
+                assetInfo.saved_asset = parsed.data.saved_asset;
+              }
+              if (parsed.outputs) {
+                assetInfo.outputs = parsed.outputs;
+              }
+              if (parsed.fileUrl) {
+                assetInfo.fileUrl = parsed.fileUrl;
+              }
+              if (parsed.cdnUrl) {
+                assetInfo.cdnUrl = parsed.cdnUrl;
+              }
+
+              // Keep asset info and truncate the rest
+              const start = value.substring(0, 100);
+              const end = value.substring(value.length - 50);
+              result[key] = {
+                ...assetInfo,
+                __truncated: `${start}${options.truncateMarker}LARGE_RESULT(${value.length} chars)...${end}`
+              };
+            } catch {
+              // If not JSON, just truncate normally
+              const start = value.substring(0, 100);
+              const end = value.substring(value.length - 50);
+              result[key] = `${start}${options.truncateMarker}LARGE_RESULT(${value.length} chars)...${end}`;
+            }
           } else {
             result[key] = truncateObject(value, options, currentSize, visited);
           }
