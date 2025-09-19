@@ -851,8 +851,8 @@ export class LightweightAPIServer {
       }
     });
 
-    // Get notification attestations for a workflow or job
-    this.app.get('/api/notifications/attestations', async (req: Request, res: Response) => {
+    // Unified attestations endpoint - gets all types of attestations for a workflow or job
+    this.app.get('/api/attestations', async (req: Request, res: Response) => {
       try {
         const { workflow_id, job_id } = req.query;
 
@@ -864,34 +864,143 @@ export class LightweightAPIServer {
           });
         }
 
-        const targetId = workflow_id || job_id;
-        const attestations: any[] = [];
+        const targetId = String(workflow_id || job_id);
 
-        // Get notifications from the workflow-specific list
+        // Initialize response structure
+        const response: any = {
+          success: true,
+          workflow_id: targetId,
+          worker_attestations: [],
+          api_attestation: null,
+          notification_attestations: [],
+          timestamp: new Date().toISOString()
+        };
+
+        // Collect all attestations with timestamps for sorting
+        const allAttestations: Array<{type: string, data: any, timestamp: string}> = [];
+
+        // Helper function to add attestation with timestamp
+        const addAttestation = (type: string, data: any) => {
+          const timestamp = data.timestamp || data.created_at || new Date().toISOString();
+          allAttestations.push({ type, data, timestamp });
+        };
+
+        // Get all step IDs by querying the database (includes retries)
+        let stepIds: string[] = [targetId]; // Always include the main workflow ID
+
         try {
-          const workflowNotifications = await this.redis.lrange(`workflow_notifications:${targetId}`, 0, -1);
-          for (const notificationStr of workflowNotifications) {
+          if (process.env.DATABASE_URL) {
+            const pool = new Pool({
+              connectionString: process.env.DATABASE_URL,
+              max: 1,
+              idleTimeoutMillis: 10000,
+              connectionTimeoutMillis: 5000,
+              application_name: 'JobQueue-API-Attestations',
+            });
+
+            const client = await pool.connect();
             try {
-              const notification = JSON.parse(notificationStr);
-              attestations.push(notification);
-            } catch (parseError) {
-              logger.warn(`Failed to parse notification attestation: ${parseError}`);
+              // Query for all step IDs associated with this job/workflow
+              const stepQuery = `
+                SELECT DISTINCT s.id as step_id, s.retry_attempt, s.started_at
+                FROM step s
+                WHERE s.job_id = $1
+                ORDER BY s.started_at ASC, s.retry_attempt ASC
+              `;
+
+              const stepResult = await client.query(stepQuery, [targetId]);
+
+              if (stepResult.rows.length > 0) {
+                const additionalStepIds = stepResult.rows.map((row: any) => row.step_id);
+                stepIds = [targetId, ...additionalStepIds];
+                logger.info(`Found ${additionalStepIds.length} step IDs for workflow ${targetId} (including retries)`);
+              }
+            } finally {
+              client.release();
+              await pool.end();
             }
           }
-        } catch (redisError) {
-          logger.warn(`Failed to get workflow notifications for ${targetId}: ${redisError}`);
+        } catch (error) {
+          logger.warn(`Failed to fetch step IDs from database for ${targetId}: ${error}`);
+          // Continue with just the main workflow ID
         }
 
-        res.json({
-          success: true,
-          attestations,
-          count: attestations.length,
-          workflow_id: targetId,
-          timestamp: new Date().toISOString()
-        });
+        // For each step ID, search for all types of attestations
+        for (const stepId of stepIds) {
+          // Get notification attestations
+          try {
+            const workflowNotifications = await this.redis.lrange(`workflow_notifications:${stepId}`, 0, -1);
+            for (const notificationStr of workflowNotifications) {
+              try {
+                const notification = JSON.parse(notificationStr);
+                addAttestation('notification', notification);
+              } catch (parseError) {
+                logger.warn(`Failed to parse notification attestation for ${stepId}: ${parseError}`);
+              }
+            }
+          } catch (redisError) {
+            logger.warn(`Failed to get workflow notifications for ${stepId}: ${redisError}`);
+          }
+
+          // Get worker attestations (using correct Redis key pattern)
+          try {
+            const workerCompletionKey = `worker:completion:${stepId}`;
+            const workerCompletion = await this.redis.get(workerCompletionKey);
+            if (workerCompletion) {
+              try {
+                const parsed = JSON.parse(workerCompletion);
+                addAttestation('worker', parsed);
+              } catch (parseError) {
+                logger.warn(`Failed to parse worker completion for ${stepId}: ${parseError}`);
+              }
+            }
+          } catch (redisError) {
+            logger.warn(`Failed to get worker completion for ${stepId}: ${redisError}`);
+          }
+
+          // Get API attestation
+          try {
+            const apiAttestationKey = `api:workflow:completion:${stepId}`;
+            const apiAttestation = await this.redis.get(apiAttestationKey);
+            if (apiAttestation) {
+              try {
+                const parsed = JSON.parse(apiAttestation);
+                addAttestation('api', parsed);
+              } catch (parseError) {
+                logger.warn(`Failed to parse API attestation for ${stepId}: ${parseError}`);
+              }
+            }
+          } catch (redisError) {
+            logger.warn(`Failed to get API attestation for ${stepId}: ${redisError}`);
+          }
+        }
+
+        // Sort all attestations by timestamp and organize by type
+        allAttestations.sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime());
+
+        // Organize into response structure
+        for (const attestation of allAttestations) {
+          switch (attestation.type) {
+            case 'notification':
+              response.notification_attestations.push(attestation.data);
+              break;
+            case 'worker':
+              response.worker_attestations.push(attestation.data);
+              break;
+            case 'api':
+              // Only keep the latest API attestation (there should be only one)
+              if (!response.api_attestation) {
+                response.api_attestation = attestation.data;
+              }
+              break;
+          }
+        }
+
+        logger.info(`Found ${allAttestations.length} total attestations across ${stepIds.length} step IDs for workflow ${targetId}`);
+        res.json(response);
 
       } catch (error) {
-        logger.error('Failed to get notification attestations:', error);
+        logger.error('Failed to get attestations:', error);
         res.status(500).json({
           success: false,
           error: error instanceof Error ? error.message : 'Unknown error',
@@ -4308,6 +4417,15 @@ export class LightweightAPIServer {
         for (const field of urlFields) {
           if (result[field] && typeof result[field] === 'string') {
             locations.push(result[field]);
+          }
+        }
+
+        // Handle nested data object (common pattern: result.data.image_url)
+        if (result.data && typeof result.data === 'object') {
+          for (const field of urlFields) {
+            if (result.data[field] && typeof result.data[field] === 'string') {
+              locations.push(result.data[field]);
+            }
           }
         }
 

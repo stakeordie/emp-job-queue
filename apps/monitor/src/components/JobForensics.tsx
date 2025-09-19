@@ -32,17 +32,22 @@ function AttestationRecords({ jobId, workflowId }: { jobId: string; workflowId?:
     setLoading(true);
     setHasChecked(true);
     try {
-      // If we have a workflow ID, get all attestations for the workflow
-      if (workflowId) {
-        const response = await fetch(`/api/workflows/${workflowId}/all-attestations`);
+      const targetId = workflowId || jobId;
+      if (targetId) {
+        // Use unified attestations endpoint from API server
+        const apiBaseUrl = process.env.NEXT_PUBLIC_API_URL;
+        const response = await fetch(`${apiBaseUrl}/api/attestations?workflow_id=${targetId}`);
         if (response.ok) {
           const data = await response.json();
           if (data.success) {
+            // Set API attestation
             setApiAttestation(data.api_attestation);
-            // For multi-step workflows, we may have multiple worker attestations
-            // For now, show the first one or combine them
+
+            // Set notification attestations
+            setNotificationAttestations(data.notification_attestations || []);
+
+            // Handle worker attestations (support multi-step workflows)
             if (data.worker_attestations && data.worker_attestations.length > 0) {
-              // If multiple steps, combine them into one view
               if (data.worker_attestations.length === 1) {
                 setWorkerAttestation(data.worker_attestations[0]);
               } else {
@@ -53,31 +58,10 @@ function AttestationRecords({ jobId, workflowId }: { jobId: string; workflowId?:
                   _all_steps: data.worker_attestations
                 });
               }
+            } else {
+              setWorkerAttestation(null);
             }
           }
-        }
-      } else {
-        // Fallback to single job attestation if no workflow ID
-        const workerResponse = await fetch(`/api/jobs/${jobId}/worker-attestation`);
-        if (workerResponse.ok) {
-          const workerData = await workerResponse.json();
-          setWorkerAttestation(workerData.success ? workerData.attestation : null);
-        }
-      }
-
-      // Load notification attestations for this workflow or job
-      const targetId = workflowId || jobId;
-      if (targetId) {
-        try {
-          const notifResponse = await fetch(`/api/notifications/attestations?workflow_id=${targetId}`);
-          if (notifResponse.ok) {
-            const notifData = await notifResponse.json();
-            if (notifData.success && notifData.attestations) {
-              setNotificationAttestations(notifData.attestations);
-            }
-          }
-        } catch (error) {
-          console.error('Failed to load notification attestations:', error);
         }
       }
     } catch (error) {
