@@ -166,30 +166,6 @@ export function ConnectionHeader() {
                 Home
               </Button>
             </Link>
-            <Link href="/">
-              <Button variant="outline" size="sm" className="flex items-center gap-2">
-                <BarChart3 className="h-3 w-3" />
-                Dashboard
-              </Button>
-            </Link>
-            <Link href="/database">
-              <Button variant="outline" size="sm" className="flex items-center gap-2">
-                <Database className="h-3 w-3" />
-                Database Connections
-              </Button>
-            </Link>
-            <Link href="/forensics">
-              <Button variant="outline" size="sm" className="flex items-center gap-2">
-                <Search className="h-3 w-3" />
-                Job Forensics
-              </Button>
-            </Link>
-            <Link href="/northstar">
-              <Button variant="outline" size="sm" className="flex items-center gap-2">
-                <Target className="h-3 w-3" />
-                North Star
-              </Button>
-            </Link>
             <Link href="/webhook-test">
               <Button variant="outline" size="sm" className="flex items-center gap-2">
                 <Webhook className="h-3 w-3" />

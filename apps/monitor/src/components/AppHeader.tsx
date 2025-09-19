@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
-import { LogOut, User } from "lucide-react";
+import { LogOut, User, BarChart3, Database, Search, Target } from "lucide-react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 
@@ -40,8 +40,33 @@ export function AppHeader() {
       </div>
 
       <nav className="flex items-center gap-2">
+        <Link href="/">
+          <Button variant="outline" size="sm" className="flex items-center gap-2">
+            <BarChart3 className="h-3 w-3" />
+            Dashboard
+          </Button>
+        </Link>
+        <Link href="/database">
+          <Button variant="outline" size="sm" className="flex items-center gap-2">
+            <Database className="h-3 w-3" />
+            Database Connections
+          </Button>
+        </Link>
+        <Link href="/forensics">
+          <Button variant="outline" size="sm" className="flex items-center gap-2">
+            <Search className="h-3 w-3" />
+            Job Forensics
+          </Button>
+        </Link>
+        <Link href="/northstar">
+          <Button variant="outline" size="sm" className="flex items-center gap-2">
+            <Target className="h-3 w-3" />
+            North Star
+          </Button>
+        </Link>
+
         {user && (
-          <div className="flex items-center gap-2 px-3 py-1 bg-background border rounded-md">
+          <div className="flex items-center gap-2 ml-4 px-3 py-1 bg-background border rounded-md">
             <User className="h-4 w-4" />
             <span className="text-sm">{user.name}</span>
             <Button
