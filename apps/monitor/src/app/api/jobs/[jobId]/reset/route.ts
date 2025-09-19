@@ -30,7 +30,7 @@ export async function POST(
       method: 'PATCH',
       headers: {
         'Content-Type': 'application/json',
-        'Authorization': `Bearer ${empropsApiKey}`,
+        'x-api-key': empropsApiKey,
       },
       body: JSON.stringify({
         status: 'pending',
