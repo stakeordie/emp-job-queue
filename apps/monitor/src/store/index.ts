@@ -606,9 +606,19 @@ export const useMonitorStore = create<MonitorStore>()(
                   typeof job.payload === 'string'
                     ? (() => {
                         try {
-                          return JSON.parse(job.payload as string);
-                        } catch {
-                          return {};
+                          const parsed = JSON.parse(job.payload as string);
+                          // Handle double-encoded JSON: {"data": "{...}"}
+                          if (parsed.data && typeof parsed.data === 'string') {
+                            try {
+                              parsed.data = JSON.parse(parsed.data);
+                            } catch {
+                              // Keep data as string if it can't be parsed
+                            }
+                          }
+                          return parsed;
+                        } catch (e) {
+                          console.warn('Failed to parse job payload:', e, job.payload);
+                          return { raw: job.payload };
                         }
                       })()
                     : (job.payload as Record<string, unknown>) || {},
