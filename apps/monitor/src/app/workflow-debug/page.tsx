@@ -1,6 +1,7 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
+import { useSearchParams } from 'next/navigation';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -16,18 +17,29 @@ interface QueryResult {
 }
 
 export default function WorkflowDebugPage() {
+  const searchParams = useSearchParams();
   const [workflowId, setWorkflowId] = useState('');
   const [loading, setLoading] = useState(false);
   const [results, setResults] = useState<QueryResult[]>([]);
 
-  const debugWorkflow = async () => {
-    if (!workflowId.trim()) return;
+  // Auto-populate and debug from URL query parameter
+  useEffect(() => {
+    const urlWorkflowId = searchParams.get('workflow-id');
+    if (urlWorkflowId) {
+      setWorkflowId(urlWorkflowId);
+      // Auto-trigger debug if workflow ID is provided in URL
+      debugWorkflowById(urlWorkflowId);
+    }
+  }, [searchParams]);
+
+  const debugWorkflowById = async (id: string) => {
+    if (!id.trim()) return;
 
     setLoading(true);
     setResults([]);
 
     try {
-      const response = await fetch(`/api/workflow-debug/${workflowId}`);
+      const response = await fetch(`/api/workflow-debug/${id}`);
       const data = await response.json();
 
       if (data.success) {
@@ -52,6 +64,10 @@ export default function WorkflowDebugPage() {
     } finally {
       setLoading(false);
     }
+  };
+
+  const debugWorkflow = async () => {
+    debugWorkflowById(workflowId);
   };
 
   const getStatusIcon = (status: string) => {

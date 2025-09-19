@@ -15,7 +15,7 @@ import { Button } from "@/components/ui/button"
 //   AlertDialogTitle,
 // } from "@/components/ui/alert-dialog"
 import { SimpleProgress } from "@/components/ui/simple-progress"
-import { RefreshCw, X } from "lucide-react"
+import { RefreshCw, X, Bug } from "lucide-react"
 import { MachineCard } from "@/components/MachineCard"
 import { JobDetailsModal } from "@/components/JobDetailsModal"
 import { JobSubmissionPanel } from "@/components/JobSubmissionPanel"
@@ -401,6 +401,15 @@ function Home({ isJobPanelOpen }: HomeProps) {
                             title="Sync job state"
                           >
                             <RefreshCw className="h-3 w-3" />
+                          </Button>
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => window.open(`/workflow-debug?workflow-id=${encodeURIComponent(job.workflow_id || job.id)}`, '_blank')}
+                            className="h-7 w-7 p-0 hover:bg-blue-50 hover:border-blue-200"
+                            title="Debug workflow"
+                          >
+                            <Bug className="h-3 w-3" />
                           </Button>
                           <Button
                             variant="outline"
