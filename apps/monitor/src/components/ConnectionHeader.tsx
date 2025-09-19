@@ -11,7 +11,7 @@ import {
   SelectTrigger, 
   SelectValue 
 } from "@/components/ui/select"
-import { Play, Square, X, Target, RefreshCw, Webhook, Home } from "lucide-react"
+import { Play, Square, X, Target, RefreshCw, Webhook, Home, Bug } from "lucide-react"
 import { useMonitorStore } from "@/store"
 import { useState, useEffect } from "react"
 import Link from "next/link"
@@ -176,6 +176,12 @@ export function ConnectionHeader() {
               <Button variant="outline" size="sm" className="flex items-center gap-2">
                 <Webhook className="h-3 w-3" />
                 Webhooks
+              </Button>
+            </Link>
+            <Link href="/workflow-debug">
+              <Button variant="outline" size="sm" className="flex items-center gap-2">
+                <Bug className="h-3 w-3" />
+                Debug
               </Button>
             </Link>
           </div>

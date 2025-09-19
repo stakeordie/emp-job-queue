@@ -7,7 +7,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { RefreshCw, Trash2, Copy, ChevronDown, ChevronUp, ArrowLeft, ExternalLink } from "lucide-react";
+import { RefreshCw, Trash2, Copy, ChevronDown, ChevronUp, ExternalLink } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { ConnectionHeader } from "@/components/ConnectionHeader";
 import Link from "next/link";
@@ -283,12 +283,6 @@ export default function WebhookMonitorPage() {
         <div className="flex-1 p-6">
           <div className="text-center py-8">
             <p className="text-red-600 mb-4">{error}</p>
-            <Link href="/webhook-test">
-              <Button variant="outline">
-                <ArrowLeft className="h-4 w-4 mr-2" />
-                Back to Webhooks
-              </Button>
-            </Link>
           </div>
         </div>
       </div>
@@ -302,19 +296,11 @@ export default function WebhookMonitorPage() {
       <div className="flex-1 p-6 max-w-6xl mx-auto w-full">
         {/* Header */}
         <div className="mb-6">
-          <div className="flex items-center gap-4 mb-2">
-            <Link href="/webhook-test">
-              <Button variant="outline" size="sm">
-                <ArrowLeft className="h-4 w-4 mr-2" />
-                Back to Webhooks
-              </Button>
-            </Link>
-            <div>
-              <h1 className="text-xl font-semibold">Webhook Monitor</h1>
-              <p className="text-sm text-muted-foreground">
-                Real-time monitoring for webhook: {webhookId}
-              </p>
-            </div>
+          <div className="mb-2">
+            <h1 className="text-xl font-semibold">Webhook Monitor</h1>
+            <p className="text-sm text-muted-foreground">
+              Real-time monitoring for webhook: {webhookId}
+            </p>
           </div>
         </div>
 
