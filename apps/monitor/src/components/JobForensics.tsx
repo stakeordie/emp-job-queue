@@ -6,7 +6,7 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { AlertTriangle, Database, RefreshCw, Search, Info, Image as ImageIcon, Download, ExternalLink, User, Wallet, MessageCircle, RotateCcw, Play, CheckCircle, XCircle, Clock, ArrowRight, Zap, FileText, Webhook, Square } from 'lucide-react';
+import { AlertTriangle, Database, RefreshCw, Search, Info, Image as ImageIcon, Download, ExternalLink, User, Wallet, MessageCircle, RotateCcw, Play, CheckCircle, XCircle, Clock, ArrowRight, Zap, FileText, Webhook, Square, DollarSign } from 'lucide-react';
 import SmartImage from './SmartImage';
 import type {
   JobForensicsData,
@@ -27,6 +27,8 @@ function AttestationRecords({ jobId, workflowId }: { jobId: string; workflowId?:
   const [hasChecked, setHasChecked] = useState(false);
   const [webhookTriggerLoading, setWebhookTriggerLoading] = useState(false);
   const [webhookTriggerResult, setWebhookTriggerResult] = useState<any>(null);
+  const [retryJobLoading, setRetryJobLoading] = useState(false);
+  const [retryJobResult, setRetryJobResult] = useState<any>(null);
 
   const loadAttestations = async () => {
     setLoading(true);
@@ -96,6 +98,31 @@ function AttestationRecords({ jobId, workflowId }: { jobId: string; workflowId?:
     }
   };
 
+  // Retry job manually
+  const retryJob = async () => {
+    const targetId = workflowId || jobId;
+    if (!targetId) return;
+
+    setRetryJobLoading(true);
+    setRetryJobResult(null);
+
+    try {
+      const apiBaseUrl = process.env.NEXT_PUBLIC_API_URL;
+      const response = await fetch(`${apiBaseUrl}/api/jobs/${targetId}/retry`, {
+        method: 'POST'
+      });
+      const result = await response.json();
+      setRetryJobResult(result);
+    } catch (error) {
+      setRetryJobResult({
+        success: false,
+        error: 'Failed to retry job'
+      });
+    } finally {
+      setRetryJobLoading(false);
+    }
+  };
+
   // Auto-load attestations when component mounts
   useEffect(() => {
     loadAttestations();
@@ -124,6 +151,16 @@ function AttestationRecords({ jobId, workflowId }: { jobId: string; workflowId?:
               Trigger Webhook
             </Button>
           )}
+          <Button
+            size="sm"
+            variant="outline"
+            onClick={retryJob}
+            disabled={retryJobLoading}
+            className="text-blue-600 border-blue-200 hover:bg-blue-50"
+          >
+            {retryJobLoading ? <RefreshCw className="h-3 w-3 animate-spin mr-1" /> : <RotateCcw className="h-3 w-3 mr-1" />}
+            Retry Job
+          </Button>
           <Button
             size="sm"
             variant="outline"
@@ -157,6 +194,32 @@ function AttestationRecords({ jobId, workflowId }: { jobId: string; workflowId?:
           {webhookTriggerResult.success && webhookTriggerResult.outputs_count > 0 && (
             <div className="text-xs mt-1">
               Workflow has {webhookTriggerResult.outputs_count} outputs available
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Show retry job result */}
+      {retryJobResult && (
+        <div className={`text-sm p-3 border rounded mb-3 ${
+          retryJobResult.success
+            ? 'bg-green-50 border-green-200 text-green-800'
+            : 'bg-red-50 border-red-200 text-red-800'
+        }`}>
+          <div className="flex items-center gap-2">
+            {retryJobResult.success ? (
+              <CheckCircle className="h-4 w-4" />
+            ) : (
+              <XCircle className="h-4 w-4" />
+            )}
+            {retryJobResult.success ? 'Job Retry Initiated Successfully' : 'Job Retry Failed'}
+          </div>
+          <div className="text-xs mt-1">
+            {retryJobResult.message || retryJobResult.error}
+          </div>
+          {retryJobResult.success && retryJobResult.new_job_id && (
+            <div className="text-xs mt-1">
+              New job ID: {retryJobResult.new_job_id}
             </div>
           )}
         </div>
@@ -832,6 +895,12 @@ export default function JobForensics() {
                                 <Badge className={getStatusColor(String(job.status))}>
                                   {String(job.status)}
                                 </Badge>
+                                {job.miniapp_data?.payment?.amount && (
+                                  <Badge variant="outline" className="bg-green-50 text-green-700 border-green-200">
+                                    <DollarSign className="h-3 w-3 mr-1" />
+                                    ${job.miniapp_data.payment.amount}
+                                  </Badge>
+                                )}
                                 {job.error_message != null && String(job.error_message).trim() !== '' && (
                                   <div title={String(job.error_message)}>
                                     <AlertTriangle className="h-4 w-4 text-red-500" />

@@ -378,8 +378,8 @@ export class JobForensicsService {
           miniAppData.payment = {
             id: generation.miniapp_payment.id,
             amount: generation.miniapp_payment.amount,
-            currency: generation.miniapp_payment.currency,
-            status: generation.miniapp_payment.status,
+            payment_status: generation.miniapp_payment.payment_status,
+            transaction_hash: generation.miniapp_payment.transaction_hash,
             created_at: generation.miniapp_payment.created_at,
           };
         }

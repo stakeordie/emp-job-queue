@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
-import { LogOut, User, BarChart3, Database, Search, Target, Webhook, Bug } from "lucide-react";
+import { LogOut, User, BarChart3, Database, Search, Target, Webhook, Bug, FolderOpen } from "lucide-react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 
@@ -50,6 +50,12 @@ export function AppHeader() {
           <Button variant="outline" size="sm" className="flex items-center gap-2">
             <Database className="h-3 w-3" />
             Database Connections
+          </Button>
+        </Link>
+        <Link href="/collections">
+          <Button variant="outline" size="sm" className="flex items-center gap-2">
+            <FolderOpen className="h-3 w-3" />
+            Collections
           </Button>
         </Link>
         <Link href="/forensics">
