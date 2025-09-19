@@ -85,12 +85,7 @@ export default function DatabaseConnectionMonitor() {
   useEffect(() => {
     const fetchData = async () => {
       try {
-        const websocketUrl = websocketService.getUrl();
-        let apiBaseUrl = 'http://localhost:3331';
-        if (websocketUrl) {
-          const url = new URL(websocketUrl);
-          apiBaseUrl = `${url.protocol === 'wss:' ? 'https:' : 'http:'}//${url.host}`;
-        }
+        const apiBaseUrl = process.env.NEXT_PUBLIC_API_URL;
 
         const postgresResponse = await fetch(`${apiBaseUrl}/api/system/postgres-connections`);
         const postgresResult = await postgresResponse.json();

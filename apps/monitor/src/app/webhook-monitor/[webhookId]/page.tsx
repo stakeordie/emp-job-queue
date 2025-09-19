@@ -47,6 +47,7 @@ export default function WebhookMonitorPage() {
   const [error, setError] = useState<string | null>(null);
   const [isListening, setIsListening] = useState(false);
   const [sessionId, setSessionId] = useState<string | null>(null);
+  const [workflowFilter, setWorkflowFilter] = useState<string>('');
 
   // Extract session ID from webhook URL
   const extractSessionId = (webhookUrl: string): string | null => {
@@ -185,6 +186,40 @@ export default function WebhookMonitorPage() {
         ? "No longer capturing webhook requests"
         : "Now capturing webhook requests in real-time",
     });
+  };
+
+  // Extract workflow ID from request
+  const extractWorkflowId = (request: WebhookRequest): string | null => {
+    // Try headers first
+    const workflowHeader = request.headers['x-workflow-id'] || request.headers['X-Workflow-Id'];
+    if (workflowHeader) return workflowHeader;
+
+    // Try body
+    try {
+      const body = typeof request.body === 'string' ? JSON.parse(request.body) : request.body;
+      if (body && typeof body === 'object') {
+        // Look for common workflow ID fields
+        if ('workflow_id' in body) return body.workflow_id as string;
+        if ('workflowId' in body) return body.workflowId as string;
+        if ('job_id' in body) return body.job_id as string;
+        if ('jobId' in body) return body.jobId as string;
+        if ('id' in body) return body.id as string;
+
+        // Look in nested data
+        if ('data' in body && body.data && typeof body.data === 'object') {
+          const data = body.data as any;
+          if ('workflow_id' in data) return data.workflow_id as string;
+          if ('workflowId' in data) return data.workflowId as string;
+          if ('job_id' in data) return data.job_id as string;
+          if ('jobId' in data) return data.jobId as string;
+          if ('id' in data) return data.id as string;
+        }
+      }
+    } catch {
+      // Ignore parsing errors
+    }
+
+    return null;
   };
 
   // Extract event type from request
@@ -353,6 +388,30 @@ export default function WebhookMonitorPage() {
                   </div>
                 </div>
 
+                <div>
+                  <Label className="text-xs text-muted-foreground">Workflow Filter</Label>
+                  <div className="flex items-center gap-2 mt-1">
+                    <Input
+                      value={workflowFilter}
+                      onChange={(e) => setWorkflowFilter(e.target.value)}
+                      placeholder="Enter workflow/job ID to filter (e.g., job-123)"
+                      className="text-sm"
+                    />
+                    {workflowFilter && (
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => setWorkflowFilter('')}
+                      >
+                        Clear
+                      </Button>
+                    )}
+                  </div>
+                  <p className="text-xs text-muted-foreground mt-1">
+                    Filter requests to show only those matching the specified workflow/job ID
+                  </p>
+                </div>
+
                 <div className="flex items-center gap-4 pt-2">
                   <Button
                     onClick={toggleListening}
@@ -414,7 +473,14 @@ export default function WebhookMonitorPage() {
         {/* Requests List */}
         <Card>
           <CardHeader>
-            <CardTitle>Captured Requests ({requests.length})</CardTitle>
+            <CardTitle>
+              Captured Requests ({requests.length})
+              {workflowFilter && (
+                <span className="text-sm font-normal text-muted-foreground ml-2">
+                  • Filtered by: {workflowFilter}
+                </span>
+              )}
+            </CardTitle>
             <p className="text-sm text-muted-foreground">
               {isListening
                 ? "Requests will appear here in real-time. Data persists until page refresh."
@@ -422,55 +488,92 @@ export default function WebhookMonitorPage() {
             </p>
           </CardHeader>
           <CardContent>
-            {requests.length === 0 ? (
-              <div className="text-center py-8 text-muted-foreground">
-                <p>No webhook requests captured yet</p>
-                <p className="text-sm mt-2">
-                  {isListening
-                    ? "Send a webhook to see it appear here instantly"
-                    : "Click 'Start Monitoring' to begin capturing requests"}
-                </p>
-              </div>
-            ) : (
-              <div className="space-y-2">
-                {requests.map((request) => {
-                  const eventType = extractEventType(request);
-                  const eventColorClass = getEventTypeColor(eventType);
+            {(() => {
+              // Apply workflow filter
+              const filteredRequests = workflowFilter
+                ? requests.filter(request => {
+                    const workflowId = extractWorkflowId(request);
+                    return workflowId && workflowId.toLowerCase().includes(workflowFilter.toLowerCase());
+                  })
+                : requests;
 
-                  return (
-                    <div
-                      key={request.id}
-                      className="border rounded-lg overflow-hidden"
-                    >
+              return filteredRequests.length === 0 ? (
+                <div className="text-center py-8 text-muted-foreground">
+                  {workflowFilter ? (
+                    <>
+                      <p>No webhook requests found for workflow: "{workflowFilter}"</p>
+                      <p className="text-sm mt-2">
+                        {requests.length > 0
+                          ? `${requests.length} total requests captured, but none match the filter`
+                          : "No requests captured yet"
+                        }
+                      </p>
+                    </>
+                  ) : (
+                    <>
+                      <p>No webhook requests captured yet</p>
+                      <p className="text-sm mt-2">
+                        {isListening
+                          ? "Send a webhook to see it appear here instantly"
+                          : "Click 'Start Monitoring' to begin capturing requests"}
+                      </p>
+                    </>
+                  )}
+                </div>
+              ) : (
+                <div className="space-y-2">
+                  {workflowFilter && (
+                    <div className="mb-4 p-3 bg-blue-50 border border-blue-200 rounded-lg">
+                      <p className="text-sm text-blue-700">
+                        <strong>Filtered View:</strong> Showing {filteredRequests.length} of {requests.length} requests
+                        matching workflow "{workflowFilter}"
+                      </p>
+                    </div>
+                  )}
+                  {filteredRequests.map((request) => {
+                    const eventType = extractEventType(request);
+                    const eventColorClass = getEventTypeColor(eventType);
+                    const workflowId = extractWorkflowId(request);
+
+                    return (
                       <div
-                        className={`p-3 cursor-pointer transition-colors ${
-                          selectedRequest?.id === request.id
-                            ? 'bg-blue-50 border-blue-200'
-                            : 'hover:bg-muted/50'
-                        }`}
-                        onClick={() => setSelectedRequest(
-                          selectedRequest?.id === request.id ? null : request
-                        )}
+                        key={request.id}
+                        className="border rounded-lg overflow-hidden"
                       >
-                        <div className="flex items-center justify-between">
-                          <div className="flex items-center gap-3">
-                            <Badge variant={request.method === 'POST' ? 'default' : 'outline'}>
-                              {request.method}
-                            </Badge>
-                            {eventType !== 'unknown' && (
-                              <Badge variant="outline" className={`text-xs ${eventColorClass}`}>
-                                {eventType.replace('_', ' ').toUpperCase()}
+                        <div
+                          className={`p-3 cursor-pointer transition-colors ${
+                            selectedRequest?.id === request.id
+                              ? 'bg-blue-50 border-blue-200'
+                              : 'hover:bg-muted/50'
+                          }`}
+                          onClick={() => setSelectedRequest(
+                            selectedRequest?.id === request.id ? null : request
+                          )}
+                        >
+                          <div className="flex items-center justify-between">
+                            <div className="flex items-center gap-3 flex-wrap">
+                              <Badge variant={request.method === 'POST' ? 'default' : 'outline'}>
+                                {request.method}
                               </Badge>
-                            )}
-                            <span className="text-sm text-muted-foreground">
-                              {formatTimestamp(request.timestamp)}
-                            </span>
-                            {request.user_agent && (
-                              <span className="text-xs text-muted-foreground">
-                                {request.user_agent.split(' ')[0]}
+                              {eventType !== 'unknown' && (
+                                <Badge variant="outline" className={`text-xs ${eventColorClass}`}>
+                                  {eventType.replace('_', ' ').toUpperCase()}
+                                </Badge>
+                              )}
+                              {workflowId && (
+                                <Badge variant="outline" className="text-xs bg-purple-50 text-purple-700 border-purple-200">
+                                  {workflowId}
+                                </Badge>
+                              )}
+                              <span className="text-sm text-muted-foreground">
+                                {formatTimestamp(request.timestamp)}
                               </span>
-                            )}
-                          </div>
+                              {request.user_agent && (
+                                <span className="text-xs text-muted-foreground">
+                                  {request.user_agent.split(' ')[0]}
+                                </span>
+                              )}
+                            </div>
                           <div className="flex items-center gap-2">
                             <span className="text-xs text-muted-foreground">
                               {request.ip}
@@ -551,10 +654,11 @@ export default function WebhookMonitorPage() {
                         </div>
                       )}
                     </div>
-                  );
-                })}
-              </div>
-            )}
+                    );
+                  })}
+                </div>
+              );
+            })()}
           </CardContent>
         </Card>
       </div>
