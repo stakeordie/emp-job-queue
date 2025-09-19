@@ -22,6 +22,7 @@ import { get as _get, renderValue as _renderValue } from './JobForensics.types';
 function AttestationRecords({ jobId, workflowId }: { jobId: string; workflowId?: string }) {
   const [workerAttestation, setWorkerAttestation] = useState<any>(null);
   const [apiAttestation, setApiAttestation] = useState<any>(null);
+  const [notificationAttestations, setNotificationAttestations] = useState<any[]>([]);
   const [loading, setLoading] = useState(false);
   const [hasChecked, setHasChecked] = useState(false);
   const [webhookTriggerLoading, setWebhookTriggerLoading] = useState(false);
@@ -63,6 +64,22 @@ function AttestationRecords({ jobId, workflowId }: { jobId: string; workflowId?:
           setWorkerAttestation(workerData.success ? workerData.attestation : null);
         }
       }
+
+      // Load notification attestations for this workflow or job
+      const targetId = workflowId || jobId;
+      if (targetId) {
+        try {
+          const notifResponse = await fetch(`/api/notifications/attestations?workflow_id=${targetId}`);
+          if (notifResponse.ok) {
+            const notifData = await notifResponse.json();
+            if (notifData.success && notifData.attestations) {
+              setNotificationAttestations(notifData.attestations);
+            }
+          }
+        } catch (error) {
+          console.error('Failed to load notification attestations:', error);
+        }
+      }
     } catch (error) {
       console.error('Failed to load attestations:', error);
     } finally {
@@ -70,7 +87,7 @@ function AttestationRecords({ jobId, workflowId }: { jobId: string; workflowId?:
     }
   };
 
-  const hasAttestations = workerAttestation || apiAttestation;
+  const hasAttestations = workerAttestation || apiAttestation || notificationAttestations.length > 0;
 
   // Trigger workflow completion webhook manually
   const triggerWorkflowWebhook = async () => {
@@ -394,9 +411,72 @@ function AttestationRecords({ jobId, workflowId }: { jobId: string; workflowId?:
             </div>
           )}
 
+          {/* Notification Attestations */}
+          {notificationAttestations.length > 0 && (
+            <div>
+              <div className="text-sm font-medium text-purple-800 mb-2 flex items-center gap-1">
+                <MessageCircle className="h-4 w-4" />
+                User Notification Proof ({notificationAttestations.length})
+              </div>
+              <div className="space-y-3">
+                {notificationAttestations.map((attestation: any, idx: number) => (
+                  <div key={idx} className="bg-purple-50 border border-purple-200 rounded p-3">
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-3 text-xs">
+                      <div>
+                        <div className="font-medium text-muted-foreground">User ID</div>
+                        <code className="bg-white px-2 py-1 rounded border text-[10px]">{attestation.miniapp_user_id}</code>
+                      </div>
+                      <div>
+                        <div className="font-medium text-muted-foreground">Notification Method</div>
+                        <Badge variant="outline" className="text-xs">{attestation.notification_method || 'unknown'}</Badge>
+                      </div>
+                      <div>
+                        <div className="font-medium text-muted-foreground">Sent At</div>
+                        <div>{new Date(attestation.attested_at).toLocaleString()}</div>
+                      </div>
+                      <div>
+                        <div className="font-medium text-muted-foreground">Success</div>
+                        <Badge variant={attestation.success ? 'default' : 'destructive'} className="text-xs">
+                          {attestation.success ? 'Sent' : 'Failed'}
+                        </Badge>
+                      </div>
+                      {attestation.notification_type && (
+                        <div>
+                          <div className="font-medium text-muted-foreground">Type</div>
+                          <Badge variant="secondary" className="text-xs">{attestation.notification_type}</Badge>
+                        </div>
+                      )}
+                      {attestation.attestation_id && (
+                        <div>
+                          <div className="font-medium text-muted-foreground">Attestation ID</div>
+                          <code className="bg-white px-2 py-1 rounded border text-[10px]">{attestation.attestation_id}</code>
+                        </div>
+                      )}
+                    </div>
+                    {attestation.notification_content && (
+                      <div className="mt-2">
+                        <div className="text-xs font-medium text-muted-foreground">Content</div>
+                        <div className="text-xs bg-white p-2 rounded border mt-1">{attestation.notification_content}</div>
+                      </div>
+                    )}
+                    {attestation.error_message && (
+                      <div className="mt-2">
+                        <div className="text-xs font-medium text-red-600">Error</div>
+                        <div className="text-xs text-red-600 bg-red-50 p-2 rounded border mt-1">{attestation.error_message}</div>
+                      </div>
+                    )}
+                    <div className="mt-2 text-xs text-purple-700 italic">
+                      {attestation.attestation || 'Miniapp attests that it sent a notification to the user'}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
           <div className="text-xs text-yellow-700 bg-yellow-100 p-2 rounded border">
-            <strong>💡 Attestations:</strong> These records prove the worker completed the job and API determined workflow completion,
-            even if EmProps verification failed. Used for recovery of orphaned workflows.
+            <strong>💡 Attestations:</strong> These records prove the worker completed the job, API determined workflow completion,
+            and notifications were sent to users, even if EmProps verification failed. Used for recovery of orphaned workflows.
           </div>
         </div>
       )}

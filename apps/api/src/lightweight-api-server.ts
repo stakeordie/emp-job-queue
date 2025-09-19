@@ -851,6 +851,55 @@ export class LightweightAPIServer {
       }
     });
 
+    // Get notification attestations for a workflow or job
+    this.app.get('/api/notifications/attestations', async (req: Request, res: Response) => {
+      try {
+        const { workflow_id, job_id } = req.query;
+
+        if (!workflow_id && !job_id) {
+          return res.status(400).json({
+            success: false,
+            error: 'workflow_id or job_id is required',
+            timestamp: new Date().toISOString()
+          });
+        }
+
+        const targetId = workflow_id || job_id;
+        const attestations: any[] = [];
+
+        // Get notifications from the workflow-specific list
+        try {
+          const workflowNotifications = await this.redis.lrange(`workflow_notifications:${targetId}`, 0, -1);
+          for (const notificationStr of workflowNotifications) {
+            try {
+              const notification = JSON.parse(notificationStr);
+              attestations.push(notification);
+            } catch (parseError) {
+              logger.warn(`Failed to parse notification attestation: ${parseError}`);
+            }
+          }
+        } catch (redisError) {
+          logger.warn(`Failed to get workflow notifications for ${targetId}: ${redisError}`);
+        }
+
+        res.json({
+          success: true,
+          attestations,
+          count: attestations.length,
+          workflow_id: targetId,
+          timestamp: new Date().toISOString()
+        });
+
+      } catch (error) {
+        logger.error('Failed to get notification attestations:', error);
+        res.status(500).json({
+          success: false,
+          error: error instanceof Error ? error.message : 'Unknown error',
+          timestamp: new Date().toISOString()
+        });
+      }
+    });
+
     // Worker and job cleanup endpoint
     this.app.post('/api/cleanup', async (req: Request, res: Response) => {
       try {
