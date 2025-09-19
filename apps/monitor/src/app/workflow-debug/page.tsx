@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, Suspense } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -16,7 +16,7 @@ interface QueryResult {
   timing: number;
 }
 
-export default function WorkflowDebugPage() {
+function WorkflowDebugContent() {
   const searchParams = useSearchParams();
   const [workflowId, setWorkflowId] = useState('');
   const [loading, setLoading] = useState(false);
@@ -176,5 +176,18 @@ export default function WorkflowDebugPage() {
         </div>
       )}
     </div>
+  );
+}
+
+export default function WorkflowDebugPage() {
+  return (
+    <Suspense fallback={<div className="container mx-auto p-6">
+      <div className="mb-6">
+        <h1 className="text-3xl font-bold mb-2">Workflow Debugger</h1>
+        <p className="text-gray-600">Loading...</p>
+      </div>
+    </div>}>
+      <WorkflowDebugContent />
+    </Suspense>
   );
 }
