@@ -104,7 +104,7 @@ export async function GET(request: NextRequest) {
     const jobIds = empropsJobs.map(job => job.id);
 
     // Fetch miniapp generations linked to these jobs (these are the workflow requests from the miniapp)
-    const miniappGenerations = await prisma.miniapp_generation.findMany({
+    const miniappGenerations = jobIds.length > 0 ? await prisma.miniapp_generation.findMany({
       where: {
         job_id: { in: jobIds }
       },
@@ -121,7 +121,7 @@ export async function GET(request: NextRequest) {
         }
       },
       orderBy: { created_at: 'desc' }
-    });
+    }) : [];
 
     // Fetch Redis workflow data (EmProps job.id maps to Redis job.workflow_id)
     let redisWorkflows: any[] = [];
