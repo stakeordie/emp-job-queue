@@ -752,6 +752,11 @@ export class EnvironmentBuilder {
       return stringValue; // Don't quote variable substitutions
     }
 
+    // Special case: Don't quote DATABASE_URL or other connection strings that start with protocol://
+    if (/^[a-z]+:\/\//.test(stringValue)) {
+      return stringValue;
+    }
+
     // If value contains spaces, special characters, or commas, quote it
     if (/[\s,;&|<>(){}[\]$`"'\\]/.test(stringValue)) {
       return `'${stringValue}'`;
