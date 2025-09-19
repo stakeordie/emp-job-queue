@@ -53,19 +53,24 @@ export async function GET(request: NextRequest) {
       const searchTerm = String(search.trim());
       const searchPattern = `%${searchTerm}%`;
 
-      // Use raw SQL to handle UUID casting properly
+      // Use raw SQL with joins to search across job and user data
       empropsJobs = await prisma.$queryRaw`
-        SELECT id, name, description, status, created_at, updated_at, user_id, job_type, priority, progress, data, error_message, started_at, completed_at
-        FROM job
+        SELECT t1.id, t1.name, t1.description, t1.status, t1.created_at, t1.updated_at, t1.user_id, t1.job_type, t1.priority, t1.progress, t1.data, t1.error_message,
+               t1.started_at, t1.completed_at
+        FROM job t1
+        LEFT JOIN miniapp_generation t2 ON t1.id::text = t2.job_id
+        LEFT JOIN miniapp_user t3 ON t2.user_id = t3.id
         WHERE (
-          id::text = ${searchTerm} OR
-          user_id::text = ${searchTerm} OR
-          name ILIKE ${searchPattern} OR
-          description ILIKE ${searchPattern} OR
-          job_type ILIKE ${searchPattern} OR
-          status = ${searchTerm}
+          t1.id::text = ${searchTerm} OR
+          t1.user_id::text = ${searchTerm} OR
+          t1.name ILIKE ${searchPattern} OR
+          t1.description ILIKE ${searchPattern} OR
+          t1.job_type ILIKE ${searchPattern} OR
+          t1.status = ${searchTerm} OR
+          t3.farcaster_username ILIKE ${searchPattern} OR
+          t3.farcaster_id ILIKE ${searchPattern}
         )
-        ORDER BY created_at DESC
+        ORDER BY t1.created_at DESC
         LIMIT ${limit}
         OFFSET ${offset}
       `;
