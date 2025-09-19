@@ -24,7 +24,15 @@ export function JobDetailsModal({ job, workers, isOpen, onClose }: JobDetailsMod
     const workerServices = new Set(capabilities.services || []);
     // Check both job_type and service_required for compatibility
     const jobServiceType = (job as unknown as Record<string, unknown>).service_required || job.job_type;
-    if (!workerServices.has(jobServiceType as string)) {
+
+    // More flexible service matching - check for exact match or partial match
+    const hasMatchingService = workerServices.has(jobServiceType as string) ||
+      Array.from(workerServices).some(service =>
+        service.includes(jobServiceType as string) ||
+        (jobServiceType as string).includes(service)
+      );
+
+    if (!hasMatchingService) {
       return false;
     }
     
