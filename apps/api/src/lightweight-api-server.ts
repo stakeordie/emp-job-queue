@@ -21,6 +21,7 @@ import {
   JobStatusChangedEvent,
   JobProgressEvent,
   smartTruncateObject,
+  sanitizeBase64Data,
   JobCompletedEvent,
   JobFailedEvent,
   WorkerStatusChangedEvent,
@@ -4356,10 +4357,12 @@ export class LightweightAPIServer {
       };
 
       // Store API workflow attestation with 30-day TTL for audit trail
+      // Remove base64 data to avoid storing massive image data in Redis
+      const sanitizedAttestationData = sanitizeBase64Data(attestationData);
       await this.redis.setex(
         `api:workflow:completion:${workflowId}`,
         30 * 24 * 60 * 60, // 30 days
-        JSON.stringify(attestationData)
+        JSON.stringify(sanitizedAttestationData)
       );
 
       logger.info(`🔐 API created workflow completion attestation for ${workflowId}`, {

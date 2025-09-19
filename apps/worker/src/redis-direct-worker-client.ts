@@ -10,7 +10,7 @@ import {
   MatchingResult,
   RedisJobData,
   logger,
-  smartTruncateObject,
+  sanitizeBase64Data,
 } from '@emp/core';
 
 export class RedisDirectWorkerClient {
@@ -1217,17 +1217,7 @@ export class RedisDirectWorkerClient {
    * This prevents storing customer asset data in attestations
    */
   private createSanitizedResultForAttestation(result: any): any {
-    if (!result || typeof result !== 'object') {
-      return result;
-    }
-
-    // Use the improved smart truncation that handles base64 images and raw output
-    return smartTruncateObject(result, 8000, {
-      maxTotalSize: 8000,
-      maxValueSize: 100,
-      preserveStructure: true,
-      truncateMarker: '...[TRUNCATED]'
-    });
+    return sanitizeBase64Data(result);
   }
 
   /**

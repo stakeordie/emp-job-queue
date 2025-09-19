@@ -319,20 +319,53 @@ export class OpenAIResponsesConnector extends AsyncRESTConnector {
     const result = await super.processJob(jobData, progressCallback);
     
     if (result.success && result.data) {
-      // Save response to cloud storage if completed successfully
+      // Save assets to cloud storage and replace base64 with URLs
       try {
-        const textContent = (result.data as any).text_content;
+        const resultData = result.data as any;
+
+        // Save text content if present
+        const textContent = resultData.text_content;
         if (textContent) {
           const savedAsset = await this.saveResponseToStorage(textContent, jobData);
-          
-          // Add saved asset info to result
           if (savedAsset) {
-            (result.data as any).saved_asset = savedAsset;
+            resultData.saved_asset = savedAsset;
             logger.info(`OpenAI response saved to cloud storage: ${savedAsset.fileName}`);
           }
         }
+
+        // Save image_base64 and replace with URL
+        if (resultData.image_base64) {
+          try {
+            const savedImage = await AssetSaver.saveAssetToCloud(
+              resultData.image_base64,
+              jobData.id,
+              jobData,
+              'png'
+            );
+            if (savedImage) {
+              // Replace base64 with URL
+              resultData.image_url = savedImage.fileUrl;
+              delete resultData.image_base64; // Remove base64 data
+              logger.info(`Image base64 saved to cloud storage and replaced with URL: ${savedImage.fileUrl}`);
+            }
+          } catch (imageError) {
+            logger.error(`Failed to save image base64 for job ${jobData.id}: ${imageError.message}`);
+            // Keep base64 if storage fails, but log the issue
+          }
+        }
+
+        // Clean raw_output of base64 data but keep structure
+        if (resultData.raw_output) {
+          // Replace base64 patterns in raw_output with placeholder
+          if (typeof resultData.raw_output === 'string') {
+            resultData.raw_output = resultData.raw_output.replace(/[A-Za-z0-9+/]{100,}={0,2}/g, '[BASE64_DATA_REMOVED]');
+          } else if (typeof resultData.raw_output === 'object') {
+            resultData.raw_output = JSON.parse(JSON.stringify(resultData.raw_output).replace(/[A-Za-z0-9+/]{100,}={0,2}/g, '[BASE64_DATA_REMOVED]'));
+          }
+        }
+
       } catch (error) {
-        logger.error(`Failed to save OpenAI response to storage for job ${jobData.id}: ${error.message}`);
+        logger.error(`Failed to process assets for job ${jobData.id}: ${error.message}`);
         // Don't fail the job if storage fails - just log the error
       }
     }
