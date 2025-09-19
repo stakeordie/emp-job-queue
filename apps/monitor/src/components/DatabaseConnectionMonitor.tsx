@@ -86,6 +86,7 @@ export default function DatabaseConnectionMonitor() {
     const fetchData = async () => {
       try {
         const apiBaseUrl = process.env.NEXT_PUBLIC_API_URL;
+        console.log('DatabaseConnectionMonitor API URL:', apiBaseUrl);
 
         const postgresResponse = await fetch(`${apiBaseUrl}/api/system/postgres-connections`);
         const postgresResult = await postgresResponse.json();
