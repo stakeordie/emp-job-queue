@@ -975,6 +975,35 @@ export class LightweightAPIServer {
           }
         }
 
+        // Additionally search for worker attestations that contain the target workflow_id in their data
+        try {
+          const workerCompletionKeys = await this.redis.keys('worker:completion:*');
+          for (const key of workerCompletionKeys) {
+            try {
+              const workerCompletion = await this.redis.get(key);
+              if (workerCompletion) {
+                const parsed = JSON.parse(workerCompletion);
+                // Check if this worker attestation contains our target workflow_id
+                if (parsed.workflow_id === targetId) {
+                  // Only add if we haven't already found this attestation
+                  const alreadyExists = allAttestations.some(att =>
+                    att.type === 'worker' &&
+                    att.data.step_id === parsed.step_id &&
+                    att.data.timestamp === parsed.timestamp
+                  );
+                  if (!alreadyExists) {
+                    addAttestation('worker', parsed);
+                  }
+                }
+              }
+            } catch (parseError) {
+              logger.warn(`Failed to parse worker completion from ${key}: ${parseError}`);
+            }
+          }
+        } catch (redisError) {
+          logger.warn(`Failed to search worker completions by workflow_id: ${redisError}`);
+        }
+
         // Sort all attestations by timestamp and organize by type
         allAttestations.sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime());
 
