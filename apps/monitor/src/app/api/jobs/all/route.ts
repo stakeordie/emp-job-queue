@@ -7,7 +7,8 @@ export async function GET(request: NextRequest) {
   const url = new URL(request.url);
   const limit = parseInt(url.searchParams.get('limit') || '20');
   const offset = parseInt(url.searchParams.get('offset') || '0');
-  const search = url.searchParams.get('search');
+  const searchParam = url.searchParams.get('search');
+  const search = searchParam ? String(searchParam) : null;
 
   try {
     // Check if DATABASE_URL is configured
@@ -48,46 +49,16 @@ export async function GET(request: NextRequest) {
 
     if (search && search.trim()) {
       const searchTerm = String(search.trim());
-      console.log('Search parameter type:', typeof search, 'value:', search);
-      console.log('Search term after String():', typeof searchTerm, 'value:', searchTerm);
 
-      // First, find job IDs from miniapp_generation that match farcaster usernames
-      try {
-        const matchingGenerations = await prisma.miniapp_generation.findMany({
-          where: {
-            miniapp_user: {
-              OR: [
-                { farcaster_username: { contains: searchTerm, mode: 'insensitive' } },
-                { wallet_address: { contains: searchTerm, mode: 'insensitive' } }
-              ]
-            }
-          },
-          select: { job_id: true }
-        });
-
-        searchJobIds = matchingGenerations
-          .map(gen => gen.job_id)
-          .filter(Boolean) as string[];
-      } catch (error) {
-        console.warn('Failed to search miniapp_generation:', error);
-      }
-
-      // Build the main search condition using PostgreSQL case-insensitive contains
-      const searchConditions = [
-        { id: { contains: searchTerm, mode: 'insensitive' } },
-        { name: { contains: searchTerm, mode: 'insensitive' } },
-        { description: { contains: searchTerm, mode: 'insensitive' } },
-        { job_type: { contains: searchTerm, mode: 'insensitive' } },
-        { status: { contains: searchTerm, mode: 'insensitive' } },
-        { user_id: { contains: searchTerm, mode: 'insensitive' } }
-      ];
-
-      // Add job IDs from farcaster username search if any found
-      if (searchJobIds.length > 0) {
-        searchConditions.push({ id: { in: searchJobIds } });
-      }
-
-      whereCondition = { OR: searchConditions };
+      // Simple OR search across key fields - just make it work
+      whereCondition = {
+        OR: [
+          { id: { startsWith: searchTerm } },
+          { name: { startsWith: searchTerm } },
+          { user_id: { startsWith: searchTerm } },
+          { status: { equals: searchTerm } }
+        ]
+      };
     }
 
     // Fetch jobs from EmProps database (user job requests)
