@@ -88,11 +88,6 @@ export default function LoginPage() {
               {isLoading ? "Signing in..." : "Sign In"}
             </Button>
           </form>
-          <div className="mt-4 text-xs text-center text-gray-500">
-            <p>Demo accounts:</p>
-            <p>sandy@emprops.ai / password123</p>
-            <p>admin@emprops.ai / ***REMOVED***</p>
-          </div>
         </CardContent>
       </Card>
     </div>
