@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
-import { LogOut, User, BarChart3, Database, Search, Target } from "lucide-react";
+import { LogOut, User, BarChart3, Database, Search, Target, Home, Webhook, Bug } from "lucide-react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 
@@ -42,6 +42,12 @@ export function AppHeader() {
       <nav className="flex items-center gap-2">
         <Link href="/">
           <Button variant="outline" size="sm" className="flex items-center gap-2">
+            <Home className="h-3 w-3" />
+            Home
+          </Button>
+        </Link>
+        <Link href="/dashboard">
+          <Button variant="outline" size="sm" className="flex items-center gap-2">
             <BarChart3 className="h-3 w-3" />
             Dashboard
           </Button>
@@ -56,6 +62,18 @@ export function AppHeader() {
           <Button variant="outline" size="sm" className="flex items-center gap-2">
             <Search className="h-3 w-3" />
             Job Forensics
+          </Button>
+        </Link>
+        <Link href="/webhook-test">
+          <Button variant="outline" size="sm" className="flex items-center gap-2">
+            <Webhook className="h-3 w-3" />
+            Webhooks
+          </Button>
+        </Link>
+        <Link href="/workflow-debug">
+          <Button variant="outline" size="sm" className="flex items-center gap-2">
+            <Bug className="h-3 w-3" />
+            Debug
           </Button>
         </Link>
         <Link href="/northstar">

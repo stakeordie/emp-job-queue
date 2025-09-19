@@ -11,10 +11,9 @@ import {
   SelectTrigger, 
   SelectValue 
 } from "@/components/ui/select"
-import { Play, Square, X, Target, RefreshCw, Webhook, Home, Bug, BarChart3, Database, Search } from "lucide-react"
+import { Play, Square, X, RefreshCw } from "lucide-react"
 import { useMonitorStore } from "@/store"
 import { useState, useEffect } from "react"
-import Link from "next/link"
 
 // Environment presets - load from environment variable
 const getConnectionPresets = () => {
@@ -157,27 +156,6 @@ export function ConnectionHeader() {
                 </Badge>
               )}
             </div>
-          </div>
-          
-          <div className="flex items-center gap-3">
-            <Link href="/">
-              <Button variant="outline" size="sm" className="flex items-center gap-2">
-                <Home className="h-3 w-3" />
-                Home
-              </Button>
-            </Link>
-            <Link href="/webhook-test">
-              <Button variant="outline" size="sm" className="flex items-center gap-2">
-                <Webhook className="h-3 w-3" />
-                Webhooks
-              </Button>
-            </Link>
-            <Link href="/workflow-debug">
-              <Button variant="outline" size="sm" className="flex items-center gap-2">
-                <Bug className="h-3 w-3" />
-                Debug
-              </Button>
-            </Link>
           </div>
         </div>
 
