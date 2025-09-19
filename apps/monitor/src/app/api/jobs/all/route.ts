@@ -50,13 +50,13 @@ export async function GET(request: NextRequest) {
     if (search && search.trim()) {
       const searchTerm = String(search.trim());
 
-      // Simple OR search across key fields - just make it work
+      // Use raw SQL for PostgreSQL compatibility
       whereCondition = {
         OR: [
-          { id: { startsWith: searchTerm } },
-          { name: { startsWith: searchTerm } },
-          { user_id: { startsWith: searchTerm } },
-          { status: { equals: searchTerm } }
+          { id: { contains: searchTerm } },
+          { name: { contains: searchTerm } },
+          { user_id: { contains: searchTerm } },
+          { status: searchTerm }
         ]
       };
     }
