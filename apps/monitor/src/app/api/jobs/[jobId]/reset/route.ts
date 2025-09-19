@@ -16,21 +16,21 @@ export async function POST(
       );
     }
 
-    // Reset the job status directly in the database
+    // Reset the job status to failed so it can be retried by the job processing system
     const updatedJob = await prisma.job.update({
       where: { id: jobId },
       data: {
-        status: 'pending',
+        status: 'failed',
         started_at: null,
         completed_at: null,
-        error_message: null,
+        error_message: 'Job manually reset for retry',
         progress: 0
       }
     });
 
     return NextResponse.json({
       success: true,
-      message: 'Job has been reset to pending state and can now be retried.',
+      message: 'Job has been reset to failed state and can now be retried.',
       data: updatedJob
     });
 
