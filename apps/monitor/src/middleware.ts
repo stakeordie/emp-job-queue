@@ -13,7 +13,7 @@ export function middleware(request: NextRequest) {
 
   // Check for bypass auth query parameter
   const bypassAuth = searchParams.get('auth')
-  const expectedBypass = process.env.AUTH_BYPASS || process.env.MONITOR_AUTH_BYPASS_TOKEN
+  const expectedBypass = process.env.AUTH_BYPASS
   if (expectedBypass && bypassAuth === expectedBypass) {
     return NextResponse.next()
   }
