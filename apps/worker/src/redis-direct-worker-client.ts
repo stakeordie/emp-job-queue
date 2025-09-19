@@ -10,6 +10,7 @@ import {
   MatchingResult,
   RedisJobData,
   logger,
+  smartTruncateObject,
 } from '@emp/core';
 
 export class RedisDirectWorkerClient {
@@ -1220,41 +1221,13 @@ export class RedisDirectWorkerClient {
       return result;
     }
 
-    const sanitized = { ...result };
-
-    // If this is a JobResult with data, sanitize the data
-    if (sanitized.data && typeof sanitized.data === 'object') {
-      const sanitizedData = { ...sanitized.data };
-
-      // Remove base64 image data but keep URLs and metadata
-      if (sanitizedData.image_base64) {
-        delete sanitizedData.image_base64;
-        // Log that we removed base64 for audit trail
-        sanitizedData._attestation_note = 'base64 image data removed for security';
-      }
-
-      // Remove any other large binary data fields
-      if (sanitizedData.raw_output && typeof sanitizedData.raw_output === 'object') {
-        // Keep raw_output structure but remove large content
-        sanitizedData.raw_output = Array.isArray(sanitizedData.raw_output)
-          ? sanitizedData.raw_output.map((item: any) => {
-              if (item && typeof item === 'object') {
-                const sanitizedItem = { ...item };
-                // Remove result field if it contains base64
-                if (sanitizedItem.result && typeof sanitizedItem.result === 'string' && sanitizedItem.result.length > 1000) {
-                  sanitizedItem.result = `[LARGE_DATA_REMOVED_${sanitizedItem.result.length}_CHARS]`;
-                }
-                return sanitizedItem;
-              }
-              return item;
-            })
-          : sanitizedData.raw_output;
-      }
-
-      sanitized.data = sanitizedData;
-    }
-
-    return sanitized;
+    // Use the improved smart truncation that handles base64 images and raw output
+    return smartTruncateObject(result, 8000, {
+      maxTotalSize: 8000,
+      maxValueSize: 100,
+      preserveStructure: true,
+      truncateMarker: '...[TRUNCATED]'
+    });
   }
 
   /**
