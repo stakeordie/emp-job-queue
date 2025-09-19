@@ -743,6 +743,114 @@ export class LightweightAPIServer {
       }
     });
 
+    // User notification tracking endpoint
+    this.app.post('/api/user_notified', async (req: Request, res: Response) => {
+      try {
+        // Check authentication
+        const authToken = req.headers.authorization?.replace('Bearer ', '') || req.headers['auth-token'] as string;
+        const expectedToken = process.env.AUTH_TOKEN;
+
+        if (!expectedToken || authToken !== expectedToken) {
+          return res.status(401).json({
+            success: false,
+            error: 'Unauthorized - invalid or missing AUTH_TOKEN',
+            timestamp: new Date().toISOString()
+          });
+        }
+
+        const {
+          job_id,
+          workflow_id,
+          miniapp_user_id,
+          notification_type,
+          notification_method,
+          notification_content,
+          success = true,
+          error_message = null,
+          metadata = {}
+        } = req.body;
+
+        // Validate required fields - use workflow_id as primary, job_id as fallback
+        const workflowId = workflow_id || job_id;
+        if (!workflowId) {
+          return res.status(400).json({
+            success: false,
+            error: 'workflow_id (or job_id) is required',
+            timestamp: new Date().toISOString()
+          });
+        }
+
+        if (!miniapp_user_id) {
+          return res.status(400).json({
+            success: false,
+            error: 'miniapp_user_id is required',
+            timestamp: new Date().toISOString()
+          });
+        }
+
+        // Create notification attestation record
+        const attestationRecord = {
+          workflow_id: workflowId,
+          job_id: job_id || null,
+          miniapp_user_id,
+          notification_type: notification_type || 'notification',
+          notification_method: notification_method || 'unknown',
+          notification_content: notification_content || null,
+          success,
+          error_message,
+          metadata,
+          attestation: 'miniapp attests that it sent a notification to the user',
+          attested_by: 'miniapp',
+          attested_at: new Date().toISOString(),
+          timestamp: new Date().toISOString()
+        };
+
+        // Store attestation in Redis with multiple keys for easy lookup
+        const attestationId = uuidv4();
+        const primaryKey = `user_notification_attestation:${attestationId}`;
+
+        // Store primary record with 30-day TTL
+        await this.redisService.redis.setex(primaryKey, 86400 * 30, JSON.stringify(attestationRecord));
+
+        // Store by workflow for quick lookup
+        const workflowAttestationKey = `workflow_notifications:${workflowId}`;
+        await this.redisService.redis.lpush(workflowAttestationKey, JSON.stringify({
+          ...attestationRecord,
+          attestation_id: attestationId
+        }));
+        await this.redisService.redis.expire(workflowAttestationKey, 86400 * 30);
+
+        // Store by user for user-specific lookups
+        const userAttestationKey = `user_notifications:${miniapp_user_id}`;
+        await this.redisService.redis.lpush(userAttestationKey, JSON.stringify({
+          ...attestationRecord,
+          attestation_id: attestationId
+        }));
+        await this.redisService.redis.expire(userAttestationKey, 86400 * 30);
+
+        // Log the attestation
+        logger.info(`✅ MINIAPP ATTESTATION: Miniapp attests notification sent to user ${miniapp_user_id} for workflow ${workflowId} via ${notification_method}, success: ${success}`);
+
+        res.json({
+          success: true,
+          message: 'Miniapp notification attestation recorded successfully',
+          attestation_id: attestationId,
+          workflow_id: workflowId,
+          miniapp_user_id,
+          attested_at: attestationRecord.attested_at,
+          timestamp: new Date().toISOString()
+        });
+
+      } catch (error) {
+        logger.error('Failed to track user notification:', error);
+        res.status(500).json({
+          success: false,
+          error: error instanceof Error ? error.message : 'Unknown error',
+          timestamp: new Date().toISOString()
+        });
+      }
+    });
+
     // Worker and job cleanup endpoint
     this.app.post('/api/cleanup', async (req: Request, res: Response) => {
       try {
@@ -3968,8 +4076,9 @@ export class LightweightAPIServer {
       logger.info('🌐 HTTP endpoints:');
       logger.info('  POST /api/jobs - Submit job');
       logger.info('  GET /api/jobs/:id - Get job status');
-      logger.info('  WS /ws/client - WebSocket for job progress streaming');
       logger.info('  GET /api/jobs - List jobs');
+      logger.info('  POST /api/user_notified - Track user notifications');
+      logger.info('  WS /ws/client - WebSocket for job progress streaming');
       logger.info('  GET /health - Health check');
     } catch (error) {
       logger.error('Failed to start Lightweight API Server:', error);
