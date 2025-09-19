@@ -1178,7 +1178,7 @@ export default function JobForensics() {
 
                                         if (data.success) {
                                           setForensicsData(data);
-                                          setExpandedJobId(null); // Close expanded view
+                                          // Keep expanded view open to show main card info alongside forensics
                                         } else {
                                           setError(data.error || 'Job not found');
                                           setForensicsData(null);
