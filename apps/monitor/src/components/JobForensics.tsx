@@ -6,7 +6,7 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { AlertTriangle, Database, RefreshCw, Search, Info, Image as ImageIcon, Download, ExternalLink, User, Wallet, MessageCircle, RotateCcw, Play, CheckCircle, XCircle, Clock, ArrowRight, Zap, FileText, Webhook } from 'lucide-react';
+import { AlertTriangle, Database, RefreshCw, Search, Info, Image as ImageIcon, Download, ExternalLink, User, Wallet, MessageCircle, RotateCcw, Play, CheckCircle, XCircle, Clock, ArrowRight, Zap, FileText, Webhook, Square } from 'lucide-react';
 import SmartImage from './SmartImage';
 import type {
   JobForensicsData,
@@ -417,6 +417,7 @@ export default function JobForensics() {
   const [hasMore, setHasMore] = useState(false);
   const [expandedJobId, setExpandedJobId] = useState<string | null>(null);
   const [retryingJobIds, setRetryingJobIds] = useState<Set<string>>(new Set());
+  const [resettingJobIds, setResettingJobIds] = useState<Set<string>>(new Set());
   const jobsPerPage = 20;
 
 
@@ -510,6 +511,53 @@ export default function JobForensics() {
       alert('Failed to retry job. Please check your connection and try again.');
     } finally {
       setRetryingJobIds(prev => {
+        const newSet = new Set(prev);
+        newSet.delete(jobId);
+        return newSet;
+      });
+    }
+  };
+
+  const resetJob = async (jobId: string) => {
+    setResettingJobIds(prev => new Set([...prev, jobId]));
+    try {
+      const job = allJobs.find(j => String(j.id) === jobId);
+      if (!job) {
+        alert('Job not found in current list');
+        return;
+      }
+
+      // Call our reset API route which will reset job to pending state
+      const response = await fetch(`/api/jobs/${jobId}/reset`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+      });
+
+      if (response.ok) {
+        const data = await response.json();
+        // Refresh the jobs list to show the updated job status
+        await loadJobs(currentPage, false, searchQuery);
+        alert(`Job reset successfully! ${data.message || 'Job has been reset to pending state and can now be retried.'}`);
+      } else {
+        const errorData = await response.json().catch(() => ({}));
+
+        if (response.status === 404) {
+          alert('Job not found in EmProps API');
+        } else if (response.status === 400) {
+          alert(`Bad request: ${errorData.error || 'Invalid job ID or job cannot be reset'}`);
+        } else if (response.status === 500) {
+          alert(`Server error: ${errorData.error || 'Internal server error during reset'}`);
+        } else {
+          alert(`Failed to reset job (${response.status}): ${errorData.error || 'Unknown error'}`);
+        }
+      }
+    } catch (error) {
+      console.error('Error resetting job:', error);
+      alert('Failed to reset job. Please check your connection and try again.');
+    } finally {
+      setResettingJobIds(prev => {
         const newSet = new Set(prev);
         newSet.delete(jobId);
         return newSet;
@@ -746,6 +794,17 @@ export default function JobForensics() {
                                 >
                                   <RotateCcw className={`h-3 w-3 mr-1 ${retryingJobIds.has(String(job.id)) ? 'animate-spin' : ''}`} />
                                   {retryingJobIds.has(String(job.id)) ? 'Retrying...' : 'Retry Job'}
+                                </Button>
+                                <Button
+                                  size="sm"
+                                  variant="outline"
+                                  onClick={() => resetJob(String(job.id))}
+                                  disabled={resettingJobIds.has(String(job.id))}
+                                  className="ml-2"
+                                  title="Reset job to pending state (stops phantom processing)"
+                                >
+                                  <Square className={`h-3 w-3 mr-1 ${resettingJobIds.has(String(job.id)) ? 'animate-pulse' : ''}`} />
+                                  {resettingJobIds.has(String(job.id)) ? 'Resetting...' : 'Reset Job'}
                                 </Button>
                               </div>
                             </div>
