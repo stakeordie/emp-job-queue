@@ -72,18 +72,32 @@ function isReadableText(value: string): boolean {
  */
 function truncateValue(value: any, options: TruncationOptions): any {
   if (typeof value === 'string') {
+    // CRITICAL FIX: Detect and aggressively truncate base64 images
+    if (isBase64Like(value) && value.length > 1000) {
+      const start = value.substring(0, 50);
+      const end = value.substring(value.length - 20);
+      return `${start}${options.truncateMarker}BASE64_IMAGE(${value.length} chars)...${end}`;
+    }
+
+    // Detect other binary-like data and truncate aggressively
+    if (isBinaryLike(value) && value.length > 1000) {
+      const start = value.substring(0, 50);
+      const end = value.substring(value.length - 20);
+      return `${start}${options.truncateMarker}BINARY_DATA(${value.length} chars)...${end}`;
+    }
+
     // Check if string contains any "word" (continuous chars without spaces or backslashes) > 25 chars
     // Split on whitespace AND backslashes since backslashes should be treated as word separators
     const words = value.split(/[\s\\]+/);
     let hasLongWord = false;
-    
+
     for (const word of words) {
       if (word.length > 25) {
         hasLongWord = true;
         break;
       }
     }
-    
+
     // If it has long words, truncate those words
     if (hasLongWord) {
       const processedWords = words.map(word => {
@@ -96,11 +110,11 @@ function truncateValue(value: any, options: TruncationOptions): any {
       });
       return processedWords.join(' ');
     }
-    
+
     // All other strings (normal readable text) - preserve completely
     return value;
   }
-  
+
   return value;
 }
 
@@ -154,7 +168,17 @@ function truncateObject(obj: any, options: TruncationOptions, currentSize: { val
       for (let i = 0; i < entries.length; i++) {
         const [key, value] = entries[i];
         try {
-          result[key] = truncateObject(value, options, currentSize, visited);
+          // CRITICAL FIX: Aggressively truncate known base64 image fields
+          const isImageField = /^(image_base64|base64_image|img_data|image_data|photo_base64)$/i.test(key);
+          const isResultField = key === 'result' && typeof value === 'string' && value.length > 10000;
+
+          if ((isImageField || isResultField) && typeof value === 'string' && value.length > 1000) {
+            const start = value.substring(0, 50);
+            const end = value.substring(value.length - 20);
+            result[key] = `${start}${options.truncateMarker}${isImageField ? 'BASE64_IMAGE' : 'LARGE_RESULT'}(${value.length} chars)...${end}`;
+          } else {
+            result[key] = truncateObject(value, options, currentSize, visited);
+          }
         } catch (error) {
           // If we can't process a property, just mark it as non-serializable
           result[key] = '[Non-serializable]';
