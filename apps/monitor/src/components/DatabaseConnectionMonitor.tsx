@@ -380,7 +380,7 @@ export default function DatabaseConnectionMonitor() {
             return (
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                 {Object.entries(groupedConnections).map(([appName, connections]) => {
-                  const totalConnections = connections.reduce((sum, conn) => sum + conn.connections, 0);
+                  const totalConnections = connections.reduce((sum, conn) => sum + Number(conn.connections), 0);
                   const uniqueUsers = [...new Set(connections.map(conn => conn.usename))];
                   const uniqueAddresses = [...new Set(connections.map(conn => conn.client_addr))];
                   const allStates = connections.map(conn => conn.states).filter(Boolean);
