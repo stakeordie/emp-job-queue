@@ -810,23 +810,23 @@ export class LightweightAPIServer {
         const primaryKey = `user_notification_attestation:${attestationId}`;
 
         // Store primary record with 7-day TTL
-        await this.redisService.redis.setex(primaryKey, 86400 * 7, JSON.stringify(attestationRecord));
+        await this.redis.setex(primaryKey, 86400 * 7, JSON.stringify(attestationRecord));
 
         // Store by workflow for quick lookup
         const workflowAttestationKey = `workflow_notifications:${workflowId}`;
-        await this.redisService.redis.lpush(workflowAttestationKey, JSON.stringify({
+        await this.redis.lpush(workflowAttestationKey, JSON.stringify({
           ...attestationRecord,
           attestation_id: attestationId
         }));
-        await this.redisService.redis.expire(workflowAttestationKey, 86400 * 7);
+        await this.redis.expire(workflowAttestationKey, 86400 * 7);
 
         // Store by user for user-specific lookups
         const userAttestationKey = `user_notifications:${miniapp_user_id}`;
-        await this.redisService.redis.lpush(userAttestationKey, JSON.stringify({
+        await this.redis.lpush(userAttestationKey, JSON.stringify({
           ...attestationRecord,
           attestation_id: attestationId
         }));
-        await this.redisService.redis.expire(userAttestationKey, 86400 * 7);
+        await this.redis.expire(userAttestationKey, 86400 * 7);
 
         // Log the attestation
         logger.info(`✅ MINIAPP ATTESTATION: Miniapp attests notification sent to user ${miniapp_user_id} for workflow ${workflowId} via ${notification_method}, success: ${success}`);
