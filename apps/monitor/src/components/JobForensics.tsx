@@ -1635,30 +1635,30 @@ export default function JobForensics() {
 
                     {/* Step 6: Job Completed Miniapp (miniapp_generation table) */}
                     <div className={`flex items-center gap-4 p-4 border rounded-lg ${
-                      (forensicsData.job.payload as any)?._flat_files?.length > 0 ? 'border-teal-200 bg-teal-50' : 'border-gray-200 bg-gray-50'
+                      generation ? 'border-teal-200 bg-teal-50' : 'border-gray-200 bg-gray-50'
                     }`}>
                       <div className="flex-shrink-0">
                         <div className={`w-8 h-8 rounded-full flex items-center justify-center text-sm font-semibold ${
-                          (forensicsData.job.payload as any)?._flat_files?.length > 0 ? 'bg-teal-600 text-white' : 'bg-gray-400 text-white'
+                          generation ? 'bg-teal-600 text-white' : 'bg-gray-400 text-white'
                         }`}>6</div>
                       </div>
                       <div className="flex-1">
-                        <div className={`font-medium ${(forensicsData.job.payload as any)?._flat_files?.length > 0 ? 'text-teal-800' : 'text-gray-600'}`}>
+                        <div className={`font-medium ${generation ? 'text-teal-800' : 'text-gray-600'}`}>
                           Miniapp Completion
                         </div>
-                        <div className={`text-sm ${(forensicsData.job.payload as any)?._flat_files?.length > 0 ? 'text-teal-600' : 'text-gray-500'}`}>
-                          {(forensicsData.job.payload as any)?._flat_files?.length > 0
-                            ? `Webhook received, ${(forensicsData.job.payload as any)._flat_files.length} generated files`
+                        <div className={`text-sm ${generation ? 'text-teal-600' : 'text-gray-500'}`}>
+                          {generation
+                            ? `Miniapp webhook received, generation record created`
                             : 'Miniapp webhook completion pending'}
                         </div>
-                        {(forensicsData.job.payload as any)?._flat_files?.length > 0 && (
+                        {generation && (
                           <div className="text-xs text-teal-500 mt-1">
-                            <Webhook className="h-3 w-3 inline mr-1" />
-                            Files available in miniapp_generation table
+                            <CheckCircle className="h-3 w-3 inline mr-1" />
+                            Status: {generation.status} | ID: {generation.id.substring(0, 8)}...
                           </div>
                         )}
                       </div>
-                      {(forensicsData.job.payload as any)?._flat_files?.length > 0 ? <CheckCircle className="h-5 w-5 text-teal-600" /> : <Clock className="h-5 w-5 text-gray-400" />}
+                      {generation ? <CheckCircle className="h-5 w-5 text-teal-600" /> : <Clock className="h-5 w-5 text-gray-400" />}
                     </div>
                   </div>
 
@@ -1682,15 +1682,15 @@ export default function JobForensics() {
                       </div>
                       <div className="text-center p-3 bg-teal-50 rounded-lg border border-teal-200">
                         <div className="text-lg font-semibold text-teal-600">
-                          {(forensicsData.job.payload as any)?._flat_files?.length > 0 ? '✓' : '○'}
+                          {generation ? '✓' : '○'}
                         </div>
                         <div className="text-xs text-teal-600 font-medium">Miniapp Table</div>
                       </div>
                     </div>
                   </div>
 
-                  {/* Generated Content (if available) */}
-                  {(forensicsData.job.payload as any)?._flat_files?.length > 0 && (
+                  {/* Generated Content (if available) - Disabled until _flat_files structure is available */}
+                  {false && (
                     <div className="border-t pt-4">
                       <div className="text-lg font-semibold text-gray-800 mb-3">Generated Content</div>
                       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
