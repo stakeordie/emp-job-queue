@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { verifyAuthToken } from '@/lib/auth'
 
-const publicPaths = ['/login', '/api/auth/login']
+const publicPaths = ['/login', '/api/auth/login', '/miniapp-gen-mock', '/api/user_notified']
 
 export function middleware(request: NextRequest) {
   const { pathname, searchParams } = request.nextUrl

@@ -19,26 +19,45 @@ export async function GET(
 
     const redis = new Redis(redisUrl);
 
-    // Get API workflow attestation
-    const apiAttestationKey = `api:workflow:completion:${workflowId}`;
-    const apiAttestationData = await redis.get(apiAttestationKey);
+    // Get API workflow attestations (including retry attempts)
+    const apiAttestationPattern = `api:workflow:completion:${workflowId}*`;
+    const apiAttestationKeys = await redis.keys(apiAttestationPattern);
 
-    let apiAttestation = null;
     let workerAttestations = [];
 
-    if (apiAttestationData) {
-      apiAttestation = JSON.parse(apiAttestationData);
+    // Parse all API attestations (base + retry attempts)
+    for (const key of apiAttestationKeys) {
+      const data = await redis.get(key);
+      if (data) {
+        try {
+          const parsed = JSON.parse(data);
+          const attemptMatch = key.match(/:attempt-(\d+)$/);
+          const attemptNumber = attemptMatch ? parseInt(attemptMatch[1]) : 0;
 
-      // Extract job IDs from API attestation to find worker attestations
-      if (apiAttestation.job_completion_data?.job_id) {
-        // Single job workflow
-        const workerKey = `worker:completion:${apiAttestation.job_completion_data.job_id}`;
-        const workerData = await redis.get(workerKey);
-        if (workerData) {
-          workerAttestations.push({
-            ...JSON.parse(workerData),
-            key: workerKey
+          apiAttestations.push({
+            ...parsed,
+            key,
+            attempt_number: attemptNumber,
+            is_retry: attemptNumber > 0
           });
+
+          // Extract job IDs from API attestation to find worker attestations
+          if (parsed.job_completion_data?.job_id) {
+            // Single job workflow
+            const workerKey = `worker:completion:${parsed.job_completion_data.job_id}`;
+            const workerData = await redis.get(workerKey);
+            if (workerData) {
+              const exists = workerAttestations.find(w => w.job_id === parsed.job_completion_data.job_id);
+              if (!exists) {
+                workerAttestations.push({
+                  ...JSON.parse(workerData),
+                  key: workerKey
+                });
+              }
+            }
+          }
+        } catch (e) {
+          console.error(`Failed to parse API attestation ${key}:`, e);
         }
       }
     }
@@ -76,14 +95,19 @@ export async function GET(
       return stepA - stepB;
     });
 
+    // Sort API attestations by attempt number
+    apiAttestations.sort((a, b) => a.attempt_number - b.attempt_number);
+
     await redis.disconnect();
 
     return NextResponse.json({
       success: true,
       workflow_id: workflowId,
-      api_attestation: apiAttestation,
+      api_attestations: apiAttestations,
+      api_attestation_count: apiAttestations.length,
       worker_attestations: workerAttestations,
       worker_count: workerAttestations.length,
+      retry_attempts: apiAttestations.filter(a => a.is_retry).length,
       retrieved_at: new Date().toISOString()
     });
 

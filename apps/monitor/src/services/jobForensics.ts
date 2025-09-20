@@ -136,6 +136,30 @@ export class JobForensicsService {
           progress: true,
           data: true,
           error_message: true,
+          // These fields exist in emprops-open-api schema now
+          retry_count: true,
+          max_retries: true,
+          workflow_output: true,
+          // New evaluation fields
+          is_cleanup_evaluated: true,
+          status_category: true,
+          problem_type: true,
+          problem_details: true,
+          evaluated_at: true,
+          // Related tables
+          job_retry_backup: {
+            select: {
+              id: true,
+              retry_attempt: true,
+              original_data: true,
+              original_status: true,
+              original_workflow_output: true,
+              backed_up_at: true,
+            },
+            orderBy: {
+              retry_attempt: 'asc'
+            }
+          },
         },
       });
 
@@ -170,11 +194,12 @@ export class JobForensicsService {
         started_at: empropsJob.started_at?.toISOString(),
         completed_at: empropsJob.completed_at?.toISOString(),
         status: this.mapEmpropsStatusToJobStatus(empropsJob.status),
-        retry_count: 0,
-        max_retries: 3,
+        retry_count: empropsJob.retry_count || 0,
+        max_retries: empropsJob.max_retries || 3,
         workflow_id: empropsJob.id, // Use the job ID as workflow ID for EmProps jobs
         current_step: empropsJob.progress || 0,
         total_steps: 100, // Default for EmProps jobs
+        retry_backups: empropsJob.job_retry_backup || [], // Include retry backup data
       } as Job;
 
       // Get related flat files (generated images) for this job
@@ -461,6 +486,11 @@ export class JobForensicsService {
     if (job.retry_count > 0 || job.last_failed_worker) {
       forensics.attempted_workers = await this.getAttemptedWorkers(job);
       forensics.worker_assignment_history = await this.getWorkerAssignmentHistory(job);
+    }
+
+    // Retry analysis using backup data
+    if (job.retry_backups && job.retry_backups.length > 0) {
+      forensics.retry_analysis = await this.buildRetryAnalysis(job);
     }
 
     // Performance tracking
@@ -1023,6 +1053,66 @@ export class JobForensicsService {
       console.error('Error getting failed jobs for analysis:', error);
       return [];
     }
+  }
+
+  /**
+   * Build comprehensive retry analysis from backup data
+   */
+  private async buildRetryAnalysis(job: Job): Promise<any> {
+    const retryBackups = job.retry_backups || [];
+    if (retryBackups.length === 0) {
+      return null;
+    }
+
+    // Calculate retry intervals
+    const retryIntervals: number[] = [];
+    for (let i = 1; i < retryBackups.length; i++) {
+      const prevBackup = new Date(retryBackups[i - 1].backed_up_at);
+      const currentBackup = new Date(retryBackups[i].backed_up_at);
+      const intervalSeconds = Math.round((currentBackup.getTime() - prevBackup.getTime()) / 1000);
+      retryIntervals.push(intervalSeconds);
+    }
+
+    // Analyze state changes between retries
+    const stateChanges = retryBackups.map((backup, index) => {
+      const prevBackup = index > 0 ? retryBackups[index - 1] : null;
+
+      return {
+        attempt: backup.retry_attempt,
+        status_before: backup.original_status,
+        status_after: index < retryBackups.length - 1 ? retryBackups[index + 1].original_status : job.status,
+        data_changed: prevBackup ? JSON.stringify(backup.original_data) !== JSON.stringify(prevBackup.original_data) : false,
+        workflow_output_changed: prevBackup ? backup.original_workflow_output !== prevBackup.original_workflow_output : false,
+        backed_up_at: backup.backed_up_at,
+      };
+    });
+
+    // Determine retry pattern
+    let retryPattern: 'escalating' | 'consistent' | 'random' = 'random';
+    if (retryIntervals.length > 1) {
+      const isIncreasing = retryIntervals.every((interval, i) => i === 0 || interval >= retryIntervals[i - 1]);
+      const isConsistent = retryIntervals.every(interval => Math.abs(interval - retryIntervals[0]) < 30); // Within 30 seconds
+
+      if (isIncreasing) {
+        retryPattern = 'escalating';
+      } else if (isConsistent) {
+        retryPattern = 'consistent';
+      }
+    }
+
+    // Calculate success probability based on retry count vs max retries
+    const successProbability = job.max_retries > 0
+      ? Math.max(0, (job.max_retries - job.retry_count) / job.max_retries)
+      : 0;
+
+    return {
+      total_attempts: job.retry_count || 0,
+      max_retries: job.max_retries || 3,
+      retry_pattern: retryPattern,
+      retry_intervals: retryIntervals,
+      state_changes: stateChanges,
+      success_probability: successProbability,
+    };
   }
 
   async disconnect() {

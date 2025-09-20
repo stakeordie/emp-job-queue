@@ -268,13 +268,41 @@ model job {
   progress      Int?
   error_message String?
   created_at    DateTime      @default(now())
-  updated_at    DateTime
+  updated_at    DateTime      @updatedAt
   started_at    DateTime?
   completed_at  DateTime?
   user_id       String        @db.Uuid
   job_type      String
   priority      Int           @default(1)
-  job_history   job_history[]
+  retry_count   Int           @default(0)
+  max_retries   Int           @default(3)
+  workflow_output String?
+
+  // Evaluation fields
+  is_cleanup_evaluated Boolean   @default(false)
+  status_category      String?   // 'filed', 'complete', 'incomplete'
+  problem_type         String?   // 'missing_output', 'notification_failed', 'stuck_processing', etc.
+  problem_details      Json?     // Detailed problem analysis
+  evaluated_at         DateTime?
+
+  job_history      job_history[]
+  job_retry_backup job_retry_backup[]
+
+  @@index([is_cleanup_evaluated])
+  @@index([status_category])
+}
+
+model job_retry_backup {
+  id               String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  original_job_id  String   @db.Uuid
+  retry_attempt    Int
+  original_data    Json?
+  original_status  String
+  original_workflow_output String?
+  backed_up_at     DateTime @default(now())
+  job              job      @relation(fields: [original_job_id], references: [id], onDelete: Cascade)
+
+  @@map("job_retry_backup")
 }
 
 model job_history {

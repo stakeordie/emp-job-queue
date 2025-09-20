@@ -4314,7 +4314,7 @@ export class LightweightAPIServer {
    * This is the API's proof that it determined a workflow should be complete
    * Records asset location and completion details for recovery purposes
    */
-  private async createWorkflowCompletionAttestation(workflowId: string, jobCompletion?: any, workflowOutputs?: any[]): Promise<void> {
+  private async createWorkflowCompletionAttestation(workflowId: string, jobCompletion?: any, workflowOutputs?: any[], retryAttempt?: number): Promise<void> {
     try {
       // Extract asset locations from job result
       const jobAssetLocations = this.extractAssetLocations(jobCompletion?.result);
@@ -4359,15 +4359,22 @@ export class LightweightAPIServer {
       // Store API workflow attestation with 30-day TTL for audit trail
       // Remove base64 data to avoid storing massive image data in Redis
       const sanitizedAttestationData = sanitizeBase64Data(attestationData);
+
+      // Include retry attempt in key to preserve attestations from all attempts
+      const attestationKey = retryAttempt
+        ? `api:workflow:completion:${workflowId}:attempt-${retryAttempt}`
+        : `api:workflow:completion:${workflowId}`;
+
       await this.redis.setex(
-        `api:workflow:completion:${workflowId}`,
+        attestationKey,
         30 * 24 * 60 * 60, // 30 days
         JSON.stringify(sanitizedAttestationData)
       );
 
-      logger.info(`🔐 API created workflow completion attestation for ${workflowId}`, {
+      logger.info(`🔐 API created workflow completion attestation for ${workflowId}${retryAttempt ? ` (attempt ${retryAttempt})` : ''}`, {
         job_id: jobCompletion?.job_id,
-        asset_count: attestationData.asset_locations?.length || 0
+        asset_count: attestationData.asset_locations?.length || 0,
+        attestation_key: attestationKey
       });
 
     } catch (error) {
@@ -4686,7 +4693,38 @@ export class LightweightAPIServer {
     // 🚨 CRITICAL: Create API workflow completion attestation FIRST
     // This is the API's authoritative "I believe this workflow is done" record
     // Must happen BEFORE EmProps verification to prevent orphaning
-    await this.createWorkflowCompletionAttestation(workflowId, originalJobCompletion);
+
+    // First, try to get the retry count from EmProps API for accurate attestation key
+    let retryAttempt: number | undefined;
+    try {
+      const empropsApiUrl = process.env.EMPROPS_API_URL;
+      if (empropsApiUrl) {
+        const headers: Record<string, string> = {
+          'Content-Type': 'application/json',
+          'Accept': 'application/json'
+        };
+        const empropsAuth = process.env.EMPROPS_API_KEY;
+        if (empropsAuth) {
+          headers['Authorization'] = `Bearer ${empropsAuth}`;
+        }
+
+        const response = await fetch(`${empropsApiUrl}/jobs/${workflowId}`, {
+          method: 'GET',
+          headers,
+          signal: AbortSignal.timeout(3000) // Quick timeout for retry count lookup
+        });
+
+        if (response.ok) {
+          const jobData = await response.json();
+          retryAttempt = jobData?.data?.retry_count;
+        }
+      }
+    } catch (error) {
+      logger.warn(`Could not fetch retry count for attestation key: ${error}`);
+      // Continue without retry count - will use default key
+    }
+
+    await this.createWorkflowCompletionAttestation(workflowId, originalJobCompletion, undefined, retryAttempt);
 
     const empropsApiUrl = process.env.EMPROPS_API_URL;
     if (!empropsApiUrl) {

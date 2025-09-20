@@ -24,6 +24,27 @@ export type JobWithRelations = Prisma.jobGetPayload<{
     user_id: true;
     job_type: true;
     priority: true;
+    retry_count: true;
+    max_retries: true;
+    workflow_output: true;
+    // Evaluation fields
+    is_cleanup_evaluated: true;
+    status_category: true;
+    problem_type: true;
+    problem_details: true;
+    evaluated_at: true;
+  };
+}>;
+
+export type JobRetryBackup = Prisma.job_retry_backupGetPayload<{
+  select: {
+    id: true;
+    original_job_id: true;
+    retry_attempt: true;
+    original_data: true;
+    original_status: true;
+    original_workflow_output: true;
+    backed_up_at: true;
   };
 }>;
 
@@ -87,6 +108,7 @@ export interface JobWithUserInfo extends JobWithRelations {
   redis_data: RedisWorkflowData | null; // Job Queue workflow perspective
   miniapp_user?: MiniappUser | null; // Alias for backward compatibility
   miniapp_payment?: MiniappPayment | null;
+  retry_backups?: JobRetryBackup[]; // Retry attempt history
 }
 
 // ============================================================================
@@ -229,6 +251,21 @@ export interface JobForensicsData {
       estimated_completion_time?: string;
       actual_completion_time?: string;
       variance_from_estimate?: number;
+    };
+    retry_analysis?: {
+      total_attempts: number;
+      max_retries: number;
+      retry_pattern: 'escalating' | 'consistent' | 'random';
+      retry_intervals: number[]; // Seconds between retries
+      state_changes: Array<{
+        attempt: number;
+        status_before: string;
+        status_after: string;
+        data_changed: boolean;
+        workflow_output_changed: boolean;
+        backed_up_at: string;
+      }>;
+      success_probability?: number; // Based on historical data
     };
   };
 
