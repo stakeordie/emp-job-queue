@@ -17,41 +17,70 @@ export async function POST(request: NextRequest) {
       event: webhookEvent,
       signature: webhookSignature,
       webhookId,
-      eventId
+      eventId,
+      headers: Object.fromEntries(request.headers.entries())
     });
 
     const body = await request.json();
 
+    console.log('📦 Full webhook body:', JSON.stringify(body, null, 2));
+
     // Verify webhook signature
     if (webhookSignature) {
       const bodyString = JSON.stringify(body);
+      console.log('🔐 Signature verification:', {
+        receivedSignature: webhookSignature,
+        bodyString: bodyString.substring(0, 200) + '...',
+        bodyLength: bodyString.length
+      });
+
       const expectedSignature = `sha256=${crypto
         .createHmac('sha256', WEBHOOK_SECRET)
         .update(bodyString)
         .digest('hex')}`;
 
+      console.log('🔐 Expected signature:', expectedSignature);
+      console.log('🔐 Signature match:', webhookSignature === expectedSignature);
+
       if (webhookSignature !== expectedSignature) {
+        console.log('❌ Signature verification failed');
         return NextResponse.json(
           { error: 'Unauthorized - invalid webhook signature' },
           { status: 401 }
         );
       }
+      console.log('✅ Signature verified successfully');
     } else {
+      console.log('⚠️ No webhook signature provided, checking for secret in body');
       // Fallback to simple secret verification for manual testing
       const { secret } = body;
+      console.log('🔑 Secret provided:', secret ? 'Yes' : 'No');
       if (secret !== WEBHOOK_SECRET) {
+        console.log('❌ Secret verification failed');
         return NextResponse.json(
           { error: 'Unauthorized - missing signature or invalid secret' },
           { status: 401 }
         );
       }
+      console.log('✅ Secret verified successfully');
     }
 
     // Extract workflow/job ID from the webhook structure
     const workflow_id = body.data?.workflow_id || body.workflow_id;
     const job_id = body.data?.job_id || body.job_id;
 
+    console.log('🔍 ID extraction:', {
+      'body.data': body.data ? 'exists' : 'undefined',
+      'body.data.workflow_id': body.data?.workflow_id,
+      'body.workflow_id': body.workflow_id,
+      'body.data.job_id': body.data?.job_id,
+      'body.job_id': body.job_id,
+      'final workflow_id': workflow_id,
+      'final job_id': job_id
+    });
+
     if (!workflow_id && !job_id) {
+      console.log('❌ No workflow_id or job_id found in webhook payload');
       return NextResponse.json(
         { error: 'workflow_id or job_id is required' },
         { status: 400 }
@@ -67,22 +96,36 @@ export async function POST(request: NextRequest) {
     });
 
     // Find the job by workflow_id or job_id
+    // The workflow_id from the webhook IS the job.id in the database
+    console.log('🔍 Searching for job with ID:', workflow_id || job_id);
+
     const job = await prisma.job.findFirst({
-      where: job_id
-        ? { id: job_id }
-        : { workflow_output: { path: ['workflow_id'], equals: workflow_id } }
+      where: {
+        id: workflow_id || job_id
+      }
     });
 
     if (!job) {
+      console.log('❌ Job not found in database for ID:', workflow_id || job_id);
+      console.log('💡 This might mean the job ID does not exist or has a different format');
       return NextResponse.json(
-        { error: 'Job not found' },
+        { error: 'Job not found', searchedId: workflow_id || job_id },
         { status: 404 }
       );
     }
 
-    console.log('📋 Found job:', job.id, 'Status:', job.status);
+    console.log('📋 Found job:', {
+      id: job.id,
+      status: job.status,
+      name: job.name,
+      job_type: job.job_type,
+      created_at: job.created_at,
+      user_id: job.user_id
+    });
 
     // Mock miniapp user creation
+    console.log('👤 Creating/finding miniapp user for job.user_id:', job.user_id);
+
     const mockMiniappUser = await prisma.miniapp_user.upsert({
       where: { farcaster_id: `mock-user-${job.user_id}` },
       update: {},
@@ -94,7 +137,11 @@ export async function POST(request: NextRequest) {
       }
     });
 
-    console.log('👤 Created/found mock miniapp user:', mockMiniappUser.id);
+    console.log('👤 Created/found mock miniapp user:', {
+      id: mockMiniappUser.id,
+      farcaster_id: mockMiniappUser.farcaster_id,
+      username: mockMiniappUser.farcaster_username
+    });
 
     // Mock payment record
     const mockPayment = await prisma.miniapp_payment.create({

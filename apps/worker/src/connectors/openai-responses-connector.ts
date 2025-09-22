@@ -340,7 +340,7 @@ export class OpenAIResponsesConnector extends AsyncRESTConnector {
               resultData.image_base64,
               jobData.id,
               jobData,
-              'png'
+              'image/png'  // Fixed: Use proper MIME type instead of just 'png'
             );
             if (savedImage) {
               // Replace base64 with URL
