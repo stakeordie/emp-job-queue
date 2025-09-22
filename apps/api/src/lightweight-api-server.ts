@@ -1849,8 +1849,24 @@ export class LightweightAPIServer {
             throw new Error('Missing required fields: job_id and result');
           }
 
-          // Get job details to check for workflow metadata
+          // Get job details to check for workflow metadata and prevent duplicates
           const jobDetails = await this.redisService.getJob(jobId);
+
+          // 🚨 DUPLICATION FIX: Check if job is already completed
+          if (jobDetails?.status === 'completed') {
+            logger.warn(`🔄 DELEGATED JOB ALREADY COMPLETED: ${jobId} - ignoring duplicate result`);
+            ws.send(
+              JSON.stringify({
+                type: 'delegated_job_acknowledged',
+                action: 'already_completed',
+                job_id: jobId,
+                message_id: message.id,
+                timestamp: new Date().toISOString(),
+                message: 'Job already completed, ignoring duplicate result'
+              })
+            );
+            break; // Exit without reprocessing
+          }
 
           // Only log workflow jobs
           if (jobDetails?.workflow_id) {
@@ -1879,9 +1895,27 @@ export class LightweightAPIServer {
           logger.info('THIS MUST SHOW=2');
           // Success or failed case - complete the job
           const success = resultData.success === true || resultData.data === 'completed';
+
+          // 🔧 DELEGATED JOBS FIX: Apply same asset extraction logic as base connector
+          // Extract image_url and mime_type from delegated job results for consistency
+          let processedData = resultData.data;
+          if (success && resultData.data && typeof resultData.data === 'object') {
+            const data = resultData.data as any;
+
+            // Extract asset information if available
+            if (data.saved_asset?.fileUrl || data.asset_url || data.image_url) {
+              processedData = {
+                ...data,
+                image_url: data.saved_asset?.fileUrl || data.asset_url || data.image_url,
+                mime_type: data.saved_asset?.mimeType || data.mime_type || 'image/png',
+              };
+              logger.info(`🔧 DELEGATED JOB ASSET FIX: Applied for job ${jobId} - image_url: ${(processedData as any).image_url}`);
+            }
+          }
+
           const jobResult = {
             success,
-            data: resultData.data,
+            data: processedData,
             error:
               typeof resultData.error === 'string'
                 ? resultData.error
@@ -1889,6 +1923,8 @@ export class LightweightAPIServer {
             metadata: {
               completed_by: 'delegated_service',
               client_id: clientId,
+              // Include saved asset metadata if available
+              saved_asset: (resultData.data as any)?.saved_asset || null,
             },
           };
 
@@ -4570,6 +4606,66 @@ export class LightweightAPIServer {
    * Publish workflow completion notification
    */
   private async publishWorkflowCompletion(workflowId: string, workflowData: any): Promise<void> {
+    // 🔒 WEBHOOK TIMING FIX: Verify workflow_output is populated before sending webhook
+    // This prevents race condition where webhook is sent before workflow_output field is committed
+    logger.info(`🔒 Verifying workflow_output population for ${workflowId} before webhook...`);
+
+    const empropsApiUrl = process.env.EMPROPS_API_URL;
+    if (empropsApiUrl) {
+      const headers: Record<string, string> = {
+        'Content-Type': 'application/json',
+        'Accept': 'application/json'
+      };
+
+      const empropsAuth = process.env.EMPROPS_API_KEY;
+      if (empropsAuth) {
+        headers['Authorization'] = `Bearer ${empropsAuth}`;
+      }
+
+      // Verify that workflow_output field is populated with retry logic
+      const maxVerifyRetries = 3;
+      const verifyDelay = 1000; // 1 second between retries
+
+      for (let attempt = 1; attempt <= maxVerifyRetries; attempt++) {
+        try {
+          logger.info(`🔍 Verification attempt ${attempt}/${maxVerifyRetries} for workflow_output...`);
+
+          const verifyResponse = await fetch(`${empropsApiUrl}/jobs/${workflowId}`, {
+            method: 'GET',
+            headers,
+            signal: AbortSignal.timeout(3000)
+          });
+
+          if (verifyResponse.ok) {
+            const verifyData = await verifyResponse.json();
+            const hasWorkflowOutput = !!verifyData.data?.workflow_output;
+
+            logger.info(`📋 Verification result: workflow_output ${hasWorkflowOutput ? 'IS' : 'IS NOT'} populated`);
+
+            if (hasWorkflowOutput) {
+              logger.info(`✅ workflow_output verified populated for ${workflowId} - proceeding with webhook`);
+              break; // Exit retry loop
+            } else if (attempt === maxVerifyRetries) {
+              logger.warn(`⚠️ workflow_output still not populated after ${maxVerifyRetries} attempts - sending webhook anyway`);
+            } else {
+              logger.info(`⏳ workflow_output not populated yet, retrying in ${verifyDelay}ms...`);
+              await new Promise(resolve => setTimeout(resolve, verifyDelay));
+            }
+          } else {
+            logger.warn(`⚠️ Verification request failed: ${verifyResponse.status} - proceeding with webhook`);
+            break;
+          }
+        } catch (error) {
+          logger.warn(`⚠️ Verification attempt ${attempt} failed:`, error);
+          if (attempt === maxVerifyRetries) {
+            logger.warn(`⚠️ All verification attempts failed - proceeding with webhook`);
+          }
+        }
+      }
+    } else {
+      logger.warn(`⚠️ EMPROPS_API_URL not configured - cannot verify workflow_output`);
+    }
+
     // Publish workflow completion notification with metadata only (no outputs/results)
     // Webhook service will query EmProps API directly if it needs full data
     await this.redis.publish('workflow_completed', JSON.stringify({
@@ -4592,10 +4688,12 @@ export class LightweightAPIServer {
       // 🚨 CRITICAL: NO outputs included - webhook service should query EmProps API directly
       // This prevents massive base64 data from accumulating in Redis
       outputs_available: !!(workflowData?.data?.outputs?.length),
-      outputs_count: workflowData?.data?.outputs?.length || 0
+      outputs_count: workflowData?.data?.outputs?.length || 0,
+      // 🔒 TIMING FIX: Include verification timestamp
+      workflow_output_verified_at: new Date().toISOString()
     }));
 
-    logger.info(`📤 Published workflow_completed webhook for ${workflowId}`);
+    logger.info(`📤 Published workflow_completed webhook for ${workflowId} (with workflow_output verification)`);
   }
 
   /**

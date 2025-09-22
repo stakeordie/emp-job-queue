@@ -8,7 +8,6 @@ export const MachineEnvInterface = {
   location: "apps/machine",
   
   required: {
-    // Redis connection (used by both machine and workers)
     "HUB_REDIS_URL": "REDIS_URL",
 
     "EMPROPS_API_URL": "EMPROPS_API_URL",
@@ -53,7 +52,7 @@ export const MachineEnvInterface = {
     "WORKER_COMFYUI_REMOTE_PORT":"COMFYUI_REMOTE_PORT",
     "DASH0_ENDPOINT":"TELEMETRY_DASH0_ENDPOINT",
     "DASH0_LOGS_ENDPOINT":"TELEMETRY_DASH0_LOGS_ENDPOINT",
-    "GEMINI_NANO_BANANA_URL":"GEMINI_NANO_BANANA_URL"
+    "GEMINI_NANO_BANANA_URL":"GEMINI_NANO_BANANA_URL",
   },
   
   optional: {
@@ -91,7 +90,9 @@ export const MachineEnvInterface = {
     "DASH0_API_KEY":"TELEMETRY_DASH0_API_KEY",
     "EMPROPS_API_AUTH": "EMPROPS_API_AUTH",
     "ENV_ENCRYPT_KEY": "MACHINE_ENV_ENCRYPTION_KEY",
-    "GEMINI_API_KEY": "GEMINI_API_KEY"
+    "GEMINI_API_KEY": "GEMINI_API_KEY",
+    "NGROK_AUTH_TOKEN": "NGROK_AUTH_TOKEN",
+    "NGROK_API_KEY": "NGROK_API_KEY"
   }, 
   
   defaults: {

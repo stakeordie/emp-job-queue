@@ -222,6 +222,24 @@ export async function POST(request: NextRequest) {
       console.log('💳 Updated existing payment:', mockPayment.id);
     }
 
+    // 🚨 CRITICAL TIMING CHECK: Ensure workflow_output is populated before proceeding
+    // This prevents notifications from being sent when workflow_output is still null
+    if (!job.workflow_output) {
+      console.log('❌ Cannot proceed with miniapp generation: job.workflow_output is null');
+      console.log('❌ Job status:', job.status, 'Job ID:', job.id);
+      return NextResponse.json(
+        {
+          error: 'Job workflow_output not yet populated',
+          job_id: job.id,
+          job_status: job.status,
+          message: 'Webhook received before workflow_output field was populated. This indicates a timing issue.'
+        },
+        { status: 400, headers: corsHeaders }
+      );
+    }
+
+    console.log('✅ Job workflow_output is populated, proceeding with notification');
+
     // Extract real data from job for generation record
     const jobData = job.data as any;
     const workflowOutput = job.workflow_output as any;

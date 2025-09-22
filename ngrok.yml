@@ -1,0 +1,20 @@
+version: "2"
+authtoken: 2sdkACAsfB69D7T1sPecCOFkuOm_7N1Qp116AKSye3nTbJ8v
+api_key: 333uQYNJf7pIiPZ05rwkPrOKMOQ_55SKxYTL5DTdc4kxRMTF1
+
+tunnels:
+  api:
+    proto: http
+    addr: 3331
+    domain: emp-api-dev.ngrok-free.app
+    inspect: false
+  emprops:
+    proto: http
+    addr: 8080
+    domain: emp-emprops-dev.ngrok-free.app
+    inspect: false
+  redis:
+    proto: tcp
+    addr: 6379
+    remote_addr: 5.tcp.ngrok.io:29341
+    inspect: false

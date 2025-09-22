@@ -19,6 +19,7 @@ export class ComfyUIRemoteConnector extends ComfyUIWebSocketConnector {
     const isSecure = process.env.WORKER_COMFYUI_REMOTE_SECURE === 'true';
     const timeoutSeconds = parseInt(process.env.WORKER_COMFYUI_REMOTE_TIMEOUT_SECONDS || '15');
 
+
     if (!remoteHost) {
       throw new Error(
         'ComfyUI Remote connector requires WORKER_COMFYUI_REMOTE_HOST environment variable. ' +

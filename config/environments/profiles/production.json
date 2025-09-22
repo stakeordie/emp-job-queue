@@ -6,6 +6,9 @@
       "default",
       "production"
     ],
+    "ngrok": [
+      "default"
+    ],
     "database": [
       "default",
       "production"
@@ -41,9 +44,6 @@
     "api-tokens": [
       "default"
     ],
-    "comfyui": [
-      "default"
-    ],
     "ollama": [
       "default"
     ],
@@ -58,6 +58,10 @@
       "default"
     ],
     "telemetry": [
+      "default",
+      "production"
+    ],
+    "comfyui": [
       "default",
       "production"
     ]

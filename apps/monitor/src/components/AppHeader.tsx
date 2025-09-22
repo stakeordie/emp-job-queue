@@ -76,10 +76,10 @@ export function AppHeader() {
             Debug
           </Button>
         </Link>
-        <Link href="/northstar">
+        <Link href="/metrics">
           <Button variant="outline" size="sm" className="flex items-center gap-2">
-            <Target className="h-3 w-3" />
-            North Star
+            <BarChart3 className="h-3 w-3" />
+            Metrics
           </Button>
         </Link>
 

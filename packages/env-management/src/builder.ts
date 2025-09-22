@@ -480,19 +480,57 @@ export class EnvironmentBuilder {
   }
 
   /**
-   * Resolve ${VAR} substitutions
+   * Resolve ${VAR} substitutions with multi-pass nesting support
+   * Supports layered variable references like:
+   * .env.secret.local -> redis.env (URL=redis://default:${PRODUCTION_REDIS_PASSWORD}@...) -> comfyui.env (GPU_MACHINE_REDIS_URL=${REDIS_URL})
    */
   private resolveVariables(vars: { [key: string]: string }): { [key: string]: string } {
-    const resolved: { [key: string]: string } = {};
+    const resolved: { [key: string]: string } = { ...vars };
+    const maxPasses = 10; // Prevent infinite loops
+    let pass = 0;
+    let hasUnresolvedVars = true;
 
-    for (const [key, value] of Object.entries(vars)) {
-      // Ensure value is a string
-      const stringValue = typeof value === 'string' ? value : String(value);
+    while (hasUnresolvedVars && pass < maxPasses) {
+      hasUnresolvedVars = false;
+      pass++;
 
-      resolved[key] = stringValue.replace(/\$\{([^}]+)\}/g, (match, varName) => {
-        const replacement = vars[varName] || process.env[varName] || match;
-        return replacement;
-      });
+      for (const [key, value] of Object.entries(resolved)) {
+        // Ensure value is a string
+        const stringValue = typeof value === 'string' ? value : String(value);
+
+        // Check if this value still contains variable references
+        const variablePattern = /\$\{([^}]+)\}/;
+        if (variablePattern.test(stringValue)) {
+          const newValue = stringValue.replace(/\$\{([^}]+)\}/g, (match, varName) => {
+            // Look for replacement in current resolved vars, then process.env, then keep as-is
+            const replacement = resolved[varName] || process.env[varName];
+            if (replacement !== undefined) {
+              return replacement;
+            }
+            // Mark that we still have unresolved variables
+            hasUnresolvedVars = true;
+            return match;
+          });
+
+          if (newValue !== stringValue) {
+            resolved[key] = newValue;
+            // If we made a substitution, we might need another pass
+            hasUnresolvedVars = true;
+          }
+        }
+      }
+    }
+
+    // Log warning for any remaining unresolved variables
+    for (const [key, value] of Object.entries(resolved)) {
+      if (typeof value === 'string' && /\$\{([^}]+)\}/.test(value)) {
+        const unresolvedVars = value.match(/\$\{([^}]+)\}/g) || [];
+        console.warn(`⚠️ Unresolved variables in ${key}: ${unresolvedVars.join(', ')}`);
+      }
+    }
+
+    if (pass >= maxPasses) {
+      console.warn(`⚠️ Variable resolution reached maximum passes (${maxPasses}). Possible circular dependency.`);
     }
 
     return resolved;
