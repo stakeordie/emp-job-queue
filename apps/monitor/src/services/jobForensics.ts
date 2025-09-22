@@ -422,6 +422,7 @@ export class JobForensicsService {
     }
   }
 
+
   /**
    * Map EmProps job status to Redis Job status format
    */
