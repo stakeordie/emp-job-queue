@@ -14,17 +14,13 @@ layout {
             pane split_direction="vertical" {
                 pane name="JOB QUEUE API" {
                     command "bash"
-                    args "-c" "cd ~/code/emprops/ai_infra/emp-job-queue && LOG_LEVEL=info pnpm dev:local-redis"
+                    args "-c" "sleep 9 && cd ~/code/emprops/ai_infra/emp-job-queue && pnpm d:api:run local-prod"
                     start_suspended false
                 }
-                pane name="WEBHOOK SERVICE" {
-                    command "bash" 
-                    args "-c" "sleep 5 && cd ~/code/emprops/ai_infra/emp-job-queue && pnpm dev:webhook --env local-prod"
-                    start_suspended false
-                }
+
                 pane name="JOB NETWORK MONITOR" {
                     command "bash"
-                    args "-c" "sleep 5 && cd ~/code/emprops/ai_infra/emp-job-queue && pnpm dev:monitor --env local-prod"
+                    args "-c" "sleep 15 && cd ~/code/emprops/ai_infra/emp-job-queue && pnpm dev:monitor --env local-prod"
                     start_suspended false
                 }
             }
@@ -34,14 +30,19 @@ layout {
                     args "-c" "cd ~/code/emprops/ai_infra/emp-job-queue && sleep 5 && pnpm logs:redis"
                     start_suspended false
                 }
-                pane name="API Server" {
-                    command "bash" 
-                    args "-c" "sleep 5 && cd ~/code/emprops/emprops-open-api && yarn dev:local:prod"
+                pane name="Fluentd" {
+                    command "bash"
+                    args "-c" "sleep 9 && cd ~/code/emprops/ai_infra/emp-job-queue && pnpm d:fluentd:run local-dev"
                     start_suspended false
                 }
-                pane name="Frontend Dev" {
+                pane name="EmProps API Server" {
+                    command "bash" 
+                    args "-c" "sleep 15 && cd ~/code/emprops/emprops-open-api && yarn dev:local:prod"
+                    start_suspended false
+                }
+                pane name="EmProps UI" {
                     command "bash"
-                    args "-c" "sleep 7 && cd ~/code/emprops/core-services/emprops-open-interface && yarn dev:local:prod"
+                    args "-c" "sleep 25 && cd ~/code/emprops/core-services/emprops-open-interface && yarn dev:local:prod"
                     start_suspended false
                 }
             }

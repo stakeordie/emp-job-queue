@@ -15,7 +15,7 @@
     ],
     "webhook-service": [
       "default",
-      "local"
+      "production"
     ],
     "api-tokens": [
       "default"
@@ -33,11 +33,11 @@
     ],
     "monitor": [
       "default",
-      "local"
+      "production"
     ],
     "redis": [
       "default",
-      "local"
+      "production"
     ],
     "storage-provider": [
       "default",

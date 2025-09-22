@@ -136,30 +136,15 @@ export class JobForensicsService {
           progress: true,
           data: true,
           error_message: true,
-          // These fields exist in emprops-open-api schema now
           retry_count: true,
           max_retries: true,
           workflow_output: true,
-          // New evaluation fields
           is_cleanup_evaluated: true,
           status_category: true,
           problem_type: true,
           problem_details: true,
           evaluated_at: true,
-          // Related tables
-          job_retry_backup: {
-            select: {
-              id: true,
-              retry_attempt: true,
-              original_data: true,
-              original_status: true,
-              original_workflow_output: true,
-              backed_up_at: true,
-            },
-            orderBy: {
-              retry_attempt: 'asc'
-            }
-          },
+          resolution_needed: true,
         },
       });
 
@@ -199,7 +184,18 @@ export class JobForensicsService {
         workflow_id: empropsJob.id, // Use the job ID as workflow ID for EmProps jobs
         current_step: empropsJob.progress || 0,
         total_steps: 100, // Default for EmProps jobs
-        retry_backups: empropsJob.job_retry_backup || [], // Include retry backup data
+        // Add additional EmProps-specific fields for forensics
+        name: empropsJob.name,
+        description: empropsJob.description,
+        updated_at: empropsJob.updated_at?.toISOString(),
+        error_message: empropsJob.error_message,
+        workflow_output: empropsJob.workflow_output,
+        is_cleanup_evaluated: empropsJob.is_cleanup_evaluated,
+        status_category: empropsJob.status_category,
+        problem_type: empropsJob.problem_type,
+        problem_details: empropsJob.problem_details,
+        evaluated_at: empropsJob.evaluated_at?.toISOString(),
+        resolution_needed: empropsJob.resolution_needed,
       } as Job;
 
       // Get related flat files (generated images) for this job
