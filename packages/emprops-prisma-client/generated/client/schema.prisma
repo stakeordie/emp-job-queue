@@ -421,10 +421,11 @@ model job {
 
   // Evaluation fields
   is_cleanup_evaluated Boolean   @default(false)
-  status_category      String? // 'filed', 'complete', 'incomplete'
+  status_category      String? // 'complete', 'incomplete', 'data_structure_issue'
   problem_type         String? // 'missing_output', 'notification_failed', 'stuck_processing', etc.
   problem_details      Json? // Detailed problem analysis
   evaluated_at         DateTime?
+  resolution_needed    String? // 'workflow_output_extraction', 'data_integrity_check', 'miniapp_generation_missing', etc.
 
   job_history      job_history[]
   steps            step[]

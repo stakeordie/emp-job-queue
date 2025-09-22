@@ -486,7 +486,8 @@ exports.Prisma.JobScalarFieldEnum = {
   status_category: 'status_category',
   problem_type: 'problem_type',
   problem_details: 'problem_details',
-  evaluated_at: 'evaluated_at'
+  evaluated_at: 'evaluated_at',
+  resolution_needed: 'resolution_needed'
 };
 
 exports.Prisma.Job_retry_backupScalarFieldEnum = {

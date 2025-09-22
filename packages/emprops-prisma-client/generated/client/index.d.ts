@@ -38867,6 +38867,7 @@ export namespace Prisma {
     status_category: string | null
     problem_type: string | null
     evaluated_at: Date | null
+    resolution_needed: string | null
   }
 
   export type JobMaxAggregateOutputType = {
@@ -38890,6 +38891,7 @@ export namespace Prisma {
     status_category: string | null
     problem_type: string | null
     evaluated_at: Date | null
+    resolution_needed: string | null
   }
 
   export type JobCountAggregateOutputType = {
@@ -38915,6 +38917,7 @@ export namespace Prisma {
     problem_type: number
     problem_details: number
     evaluated_at: number
+    resolution_needed: number
     _all: number
   }
 
@@ -38954,6 +38957,7 @@ export namespace Prisma {
     status_category?: true
     problem_type?: true
     evaluated_at?: true
+    resolution_needed?: true
   }
 
   export type JobMaxAggregateInputType = {
@@ -38977,6 +38981,7 @@ export namespace Prisma {
     status_category?: true
     problem_type?: true
     evaluated_at?: true
+    resolution_needed?: true
   }
 
   export type JobCountAggregateInputType = {
@@ -39002,6 +39007,7 @@ export namespace Prisma {
     problem_type?: true
     problem_details?: true
     evaluated_at?: true
+    resolution_needed?: true
     _all?: true
   }
 
@@ -39114,6 +39120,7 @@ export namespace Prisma {
     problem_type: string | null
     problem_details: JsonValue | null
     evaluated_at: Date | null
+    resolution_needed: string | null
     _count: JobCountAggregateOutputType | null
     _avg: JobAvgAggregateOutputType | null
     _sum: JobSumAggregateOutputType | null
@@ -39158,6 +39165,7 @@ export namespace Prisma {
     problem_type?: boolean
     problem_details?: boolean
     evaluated_at?: boolean
+    resolution_needed?: boolean
     job_history?: boolean | job$job_historyArgs<ExtArgs>
     steps?: boolean | job$stepsArgs<ExtArgs>
     job_retry_backup?: boolean | job$job_retry_backupArgs<ExtArgs>
@@ -39187,6 +39195,7 @@ export namespace Prisma {
     problem_type?: boolean
     problem_details?: boolean
     evaluated_at?: boolean
+    resolution_needed?: boolean
   }, ExtArgs["result"]["job"]>
 
   export type jobSelectScalar = {
@@ -39212,6 +39221,7 @@ export namespace Prisma {
     problem_type?: boolean
     problem_details?: boolean
     evaluated_at?: boolean
+    resolution_needed?: boolean
   }
 
   export type jobInclude<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = {
@@ -39252,6 +39262,7 @@ export namespace Prisma {
       problem_type: string | null
       problem_details: Prisma.JsonValue | null
       evaluated_at: Date | null
+      resolution_needed: string | null
     }, ExtArgs["result"]["job"]>
     composites: {}
   }
@@ -39670,6 +39681,7 @@ export namespace Prisma {
     readonly problem_type: FieldRef<"job", 'String'>
     readonly problem_details: FieldRef<"job", 'Json'>
     readonly evaluated_at: FieldRef<"job", 'DateTime'>
+    readonly resolution_needed: FieldRef<"job", 'String'>
   }
     
 
@@ -55718,7 +55730,8 @@ export namespace Prisma {
     status_category: 'status_category',
     problem_type: 'problem_type',
     problem_details: 'problem_details',
-    evaluated_at: 'evaluated_at'
+    evaluated_at: 'evaluated_at',
+    resolution_needed: 'resolution_needed'
   };
 
   export type JobScalarFieldEnum = (typeof JobScalarFieldEnum)[keyof typeof JobScalarFieldEnum]
@@ -58465,6 +58478,7 @@ export namespace Prisma {
     problem_type?: StringNullableFilter<"job"> | string | null
     problem_details?: JsonNullableFilter<"job">
     evaluated_at?: DateTimeNullableFilter<"job"> | Date | string | null
+    resolution_needed?: StringNullableFilter<"job"> | string | null
     job_history?: Job_historyListRelationFilter
     steps?: StepListRelationFilter
     job_retry_backup?: Job_retry_backupListRelationFilter
@@ -58493,6 +58507,7 @@ export namespace Prisma {
     problem_type?: SortOrderInput | SortOrder
     problem_details?: SortOrderInput | SortOrder
     evaluated_at?: SortOrderInput | SortOrder
+    resolution_needed?: SortOrderInput | SortOrder
     job_history?: job_historyOrderByRelationAggregateInput
     steps?: stepOrderByRelationAggregateInput
     job_retry_backup?: job_retry_backupOrderByRelationAggregateInput
@@ -58524,6 +58539,7 @@ export namespace Prisma {
     problem_type?: StringNullableFilter<"job"> | string | null
     problem_details?: JsonNullableFilter<"job">
     evaluated_at?: DateTimeNullableFilter<"job"> | Date | string | null
+    resolution_needed?: StringNullableFilter<"job"> | string | null
     job_history?: Job_historyListRelationFilter
     steps?: StepListRelationFilter
     job_retry_backup?: Job_retry_backupListRelationFilter
@@ -58552,6 +58568,7 @@ export namespace Prisma {
     problem_type?: SortOrderInput | SortOrder
     problem_details?: SortOrderInput | SortOrder
     evaluated_at?: SortOrderInput | SortOrder
+    resolution_needed?: SortOrderInput | SortOrder
     _count?: jobCountOrderByAggregateInput
     _avg?: jobAvgOrderByAggregateInput
     _max?: jobMaxOrderByAggregateInput
@@ -58585,6 +58602,7 @@ export namespace Prisma {
     problem_type?: StringNullableWithAggregatesFilter<"job"> | string | null
     problem_details?: JsonNullableWithAggregatesFilter<"job">
     evaluated_at?: DateTimeNullableWithAggregatesFilter<"job"> | Date | string | null
+    resolution_needed?: StringNullableWithAggregatesFilter<"job"> | string | null
   }
 
   export type job_retry_backupWhereInput = {
@@ -62212,6 +62230,7 @@ export namespace Prisma {
     problem_type?: string | null
     problem_details?: NullableJsonNullValueInput | InputJsonValue
     evaluated_at?: Date | string | null
+    resolution_needed?: string | null
     job_history?: job_historyCreateNestedManyWithoutJobInput
     steps?: stepCreateNestedManyWithoutJobInput
     job_retry_backup?: job_retry_backupCreateNestedManyWithoutJobInput
@@ -62240,6 +62259,7 @@ export namespace Prisma {
     problem_type?: string | null
     problem_details?: NullableJsonNullValueInput | InputJsonValue
     evaluated_at?: Date | string | null
+    resolution_needed?: string | null
     job_history?: job_historyUncheckedCreateNestedManyWithoutJobInput
     steps?: stepUncheckedCreateNestedManyWithoutJobInput
     job_retry_backup?: job_retry_backupUncheckedCreateNestedManyWithoutJobInput
@@ -62268,6 +62288,7 @@ export namespace Prisma {
     problem_type?: NullableStringFieldUpdateOperationsInput | string | null
     problem_details?: NullableJsonNullValueInput | InputJsonValue
     evaluated_at?: NullableDateTimeFieldUpdateOperationsInput | Date | string | null
+    resolution_needed?: NullableStringFieldUpdateOperationsInput | string | null
     job_history?: job_historyUpdateManyWithoutJobNestedInput
     steps?: stepUpdateManyWithoutJobNestedInput
     job_retry_backup?: job_retry_backupUpdateManyWithoutJobNestedInput
@@ -62296,6 +62317,7 @@ export namespace Prisma {
     problem_type?: NullableStringFieldUpdateOperationsInput | string | null
     problem_details?: NullableJsonNullValueInput | InputJsonValue
     evaluated_at?: NullableDateTimeFieldUpdateOperationsInput | Date | string | null
+    resolution_needed?: NullableStringFieldUpdateOperationsInput | string | null
     job_history?: job_historyUncheckedUpdateManyWithoutJobNestedInput
     steps?: stepUncheckedUpdateManyWithoutJobNestedInput
     job_retry_backup?: job_retry_backupUncheckedUpdateManyWithoutJobNestedInput
@@ -62324,6 +62346,7 @@ export namespace Prisma {
     problem_type?: string | null
     problem_details?: NullableJsonNullValueInput | InputJsonValue
     evaluated_at?: Date | string | null
+    resolution_needed?: string | null
   }
 
   export type jobUpdateManyMutationInput = {
@@ -62349,6 +62372,7 @@ export namespace Prisma {
     problem_type?: NullableStringFieldUpdateOperationsInput | string | null
     problem_details?: NullableJsonNullValueInput | InputJsonValue
     evaluated_at?: NullableDateTimeFieldUpdateOperationsInput | Date | string | null
+    resolution_needed?: NullableStringFieldUpdateOperationsInput | string | null
   }
 
   export type jobUncheckedUpdateManyInput = {
@@ -62374,6 +62398,7 @@ export namespace Prisma {
     problem_type?: NullableStringFieldUpdateOperationsInput | string | null
     problem_details?: NullableJsonNullValueInput | InputJsonValue
     evaluated_at?: NullableDateTimeFieldUpdateOperationsInput | Date | string | null
+    resolution_needed?: NullableStringFieldUpdateOperationsInput | string | null
   }
 
   export type job_retry_backupCreateInput = {
@@ -65656,6 +65681,7 @@ export namespace Prisma {
     problem_type?: SortOrder
     problem_details?: SortOrder
     evaluated_at?: SortOrder
+    resolution_needed?: SortOrder
   }
 
   export type jobAvgOrderByAggregateInput = {
@@ -65686,6 +65712,7 @@ export namespace Prisma {
     status_category?: SortOrder
     problem_type?: SortOrder
     evaluated_at?: SortOrder
+    resolution_needed?: SortOrder
   }
 
   export type jobMinOrderByAggregateInput = {
@@ -65709,6 +65736,7 @@ export namespace Prisma {
     status_category?: SortOrder
     problem_type?: SortOrder
     evaluated_at?: SortOrder
+    resolution_needed?: SortOrder
   }
 
   export type jobSumOrderByAggregateInput = {
@@ -72062,6 +72090,7 @@ export namespace Prisma {
     problem_type?: string | null
     problem_details?: NullableJsonNullValueInput | InputJsonValue
     evaluated_at?: Date | string | null
+    resolution_needed?: string | null
     job_history?: job_historyCreateNestedManyWithoutJobInput
     steps?: stepCreateNestedManyWithoutJobInput
   }
@@ -72089,6 +72118,7 @@ export namespace Prisma {
     problem_type?: string | null
     problem_details?: NullableJsonNullValueInput | InputJsonValue
     evaluated_at?: Date | string | null
+    resolution_needed?: string | null
     job_history?: job_historyUncheckedCreateNestedManyWithoutJobInput
     steps?: stepUncheckedCreateNestedManyWithoutJobInput
   }
@@ -72132,6 +72162,7 @@ export namespace Prisma {
     problem_type?: NullableStringFieldUpdateOperationsInput | string | null
     problem_details?: NullableJsonNullValueInput | InputJsonValue
     evaluated_at?: NullableDateTimeFieldUpdateOperationsInput | Date | string | null
+    resolution_needed?: NullableStringFieldUpdateOperationsInput | string | null
     job_history?: job_historyUpdateManyWithoutJobNestedInput
     steps?: stepUpdateManyWithoutJobNestedInput
   }
@@ -72159,6 +72190,7 @@ export namespace Prisma {
     problem_type?: NullableStringFieldUpdateOperationsInput | string | null
     problem_details?: NullableJsonNullValueInput | InputJsonValue
     evaluated_at?: NullableDateTimeFieldUpdateOperationsInput | Date | string | null
+    resolution_needed?: NullableStringFieldUpdateOperationsInput | string | null
     job_history?: job_historyUncheckedUpdateManyWithoutJobNestedInput
     steps?: stepUncheckedUpdateManyWithoutJobNestedInput
   }
@@ -72186,6 +72218,7 @@ export namespace Prisma {
     problem_type?: string | null
     problem_details?: NullableJsonNullValueInput | InputJsonValue
     evaluated_at?: Date | string | null
+    resolution_needed?: string | null
     steps?: stepCreateNestedManyWithoutJobInput
     job_retry_backup?: job_retry_backupCreateNestedManyWithoutJobInput
   }
@@ -72213,6 +72246,7 @@ export namespace Prisma {
     problem_type?: string | null
     problem_details?: NullableJsonNullValueInput | InputJsonValue
     evaluated_at?: Date | string | null
+    resolution_needed?: string | null
     steps?: stepUncheckedCreateNestedManyWithoutJobInput
     job_retry_backup?: job_retry_backupUncheckedCreateNestedManyWithoutJobInput
   }
@@ -72256,6 +72290,7 @@ export namespace Prisma {
     problem_type?: NullableStringFieldUpdateOperationsInput | string | null
     problem_details?: NullableJsonNullValueInput | InputJsonValue
     evaluated_at?: NullableDateTimeFieldUpdateOperationsInput | Date | string | null
+    resolution_needed?: NullableStringFieldUpdateOperationsInput | string | null
     steps?: stepUpdateManyWithoutJobNestedInput
     job_retry_backup?: job_retry_backupUpdateManyWithoutJobNestedInput
   }
@@ -72283,6 +72318,7 @@ export namespace Prisma {
     problem_type?: NullableStringFieldUpdateOperationsInput | string | null
     problem_details?: NullableJsonNullValueInput | InputJsonValue
     evaluated_at?: NullableDateTimeFieldUpdateOperationsInput | Date | string | null
+    resolution_needed?: NullableStringFieldUpdateOperationsInput | string | null
     steps?: stepUncheckedUpdateManyWithoutJobNestedInput
     job_retry_backup?: job_retry_backupUncheckedUpdateManyWithoutJobNestedInput
   }
@@ -72310,6 +72346,7 @@ export namespace Prisma {
     problem_type?: string | null
     problem_details?: NullableJsonNullValueInput | InputJsonValue
     evaluated_at?: Date | string | null
+    resolution_needed?: string | null
     job_history?: job_historyCreateNestedManyWithoutJobInput
     job_retry_backup?: job_retry_backupCreateNestedManyWithoutJobInput
   }
@@ -72337,6 +72374,7 @@ export namespace Prisma {
     problem_type?: string | null
     problem_details?: NullableJsonNullValueInput | InputJsonValue
     evaluated_at?: Date | string | null
+    resolution_needed?: string | null
     job_history?: job_historyUncheckedCreateNestedManyWithoutJobInput
     job_retry_backup?: job_retry_backupUncheckedCreateNestedManyWithoutJobInput
   }
@@ -72380,6 +72418,7 @@ export namespace Prisma {
     problem_type?: NullableStringFieldUpdateOperationsInput | string | null
     problem_details?: NullableJsonNullValueInput | InputJsonValue
     evaluated_at?: NullableDateTimeFieldUpdateOperationsInput | Date | string | null
+    resolution_needed?: NullableStringFieldUpdateOperationsInput | string | null
     job_history?: job_historyUpdateManyWithoutJobNestedInput
     job_retry_backup?: job_retry_backupUpdateManyWithoutJobNestedInput
   }
@@ -72407,6 +72446,7 @@ export namespace Prisma {
     problem_type?: NullableStringFieldUpdateOperationsInput | string | null
     problem_details?: NullableJsonNullValueInput | InputJsonValue
     evaluated_at?: NullableDateTimeFieldUpdateOperationsInput | Date | string | null
+    resolution_needed?: NullableStringFieldUpdateOperationsInput | string | null
     job_history?: job_historyUncheckedUpdateManyWithoutJobNestedInput
     job_retry_backup?: job_retry_backupUncheckedUpdateManyWithoutJobNestedInput
   }
