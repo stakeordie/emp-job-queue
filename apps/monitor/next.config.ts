@@ -11,6 +11,20 @@ const nextConfig: NextConfig = {
     // Always skip ESLint for forensics/monitoring tool - we use relaxed typing
     ignoreDuringBuilds: true,
   },
+  images: {
+    remotePatterns: [
+      {
+        protocol: 'https',
+        hostname: 'cdn-dev.emprops.ai',
+        pathname: '/generations/**',
+      },
+      {
+        protocol: 'https',
+        hostname: 'cdn.emprops.ai',
+        pathname: '/generations/**',
+      }
+    ],
+  },
   outputFileTracingRoot: path.join(__dirname, '../../'),
   outputFileTracingExcludes: {
     '*': [

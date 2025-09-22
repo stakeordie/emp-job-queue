@@ -4,6 +4,21 @@ import crypto from 'crypto';
 
 const WEBHOOK_SECRET = 'mini-secret';
 
+// Add CORS headers
+const corsHeaders = {
+  'Access-Control-Allow-Origin': '*',
+  'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, OPTIONS',
+  'Access-Control-Allow-Headers': 'Content-Type, Authorization, x-webhook-event, x-webhook-signature, x-webhook-id, x-event-id',
+};
+
+// Handle preflight OPTIONS request
+export async function OPTIONS(request: NextRequest) {
+  return new NextResponse(null, {
+    status: 200,
+    headers: corsHeaders,
+  });
+}
+
 // Mock miniapp generation flow endpoint
 export async function POST(request: NextRequest) {
   try {
@@ -46,7 +61,7 @@ export async function POST(request: NextRequest) {
         console.log('❌ Signature verification failed');
         return NextResponse.json(
           { error: 'Unauthorized - invalid webhook signature' },
-          { status: 401 }
+          { status: 401, headers: corsHeaders }
         );
       }
       console.log('✅ Signature verified successfully');
@@ -59,7 +74,7 @@ export async function POST(request: NextRequest) {
         console.log('❌ Secret verification failed');
         return NextResponse.json(
           { error: 'Unauthorized - missing signature or invalid secret' },
-          { status: 401 }
+          { status: 401, headers: corsHeaders }
         );
       }
       console.log('✅ Secret verified successfully');
@@ -83,7 +98,7 @@ export async function POST(request: NextRequest) {
       console.log('❌ No workflow_id or job_id found in webhook payload');
       return NextResponse.json(
         { error: 'workflow_id or job_id is required' },
-        { status: 400 }
+        { status: 400, headers: corsHeaders }
       );
     }
 
@@ -97,21 +112,49 @@ export async function POST(request: NextRequest) {
 
     // Find the job by workflow_id or job_id
     // The workflow_id from the webhook IS the job.id in the database
-    console.log('🔍 Searching for job with ID:', workflow_id || job_id);
+    const searchId = workflow_id || job_id;
+    console.log('🔍 Searching for job with ID:', searchId);
 
-    const job = await prisma.job.findFirst({
-      where: {
-        id: workflow_id || job_id
+    // Check if this is a test ID (not a valid UUID)
+    const isTestId = searchId.startsWith('test_');
+
+    let job = null;
+    if (!isTestId) {
+      try {
+        job = await prisma.job.findFirst({
+          where: {
+            id: searchId
+          }
+        });
+      } catch (error) {
+        console.log('❌ Database error searching for job:', error);
+        // Continue with mock data for invalid UUIDs
       }
-    });
+    }
 
-    if (!job) {
-      console.log('❌ Job not found in database for ID:', workflow_id || job_id);
-      console.log('💡 This might mean the job ID does not exist or has a different format');
+    if (!job && !isTestId) {
+      console.log('❌ Job not found in database for ID:', searchId);
       return NextResponse.json(
-        { error: 'Job not found', searchedId: workflow_id || job_id },
-        { status: 404 }
+        { error: 'Job not found', searchedId: searchId },
+        { status: 404, headers: corsHeaders }
       );
+    }
+
+    // For test IDs or missing jobs, create mock job data
+    if (!job) {
+      console.log('🎭 Creating mock job data for test ID:', searchId);
+      job = {
+        id: searchId,
+        name: `Mock Job for ${searchId}`,
+        status: 'completed',
+        job_type: 'miniapp',
+        user_id: '00000000-0000-0000-0000-000000000001', // Mock UUID
+        created_at: new Date(),
+        data: {
+          collectionId: '00000000-0000-0000-0000-000000000002',
+          variables: { mock: true }
+        }
+      };
     }
 
     console.log('📋 Found job:', {
@@ -134,6 +177,7 @@ export async function POST(request: NextRequest) {
         farcaster_username: `mockuser${job.user_id.slice(-4)}`,
         farcaster_pfp: `https://api.dicebear.com/7.x/avataaars/svg?seed=${job.user_id}`,
         wallet_address: `0x${Math.random().toString(16).substring(2, 42)}`,
+        updated_at: new Date()
       }
     });
 
@@ -143,27 +187,56 @@ export async function POST(request: NextRequest) {
       username: mockMiniappUser.farcaster_username
     });
 
-    // Mock payment record
-    const mockPayment = await prisma.miniapp_payment.create({
-      data: {
+    // Check if payment exists for this user and collection
+    let mockPayment = await prisma.miniapp_payment.findFirst({
+      where: {
         user_id: mockMiniappUser.id,
-        collection_id: (job.data as any)?.collectionId || 'mock-collection-id',
-        amount: 0.75,
-        payment_status: 'completed',
-        generations_allowed: 3,
-        generations_used: 1,
-        transaction_hash: `0x${Math.random().toString(16).substring(2, 66)}`,
+        collection_id: (job.data as any)?.collectionId || 'mock-collection-id'
       }
     });
 
-    console.log('💳 Created mock payment:', mockPayment.id);
+    if (!mockPayment) {
+      // Create payment if missing
+      mockPayment = await prisma.miniapp_payment.create({
+        data: {
+          user_id: mockMiniappUser.id,
+          collection_id: (job.data as any)?.collectionId || 'mock-collection-id',
+          amount: 0.75,
+          payment_status: 'completed',
+          generations_allowed: 3,
+          generations_used: 1,
+          transaction_hash: `0x${Math.random().toString(16).substring(2, 66)}`,
+          updated_at: new Date()
+        }
+      });
+      console.log('💳 Created new payment:', mockPayment.id);
+    } else {
+      // Update generations_used for existing payment
+      mockPayment = await prisma.miniapp_payment.update({
+        where: { id: mockPayment.id },
+        data: {
+          generations_used: mockPayment.generations_used + 1,
+          updated_at: new Date()
+        }
+      });
+      console.log('💳 Updated existing payment:', mockPayment.id);
+    }
 
     // Extract real data from job for generation record
     const jobData = job.data as any;
     const workflowOutput = job.workflow_output as any;
 
     // Get real output URL and data from job
-    const realOutputUrl = workflowOutput?.outputs?.[0]?.steps?.find((step: any) => step.nodeResponse?.src)?.nodeResponse?.src;
+    // Handle both production (JSON object) and development (string) formats
+    let realOutputUrl;
+    if (typeof workflowOutput === 'string') {
+      // Development: workflow_output is a direct URL string
+      realOutputUrl = workflowOutput;
+    } else if (workflowOutput?.outputs?.[0]?.steps) {
+      // Production: workflow_output is a JSON object
+      realOutputUrl = workflowOutput.outputs[0].steps.find((step: any) => step.nodeResponse?.src)?.nodeResponse?.src;
+    }
+
     const realGeneratedImage = realOutputUrl || `https://mock-cdn.example.com/generation-${job.id}.png`;
 
     // Use real input data from job
@@ -174,30 +247,63 @@ export async function POST(request: NextRequest) {
       ...jobData?.variables
     };
 
-    // Mock miniapp generation record with real job data
-    const mockGeneration = await prisma.miniapp_generation.create({
-      data: {
-        user_id: mockMiniappUser.id,
-        collection_id: jobData?.collectionId || 'mock-collection-id',
-        payment_id: mockPayment.id,
-        job_id: job.id,
-        input_data: realInputData,
-        output_url: realGeneratedImage,
-        output_data: {
-          generated_at: job.completed_at?.toISOString() || new Date().toISOString(),
-          mock: true,
-          real_job_data: true,
-          workflow_output: workflowOutput,
-          processing_time_ms: job.completed_at && job.started_at
-            ? new Date(job.completed_at).getTime() - new Date(job.started_at).getTime()
-            : null
-        },
-        generated_image: realGeneratedImage,
-        status: job.status === 'completed' ? 'completed' : 'failed',
-      }
+    // Check if a generation record already exists for this job (retry case)
+    const existingGeneration = await prisma.miniapp_generation.findFirst({
+      where: { job_id: job.id }
     });
 
-    console.log('🎨 Created mock generation:', mockGeneration.id);
+    let mockGeneration;
+    if (existingGeneration) {
+      // Update existing record for retry
+      console.log('🔄 Updating existing generation for retry:', existingGeneration.id);
+      mockGeneration = await prisma.miniapp_generation.update({
+        where: { id: existingGeneration.id },
+        data: {
+          output_url: realGeneratedImage,
+          output_data: {
+            generated_at: job.completed_at?.toISOString() || new Date().toISOString(),
+            mock: true,
+            real_job_data: true,
+            workflow_output: workflowOutput,
+            processing_time_ms: job.completed_at && job.started_at
+              ? new Date(job.completed_at).getTime() - new Date(job.started_at).getTime()
+              : null,
+            retry_count: job.retry_count,
+            updated_from_retry: true
+          },
+          generated_image: realGeneratedImage,
+          status: job.status === 'completed' ? 'completed' : 'failed',
+          updated_at: new Date()
+        }
+      });
+    } else {
+      // Create new record for first attempt
+      console.log('✨ Creating new generation record');
+      mockGeneration = await prisma.miniapp_generation.create({
+        data: {
+          user_id: mockMiniappUser.id,
+          collection_id: jobData?.collectionId || 'mock-collection-id',
+          payment_id: mockPayment.id,
+          job_id: job.id,
+          input_data: realInputData,
+          output_url: realGeneratedImage,
+          output_data: {
+            generated_at: job.completed_at?.toISOString() || new Date().toISOString(),
+            mock: true,
+            real_job_data: true,
+            workflow_output: workflowOutput,
+            processing_time_ms: job.completed_at && job.started_at
+              ? new Date(job.completed_at).getTime() - new Date(job.started_at).getTime()
+              : null
+          },
+          generated_image: realGeneratedImage,
+          status: job.status === 'completed' ? 'completed' : 'failed',
+          updated_at: new Date()
+        }
+      });
+    }
+
+    console.log(existingGeneration ? '🔄 Updated generation:' : '🎨 Created mock generation:', mockGeneration.id);
 
     // Send notification request to user_notified endpoint
     const notificationPayload = {
@@ -207,7 +313,7 @@ export async function POST(request: NextRequest) {
 
     console.log('📤 Sending notification request:', notificationPayload);
 
-    const notificationResponse = await fetch('http://0.0.0.0:3333/api/user_notified', {
+    const notificationResponse = await fetch('http://0.0.0.0:3331/api/user_notified', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -230,7 +336,7 @@ export async function POST(request: NextRequest) {
         notification_status: notificationResponse.status,
         notification_response: notificationResult
       }
-    });
+    }, { headers: corsHeaders });
 
   } catch (error) {
     console.error('❌ Miniapp mock error:', error);
@@ -239,7 +345,7 @@ export async function POST(request: NextRequest) {
         error: 'Internal server error',
         details: error instanceof Error ? error.message : 'Unknown error'
       },
-      { status: 500 }
+      { status: 500, headers: corsHeaders }
     );
   }
 }
@@ -270,5 +376,5 @@ export async function GET() {
       '5. Call /api/user_notified endpoint',
       '6. Mark job as complete'
     ]
-  });
+  }, { headers: corsHeaders });
 }

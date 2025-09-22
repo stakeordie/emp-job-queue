@@ -170,6 +170,22 @@ function Home({ isJobPanelOpen }: HomeProps) {
       {/* Page Title */}
       <div className="flex items-center justify-between">
         <h1 className="text-2xl font-bold">Job Queue Monitor</h1>
+        <div className="flex gap-2">
+          <Button
+            variant="outline"
+            onClick={() => window.open('/metrics', '_blank')}
+            className="flex items-center gap-2"
+          >
+            📊 Metrics Dashboard
+          </Button>
+          <Button
+            variant="outline"
+            onClick={() => window.open('/forensics', '_blank')}
+            className="flex items-center gap-2"
+          >
+            🔍 Forensics
+          </Button>
+        </div>
       </div>
 
       {/* Job Statistics - Now in main monitor */}

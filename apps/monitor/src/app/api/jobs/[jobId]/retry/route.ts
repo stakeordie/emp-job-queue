@@ -26,23 +26,8 @@ export async function POST(
   }
 
   try {
-    // First reset the job status to 'failed' so it can be retried
-    try {
-      await prisma.job.update({
-        where: { id: jobId },
-        data: {
-          status: 'failed',
-          error_message: 'Job reset for retry',
-          started_at: null,
-          completed_at: null,
-          progress: 0
-        }
-      });
-    } catch (dbError) {
-      console.warn('Could not reset job in database, continuing with retry:', dbError);
-    }
-
     // Call the EmProps API retry endpoint with authentication
+    // The API will now handle backing up the current state and allow retrying any status
     const response = await fetch(`${empropsApiUrl}/jobs/${jobId}/retry`, {
       method: 'POST',
       headers: {
