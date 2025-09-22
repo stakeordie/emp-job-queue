@@ -24,6 +24,9 @@
       "default",
       "local"
     ],
+    "ngrok": [
+      "default"
+    ],
     "worker": [
       "default",
       "production"

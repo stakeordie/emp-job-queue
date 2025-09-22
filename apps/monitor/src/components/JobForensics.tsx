@@ -748,6 +748,13 @@ export default function JobForensics() {
   const user = miniappData?.user;
   const generation = miniappData?.generation;
   const payment = miniappData?.payment;
+  const notificationAttestation = forensicsData?.job?.payload?._notification_attestation;
+
+  // Debug logging to understand the data structure
+  console.log('🔍 JobForensics Debug for job:', forensicsData?.job?.id);
+  console.log('miniappData:', miniappData);
+  console.log('generation:', generation);
+  console.log('generation status check:', generation?.status);
 
   // Filter jobs based on search query
   // Server-side search is now handled in the API, so we use allJobs directly
@@ -1828,32 +1835,65 @@ export default function JobForensics() {
 
                     {/* Step 6: Job Completed Miniapp (miniapp_generation table) */}
                     <div className={`flex items-center gap-4 p-4 border rounded-lg ${
-                      generation && generation.status === 'completed' && generation.generated_image ? 'border-teal-200 bg-teal-50' : 'border-gray-200 bg-gray-50'
+                      generation ? 'border-teal-200 bg-teal-50' : 'border-gray-200 bg-gray-50'
                     }`}>
                       <div className="flex-shrink-0">
                         <div className={`w-8 h-8 rounded-full flex items-center justify-center text-sm font-semibold ${
-                          generation && generation.status === 'completed' && generation.generated_image ? 'bg-teal-600 text-white' : 'bg-gray-400 text-white'
+                          generation ? 'bg-teal-600 text-white' : 'bg-gray-400 text-white'
                         }`}>6</div>
                       </div>
                       <div className="flex-1">
-                        <div className={`font-medium ${generation && generation.status === 'completed' && generation.generated_image ? 'text-teal-800' : 'text-gray-600'}`}>
+                        <div className={`font-medium ${generation ? 'text-teal-800' : 'text-gray-600'}`}>
                           Miniapp Completion
                         </div>
-                        <div className={`text-sm ${generation && generation.status === 'completed' && generation.generated_image ? 'text-teal-600' : 'text-gray-500'}`}>
-                          {generation && generation.status === 'completed' && generation.generated_image
-                            ? `Miniapp completed with generated image`
-                            : generation
-                            ? `Miniapp generation status: ${generation.status}`
+                        <div className={`text-sm ${generation ? 'text-teal-600' : 'text-gray-500'}`}>
+                          {generation
+                            ? `Miniapp generation record created (Status: ${generation.status})`
                             : 'Miniapp webhook completion pending'}
                         </div>
-                        {generation && generation.status === 'completed' && generation.generated_image && (
+                        {generation && (
                           <div className="text-xs text-teal-500 mt-1">
                             <CheckCircle className="h-3 w-3 inline mr-1" />
-                            Generated image available | ID: {generation.id.substring(0, 8)}...
+                            Generation ID: {generation.id.substring(0, 8)}... | {generation.generated_image ? 'Image available' : 'No image'}
                           </div>
                         )}
                       </div>
-                      {generation && generation.status === 'completed' && generation.generated_image ? <CheckCircle className="h-5 w-5 text-teal-600" /> : <Clock className="h-5 w-5 text-gray-400" />}
+                      {generation ? <CheckCircle className="h-5 w-5 text-teal-600" /> : <Clock className="h-5 w-5 text-gray-400" />}
+                    </div>
+
+                    {/* Arrow */}
+                    <div className="flex justify-center">
+                      <ArrowRight className="h-5 w-5 text-gray-400" />
+                    </div>
+
+                    {/* Step 7: Customer Notified (Redis attestation) */}
+                    <div className={`flex items-center gap-4 p-4 border rounded-lg ${
+                      notificationAttestation && notificationAttestation.success ? 'border-emerald-200 bg-emerald-50' : 'border-gray-200 bg-gray-50'
+                    }`}>
+                      <div className="flex-shrink-0">
+                        <div className={`w-8 h-8 rounded-full flex items-center justify-center text-sm font-semibold ${
+                          notificationAttestation && notificationAttestation.success ? 'bg-emerald-600 text-white' : 'bg-gray-400 text-white'
+                        }`}>7</div>
+                      </div>
+                      <div className="flex-1">
+                        <div className={`font-medium ${notificationAttestation && notificationAttestation.success ? 'text-emerald-800' : 'text-gray-600'}`}>
+                          Customer Notified
+                        </div>
+                        <div className={`text-sm ${notificationAttestation && notificationAttestation.success ? 'text-emerald-600' : 'text-gray-500'}`}>
+                          {notificationAttestation && notificationAttestation.success
+                            ? `Customer notification sent successfully`
+                            : notificationAttestation && !notificationAttestation.success
+                            ? `Notification failed: ${notificationAttestation.error_message || 'Unknown error'}`
+                            : 'Customer notification pending'}
+                        </div>
+                        {notificationAttestation && notificationAttestation.success && (
+                          <div className="text-xs text-emerald-500 mt-1">
+                            <CheckCircle className="h-3 w-3 inline mr-1" />
+                            Notified at: {new Date(notificationAttestation.attested_at).toLocaleString()} | Method: {notificationAttestation.notification_method}
+                          </div>
+                        )}
+                      </div>
+                      {notificationAttestation && notificationAttestation.success ? <CheckCircle className="h-5 w-5 text-emerald-600" /> : <Clock className="h-5 w-5 text-gray-400" />}
                     </div>
                   </div>
 
@@ -1877,9 +1917,15 @@ export default function JobForensics() {
                       </div>
                       <div className="text-center p-3 bg-teal-50 rounded-lg border border-teal-200">
                         <div className="text-lg font-semibold text-teal-600">
-                          {generation && generation.status === 'completed' && generation.generated_image ? '✓' : '○'}
+                          {generation ? '✓' : '○'}
                         </div>
                         <div className="text-xs text-teal-600 font-medium">Miniapp Table</div>
+                      </div>
+                      <div className="text-center p-3 bg-amber-50 rounded-lg border border-amber-200">
+                        <div className="text-lg font-semibold text-amber-600">
+                          {notificationAttestation && notificationAttestation.success ? '✓' : '○'}
+                        </div>
+                        <div className="text-xs text-amber-600 font-medium">Notification</div>
                       </div>
                     </div>
                   </div>

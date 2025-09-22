@@ -1,51 +1,52 @@
 {
-  "name": "Production Testing",
-  "description": "Production-like environment for testing with local Redis, debug logging, and webhook service integration",
+  "name": "Development Mixed",
+  "description": "Local development with production API and development Redis",
   "components": {
     "api": [
       "default",
       "local"
     ],
-    "database": [
-      "default",
-      "production"
-    ],
-    "emprops": [
-      "default",
-      "production"
-    ],
-    "webhook-service": [
-      "default",
-      "production"
-    ],
-    "machine": [
-      "default",
-      "production"
-    ],
     "ngrok": [
       "default"
     ],
-    "worker": [
+    "database": [
       "default",
-      "production"
+      "development"
     ],
-    "monitor": [
+    "emprops": [
       "default",
-      "production"
+      "remote-dev"
     ],
-    "redis": [
+    "webhook-service": [
       "default",
-      "production"
-    ],
-    "storage-provider": [
-      "default",
-      "production"
+      "local"
     ],
     "api-tokens": [
       "default"
     ],
+    "machine": [
+      "default",
+      "remote-dev"
+    ],
+    "worker": [
+      "default",
+      "local"
+    ],
+    "monitor": [
+      "default",
+      "local"
+    ],
+    "redis": [
+      "default",
+      "remote-dev"
+    ],
+    "storage-provider": [
+      "default",
+      "dev"
+    ],
     "comfyui": [
-      "default"
+      "default",
+      "local"
     ],
     "ollama": [
       "default"
@@ -55,14 +56,14 @@
     ],
     "openai": [
       "default",
-      "production"
+      "local"
     ],
     "gemini": [
       "default"
     ],
     "telemetry": [
       "default",
-      "production"
+      "development"
     ]
   },
   "services": {}
