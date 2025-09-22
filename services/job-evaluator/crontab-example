@@ -1,0 +1,17 @@
+# Job Evaluator Cron Configuration
+# Run every 10 minutes to evaluate job completion status
+#
+# To install this cron job:
+# 1. Copy this line to your crontab: crontab -e
+# 2. Update the path to match your installation directory
+# 3. Ensure the script has execute permissions: chmod +x run-evaluator.sh
+
+# Format: minute hour day month day_of_week command
+# */10 = every 10 minutes
+*/10 * * * * cd /path/to/emp-job-queue/services/job-evaluator && ./run-evaluator.sh >> /var/log/job-evaluator.log 2>&1
+
+# Alternative with full paths (more reliable):
+# */10 * * * * /usr/bin/bash /full/path/to/emp-job-queue/services/job-evaluator/run-evaluator.sh >> /var/log/job-evaluator.log 2>&1
+
+# For development/testing, run every minute:
+# * * * * * cd /path/to/emp-job-queue/services/job-evaluator && ./run-evaluator.sh >> /var/log/job-evaluator.log 2>&1

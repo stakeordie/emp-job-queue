@@ -109,7 +109,9 @@
     "d:all:build": "pnpm d:fluentd:build && pnpm d:api:build && pnpm d:webhook:build",
     "d:all:build:nocache": "pnpm d:fluentd:build:nocache && pnpm d:api:build:nocache && pnpm d:webhook:build:nocache",
     "d:all:build:push": "pnpm d:fluentd:build:push && pnpm d:api:build:push && pnpm d:webhook:build:push",
-    "d:all:build:push:nocache": "pnpm d:fluentd:build:push:nocache && pnpm d:api:build:push:nocache && pnpm d:webhook:build:push:nocache"
+    "d:all:build:push:nocache": "pnpm d:fluentd:build:push:nocache && pnpm d:api:build:push:nocache && pnpm d:webhook:build:push:nocache",
+    "dev:jeval": "cd services/job-evaluator && tsx --env-file=.env.secret.local-dev --env-file=.env.local-dev src/index.ts",
+    "dev:jresolve": "cd services/job-evaluator && tsx --env-file=.env.secret.local-dev --env-file=.env.local-dev src/resolver.ts"
   },
   "devDependencies": {
     "@typescript-eslint/eslint-plugin": "^6.21.0",
