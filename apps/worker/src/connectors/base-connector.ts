@@ -477,6 +477,9 @@ ${Object.keys(process.env).filter(k => k.includes('HUB') || k.includes('REDIS'))
       // Call subclass job processing
       const result = await this.processJobImpl(jobData, progressCallback);
 
+      // 🔧 BASE CONNECTOR ENHANCEMENT: Auto-populate image_url and mime_type from saved assets
+      await this.populateAssetInfo(jobData, result);
+
       // Calculate processing time
       const duration = Date.now() - startTime;
 
@@ -515,6 +518,165 @@ ${Object.keys(process.env).filter(k => k.includes('HUB') || k.includes('REDIS'))
           service_version: this.version,
         },
       };
+    }
+  }
+
+  // ============================================================================
+  // Asset Information Population (Base Connector Enhancement)
+  // ============================================================================
+
+  /**
+   * Auto-populate image_url and mime_type from saved assets
+   * Fixes .bin extension issues by using actual saved asset URLs
+   */
+  private async populateAssetInfo(jobData: JobData, result: JobResult): Promise<void> {
+    const jobId = jobData.id || 'unknown';
+
+    // Only process successful jobs
+    if (!result.success) {
+      logger.info(`🔧 .BIN FIX: Skipping asset population for failed job ${jobId}`);
+      return;
+    }
+
+    try {
+      // Log what we're analyzing
+      logger.info(`\n🔧 ===== .BIN EXTENSION FIX ANALYSIS - JOB ${jobId} =====`);
+      logger.info(`🔧 CONNECTOR: ${this.connector_id} (${this.service_type})`);
+
+      // Check if this job used AssetSaver (has ctx.storage or ctx.filename)
+      const ctx = (jobData as any).ctx || (jobData.payload as any)?.ctx;
+      const hasCtx = !!ctx;
+      const hasStorage = !!(ctx && ctx.storage);
+      const hasFilename = !!(ctx && ctx.filename);
+
+      logger.info(`🔧 CTX ANALYSIS: hasCtx=${hasCtx}, hasStorage=${hasStorage}, hasFilename=${hasFilename}`);
+      if (ctx) {
+        logger.info(`🔧 CTX DETAILS: ${JSON.stringify({
+          prefix: ctx.prefix,
+          filename: ctx.filename,
+          bucket: ctx.storage?.bucket,
+          cdnUrl: ctx.storage?.cdnUrl
+        }, null, 2)}`);
+      }
+
+      if (!ctx || (!ctx.storage && !ctx.filename)) {
+        logger.info(`🔧 SKIP REASON: Job ${jobId} doesn't use AssetSaver (no ctx.storage or ctx.filename)`);
+        return;
+      }
+
+      // Log current result state BEFORE our fix
+      const beforeImageUrl = (result.data as any)?.image_url;
+      const beforeMimeType = (result.data as any)?.mime_type;
+      const beforeOutputFiles = result.output_files;
+
+      logger.info(`🔧 BEFORE FIX:`);
+      logger.info(`🔧   - result.data.image_url: ${beforeImageUrl || 'NOT SET'}`);
+      logger.info(`🔧   - result.data.mime_type: ${beforeMimeType || 'NOT SET'}`);
+      logger.info(`🔧   - result.output_files: ${beforeOutputFiles ? `${beforeOutputFiles.length} files` : 'NOT SET'}`);
+      if (beforeImageUrl && beforeImageUrl.includes('.bin')) {
+        logger.info(`🔧   ❌ DETECTED .BIN EXTENSION ISSUE: ${beforeImageUrl}`);
+      }
+
+      // Look for saved asset information from the last progress metadata
+      let savedAsset: { filePath?: string; fileName?: string; fileUrl?: string; mimeType?: string } | null = null;
+
+      // Check if the result already has saved asset info in metadata
+      if (result.metadata?.saved_asset) {
+        savedAsset = result.metadata.saved_asset as any;
+        logger.info(`🔧 FOUND SAVED ASSET IN METADATA: ${JSON.stringify(savedAsset, null, 2)}`);
+      } else {
+        logger.info(`🔧 NO SAVED ASSET FOUND IN result.metadata.saved_asset`);
+      }
+
+      // If we have saved asset info, populate the result
+      if (savedAsset && savedAsset.fileUrl) {
+        logger.info(`🔧 APPLYING FIX WITH SAVED ASSET:`);
+        logger.info(`🔧   - fileUrl: ${savedAsset.fileUrl}`);
+        logger.info(`🔧   - fileName: ${savedAsset.fileName}`);
+        logger.info(`🔧   - mimeType: ${savedAsset.mimeType || 'will detect from extension'}`);
+
+        // Populate output_files array
+        if (!result.output_files) {
+          result.output_files = [];
+        }
+
+        // Determine asset type and mime type
+        const fileName = savedAsset.fileName || 'asset';
+        const fileExtension = fileName.split('.').pop()?.toLowerCase() || '';
+        let assetType: 'image' | 'video' | 'audio' | 'text' | 'binary' = 'binary';
+        let mimeType = savedAsset.mimeType || 'application/octet-stream';
+
+        logger.info(`🔧 EXTENSION ANALYSIS: fileName="${fileName}", extension="${fileExtension}"`);
+
+        // Determine type from extension if mime type not available
+        if (['png', 'jpg', 'jpeg', 'webp', 'gif'].includes(fileExtension)) {
+          assetType = 'image';
+          if (!savedAsset.mimeType) {
+            mimeType = fileExtension === 'jpg' ? 'image/jpeg' : `image/${fileExtension}`;
+          }
+        } else if (['mp4', 'webm', 'avi'].includes(fileExtension)) {
+          assetType = 'video';
+          if (!savedAsset.mimeType) {
+            mimeType = `video/${fileExtension}`;
+          }
+        } else if (['mp3', 'wav', 'ogg'].includes(fileExtension)) {
+          assetType = 'audio';
+          if (!savedAsset.mimeType) {
+            mimeType = `audio/${fileExtension}`;
+          }
+        }
+
+        logger.info(`🔧 FINAL TYPE DETECTION: assetType="${assetType}", mimeType="${mimeType}"`);
+
+        // Add to output_files
+        result.output_files.push({
+          filename: fileName,
+          path: savedAsset.filePath || '',
+          type: assetType,
+          size_bytes: 0, // Could be populated if available
+          mime_type: mimeType,
+          metadata: {
+            cdn_url: savedAsset.fileUrl,
+            original_filename: ctx.filename, // Preserve original (potentially .bin) filename
+          }
+        });
+
+        // Populate data.image_url and mime_type for backward compatibility
+        if (!result.data) {
+          result.data = {};
+        }
+
+        (result.data as any).image_url = savedAsset.fileUrl;
+        (result.data as any).mime_type = mimeType;
+        (result.data as any).content_type = assetType;
+
+        // Log final result AFTER our fix
+        logger.info(`🔧 AFTER FIX:`);
+        logger.info(`🔧   - result.data.image_url: ${(result.data as any).image_url}`);
+        logger.info(`🔧   - result.data.mime_type: ${(result.data as any).mime_type}`);
+        logger.info(`🔧   - result.data.content_type: ${(result.data as any).content_type}`);
+        logger.info(`🔧   - result.output_files: ${result.output_files.length} files`);
+
+        // Show the key transformation
+        if (beforeImageUrl !== (result.data as any).image_url) {
+          logger.info(`🔧   ✅ FIXED URL TRANSFORMATION:`);
+          logger.info(`🔧     FROM: ${beforeImageUrl || 'NOT SET'}`);
+          logger.info(`🔧     TO:   ${(result.data as any).image_url}`);
+          if (beforeImageUrl?.includes('.bin')) {
+            logger.info(`🔧     🎉 .BIN EXTENSION ISSUE RESOLVED!`);
+          }
+        }
+
+        logger.info(`🔧 ===== .BIN EXTENSION FIX COMPLETE - JOB ${jobId} =====\n`);
+      } else {
+        logger.info(`🔧 NO FIX APPLIED: No saved asset with fileUrl found`);
+        logger.info(`🔧 RESULT WILL USE ORIGINAL VALUES from connector`);
+        logger.info(`🔧 ===== .BIN EXTENSION FIX SKIPPED - JOB ${jobId} =====\n`);
+      }
+    } catch (error) {
+      // Don't fail the job if asset population fails
+      logger.error(`🔧 .BIN FIX ERROR for job ${jobId}:`, error);
+      logger.info(`🔧 ===== .BIN EXTENSION FIX FAILED - JOB ${jobId} =====\n`);
     }
   }
 

@@ -1172,8 +1172,7 @@ export class OpenAIText2ImgConnector extends OpenAIBaseConnector {
       throw new Error('No images available for finalization');
     }
 
-    // Return minimal response like ComfyUI - asset is saved but URL not returned
-    // The client can construct the URL from job metadata if needed
+    // Return response with saved asset metadata for base connector processing
     return {
       success: true,
       data: {
@@ -1182,6 +1181,17 @@ export class OpenAIText2ImgConnector extends OpenAIBaseConnector {
         quality: quality,
         partial_images_received: partialCount,
         ...openaiMetadata,
+      },
+      metadata: {
+        saved_asset: savedAsset ? {
+          filePath: savedAsset.filePath,
+          fileName: savedAsset.fileName,
+          fileUrl: savedAsset.fileUrl,
+          mimeType: 'image/png', // OpenAI images are always PNG
+        } : null,
+        final_image_url: finalImageUrl,
+        save_assets: payload.save_assets !== false,
+        total_partial_images: partialCount,
       },
       processing_time_ms: 0, // Will be calculated by base class
     };

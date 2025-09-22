@@ -213,13 +213,61 @@ export class ComfyUIWebSocketConnector extends WebSocketConnector {
     return Math.min(90, 10 + progress * 80); // Map 0-1 to 10-90%
   }
 
-  protected parseJobResult(messageData: any, _originalJobData: JobData): JobResult {
+  protected parseJobResult(messageData: any, originalJobData: JobData): JobResult {
+    // Extract storage info from job data to construct image URLs
+    const ctx = (originalJobData as any).ctx || (originalJobData.payload as any)?.ctx;
+    let imageUrl: string | null = null;
+    let mimeType: string = 'image/png'; // ComfyUI typically generates PNG images
+
+    if (ctx && messageData.data?.outputs) {
+      // ComfyUI returns outputs with node IDs as keys
+      // Look for image outputs in any of the output nodes
+      for (const nodeId in messageData.data.outputs) {
+        const output = messageData.data.outputs[nodeId];
+        if (output?.images && output.images.length > 0) {
+          const firstImage = output.images[0];
+          if (firstImage?.filename && ctx.storage?.cdnUrl) {
+            // Construct the CDN URL using the storage config from job context
+            const cdnUrl = ctx.storage.cdnUrl.startsWith('http') ?
+              ctx.storage.cdnUrl : `https://${ctx.storage.cdnUrl}`;
+            const prefix = ctx.prefix ? (ctx.prefix.endsWith('/') ? ctx.prefix : ctx.prefix + '/') : '';
+            imageUrl = `${cdnUrl}/${prefix}${firstImage.filename}`;
+
+            // Determine mime type from filename extension
+            const extension = firstImage.filename.split('.').pop()?.toLowerCase();
+            if (extension === 'jpg' || extension === 'jpeg') {
+              mimeType = 'image/jpeg';
+            } else if (extension === 'webp') {
+              mimeType = 'image/webp';
+            } else if (extension === 'gif') {
+              mimeType = 'image/gif';
+            }
+            break; // Use first image found
+          }
+        }
+      }
+    }
+
     return {
       success: true,
       data: {
         prompt_id: this.promptId,
         client_id: this.clientId,
         result: messageData.data,
+        // Include image_url and mime_type for compatibility
+        image_url: imageUrl,
+        mime_type: mimeType,
+        content_type: 'image',
+      },
+      metadata: {
+        // Include saved asset info for base connector enhancement
+        saved_asset: imageUrl ? {
+          filePath: ctx?.prefix || '',
+          fileName: messageData.data?.outputs ? this.extractFirstImageFilename(messageData.data.outputs) : null,
+          fileUrl: imageUrl,
+          mimeType: mimeType,
+        } : null,
+        comfyui_outputs: messageData.data?.outputs,
       },
       processing_time_ms: 0, // Will be calculated by caller
       service_metadata: {
@@ -227,6 +275,16 @@ export class ComfyUIWebSocketConnector extends WebSocketConnector {
         service_type: this.service_type,
       },
     };
+  }
+
+  private extractFirstImageFilename(outputs: any): string | null {
+    for (const nodeId in outputs) {
+      const output = outputs[nodeId];
+      if (output?.images && output.images.length > 0) {
+        return output.images[0]?.filename || null;
+      }
+    }
+    return null;
   }
 
   protected extractErrorMessage(messageData: any): string {

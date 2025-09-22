@@ -4317,7 +4317,7 @@ export class LightweightAPIServer {
   private async createWorkflowCompletionAttestation(workflowId: string, jobCompletion?: any, workflowOutputs?: any[], retryAttempt?: number): Promise<void> {
     try {
       // Extract asset locations from job result
-      const jobAssetLocations = this.extractAssetLocations(jobCompletion?.result);
+      const jobAssetLocations = this.extractAssetLocations(jobCompletion?.result, jobCompletion?.job_id);
 
       // Extract output URLs from workflow outputs
       const workflowOutputUrls: string[] = [];
@@ -4438,17 +4438,54 @@ export class LightweightAPIServer {
   /**
    * Extract asset locations from job result for attestation
    */
-  private extractAssetLocations(result: any): string[] {
-    if (!result) return [];
+  private extractAssetLocations(result: any, jobId?: string): string[] {
+    const logPrefix = jobId ? `[JOB-${jobId}]` : '[UNKNOWN-JOB]';
+
+    if (!result) {
+      logger.info(`📋 ${logPrefix} API ASSET EXTRACTION: No result provided`);
+      return [];
+    }
+
+    logger.info(`\n📋 ===== API ASSET EXTRACTION ANALYSIS ${logPrefix} =====`);
+    logger.info(`📋 RESULT TYPE: ${typeof result}`);
+    logger.info(`📋 RESULT KEYS: ${result && typeof result === 'object' ? Object.keys(result).join(', ') : 'N/A'}`);
 
     const locations: string[] = [];
 
     try {
+      // Log the complete result structure for debugging
+      if (result && typeof result === 'object') {
+        logger.info(`📋 FULL RESULT STRUCTURE: ${JSON.stringify(result, null, 2).substring(0, 2000)}${JSON.stringify(result, null, 2).length > 2000 ? '...[TRUNCATED]' : ''}`);
+
+        // Show key fields we care about
+        if (result.data) {
+          logger.info(`📋 RESULT.DATA ANALYSIS:`);
+          logger.info(`📋   - image_url: ${result.data.image_url || 'NOT SET'}`);
+          logger.info(`📋   - mime_type: ${result.data.mime_type || 'NOT SET'}`);
+          logger.info(`📋   - content_type: ${result.data.content_type || 'NOT SET'}`);
+
+          // Check for .bin extension issues
+          if (result.data.image_url && result.data.image_url.includes('.bin')) {
+            logger.info(`📋   ❌ DETECTED .BIN EXTENSION IN API: ${result.data.image_url}`);
+          } else if (result.data.image_url) {
+            logger.info(`📋   ✅ PROPER EXTENSION IN API: ${result.data.image_url}`);
+          }
+        }
+
+        if (result.output_files) {
+          logger.info(`📋 OUTPUT_FILES ANALYSIS: ${result.output_files.length} files`);
+          result.output_files.forEach((file: any, index: number) => {
+            logger.info(`📋   [${index}] filename: ${file.filename}, mime_type: ${file.mime_type}, cdn_url: ${file.metadata?.cdn_url || 'NO CDN URL'}`);
+          });
+        }
+      }
+
       // Handle different result formats
       if (typeof result === 'string') {
         // Direct URL
         if (result.match(/^https?:\/\//)) {
           locations.push(result);
+          logger.info(`📋 FOUND URL (string): ${result}`);
         }
       } else if (result && typeof result === 'object') {
         // Object with various URL fields
@@ -4456,6 +4493,7 @@ export class LightweightAPIServer {
         for (const field of urlFields) {
           if (result[field] && typeof result[field] === 'string') {
             locations.push(result[field]);
+            logger.info(`📋 FOUND URL (result.${field}): ${result[field]}`);
           }
         }
 
@@ -4464,30 +4502,68 @@ export class LightweightAPIServer {
           for (const field of urlFields) {
             if (result.data[field] && typeof result.data[field] === 'string') {
               locations.push(result.data[field]);
+              logger.info(`📋 FOUND URL (result.data.${field}): ${result.data[field]}`);
+
+              // Check if this is where our fix worked
+              if (field === 'image_url' && result.data[field].includes('.bin')) {
+                logger.info(`📋   ⚠️  .BIN EXTENSION STILL PRESENT - FIX DID NOT WORK`);
+              } else if (field === 'image_url') {
+                logger.info(`📋   ✅ PROPER EXTENSION - FIX WORKED OR NOT NEEDED`);
+              }
             }
           }
         }
 
         // Array of URLs
         if (Array.isArray(result.outputs)) {
+          logger.info(`📋 CHECKING OUTPUTS ARRAY: ${result.outputs.length} items`);
           for (const output of result.outputs) {
             if (typeof output === 'string' && output.match(/^https?:\/\//)) {
               locations.push(output);
+              logger.info(`📋 FOUND URL (outputs string): ${output}`);
             } else if (output && typeof output === 'object') {
               for (const field of urlFields) {
                 if (output[field] && typeof output[field] === 'string') {
                   locations.push(output[field]);
+                  logger.info(`📋 FOUND URL (outputs.${field}): ${output[field]}`);
                 }
               }
             }
           }
         }
-      }
-    } catch (error) {
-      logger.warn('Failed to extract asset locations:', error);
-    }
 
-    return [...new Set(locations)]; // Remove duplicates
+        // Check output_files array (our fix populates this)
+        if (Array.isArray(result.output_files)) {
+          logger.info(`📋 CHECKING OUTPUT_FILES ARRAY: ${result.output_files.length} items`);
+          for (const file of result.output_files) {
+            if (file && typeof file === 'object') {
+              if (file.metadata?.cdn_url) {
+                locations.push(file.metadata.cdn_url);
+                logger.info(`📋 FOUND URL (output_files.cdn_url): ${file.metadata.cdn_url}`);
+                logger.info(`📋   📄 FILE DETAILS: ${file.filename} (${file.mime_type})`);
+              }
+            }
+          }
+        }
+      }
+
+      // Final summary
+      const uniqueLocations = [...new Set(locations)];
+      logger.info(`📋 EXTRACTION SUMMARY:`);
+      logger.info(`📋   - Total URLs found: ${locations.length}`);
+      logger.info(`📋   - Unique URLs: ${uniqueLocations.length}`);
+      uniqueLocations.forEach((url, index) => {
+        const hasBin = url.includes('.bin');
+        logger.info(`📋   [${index + 1}] ${hasBin ? '❌ .BIN' : '✅ GOOD'}: ${url}`);
+      });
+      logger.info(`📋 ===== API ASSET EXTRACTION COMPLETE ${logPrefix} =====\n`);
+
+      return uniqueLocations;
+    } catch (error) {
+      logger.error(`📋 ${logPrefix} Failed to extract asset locations:`, error);
+      logger.info(`📋 ===== API ASSET EXTRACTION FAILED ${logPrefix} =====\n`);
+      return [];
+    }
   }
 
   /**
