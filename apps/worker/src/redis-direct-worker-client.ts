@@ -842,12 +842,17 @@ export class RedisDirectWorkerClient {
       // Create sanitized result for attestation (URLs only, no base64 data)
       const sanitizedResult = this.createSanitizedResultForAttestation(result as any);
 
+      // Create raw service output with base64 scrubbed for debugging
+      const rawServiceOutput = sanitizeBase64Data(result);
+
       const workerCompletionRecord = {
         job_id: jobId,
         worker_id: this.workerId,
         status: 'completed',
         completed_at: completedAt,
         result: JSON.stringify(sanitizedResult),
+        raw_service_output: JSON.stringify(rawServiceOutput),
+        retry_count: parseInt(jobData.retry_count || '0'),
         workflow_id: jobData.workflow_id || null,
         current_step: jobData.current_step || null,
         total_steps: jobData.total_steps || null,
@@ -863,7 +868,7 @@ export class RedisDirectWorkerClient {
         JSON.stringify(workerCompletionRecord)
       );
 
-      logger.info(`🔐 Worker ${this.workerId} created completion attestation for job ${jobId}`);
+      logger.info(`🔐 Worker ${this.workerId} created completion attestation for job ${jobId} (retry: ${workerCompletionRecord.retry_count})`);
 
       // Update job status
       await this.redis.hmset(`job:${jobId}`, {
@@ -981,6 +986,7 @@ export class RedisDirectWorkerClient {
           status: 'failed',
           failed_at: failedAt,
           error: error,
+          raw_service_output: null, // TODO: Capture failed service responses when available
           retry_count: newRetryCount,
           workflow_id: job.workflow_id || null,
           current_step: job.current_step || null,
@@ -997,7 +1003,7 @@ export class RedisDirectWorkerClient {
           JSON.stringify(workerFailureRecord)
         );
 
-        logger.info(`🔐 Worker ${this.workerId} created failure attestation for job ${jobId}`);
+        logger.info(`🔐 Worker ${this.workerId} created failure attestation for job ${jobId} (retry: ${newRetryCount})`);
       }
 
       if (shouldRetry) {
