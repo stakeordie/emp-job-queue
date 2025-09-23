@@ -4822,7 +4822,14 @@ export class LightweightAPIServer {
           id: 1,
           nodeName: jobCompletion.job_id.includes('step-') ? jobCompletion.job_id.split('-')[1] : 'completion',
           nodeAlias: 'ForceCompletion1',
-          nodeResponse: jobCompletion.result
+          nodeResponse: {
+            // Extract image URL and format properly for EmProps API extraction
+            src: jobCompletion.result?.data?.image_url || jobCompletion.result?.image_url,
+            mimeType: jobCompletion.result?.data?.image_url ? "image/png" : null,
+            // Include original data for completeness
+            data: jobCompletion.result?.data || jobCompletion.result,
+            success: jobCompletion.result?.success !== false
+          }
         }]
       }] : [];
 
