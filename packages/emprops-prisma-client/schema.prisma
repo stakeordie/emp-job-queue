@@ -442,6 +442,8 @@ model job_retry_backup {
   original_data    Json?
   original_status  String
   original_workflow_output String?
+  original_started_at      DateTime?
+  original_completed_at    DateTime?
   backed_up_at     DateTime @default(now())
   job              job      @relation(fields: [original_job_id], references: [id], onDelete: Cascade)
 
@@ -488,10 +490,11 @@ model miniapp_user {
   updated_at             DateTime                 @updatedAt
   notification_token     String?
   split_address          String?
+  swapper_address        String?
   miniapp_claim_activity miniapp_claim_activity[]
   miniapp_generation     miniapp_generation[]
   miniapp_payment        miniapp_payment[]
-  social_links           social_link[]
+  social_link            social_link[]
 
   @@index([wallet_address])
 }
@@ -502,6 +505,8 @@ model miniapp_collection_config {
   price                   Float      @default(0.75)
   generations_per_payment Int        @default(3)
   is_active               Boolean    @default(true)
+  is_visible              Boolean    @default(true)
+  is_featured             Boolean    @default(false)
   created_at              DateTime   @default(now())
   updated_at              DateTime   @updatedAt
   max_retries             Int        @default(2)

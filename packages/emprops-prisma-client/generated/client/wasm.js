@@ -497,6 +497,8 @@ exports.Prisma.Job_retry_backupScalarFieldEnum = {
   original_data: 'original_data',
   original_status: 'original_status',
   original_workflow_output: 'original_workflow_output',
+  original_started_at: 'original_started_at',
+  original_completed_at: 'original_completed_at',
   backed_up_at: 'backed_up_at'
 };
 
@@ -534,7 +536,8 @@ exports.Prisma.Miniapp_userScalarFieldEnum = {
   created_at: 'created_at',
   updated_at: 'updated_at',
   notification_token: 'notification_token',
-  split_address: 'split_address'
+  split_address: 'split_address',
+  swapper_address: 'swapper_address'
 };
 
 exports.Prisma.Miniapp_collection_configScalarFieldEnum = {
@@ -543,6 +546,8 @@ exports.Prisma.Miniapp_collection_configScalarFieldEnum = {
   price: 'price',
   generations_per_payment: 'generations_per_payment',
   is_active: 'is_active',
+  is_visible: 'is_visible',
+  is_featured: 'is_featured',
   created_at: 'created_at',
   updated_at: 'updated_at',
   max_retries: 'max_retries',

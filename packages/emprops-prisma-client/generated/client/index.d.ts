@@ -5577,14 +5577,14 @@ export namespace Prisma {
     miniapp_claim_activity: number
     miniapp_generation: number
     miniapp_payment: number
-    social_links: number
+    social_link: number
   }
 
   export type Miniapp_userCountOutputTypeSelect<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = {
     miniapp_claim_activity?: boolean | Miniapp_userCountOutputTypeCountMiniapp_claim_activityArgs
     miniapp_generation?: boolean | Miniapp_userCountOutputTypeCountMiniapp_generationArgs
     miniapp_payment?: boolean | Miniapp_userCountOutputTypeCountMiniapp_paymentArgs
-    social_links?: boolean | Miniapp_userCountOutputTypeCountSocial_linksArgs
+    social_link?: boolean | Miniapp_userCountOutputTypeCountSocial_linkArgs
   }
 
   // Custom InputTypes
@@ -5622,7 +5622,7 @@ export namespace Prisma {
   /**
    * Miniapp_userCountOutputType without action
    */
-  export type Miniapp_userCountOutputTypeCountSocial_linksArgs<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = {
+  export type Miniapp_userCountOutputTypeCountSocial_linkArgs<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = {
     where?: social_linkWhereInput
   }
 
@@ -40096,6 +40096,8 @@ export namespace Prisma {
     retry_attempt: number | null
     original_status: string | null
     original_workflow_output: string | null
+    original_started_at: Date | null
+    original_completed_at: Date | null
     backed_up_at: Date | null
   }
 
@@ -40105,6 +40107,8 @@ export namespace Prisma {
     retry_attempt: number | null
     original_status: string | null
     original_workflow_output: string | null
+    original_started_at: Date | null
+    original_completed_at: Date | null
     backed_up_at: Date | null
   }
 
@@ -40115,6 +40119,8 @@ export namespace Prisma {
     original_data: number
     original_status: number
     original_workflow_output: number
+    original_started_at: number
+    original_completed_at: number
     backed_up_at: number
     _all: number
   }
@@ -40134,6 +40140,8 @@ export namespace Prisma {
     retry_attempt?: true
     original_status?: true
     original_workflow_output?: true
+    original_started_at?: true
+    original_completed_at?: true
     backed_up_at?: true
   }
 
@@ -40143,6 +40151,8 @@ export namespace Prisma {
     retry_attempt?: true
     original_status?: true
     original_workflow_output?: true
+    original_started_at?: true
+    original_completed_at?: true
     backed_up_at?: true
   }
 
@@ -40153,6 +40163,8 @@ export namespace Prisma {
     original_data?: true
     original_status?: true
     original_workflow_output?: true
+    original_started_at?: true
+    original_completed_at?: true
     backed_up_at?: true
     _all?: true
   }
@@ -40250,6 +40262,8 @@ export namespace Prisma {
     original_data: JsonValue | null
     original_status: string
     original_workflow_output: string | null
+    original_started_at: Date | null
+    original_completed_at: Date | null
     backed_up_at: Date
     _count: Job_retry_backupCountAggregateOutputType | null
     _avg: Job_retry_backupAvgAggregateOutputType | null
@@ -40279,6 +40293,8 @@ export namespace Prisma {
     original_data?: boolean
     original_status?: boolean
     original_workflow_output?: boolean
+    original_started_at?: boolean
+    original_completed_at?: boolean
     backed_up_at?: boolean
     job?: boolean | jobDefaultArgs<ExtArgs>
   }, ExtArgs["result"]["job_retry_backup"]>
@@ -40290,6 +40306,8 @@ export namespace Prisma {
     original_data?: boolean
     original_status?: boolean
     original_workflow_output?: boolean
+    original_started_at?: boolean
+    original_completed_at?: boolean
     backed_up_at?: boolean
     job?: boolean | jobDefaultArgs<ExtArgs>
   }, ExtArgs["result"]["job_retry_backup"]>
@@ -40301,6 +40319,8 @@ export namespace Prisma {
     original_data?: boolean
     original_status?: boolean
     original_workflow_output?: boolean
+    original_started_at?: boolean
+    original_completed_at?: boolean
     backed_up_at?: boolean
   }
 
@@ -40323,6 +40343,8 @@ export namespace Prisma {
       original_data: Prisma.JsonValue | null
       original_status: string
       original_workflow_output: string | null
+      original_started_at: Date | null
+      original_completed_at: Date | null
       backed_up_at: Date
     }, ExtArgs["result"]["job_retry_backup"]>
     composites: {}
@@ -40724,6 +40746,8 @@ export namespace Prisma {
     readonly original_data: FieldRef<"job_retry_backup", 'Json'>
     readonly original_status: FieldRef<"job_retry_backup", 'String'>
     readonly original_workflow_output: FieldRef<"job_retry_backup", 'String'>
+    readonly original_started_at: FieldRef<"job_retry_backup", 'DateTime'>
+    readonly original_completed_at: FieldRef<"job_retry_backup", 'DateTime'>
     readonly backed_up_at: FieldRef<"job_retry_backup", 'DateTime'>
   }
     
@@ -43111,6 +43135,7 @@ export namespace Prisma {
     updated_at: Date | null
     notification_token: string | null
     split_address: string | null
+    swapper_address: string | null
   }
 
   export type Miniapp_userMaxAggregateOutputType = {
@@ -43123,6 +43148,7 @@ export namespace Prisma {
     updated_at: Date | null
     notification_token: string | null
     split_address: string | null
+    swapper_address: string | null
   }
 
   export type Miniapp_userCountAggregateOutputType = {
@@ -43135,6 +43161,7 @@ export namespace Prisma {
     updated_at: number
     notification_token: number
     split_address: number
+    swapper_address: number
     _all: number
   }
 
@@ -43149,6 +43176,7 @@ export namespace Prisma {
     updated_at?: true
     notification_token?: true
     split_address?: true
+    swapper_address?: true
   }
 
   export type Miniapp_userMaxAggregateInputType = {
@@ -43161,6 +43189,7 @@ export namespace Prisma {
     updated_at?: true
     notification_token?: true
     split_address?: true
+    swapper_address?: true
   }
 
   export type Miniapp_userCountAggregateInputType = {
@@ -43173,6 +43202,7 @@ export namespace Prisma {
     updated_at?: true
     notification_token?: true
     split_address?: true
+    swapper_address?: true
     _all?: true
   }
 
@@ -43258,6 +43288,7 @@ export namespace Prisma {
     updated_at: Date
     notification_token: string | null
     split_address: string | null
+    swapper_address: string | null
     _count: Miniapp_userCountAggregateOutputType | null
     _min: Miniapp_userMinAggregateOutputType | null
     _max: Miniapp_userMaxAggregateOutputType | null
@@ -43287,10 +43318,11 @@ export namespace Prisma {
     updated_at?: boolean
     notification_token?: boolean
     split_address?: boolean
+    swapper_address?: boolean
     miniapp_claim_activity?: boolean | miniapp_user$miniapp_claim_activityArgs<ExtArgs>
     miniapp_generation?: boolean | miniapp_user$miniapp_generationArgs<ExtArgs>
     miniapp_payment?: boolean | miniapp_user$miniapp_paymentArgs<ExtArgs>
-    social_links?: boolean | miniapp_user$social_linksArgs<ExtArgs>
+    social_link?: boolean | miniapp_user$social_linkArgs<ExtArgs>
     _count?: boolean | Miniapp_userCountOutputTypeDefaultArgs<ExtArgs>
   }, ExtArgs["result"]["miniapp_user"]>
 
@@ -43304,6 +43336,7 @@ export namespace Prisma {
     updated_at?: boolean
     notification_token?: boolean
     split_address?: boolean
+    swapper_address?: boolean
   }, ExtArgs["result"]["miniapp_user"]>
 
   export type miniapp_userSelectScalar = {
@@ -43316,13 +43349,14 @@ export namespace Prisma {
     updated_at?: boolean
     notification_token?: boolean
     split_address?: boolean
+    swapper_address?: boolean
   }
 
   export type miniapp_userInclude<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = {
     miniapp_claim_activity?: boolean | miniapp_user$miniapp_claim_activityArgs<ExtArgs>
     miniapp_generation?: boolean | miniapp_user$miniapp_generationArgs<ExtArgs>
     miniapp_payment?: boolean | miniapp_user$miniapp_paymentArgs<ExtArgs>
-    social_links?: boolean | miniapp_user$social_linksArgs<ExtArgs>
+    social_link?: boolean | miniapp_user$social_linkArgs<ExtArgs>
     _count?: boolean | Miniapp_userCountOutputTypeDefaultArgs<ExtArgs>
   }
   export type miniapp_userIncludeCreateManyAndReturn<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = {}
@@ -43333,7 +43367,7 @@ export namespace Prisma {
       miniapp_claim_activity: Prisma.$miniapp_claim_activityPayload<ExtArgs>[]
       miniapp_generation: Prisma.$miniapp_generationPayload<ExtArgs>[]
       miniapp_payment: Prisma.$miniapp_paymentPayload<ExtArgs>[]
-      social_links: Prisma.$social_linkPayload<ExtArgs>[]
+      social_link: Prisma.$social_linkPayload<ExtArgs>[]
     }
     scalars: $Extensions.GetPayloadResult<{
       id: string
@@ -43345,6 +43379,7 @@ export namespace Prisma {
       updated_at: Date
       notification_token: string | null
       split_address: string | null
+      swapper_address: string | null
     }, ExtArgs["result"]["miniapp_user"]>
     composites: {}
   }
@@ -43712,7 +43747,7 @@ export namespace Prisma {
     miniapp_claim_activity<T extends miniapp_user$miniapp_claim_activityArgs<ExtArgs> = {}>(args?: Subset<T, miniapp_user$miniapp_claim_activityArgs<ExtArgs>>): Prisma.PrismaPromise<$Result.GetResult<Prisma.$miniapp_claim_activityPayload<ExtArgs>, T, "findMany"> | Null>
     miniapp_generation<T extends miniapp_user$miniapp_generationArgs<ExtArgs> = {}>(args?: Subset<T, miniapp_user$miniapp_generationArgs<ExtArgs>>): Prisma.PrismaPromise<$Result.GetResult<Prisma.$miniapp_generationPayload<ExtArgs>, T, "findMany"> | Null>
     miniapp_payment<T extends miniapp_user$miniapp_paymentArgs<ExtArgs> = {}>(args?: Subset<T, miniapp_user$miniapp_paymentArgs<ExtArgs>>): Prisma.PrismaPromise<$Result.GetResult<Prisma.$miniapp_paymentPayload<ExtArgs>, T, "findMany"> | Null>
-    social_links<T extends miniapp_user$social_linksArgs<ExtArgs> = {}>(args?: Subset<T, miniapp_user$social_linksArgs<ExtArgs>>): Prisma.PrismaPromise<$Result.GetResult<Prisma.$social_linkPayload<ExtArgs>, T, "findMany"> | Null>
+    social_link<T extends miniapp_user$social_linkArgs<ExtArgs> = {}>(args?: Subset<T, miniapp_user$social_linkArgs<ExtArgs>>): Prisma.PrismaPromise<$Result.GetResult<Prisma.$social_linkPayload<ExtArgs>, T, "findMany"> | Null>
     /**
      * Attaches callbacks for the resolution and/or rejection of the Promise.
      * @param onfulfilled The callback to execute when the Promise is resolved.
@@ -43751,6 +43786,7 @@ export namespace Prisma {
     readonly updated_at: FieldRef<"miniapp_user", 'DateTime'>
     readonly notification_token: FieldRef<"miniapp_user", 'String'>
     readonly split_address: FieldRef<"miniapp_user", 'String'>
+    readonly swapper_address: FieldRef<"miniapp_user", 'String'>
   }
     
 
@@ -44125,9 +44161,9 @@ export namespace Prisma {
   }
 
   /**
-   * miniapp_user.social_links
+   * miniapp_user.social_link
    */
-  export type miniapp_user$social_linksArgs<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = {
+  export type miniapp_user$social_linkArgs<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = {
     /**
      * Select specific fields to fetch from the social_link
      */
@@ -44189,6 +44225,8 @@ export namespace Prisma {
     price: number | null
     generations_per_payment: number | null
     is_active: boolean | null
+    is_visible: boolean | null
+    is_featured: boolean | null
     created_at: Date | null
     updated_at: Date | null
     max_retries: number | null
@@ -44201,6 +44239,8 @@ export namespace Prisma {
     price: number | null
     generations_per_payment: number | null
     is_active: boolean | null
+    is_visible: boolean | null
+    is_featured: boolean | null
     created_at: Date | null
     updated_at: Date | null
     max_retries: number | null
@@ -44213,6 +44253,8 @@ export namespace Prisma {
     price: number
     generations_per_payment: number
     is_active: number
+    is_visible: number
+    is_featured: number
     created_at: number
     updated_at: number
     max_retries: number
@@ -44239,6 +44281,8 @@ export namespace Prisma {
     price?: true
     generations_per_payment?: true
     is_active?: true
+    is_visible?: true
+    is_featured?: true
     created_at?: true
     updated_at?: true
     max_retries?: true
@@ -44251,6 +44295,8 @@ export namespace Prisma {
     price?: true
     generations_per_payment?: true
     is_active?: true
+    is_visible?: true
+    is_featured?: true
     created_at?: true
     updated_at?: true
     max_retries?: true
@@ -44263,6 +44309,8 @@ export namespace Prisma {
     price?: true
     generations_per_payment?: true
     is_active?: true
+    is_visible?: true
+    is_featured?: true
     created_at?: true
     updated_at?: true
     max_retries?: true
@@ -44362,6 +44410,8 @@ export namespace Prisma {
     price: number
     generations_per_payment: number
     is_active: boolean
+    is_visible: boolean
+    is_featured: boolean
     created_at: Date
     updated_at: Date
     max_retries: number
@@ -44393,6 +44443,8 @@ export namespace Prisma {
     price?: boolean
     generations_per_payment?: boolean
     is_active?: boolean
+    is_visible?: boolean
+    is_featured?: boolean
     created_at?: boolean
     updated_at?: boolean
     max_retries?: boolean
@@ -44406,6 +44458,8 @@ export namespace Prisma {
     price?: boolean
     generations_per_payment?: boolean
     is_active?: boolean
+    is_visible?: boolean
+    is_featured?: boolean
     created_at?: boolean
     updated_at?: boolean
     max_retries?: boolean
@@ -44419,6 +44473,8 @@ export namespace Prisma {
     price?: boolean
     generations_per_payment?: boolean
     is_active?: boolean
+    is_visible?: boolean
+    is_featured?: boolean
     created_at?: boolean
     updated_at?: boolean
     max_retries?: boolean
@@ -44443,6 +44499,8 @@ export namespace Prisma {
       price: number
       generations_per_payment: number
       is_active: boolean
+      is_visible: boolean
+      is_featured: boolean
       created_at: Date
       updated_at: Date
       max_retries: number
@@ -44846,6 +44904,8 @@ export namespace Prisma {
     readonly price: FieldRef<"miniapp_collection_config", 'Float'>
     readonly generations_per_payment: FieldRef<"miniapp_collection_config", 'Int'>
     readonly is_active: FieldRef<"miniapp_collection_config", 'Boolean'>
+    readonly is_visible: FieldRef<"miniapp_collection_config", 'Boolean'>
+    readonly is_featured: FieldRef<"miniapp_collection_config", 'Boolean'>
     readonly created_at: FieldRef<"miniapp_collection_config", 'DateTime'>
     readonly updated_at: FieldRef<"miniapp_collection_config", 'DateTime'>
     readonly max_retries: FieldRef<"miniapp_collection_config", 'Int'>
@@ -55744,6 +55804,8 @@ export namespace Prisma {
     original_data: 'original_data',
     original_status: 'original_status',
     original_workflow_output: 'original_workflow_output',
+    original_started_at: 'original_started_at',
+    original_completed_at: 'original_completed_at',
     backed_up_at: 'backed_up_at'
   };
 
@@ -55790,7 +55852,8 @@ export namespace Prisma {
     created_at: 'created_at',
     updated_at: 'updated_at',
     notification_token: 'notification_token',
-    split_address: 'split_address'
+    split_address: 'split_address',
+    swapper_address: 'swapper_address'
   };
 
   export type Miniapp_userScalarFieldEnum = (typeof Miniapp_userScalarFieldEnum)[keyof typeof Miniapp_userScalarFieldEnum]
@@ -55802,6 +55865,8 @@ export namespace Prisma {
     price: 'price',
     generations_per_payment: 'generations_per_payment',
     is_active: 'is_active',
+    is_visible: 'is_visible',
+    is_featured: 'is_featured',
     created_at: 'created_at',
     updated_at: 'updated_at',
     max_retries: 'max_retries',
@@ -58615,6 +58680,8 @@ export namespace Prisma {
     original_data?: JsonNullableFilter<"job_retry_backup">
     original_status?: StringFilter<"job_retry_backup"> | string
     original_workflow_output?: StringNullableFilter<"job_retry_backup"> | string | null
+    original_started_at?: DateTimeNullableFilter<"job_retry_backup"> | Date | string | null
+    original_completed_at?: DateTimeNullableFilter<"job_retry_backup"> | Date | string | null
     backed_up_at?: DateTimeFilter<"job_retry_backup"> | Date | string
     job?: XOR<JobRelationFilter, jobWhereInput>
   }
@@ -58626,6 +58693,8 @@ export namespace Prisma {
     original_data?: SortOrderInput | SortOrder
     original_status?: SortOrder
     original_workflow_output?: SortOrderInput | SortOrder
+    original_started_at?: SortOrderInput | SortOrder
+    original_completed_at?: SortOrderInput | SortOrder
     backed_up_at?: SortOrder
     job?: jobOrderByWithRelationInput
   }
@@ -58640,6 +58709,8 @@ export namespace Prisma {
     original_data?: JsonNullableFilter<"job_retry_backup">
     original_status?: StringFilter<"job_retry_backup"> | string
     original_workflow_output?: StringNullableFilter<"job_retry_backup"> | string | null
+    original_started_at?: DateTimeNullableFilter<"job_retry_backup"> | Date | string | null
+    original_completed_at?: DateTimeNullableFilter<"job_retry_backup"> | Date | string | null
     backed_up_at?: DateTimeFilter<"job_retry_backup"> | Date | string
     job?: XOR<JobRelationFilter, jobWhereInput>
   }, "id">
@@ -58651,6 +58722,8 @@ export namespace Prisma {
     original_data?: SortOrderInput | SortOrder
     original_status?: SortOrder
     original_workflow_output?: SortOrderInput | SortOrder
+    original_started_at?: SortOrderInput | SortOrder
+    original_completed_at?: SortOrderInput | SortOrder
     backed_up_at?: SortOrder
     _count?: job_retry_backupCountOrderByAggregateInput
     _avg?: job_retry_backupAvgOrderByAggregateInput
@@ -58669,6 +58742,8 @@ export namespace Prisma {
     original_data?: JsonNullableWithAggregatesFilter<"job_retry_backup">
     original_status?: StringWithAggregatesFilter<"job_retry_backup"> | string
     original_workflow_output?: StringNullableWithAggregatesFilter<"job_retry_backup"> | string | null
+    original_started_at?: DateTimeNullableWithAggregatesFilter<"job_retry_backup"> | Date | string | null
+    original_completed_at?: DateTimeNullableWithAggregatesFilter<"job_retry_backup"> | Date | string | null
     backed_up_at?: DateTimeWithAggregatesFilter<"job_retry_backup"> | Date | string
   }
 
@@ -58844,10 +58919,11 @@ export namespace Prisma {
     updated_at?: DateTimeFilter<"miniapp_user"> | Date | string
     notification_token?: StringNullableFilter<"miniapp_user"> | string | null
     split_address?: StringNullableFilter<"miniapp_user"> | string | null
+    swapper_address?: StringNullableFilter<"miniapp_user"> | string | null
     miniapp_claim_activity?: Miniapp_claim_activityListRelationFilter
     miniapp_generation?: Miniapp_generationListRelationFilter
     miniapp_payment?: Miniapp_paymentListRelationFilter
-    social_links?: Social_linkListRelationFilter
+    social_link?: Social_linkListRelationFilter
   }
 
   export type miniapp_userOrderByWithRelationInput = {
@@ -58860,10 +58936,11 @@ export namespace Prisma {
     updated_at?: SortOrder
     notification_token?: SortOrderInput | SortOrder
     split_address?: SortOrderInput | SortOrder
+    swapper_address?: SortOrderInput | SortOrder
     miniapp_claim_activity?: miniapp_claim_activityOrderByRelationAggregateInput
     miniapp_generation?: miniapp_generationOrderByRelationAggregateInput
     miniapp_payment?: miniapp_paymentOrderByRelationAggregateInput
-    social_links?: social_linkOrderByRelationAggregateInput
+    social_link?: social_linkOrderByRelationAggregateInput
   }
 
   export type miniapp_userWhereUniqueInput = Prisma.AtLeast<{
@@ -58879,10 +58956,11 @@ export namespace Prisma {
     updated_at?: DateTimeFilter<"miniapp_user"> | Date | string
     notification_token?: StringNullableFilter<"miniapp_user"> | string | null
     split_address?: StringNullableFilter<"miniapp_user"> | string | null
+    swapper_address?: StringNullableFilter<"miniapp_user"> | string | null
     miniapp_claim_activity?: Miniapp_claim_activityListRelationFilter
     miniapp_generation?: Miniapp_generationListRelationFilter
     miniapp_payment?: Miniapp_paymentListRelationFilter
-    social_links?: Social_linkListRelationFilter
+    social_link?: Social_linkListRelationFilter
   }, "id" | "farcaster_id">
 
   export type miniapp_userOrderByWithAggregationInput = {
@@ -58895,6 +58973,7 @@ export namespace Prisma {
     updated_at?: SortOrder
     notification_token?: SortOrderInput | SortOrder
     split_address?: SortOrderInput | SortOrder
+    swapper_address?: SortOrderInput | SortOrder
     _count?: miniapp_userCountOrderByAggregateInput
     _max?: miniapp_userMaxOrderByAggregateInput
     _min?: miniapp_userMinOrderByAggregateInput
@@ -58913,6 +58992,7 @@ export namespace Prisma {
     updated_at?: DateTimeWithAggregatesFilter<"miniapp_user"> | Date | string
     notification_token?: StringNullableWithAggregatesFilter<"miniapp_user"> | string | null
     split_address?: StringNullableWithAggregatesFilter<"miniapp_user"> | string | null
+    swapper_address?: StringNullableWithAggregatesFilter<"miniapp_user"> | string | null
   }
 
   export type miniapp_collection_configWhereInput = {
@@ -58924,6 +59004,8 @@ export namespace Prisma {
     price?: FloatFilter<"miniapp_collection_config"> | number
     generations_per_payment?: IntFilter<"miniapp_collection_config"> | number
     is_active?: BoolFilter<"miniapp_collection_config"> | boolean
+    is_visible?: BoolFilter<"miniapp_collection_config"> | boolean
+    is_featured?: BoolFilter<"miniapp_collection_config"> | boolean
     created_at?: DateTimeFilter<"miniapp_collection_config"> | Date | string
     updated_at?: DateTimeFilter<"miniapp_collection_config"> | Date | string
     max_retries?: IntFilter<"miniapp_collection_config"> | number
@@ -58937,6 +59019,8 @@ export namespace Prisma {
     price?: SortOrder
     generations_per_payment?: SortOrder
     is_active?: SortOrder
+    is_visible?: SortOrder
+    is_featured?: SortOrder
     created_at?: SortOrder
     updated_at?: SortOrder
     max_retries?: SortOrder
@@ -58953,6 +59037,8 @@ export namespace Prisma {
     price?: FloatFilter<"miniapp_collection_config"> | number
     generations_per_payment?: IntFilter<"miniapp_collection_config"> | number
     is_active?: BoolFilter<"miniapp_collection_config"> | boolean
+    is_visible?: BoolFilter<"miniapp_collection_config"> | boolean
+    is_featured?: BoolFilter<"miniapp_collection_config"> | boolean
     created_at?: DateTimeFilter<"miniapp_collection_config"> | Date | string
     updated_at?: DateTimeFilter<"miniapp_collection_config"> | Date | string
     max_retries?: IntFilter<"miniapp_collection_config"> | number
@@ -58966,6 +59052,8 @@ export namespace Prisma {
     price?: SortOrder
     generations_per_payment?: SortOrder
     is_active?: SortOrder
+    is_visible?: SortOrder
+    is_featured?: SortOrder
     created_at?: SortOrder
     updated_at?: SortOrder
     max_retries?: SortOrder
@@ -58986,6 +59074,8 @@ export namespace Prisma {
     price?: FloatWithAggregatesFilter<"miniapp_collection_config"> | number
     generations_per_payment?: IntWithAggregatesFilter<"miniapp_collection_config"> | number
     is_active?: BoolWithAggregatesFilter<"miniapp_collection_config"> | boolean
+    is_visible?: BoolWithAggregatesFilter<"miniapp_collection_config"> | boolean
+    is_featured?: BoolWithAggregatesFilter<"miniapp_collection_config"> | boolean
     created_at?: DateTimeWithAggregatesFilter<"miniapp_collection_config"> | Date | string
     updated_at?: DateTimeWithAggregatesFilter<"miniapp_collection_config"> | Date | string
     max_retries?: IntWithAggregatesFilter<"miniapp_collection_config"> | number
@@ -62407,6 +62497,8 @@ export namespace Prisma {
     original_data?: NullableJsonNullValueInput | InputJsonValue
     original_status: string
     original_workflow_output?: string | null
+    original_started_at?: Date | string | null
+    original_completed_at?: Date | string | null
     backed_up_at?: Date | string
     job: jobCreateNestedOneWithoutJob_retry_backupInput
   }
@@ -62418,6 +62510,8 @@ export namespace Prisma {
     original_data?: NullableJsonNullValueInput | InputJsonValue
     original_status: string
     original_workflow_output?: string | null
+    original_started_at?: Date | string | null
+    original_completed_at?: Date | string | null
     backed_up_at?: Date | string
   }
 
@@ -62427,6 +62521,8 @@ export namespace Prisma {
     original_data?: NullableJsonNullValueInput | InputJsonValue
     original_status?: StringFieldUpdateOperationsInput | string
     original_workflow_output?: NullableStringFieldUpdateOperationsInput | string | null
+    original_started_at?: NullableDateTimeFieldUpdateOperationsInput | Date | string | null
+    original_completed_at?: NullableDateTimeFieldUpdateOperationsInput | Date | string | null
     backed_up_at?: DateTimeFieldUpdateOperationsInput | Date | string
     job?: jobUpdateOneRequiredWithoutJob_retry_backupNestedInput
   }
@@ -62438,6 +62534,8 @@ export namespace Prisma {
     original_data?: NullableJsonNullValueInput | InputJsonValue
     original_status?: StringFieldUpdateOperationsInput | string
     original_workflow_output?: NullableStringFieldUpdateOperationsInput | string | null
+    original_started_at?: NullableDateTimeFieldUpdateOperationsInput | Date | string | null
+    original_completed_at?: NullableDateTimeFieldUpdateOperationsInput | Date | string | null
     backed_up_at?: DateTimeFieldUpdateOperationsInput | Date | string
   }
 
@@ -62448,6 +62546,8 @@ export namespace Prisma {
     original_data?: NullableJsonNullValueInput | InputJsonValue
     original_status: string
     original_workflow_output?: string | null
+    original_started_at?: Date | string | null
+    original_completed_at?: Date | string | null
     backed_up_at?: Date | string
   }
 
@@ -62457,6 +62557,8 @@ export namespace Prisma {
     original_data?: NullableJsonNullValueInput | InputJsonValue
     original_status?: StringFieldUpdateOperationsInput | string
     original_workflow_output?: NullableStringFieldUpdateOperationsInput | string | null
+    original_started_at?: NullableDateTimeFieldUpdateOperationsInput | Date | string | null
+    original_completed_at?: NullableDateTimeFieldUpdateOperationsInput | Date | string | null
     backed_up_at?: DateTimeFieldUpdateOperationsInput | Date | string
   }
 
@@ -62467,6 +62569,8 @@ export namespace Prisma {
     original_data?: NullableJsonNullValueInput | InputJsonValue
     original_status?: StringFieldUpdateOperationsInput | string
     original_workflow_output?: NullableStringFieldUpdateOperationsInput | string | null
+    original_started_at?: NullableDateTimeFieldUpdateOperationsInput | Date | string | null
+    original_completed_at?: NullableDateTimeFieldUpdateOperationsInput | Date | string | null
     backed_up_at?: DateTimeFieldUpdateOperationsInput | Date | string
   }
 
@@ -62653,10 +62757,11 @@ export namespace Prisma {
     updated_at?: Date | string
     notification_token?: string | null
     split_address?: string | null
+    swapper_address?: string | null
     miniapp_claim_activity?: miniapp_claim_activityCreateNestedManyWithoutMiniapp_userInput
     miniapp_generation?: miniapp_generationCreateNestedManyWithoutMiniapp_userInput
     miniapp_payment?: miniapp_paymentCreateNestedManyWithoutMiniapp_userInput
-    social_links?: social_linkCreateNestedManyWithoutMiniapp_userInput
+    social_link?: social_linkCreateNestedManyWithoutMiniapp_userInput
   }
 
   export type miniapp_userUncheckedCreateInput = {
@@ -62669,10 +62774,11 @@ export namespace Prisma {
     updated_at?: Date | string
     notification_token?: string | null
     split_address?: string | null
+    swapper_address?: string | null
     miniapp_claim_activity?: miniapp_claim_activityUncheckedCreateNestedManyWithoutMiniapp_userInput
     miniapp_generation?: miniapp_generationUncheckedCreateNestedManyWithoutMiniapp_userInput
     miniapp_payment?: miniapp_paymentUncheckedCreateNestedManyWithoutMiniapp_userInput
-    social_links?: social_linkUncheckedCreateNestedManyWithoutMiniapp_userInput
+    social_link?: social_linkUncheckedCreateNestedManyWithoutMiniapp_userInput
   }
 
   export type miniapp_userUpdateInput = {
@@ -62685,10 +62791,11 @@ export namespace Prisma {
     updated_at?: DateTimeFieldUpdateOperationsInput | Date | string
     notification_token?: NullableStringFieldUpdateOperationsInput | string | null
     split_address?: NullableStringFieldUpdateOperationsInput | string | null
+    swapper_address?: NullableStringFieldUpdateOperationsInput | string | null
     miniapp_claim_activity?: miniapp_claim_activityUpdateManyWithoutMiniapp_userNestedInput
     miniapp_generation?: miniapp_generationUpdateManyWithoutMiniapp_userNestedInput
     miniapp_payment?: miniapp_paymentUpdateManyWithoutMiniapp_userNestedInput
-    social_links?: social_linkUpdateManyWithoutMiniapp_userNestedInput
+    social_link?: social_linkUpdateManyWithoutMiniapp_userNestedInput
   }
 
   export type miniapp_userUncheckedUpdateInput = {
@@ -62701,10 +62808,11 @@ export namespace Prisma {
     updated_at?: DateTimeFieldUpdateOperationsInput | Date | string
     notification_token?: NullableStringFieldUpdateOperationsInput | string | null
     split_address?: NullableStringFieldUpdateOperationsInput | string | null
+    swapper_address?: NullableStringFieldUpdateOperationsInput | string | null
     miniapp_claim_activity?: miniapp_claim_activityUncheckedUpdateManyWithoutMiniapp_userNestedInput
     miniapp_generation?: miniapp_generationUncheckedUpdateManyWithoutMiniapp_userNestedInput
     miniapp_payment?: miniapp_paymentUncheckedUpdateManyWithoutMiniapp_userNestedInput
-    social_links?: social_linkUncheckedUpdateManyWithoutMiniapp_userNestedInput
+    social_link?: social_linkUncheckedUpdateManyWithoutMiniapp_userNestedInput
   }
 
   export type miniapp_userCreateManyInput = {
@@ -62717,6 +62825,7 @@ export namespace Prisma {
     updated_at?: Date | string
     notification_token?: string | null
     split_address?: string | null
+    swapper_address?: string | null
   }
 
   export type miniapp_userUpdateManyMutationInput = {
@@ -62729,6 +62838,7 @@ export namespace Prisma {
     updated_at?: DateTimeFieldUpdateOperationsInput | Date | string
     notification_token?: NullableStringFieldUpdateOperationsInput | string | null
     split_address?: NullableStringFieldUpdateOperationsInput | string | null
+    swapper_address?: NullableStringFieldUpdateOperationsInput | string | null
   }
 
   export type miniapp_userUncheckedUpdateManyInput = {
@@ -62741,6 +62851,7 @@ export namespace Prisma {
     updated_at?: DateTimeFieldUpdateOperationsInput | Date | string
     notification_token?: NullableStringFieldUpdateOperationsInput | string | null
     split_address?: NullableStringFieldUpdateOperationsInput | string | null
+    swapper_address?: NullableStringFieldUpdateOperationsInput | string | null
   }
 
   export type miniapp_collection_configCreateInput = {
@@ -62748,6 +62859,8 @@ export namespace Prisma {
     price?: number
     generations_per_payment?: number
     is_active?: boolean
+    is_visible?: boolean
+    is_featured?: boolean
     created_at?: Date | string
     updated_at?: Date | string
     max_retries?: number
@@ -62761,6 +62874,8 @@ export namespace Prisma {
     price?: number
     generations_per_payment?: number
     is_active?: boolean
+    is_visible?: boolean
+    is_featured?: boolean
     created_at?: Date | string
     updated_at?: Date | string
     max_retries?: number
@@ -62772,6 +62887,8 @@ export namespace Prisma {
     price?: FloatFieldUpdateOperationsInput | number
     generations_per_payment?: IntFieldUpdateOperationsInput | number
     is_active?: BoolFieldUpdateOperationsInput | boolean
+    is_visible?: BoolFieldUpdateOperationsInput | boolean
+    is_featured?: BoolFieldUpdateOperationsInput | boolean
     created_at?: DateTimeFieldUpdateOperationsInput | Date | string
     updated_at?: DateTimeFieldUpdateOperationsInput | Date | string
     max_retries?: IntFieldUpdateOperationsInput | number
@@ -62785,6 +62902,8 @@ export namespace Prisma {
     price?: FloatFieldUpdateOperationsInput | number
     generations_per_payment?: IntFieldUpdateOperationsInput | number
     is_active?: BoolFieldUpdateOperationsInput | boolean
+    is_visible?: BoolFieldUpdateOperationsInput | boolean
+    is_featured?: BoolFieldUpdateOperationsInput | boolean
     created_at?: DateTimeFieldUpdateOperationsInput | Date | string
     updated_at?: DateTimeFieldUpdateOperationsInput | Date | string
     max_retries?: IntFieldUpdateOperationsInput | number
@@ -62797,6 +62916,8 @@ export namespace Prisma {
     price?: number
     generations_per_payment?: number
     is_active?: boolean
+    is_visible?: boolean
+    is_featured?: boolean
     created_at?: Date | string
     updated_at?: Date | string
     max_retries?: number
@@ -62808,6 +62929,8 @@ export namespace Prisma {
     price?: FloatFieldUpdateOperationsInput | number
     generations_per_payment?: IntFieldUpdateOperationsInput | number
     is_active?: BoolFieldUpdateOperationsInput | boolean
+    is_visible?: BoolFieldUpdateOperationsInput | boolean
+    is_featured?: BoolFieldUpdateOperationsInput | boolean
     created_at?: DateTimeFieldUpdateOperationsInput | Date | string
     updated_at?: DateTimeFieldUpdateOperationsInput | Date | string
     max_retries?: IntFieldUpdateOperationsInput | number
@@ -62820,6 +62943,8 @@ export namespace Prisma {
     price?: FloatFieldUpdateOperationsInput | number
     generations_per_payment?: IntFieldUpdateOperationsInput | number
     is_active?: BoolFieldUpdateOperationsInput | boolean
+    is_visible?: BoolFieldUpdateOperationsInput | boolean
+    is_featured?: BoolFieldUpdateOperationsInput | boolean
     created_at?: DateTimeFieldUpdateOperationsInput | Date | string
     updated_at?: DateTimeFieldUpdateOperationsInput | Date | string
     max_retries?: IntFieldUpdateOperationsInput | number
@@ -63261,7 +63386,7 @@ export namespace Prisma {
     created_at?: Date | string
     updated_at?: Date | string
     custodial_collections?: collectionCreateNestedManyWithoutSocial_linkInput
-    miniapp_user?: miniapp_userCreateNestedOneWithoutSocial_linksInput
+    miniapp_user?: miniapp_userCreateNestedOneWithoutSocial_linkInput
   }
 
   export type social_linkUncheckedCreateInput = {
@@ -63281,7 +63406,7 @@ export namespace Prisma {
     created_at?: DateTimeFieldUpdateOperationsInput | Date | string
     updated_at?: DateTimeFieldUpdateOperationsInput | Date | string
     custodial_collections?: collectionUpdateManyWithoutSocial_linkNestedInput
-    miniapp_user?: miniapp_userUpdateOneWithoutSocial_linksNestedInput
+    miniapp_user?: miniapp_userUpdateOneWithoutSocial_linkNestedInput
   }
 
   export type social_linkUncheckedUpdateInput = {
@@ -65758,6 +65883,8 @@ export namespace Prisma {
     original_data?: SortOrder
     original_status?: SortOrder
     original_workflow_output?: SortOrder
+    original_started_at?: SortOrder
+    original_completed_at?: SortOrder
     backed_up_at?: SortOrder
   }
 
@@ -65771,6 +65898,8 @@ export namespace Prisma {
     retry_attempt?: SortOrder
     original_status?: SortOrder
     original_workflow_output?: SortOrder
+    original_started_at?: SortOrder
+    original_completed_at?: SortOrder
     backed_up_at?: SortOrder
   }
 
@@ -65780,6 +65909,8 @@ export namespace Prisma {
     retry_attempt?: SortOrder
     original_status?: SortOrder
     original_workflow_output?: SortOrder
+    original_started_at?: SortOrder
+    original_completed_at?: SortOrder
     backed_up_at?: SortOrder
   }
 
@@ -65904,6 +66035,7 @@ export namespace Prisma {
     updated_at?: SortOrder
     notification_token?: SortOrder
     split_address?: SortOrder
+    swapper_address?: SortOrder
   }
 
   export type miniapp_userMaxOrderByAggregateInput = {
@@ -65916,6 +66048,7 @@ export namespace Prisma {
     updated_at?: SortOrder
     notification_token?: SortOrder
     split_address?: SortOrder
+    swapper_address?: SortOrder
   }
 
   export type miniapp_userMinOrderByAggregateInput = {
@@ -65928,6 +66061,7 @@ export namespace Prisma {
     updated_at?: SortOrder
     notification_token?: SortOrder
     split_address?: SortOrder
+    swapper_address?: SortOrder
   }
 
   export type miniapp_collection_configCountOrderByAggregateInput = {
@@ -65936,6 +66070,8 @@ export namespace Prisma {
     price?: SortOrder
     generations_per_payment?: SortOrder
     is_active?: SortOrder
+    is_visible?: SortOrder
+    is_featured?: SortOrder
     created_at?: SortOrder
     updated_at?: SortOrder
     max_retries?: SortOrder
@@ -65954,6 +66090,8 @@ export namespace Prisma {
     price?: SortOrder
     generations_per_payment?: SortOrder
     is_active?: SortOrder
+    is_visible?: SortOrder
+    is_featured?: SortOrder
     created_at?: SortOrder
     updated_at?: SortOrder
     max_retries?: SortOrder
@@ -65966,6 +66104,8 @@ export namespace Prisma {
     price?: SortOrder
     generations_per_payment?: SortOrder
     is_active?: SortOrder
+    is_visible?: SortOrder
+    is_featured?: SortOrder
     created_at?: SortOrder
     updated_at?: SortOrder
     max_retries?: SortOrder
@@ -68279,9 +68419,9 @@ export namespace Prisma {
     connect?: collectionWhereUniqueInput | collectionWhereUniqueInput[]
   }
 
-  export type miniapp_userCreateNestedOneWithoutSocial_linksInput = {
-    create?: XOR<miniapp_userCreateWithoutSocial_linksInput, miniapp_userUncheckedCreateWithoutSocial_linksInput>
-    connectOrCreate?: miniapp_userCreateOrConnectWithoutSocial_linksInput
+  export type miniapp_userCreateNestedOneWithoutSocial_linkInput = {
+    create?: XOR<miniapp_userCreateWithoutSocial_linkInput, miniapp_userUncheckedCreateWithoutSocial_linkInput>
+    connectOrCreate?: miniapp_userCreateOrConnectWithoutSocial_linkInput
     connect?: miniapp_userWhereUniqueInput
   }
 
@@ -68310,14 +68450,14 @@ export namespace Prisma {
     deleteMany?: collectionScalarWhereInput | collectionScalarWhereInput[]
   }
 
-  export type miniapp_userUpdateOneWithoutSocial_linksNestedInput = {
-    create?: XOR<miniapp_userCreateWithoutSocial_linksInput, miniapp_userUncheckedCreateWithoutSocial_linksInput>
-    connectOrCreate?: miniapp_userCreateOrConnectWithoutSocial_linksInput
-    upsert?: miniapp_userUpsertWithoutSocial_linksInput
+  export type miniapp_userUpdateOneWithoutSocial_linkNestedInput = {
+    create?: XOR<miniapp_userCreateWithoutSocial_linkInput, miniapp_userUncheckedCreateWithoutSocial_linkInput>
+    connectOrCreate?: miniapp_userCreateOrConnectWithoutSocial_linkInput
+    upsert?: miniapp_userUpsertWithoutSocial_linkInput
     disconnect?: miniapp_userWhereInput | boolean
     delete?: miniapp_userWhereInput | boolean
     connect?: miniapp_userWhereUniqueInput
-    update?: XOR<XOR<miniapp_userUpdateToOneWithWhereWithoutSocial_linksInput, miniapp_userUpdateWithoutSocial_linksInput>, miniapp_userUncheckedUpdateWithoutSocial_linksInput>
+    update?: XOR<XOR<miniapp_userUpdateToOneWithWhereWithoutSocial_linkInput, miniapp_userUpdateWithoutSocial_linkInput>, miniapp_userUncheckedUpdateWithoutSocial_linkInput>
   }
 
   export type collectionUncheckedUpdateManyWithoutSocial_linkNestedInput = {
@@ -68913,7 +69053,7 @@ export namespace Prisma {
     identifier: string
     created_at?: Date | string
     updated_at?: Date | string
-    miniapp_user?: miniapp_userCreateNestedOneWithoutSocial_linksInput
+    miniapp_user?: miniapp_userCreateNestedOneWithoutSocial_linkInput
   }
 
   export type social_linkUncheckedCreateWithoutCustodial_collectionsInput = {
@@ -69131,6 +69271,8 @@ export namespace Prisma {
     price?: number
     generations_per_payment?: number
     is_active?: boolean
+    is_visible?: boolean
+    is_featured?: boolean
     created_at?: Date | string
     updated_at?: Date | string
     max_retries?: number
@@ -69142,6 +69284,8 @@ export namespace Prisma {
     price?: number
     generations_per_payment?: number
     is_active?: boolean
+    is_visible?: boolean
+    is_featured?: boolean
     created_at?: Date | string
     updated_at?: Date | string
     max_retries?: number
@@ -69248,7 +69392,7 @@ export namespace Prisma {
     identifier?: StringFieldUpdateOperationsInput | string
     created_at?: DateTimeFieldUpdateOperationsInput | Date | string
     updated_at?: DateTimeFieldUpdateOperationsInput | Date | string
-    miniapp_user?: miniapp_userUpdateOneWithoutSocial_linksNestedInput
+    miniapp_user?: miniapp_userUpdateOneWithoutSocial_linkNestedInput
   }
 
   export type social_linkUncheckedUpdateWithoutCustodial_collectionsInput = {
@@ -69493,6 +69637,8 @@ export namespace Prisma {
     price?: FloatFieldUpdateOperationsInput | number
     generations_per_payment?: IntFieldUpdateOperationsInput | number
     is_active?: BoolFieldUpdateOperationsInput | boolean
+    is_visible?: BoolFieldUpdateOperationsInput | boolean
+    is_featured?: BoolFieldUpdateOperationsInput | boolean
     created_at?: DateTimeFieldUpdateOperationsInput | Date | string
     updated_at?: DateTimeFieldUpdateOperationsInput | Date | string
     max_retries?: IntFieldUpdateOperationsInput | number
@@ -69504,6 +69650,8 @@ export namespace Prisma {
     price?: FloatFieldUpdateOperationsInput | number
     generations_per_payment?: IntFieldUpdateOperationsInput | number
     is_active?: BoolFieldUpdateOperationsInput | boolean
+    is_visible?: BoolFieldUpdateOperationsInput | boolean
+    is_featured?: BoolFieldUpdateOperationsInput | boolean
     created_at?: DateTimeFieldUpdateOperationsInput | Date | string
     updated_at?: DateTimeFieldUpdateOperationsInput | Date | string
     max_retries?: IntFieldUpdateOperationsInput | number
@@ -71953,6 +72101,8 @@ export namespace Prisma {
     original_data?: NullableJsonNullValueInput | InputJsonValue
     original_status: string
     original_workflow_output?: string | null
+    original_started_at?: Date | string | null
+    original_completed_at?: Date | string | null
     backed_up_at?: Date | string
   }
 
@@ -71962,6 +72112,8 @@ export namespace Prisma {
     original_data?: NullableJsonNullValueInput | InputJsonValue
     original_status: string
     original_workflow_output?: string | null
+    original_started_at?: Date | string | null
+    original_completed_at?: Date | string | null
     backed_up_at?: Date | string
   }
 
@@ -72064,6 +72216,8 @@ export namespace Prisma {
     original_data?: JsonNullableFilter<"job_retry_backup">
     original_status?: StringFilter<"job_retry_backup"> | string
     original_workflow_output?: StringNullableFilter<"job_retry_backup"> | string | null
+    original_started_at?: DateTimeNullableFilter<"job_retry_backup"> | Date | string | null
+    original_completed_at?: DateTimeNullableFilter<"job_retry_backup"> | Date | string | null
     backed_up_at?: DateTimeFilter<"job_retry_backup"> | Date | string
   }
 
@@ -72960,9 +73114,10 @@ export namespace Prisma {
     updated_at?: Date | string
     notification_token?: string | null
     split_address?: string | null
+    swapper_address?: string | null
     miniapp_claim_activity?: miniapp_claim_activityCreateNestedManyWithoutMiniapp_userInput
     miniapp_generation?: miniapp_generationCreateNestedManyWithoutMiniapp_userInput
-    social_links?: social_linkCreateNestedManyWithoutMiniapp_userInput
+    social_link?: social_linkCreateNestedManyWithoutMiniapp_userInput
   }
 
   export type miniapp_userUncheckedCreateWithoutMiniapp_paymentInput = {
@@ -72975,9 +73130,10 @@ export namespace Prisma {
     updated_at?: Date | string
     notification_token?: string | null
     split_address?: string | null
+    swapper_address?: string | null
     miniapp_claim_activity?: miniapp_claim_activityUncheckedCreateNestedManyWithoutMiniapp_userInput
     miniapp_generation?: miniapp_generationUncheckedCreateNestedManyWithoutMiniapp_userInput
-    social_links?: social_linkUncheckedCreateNestedManyWithoutMiniapp_userInput
+    social_link?: social_linkUncheckedCreateNestedManyWithoutMiniapp_userInput
   }
 
   export type miniapp_userCreateOrConnectWithoutMiniapp_paymentInput = {
@@ -73103,9 +73259,10 @@ export namespace Prisma {
     updated_at?: DateTimeFieldUpdateOperationsInput | Date | string
     notification_token?: NullableStringFieldUpdateOperationsInput | string | null
     split_address?: NullableStringFieldUpdateOperationsInput | string | null
+    swapper_address?: NullableStringFieldUpdateOperationsInput | string | null
     miniapp_claim_activity?: miniapp_claim_activityUpdateManyWithoutMiniapp_userNestedInput
     miniapp_generation?: miniapp_generationUpdateManyWithoutMiniapp_userNestedInput
-    social_links?: social_linkUpdateManyWithoutMiniapp_userNestedInput
+    social_link?: social_linkUpdateManyWithoutMiniapp_userNestedInput
   }
 
   export type miniapp_userUncheckedUpdateWithoutMiniapp_paymentInput = {
@@ -73118,9 +73275,10 @@ export namespace Prisma {
     updated_at?: DateTimeFieldUpdateOperationsInput | Date | string
     notification_token?: NullableStringFieldUpdateOperationsInput | string | null
     split_address?: NullableStringFieldUpdateOperationsInput | string | null
+    swapper_address?: NullableStringFieldUpdateOperationsInput | string | null
     miniapp_claim_activity?: miniapp_claim_activityUncheckedUpdateManyWithoutMiniapp_userNestedInput
     miniapp_generation?: miniapp_generationUncheckedUpdateManyWithoutMiniapp_userNestedInput
-    social_links?: social_linkUncheckedUpdateManyWithoutMiniapp_userNestedInput
+    social_link?: social_linkUncheckedUpdateManyWithoutMiniapp_userNestedInput
   }
 
   export type collectionCreateWithoutMiniapp_generationInput = {
@@ -73239,9 +73397,10 @@ export namespace Prisma {
     updated_at?: Date | string
     notification_token?: string | null
     split_address?: string | null
+    swapper_address?: string | null
     miniapp_claim_activity?: miniapp_claim_activityCreateNestedManyWithoutMiniapp_userInput
     miniapp_payment?: miniapp_paymentCreateNestedManyWithoutMiniapp_userInput
-    social_links?: social_linkCreateNestedManyWithoutMiniapp_userInput
+    social_link?: social_linkCreateNestedManyWithoutMiniapp_userInput
   }
 
   export type miniapp_userUncheckedCreateWithoutMiniapp_generationInput = {
@@ -73254,9 +73413,10 @@ export namespace Prisma {
     updated_at?: Date | string
     notification_token?: string | null
     split_address?: string | null
+    swapper_address?: string | null
     miniapp_claim_activity?: miniapp_claim_activityUncheckedCreateNestedManyWithoutMiniapp_userInput
     miniapp_payment?: miniapp_paymentUncheckedCreateNestedManyWithoutMiniapp_userInput
-    social_links?: social_linkUncheckedCreateNestedManyWithoutMiniapp_userInput
+    social_link?: social_linkUncheckedCreateNestedManyWithoutMiniapp_userInput
   }
 
   export type miniapp_userCreateOrConnectWithoutMiniapp_generationInput = {
@@ -73403,9 +73563,10 @@ export namespace Prisma {
     updated_at?: DateTimeFieldUpdateOperationsInput | Date | string
     notification_token?: NullableStringFieldUpdateOperationsInput | string | null
     split_address?: NullableStringFieldUpdateOperationsInput | string | null
+    swapper_address?: NullableStringFieldUpdateOperationsInput | string | null
     miniapp_claim_activity?: miniapp_claim_activityUpdateManyWithoutMiniapp_userNestedInput
     miniapp_payment?: miniapp_paymentUpdateManyWithoutMiniapp_userNestedInput
-    social_links?: social_linkUpdateManyWithoutMiniapp_userNestedInput
+    social_link?: social_linkUpdateManyWithoutMiniapp_userNestedInput
   }
 
   export type miniapp_userUncheckedUpdateWithoutMiniapp_generationInput = {
@@ -73418,9 +73579,10 @@ export namespace Prisma {
     updated_at?: DateTimeFieldUpdateOperationsInput | Date | string
     notification_token?: NullableStringFieldUpdateOperationsInput | string | null
     split_address?: NullableStringFieldUpdateOperationsInput | string | null
+    swapper_address?: NullableStringFieldUpdateOperationsInput | string | null
     miniapp_claim_activity?: miniapp_claim_activityUncheckedUpdateManyWithoutMiniapp_userNestedInput
     miniapp_payment?: miniapp_paymentUncheckedUpdateManyWithoutMiniapp_userNestedInput
-    social_links?: social_linkUncheckedUpdateManyWithoutMiniapp_userNestedInput
+    social_link?: social_linkUncheckedUpdateManyWithoutMiniapp_userNestedInput
   }
 
   export type workflowModelCreateWithoutModelInput = {
@@ -73707,7 +73869,7 @@ export namespace Prisma {
     skipDuplicates?: boolean
   }
 
-  export type miniapp_userCreateWithoutSocial_linksInput = {
+  export type miniapp_userCreateWithoutSocial_linkInput = {
     id?: string
     farcaster_id: string
     farcaster_username?: string | null
@@ -73717,12 +73879,13 @@ export namespace Prisma {
     updated_at?: Date | string
     notification_token?: string | null
     split_address?: string | null
+    swapper_address?: string | null
     miniapp_claim_activity?: miniapp_claim_activityCreateNestedManyWithoutMiniapp_userInput
     miniapp_generation?: miniapp_generationCreateNestedManyWithoutMiniapp_userInput
     miniapp_payment?: miniapp_paymentCreateNestedManyWithoutMiniapp_userInput
   }
 
-  export type miniapp_userUncheckedCreateWithoutSocial_linksInput = {
+  export type miniapp_userUncheckedCreateWithoutSocial_linkInput = {
     id?: string
     farcaster_id: string
     farcaster_username?: string | null
@@ -73732,14 +73895,15 @@ export namespace Prisma {
     updated_at?: Date | string
     notification_token?: string | null
     split_address?: string | null
+    swapper_address?: string | null
     miniapp_claim_activity?: miniapp_claim_activityUncheckedCreateNestedManyWithoutMiniapp_userInput
     miniapp_generation?: miniapp_generationUncheckedCreateNestedManyWithoutMiniapp_userInput
     miniapp_payment?: miniapp_paymentUncheckedCreateNestedManyWithoutMiniapp_userInput
   }
 
-  export type miniapp_userCreateOrConnectWithoutSocial_linksInput = {
+  export type miniapp_userCreateOrConnectWithoutSocial_linkInput = {
     where: miniapp_userWhereUniqueInput
-    create: XOR<miniapp_userCreateWithoutSocial_linksInput, miniapp_userUncheckedCreateWithoutSocial_linksInput>
+    create: XOR<miniapp_userCreateWithoutSocial_linkInput, miniapp_userUncheckedCreateWithoutSocial_linkInput>
   }
 
   export type collectionUpsertWithWhereUniqueWithoutSocial_linkInput = {
@@ -73758,18 +73922,18 @@ export namespace Prisma {
     data: XOR<collectionUpdateManyMutationInput, collectionUncheckedUpdateManyWithoutSocial_linkInput>
   }
 
-  export type miniapp_userUpsertWithoutSocial_linksInput = {
-    update: XOR<miniapp_userUpdateWithoutSocial_linksInput, miniapp_userUncheckedUpdateWithoutSocial_linksInput>
-    create: XOR<miniapp_userCreateWithoutSocial_linksInput, miniapp_userUncheckedCreateWithoutSocial_linksInput>
+  export type miniapp_userUpsertWithoutSocial_linkInput = {
+    update: XOR<miniapp_userUpdateWithoutSocial_linkInput, miniapp_userUncheckedUpdateWithoutSocial_linkInput>
+    create: XOR<miniapp_userCreateWithoutSocial_linkInput, miniapp_userUncheckedCreateWithoutSocial_linkInput>
     where?: miniapp_userWhereInput
   }
 
-  export type miniapp_userUpdateToOneWithWhereWithoutSocial_linksInput = {
+  export type miniapp_userUpdateToOneWithWhereWithoutSocial_linkInput = {
     where?: miniapp_userWhereInput
-    data: XOR<miniapp_userUpdateWithoutSocial_linksInput, miniapp_userUncheckedUpdateWithoutSocial_linksInput>
+    data: XOR<miniapp_userUpdateWithoutSocial_linkInput, miniapp_userUncheckedUpdateWithoutSocial_linkInput>
   }
 
-  export type miniapp_userUpdateWithoutSocial_linksInput = {
+  export type miniapp_userUpdateWithoutSocial_linkInput = {
     id?: StringFieldUpdateOperationsInput | string
     farcaster_id?: StringFieldUpdateOperationsInput | string
     farcaster_username?: NullableStringFieldUpdateOperationsInput | string | null
@@ -73779,12 +73943,13 @@ export namespace Prisma {
     updated_at?: DateTimeFieldUpdateOperationsInput | Date | string
     notification_token?: NullableStringFieldUpdateOperationsInput | string | null
     split_address?: NullableStringFieldUpdateOperationsInput | string | null
+    swapper_address?: NullableStringFieldUpdateOperationsInput | string | null
     miniapp_claim_activity?: miniapp_claim_activityUpdateManyWithoutMiniapp_userNestedInput
     miniapp_generation?: miniapp_generationUpdateManyWithoutMiniapp_userNestedInput
     miniapp_payment?: miniapp_paymentUpdateManyWithoutMiniapp_userNestedInput
   }
 
-  export type miniapp_userUncheckedUpdateWithoutSocial_linksInput = {
+  export type miniapp_userUncheckedUpdateWithoutSocial_linkInput = {
     id?: StringFieldUpdateOperationsInput | string
     farcaster_id?: StringFieldUpdateOperationsInput | string
     farcaster_username?: NullableStringFieldUpdateOperationsInput | string | null
@@ -73794,6 +73959,7 @@ export namespace Prisma {
     updated_at?: DateTimeFieldUpdateOperationsInput | Date | string
     notification_token?: NullableStringFieldUpdateOperationsInput | string | null
     split_address?: NullableStringFieldUpdateOperationsInput | string | null
+    swapper_address?: NullableStringFieldUpdateOperationsInput | string | null
     miniapp_claim_activity?: miniapp_claim_activityUncheckedUpdateManyWithoutMiniapp_userNestedInput
     miniapp_generation?: miniapp_generationUncheckedUpdateManyWithoutMiniapp_userNestedInput
     miniapp_payment?: miniapp_paymentUncheckedUpdateManyWithoutMiniapp_userNestedInput
@@ -74011,9 +74177,10 @@ export namespace Prisma {
     updated_at?: Date | string
     notification_token?: string | null
     split_address?: string | null
+    swapper_address?: string | null
     miniapp_generation?: miniapp_generationCreateNestedManyWithoutMiniapp_userInput
     miniapp_payment?: miniapp_paymentCreateNestedManyWithoutMiniapp_userInput
-    social_links?: social_linkCreateNestedManyWithoutMiniapp_userInput
+    social_link?: social_linkCreateNestedManyWithoutMiniapp_userInput
   }
 
   export type miniapp_userUncheckedCreateWithoutMiniapp_claim_activityInput = {
@@ -74026,9 +74193,10 @@ export namespace Prisma {
     updated_at?: Date | string
     notification_token?: string | null
     split_address?: string | null
+    swapper_address?: string | null
     miniapp_generation?: miniapp_generationUncheckedCreateNestedManyWithoutMiniapp_userInput
     miniapp_payment?: miniapp_paymentUncheckedCreateNestedManyWithoutMiniapp_userInput
-    social_links?: social_linkUncheckedCreateNestedManyWithoutMiniapp_userInput
+    social_link?: social_linkUncheckedCreateNestedManyWithoutMiniapp_userInput
   }
 
   export type miniapp_userCreateOrConnectWithoutMiniapp_claim_activityInput = {
@@ -74057,9 +74225,10 @@ export namespace Prisma {
     updated_at?: DateTimeFieldUpdateOperationsInput | Date | string
     notification_token?: NullableStringFieldUpdateOperationsInput | string | null
     split_address?: NullableStringFieldUpdateOperationsInput | string | null
+    swapper_address?: NullableStringFieldUpdateOperationsInput | string | null
     miniapp_generation?: miniapp_generationUpdateManyWithoutMiniapp_userNestedInput
     miniapp_payment?: miniapp_paymentUpdateManyWithoutMiniapp_userNestedInput
-    social_links?: social_linkUpdateManyWithoutMiniapp_userNestedInput
+    social_link?: social_linkUpdateManyWithoutMiniapp_userNestedInput
   }
 
   export type miniapp_userUncheckedUpdateWithoutMiniapp_claim_activityInput = {
@@ -74072,9 +74241,10 @@ export namespace Prisma {
     updated_at?: DateTimeFieldUpdateOperationsInput | Date | string
     notification_token?: NullableStringFieldUpdateOperationsInput | string | null
     split_address?: NullableStringFieldUpdateOperationsInput | string | null
+    swapper_address?: NullableStringFieldUpdateOperationsInput | string | null
     miniapp_generation?: miniapp_generationUncheckedUpdateManyWithoutMiniapp_userNestedInput
     miniapp_payment?: miniapp_paymentUncheckedUpdateManyWithoutMiniapp_userNestedInput
-    social_links?: social_linkUncheckedUpdateManyWithoutMiniapp_userNestedInput
+    social_link?: social_linkUncheckedUpdateManyWithoutMiniapp_userNestedInput
   }
 
   export type collection_historyCreateManyCollectionInput = {
@@ -74865,6 +75035,8 @@ export namespace Prisma {
     original_data?: NullableJsonNullValueInput | InputJsonValue
     original_status: string
     original_workflow_output?: string | null
+    original_started_at?: Date | string | null
+    original_completed_at?: Date | string | null
     backed_up_at?: Date | string
   }
 
@@ -74943,6 +75115,8 @@ export namespace Prisma {
     original_data?: NullableJsonNullValueInput | InputJsonValue
     original_status?: StringFieldUpdateOperationsInput | string
     original_workflow_output?: NullableStringFieldUpdateOperationsInput | string | null
+    original_started_at?: NullableDateTimeFieldUpdateOperationsInput | Date | string | null
+    original_completed_at?: NullableDateTimeFieldUpdateOperationsInput | Date | string | null
     backed_up_at?: DateTimeFieldUpdateOperationsInput | Date | string
   }
 
@@ -74952,6 +75126,8 @@ export namespace Prisma {
     original_data?: NullableJsonNullValueInput | InputJsonValue
     original_status?: StringFieldUpdateOperationsInput | string
     original_workflow_output?: NullableStringFieldUpdateOperationsInput | string | null
+    original_started_at?: NullableDateTimeFieldUpdateOperationsInput | Date | string | null
+    original_completed_at?: NullableDateTimeFieldUpdateOperationsInput | Date | string | null
     backed_up_at?: DateTimeFieldUpdateOperationsInput | Date | string
   }
 
@@ -74961,6 +75137,8 @@ export namespace Prisma {
     original_data?: NullableJsonNullValueInput | InputJsonValue
     original_status?: StringFieldUpdateOperationsInput | string
     original_workflow_output?: NullableStringFieldUpdateOperationsInput | string | null
+    original_started_at?: NullableDateTimeFieldUpdateOperationsInput | Date | string | null
+    original_completed_at?: NullableDateTimeFieldUpdateOperationsInput | Date | string | null
     backed_up_at?: DateTimeFieldUpdateOperationsInput | Date | string
   }
 
