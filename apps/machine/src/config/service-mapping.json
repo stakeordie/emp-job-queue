@@ -24,7 +24,16 @@
         }
       ]
     },
-
+    "mock": {
+      "services": ["mock_test"],
+      "is_gpu_bound": false,
+      "job_service_required_map": [
+        {
+          "job_service_required": "mock",
+          "worker_service": "mock_test"
+        }
+      ]
+    },
     "comfyui-remote": {
       "services": ["comfyui-remote"],
       "is_gpu_bound": false,
@@ -186,6 +195,10 @@
     "GeminiConnector": {
       "path": "./redis-direct-worker.js",
       "description": "Google Gemini Image Generation API connector"
+    },
+    "MockConnector": {
+      "path": "./redis-direct-worker.js",
+      "description": "Mock connector for testing retry completion without external dependencies"
     }
   },
 
@@ -475,6 +488,28 @@
           "path": "/workspace/logs/gemini-errors-*.log",
           "name": "gemini-errors",
           "description": "Google Gemini API connector error logs for troubleshooting"
+        }
+      ]
+    },
+
+    "mock_test": {
+      "connector": "MockConnector",
+      "type": "external",
+      "installer": null,
+      "installer_filename": null,
+      "is_gpu_bound": false,
+      "build_stage": "base",
+      "description": "Mock service for testing retry completion and development",
+      "api_config": {
+        "timeout": "${MOCK_TIMEOUT:-30}",
+        "max_retries": "${MOCK_MAX_RETRIES:-3}",
+        "max_concurrent_jobs": "${MOCK_MAX_CONCURRENT_JOBS:-10}"
+      },
+      "telemetry_logs": [
+        {
+          "path": "/workspace/logs/mock-*.log",
+          "name": "mock-main",
+          "description": "Mock service processing logs for testing and development"
         }
       ]
     }

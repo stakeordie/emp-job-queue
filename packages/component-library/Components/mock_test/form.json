@@ -1,0 +1,60 @@
+{
+  "config": {
+    "groupOrder": [
+      "basic",
+      "advanced"
+    ],
+    "maxNumberOfGenerations": 10,
+    "componentGroup": "testing"
+  },
+  "fields": [
+    {
+      "id": "test_data",
+      "name": "Test Data",
+      "type": "input",
+      "display": true,
+      "group": "basic",
+      "input_type": "text",
+      "default": "Test successful",
+      "description": "Mock data to return in the response"
+    },
+    {
+      "id": "delay_ms",
+      "name": "Delay (ms)",
+      "type": "input",
+      "display": true,
+      "group": "basic",
+      "input_type": "number",
+      "default": 100,
+      "description": "Simulated processing delay in milliseconds",
+      "constraints": {
+        "min": 0,
+        "max": 5000,
+        "step": 100
+      }
+    },
+    {
+      "id": "should_fail",
+      "name": "Should Fail",
+      "type": "input",
+      "display": true,
+      "group": "advanced",
+      "input_type": "checkbox",
+      "default": false,
+      "description": "If checked, the mock will return an error"
+    },
+    {
+      "id": "seed",
+      "name": "Seed",
+      "type": "optional_input",
+      "display": true,
+      "group": "advanced",
+      "input_type": "number",
+      "constraints": {
+        "min": 0,
+        "max": 999999,
+        "step": 1
+      }
+    }
+  ]
+}

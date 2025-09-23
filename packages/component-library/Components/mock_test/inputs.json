@@ -1,0 +1,17 @@
+[
+  {
+    "id": "test_data",
+    "pathJq": "test_data",
+    "is_required": false
+  },
+  {
+    "id": "delay_ms",
+    "pathJq": "delay_ms",
+    "is_required": false
+  },
+  {
+    "id": "should_fail",
+    "pathJq": "should_fail",
+    "is_required": false
+  }
+]

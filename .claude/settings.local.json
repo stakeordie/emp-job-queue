@@ -19,7 +19,8 @@
       "Bash(PGPASSWORD=\"BFKhIErfHuyMJSOGQqNuTweKjoubHOGS\" psql -h maglev.proxy.rlwy.net -p 18261 -U postgres -d emprops_open_api -c \"\\dt\")",
       "Bash(PGPASSWORD=\"BFKhIErfHuyMJSOGQqNuTweKjoubHOGS\" psql -h maglev.proxy.rlwy.net -p 18261 -U postgres -d emprops_open_api -c \"\\d miniapp_generation\")",
       "Bash(PGPASSWORD=:*)",
-      "Bash(npm run build:*)"
+      "Bash(npm run build:*)",
+      "Bash(mkdir:*)"
     ],
     "deny": [],
     "ask": []

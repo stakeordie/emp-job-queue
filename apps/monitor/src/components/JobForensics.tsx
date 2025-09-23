@@ -740,6 +740,71 @@ export default function JobForensics() {
     }
   };
 
+  // Classify job types with better labels
+  const getJobTypeInfo = (job: JobWithUserInfo) => {
+    // Check if it has miniapp data (user-facing collection generation)
+    if (job.miniapp_data || job.user_info) {
+      return {
+        category: 'collection_generation',
+        label: 'Collection Generation',
+        color: 'bg-purple-100 text-purple-800',
+        icon: '🎨'
+      };
+    }
+
+    // Check job_type field for internal testing
+    const jobType = String(job.job_type || '').toLowerCase();
+
+    // Mock/testing jobs
+    if (jobType.includes('mock') || jobType.includes('test') || jobType.includes('simulation')) {
+      return {
+        category: 'internal_test',
+        label: 'Internal Test',
+        color: 'bg-orange-100 text-orange-800',
+        icon: '🧪'
+      };
+    }
+
+    // OpenAI jobs
+    if (jobType.includes('openai') || jobType.includes('gpt')) {
+      return {
+        category: 'openai_api',
+        label: 'OpenAI API',
+        color: 'bg-green-100 text-green-800',
+        icon: '🤖'
+      };
+    }
+
+    // ComfyUI jobs
+    if (jobType.includes('comfyui') || jobType.includes('comfy')) {
+      return {
+        category: 'comfyui',
+        label: 'ComfyUI',
+        color: 'bg-blue-100 text-blue-800',
+        icon: '🎯'
+      };
+    }
+
+    // Check for other indicators in job data
+    const jobDataStr = JSON.stringify(job.data || {}).toLowerCase();
+    if (jobDataStr.includes('mock') || jobDataStr.includes('test')) {
+      return {
+        category: 'internal_test',
+        label: 'Internal Test',
+        color: 'bg-orange-100 text-orange-800',
+        icon: '🧪'
+      };
+    }
+
+    // Default case
+    return {
+      category: 'unknown',
+      label: jobType || 'Unknown Type',
+      color: 'bg-gray-100 text-gray-800',
+      icon: '❓'
+    };
+  };
+
   // Helper variable for miniapp data access
   const miniappData = forensicsData?.job?.payload?._miniapp_data as {
     user?: any;
@@ -850,13 +915,52 @@ export default function JobForensics() {
                   {/* Jobs List */}
                   {allJobs.length > 0 && (
                     <>
-                      <div className="flex items-center justify-between text-sm font-medium text-muted-foreground">
-                        <span>
-                          {searchQuery.trim()
-                            ? `${filteredJobs.length} of ${allJobs.length} jobs matching search`
-                            : `Showing ${allJobs.length} of ${totalJobs} jobs (page ${currentPage + 1})`
+                      <div className="space-y-2">
+                        <div className="flex items-center justify-between text-sm font-medium text-muted-foreground">
+                          <span>
+                            {searchQuery.trim()
+                              ? `${filteredJobs.length} of ${allJobs.length} jobs matching search`
+                              : `Showing ${allJobs.length} of ${totalJobs} jobs (page ${currentPage + 1})`
+                            }
+                          </span>
+                        </div>
+
+                        {/* Job Type Breakdown */}
+                        {(() => {
+                          const jobsToAnalyze = searchQuery.trim() ? filteredJobs : allJobs;
+                          const typeBreakdown = jobsToAnalyze.reduce((acc, job) => {
+                            const typeInfo = getJobTypeInfo(job);
+                            acc[typeInfo.category] = (acc[typeInfo.category] || 0) + 1;
+                            return acc;
+                          }, {} as Record<string, number>);
+
+                          if (Object.keys(typeBreakdown).length > 1) {
+                            return (
+                              <div className="flex items-center gap-2 text-xs flex-wrap">
+                                <span className="text-muted-foreground">Types:</span>
+                                {Object.entries(typeBreakdown).map(([category, count]) => {
+                                  const typeInfo = (() => {
+                                    switch (category) {
+                                      case 'collection_generation': return { label: 'Collection Generation', color: 'bg-purple-100 text-purple-800', icon: '🎨' };
+                                      case 'internal_test': return { label: 'Internal Test', color: 'bg-orange-100 text-orange-800', icon: '🧪' };
+                                      case 'openai_api': return { label: 'OpenAI API', color: 'bg-green-100 text-green-800', icon: '🤖' };
+                                      case 'comfyui': return { label: 'ComfyUI', color: 'bg-blue-100 text-blue-800', icon: '🎯' };
+                                      default: return { label: 'Other', color: 'bg-gray-100 text-gray-800', icon: '❓' };
+                                    }
+                                  })();
+                                  return (
+                                    <span key={category} className={`px-1.5 py-0.5 rounded flex items-center gap-1 ${typeInfo.color}`}>
+                                      <span>{typeInfo.icon}</span>
+                                      <span>{typeInfo.label}: {count}</span>
+                                    </span>
+                                  );
+                                })}
+                              </div>
+                            );
                           }
-                        </span>
+                          return null;
+                        })()}
+
                         {!searchQuery.trim() && hasMore && (
                           <Button
                             variant="outline"
@@ -901,11 +1005,15 @@ export default function JobForensics() {
                                         <span>
                                           {job.created_at ? new Date(String(job.created_at)).toLocaleString() : 'Unknown date'}
                                         </span>
-                                        {job.job_type != null && String(job.job_type).trim() !== '' && (
-                                          <span className="px-1.5 py-0.5 bg-blue-100 text-blue-800 rounded text-xs">
-                                            {String(job.job_type)}
-                                          </span>
-                                        )}
+                                        {(() => {
+                                          const typeInfo = getJobTypeInfo(job);
+                                          return (
+                                            <span className={`px-1.5 py-0.5 rounded text-xs flex items-center gap-1 ${typeInfo.color}`}>
+                                              <span>{typeInfo.icon}</span>
+                                              <span>{typeInfo.label}</span>
+                                            </span>
+                                          );
+                                        })()}
                                         {job.user_id != null && (
                                           <div className="flex items-center gap-1 px-1.5 py-0.5 bg-purple-100 text-purple-800 rounded text-xs">
                                         {job.user_info?.farcaster_pfp ? (

@@ -1,0 +1,7 @@
+{
+  "service_required": "mock",
+  "payload": {
+    "test_data": "mock_payload",
+    "delay_ms": 100
+  }
+}
