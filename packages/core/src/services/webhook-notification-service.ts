@@ -32,6 +32,7 @@ export interface WebhookEndpoint {
   retry_config?: WebhookRetryConfig;
   active: boolean;
   disconnected?: boolean; // Set to true when 10+ consecutive failures occur
+  static?: boolean; // If true, webhook will never be auto-disconnected regardless of failures
   consecutive_failures?: number; // Track consecutive failures for auto-disconnect
   last_failure_at?: number; // Timestamp of last failure
   last_success_at?: number; // Timestamp of last success
@@ -220,14 +221,39 @@ export class WebhookNotificationService extends EventEmitter {
       updated_at: Date.now(),
     };
 
-    // Auto-disconnect webhook if it hits the failure threshold
+    // Auto-disconnect webhook if it hits the failure threshold (unless it's static)
     if (consecutiveFailures >= WebhookNotificationService.MAX_CONSECUTIVE_FAILURES && !webhook.disconnected) {
-      updates.disconnected = true;
-      
-      logger.warn(`🚨 Webhook auto-disconnected due to ${consecutiveFailures} consecutive failures: ${webhookId}`, {
-        url: webhook.url,
-        threshold: WebhookNotificationService.MAX_CONSECUTIVE_FAILURES,
-      });
+      if (webhook.static) {
+        // Static webhooks are never auto-disconnected, but log the high failure count
+        logger.warn(`⚠️ Static webhook has ${consecutiveFailures} consecutive failures but will not be auto-disconnected: ${webhookId}`, {
+          url: webhook.url,
+          threshold: WebhookNotificationService.MAX_CONSECUTIVE_FAILURES,
+          static: true,
+        });
+
+        // Send OTEL telemetry event for static webhook high failure warning
+        if (this.telemetryClient) {
+          await this.telemetryClient.otel.counter('webhook.status.static_high_failures', 1, {
+            webhook_id: webhookId,
+            consecutive_failures: consecutiveFailures.toString(),
+            threshold: WebhookNotificationService.MAX_CONSECUTIVE_FAILURES.toString(),
+            webhook_url: webhook.url,
+          });
+        }
+
+        // Emit event for external monitoring
+        this.emit('webhook.static_high_failures', {
+          webhook,
+          consecutive_failures: consecutiveFailures,
+          threshold: WebhookNotificationService.MAX_CONSECUTIVE_FAILURES,
+        });
+      } else {
+        updates.disconnected = true;
+
+        logger.warn(`🚨 Webhook auto-disconnected due to ${consecutiveFailures} consecutive failures: ${webhookId}`, {
+          url: webhook.url,
+          threshold: WebhookNotificationService.MAX_CONSECUTIVE_FAILURES,
+        });
 
       // Send OTEL trace event for webhook auto-disconnect
       await sendTrace('webhook.status.disconnected', {
@@ -258,6 +284,7 @@ export class WebhookNotificationService extends EventEmitter {
         consecutive_failures: consecutiveFailures,
         threshold: WebhookNotificationService.MAX_CONSECUTIVE_FAILURES,
       });
+      }
     }
 
     await this.updateWebhook(webhookId, updates);

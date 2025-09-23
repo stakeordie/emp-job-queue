@@ -306,6 +306,7 @@ export class JobForensicsService {
    */
   private async getMiniAppUserData(jobId: string, collectionId?: string) {
     try {
+      console.log(`🚀 [DEBUG] getMiniAppUserData called for jobId: ${jobId}`);
       const miniAppData: Record<string, unknown> = {
         generation: null,
         user: null,
@@ -313,9 +314,10 @@ export class JobForensicsService {
         social_links: [],
       };
 
-      // First, try to find miniapp_generation record by job_id
-      let generation = await prisma.miniapp_generation.findFirst({
-        where: { job_id: jobId },
+      // First, try to find miniapp_generation record by job_id (using same pattern as job list API)
+      console.log(`🔍 [DEBUG] Looking for miniapp_generation with job_id: ${jobId}`);
+      const generationResults = await prisma.miniapp_generation.findMany({
+        where: { job_id: { in: [jobId] } },
         include: {
           miniapp_user: {
             include: {
@@ -333,9 +335,14 @@ export class JobForensicsService {
           },
         },
       });
+      let generation = generationResults.length > 0 ? generationResults[0] : null;
+      console.log(`🔍 [DEBUG] Query returned ${generationResults.length} results`);
+      console.log(`🔍 [DEBUG] First query result:`, generation ? `Found generation ${generation.id} with status ${generation.status}` : 'No generation found');
+      console.log(`🔍 [DEBUG] Raw query results:`, generationResults);
 
       // If not found by job_id, try to find by collection_id
       if (!generation && collectionId) {
+        console.log(`🔍 [DEBUG] Trying fallback search with collection_id: ${collectionId}`);
         generation = await prisma.miniapp_generation.findFirst({
           where: { collection_id: String(collectionId) },
           include: {
@@ -356,8 +363,10 @@ export class JobForensicsService {
           },
           orderBy: { created_at: 'desc' },
         });
+        console.log(`🔍 [DEBUG] Fallback query result:`, generation ? `Found generation ${generation.id} with status ${generation.status}` : 'Still no generation found');
       }
 
+      console.log(`🔍 [DEBUG] Final generation result:`, generation ? `Using generation ${generation.id}` : 'No generation to use');
       if (generation) {
         // Generation data
         miniAppData.generation = {
@@ -386,7 +395,7 @@ export class JobForensicsService {
           };
 
           // Social links
-          miniAppData.social_links = generation.miniapp_user.social_links.map(link => ({
+          miniAppData.social_links = generation.miniapp_user.social_link.map(link => ({
             id: link.id,
             social_org: link.social_org,
             identifier: link.identifier,

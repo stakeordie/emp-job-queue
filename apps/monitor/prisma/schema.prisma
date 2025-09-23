@@ -280,12 +280,14 @@ model job {
 
   // Evaluation fields
   is_cleanup_evaluated Boolean   @default(false)
-  status_category      String?   // 'filed', 'complete', 'incomplete'
+  status_category      String?   // 'complete', 'incomplete', 'data_structure_issue'
   problem_type         String?   // 'missing_output', 'notification_failed', 'stuck_processing', etc.
   problem_details      Json?     // Detailed problem analysis
   evaluated_at         DateTime?
+  resolution_needed    String?   // 'workflow_output_extraction', 'data_integrity_check', 'miniapp_generation_missing', etc.
 
   job_history      job_history[]
+  steps            step[]
   job_retry_backup job_retry_backup[]
 
   @@index([is_cleanup_evaluated])
@@ -299,6 +301,8 @@ model job_retry_backup {
   original_data    Json?
   original_status  String
   original_workflow_output String?
+  original_started_at      DateTime?
+  original_completed_at    DateTime?
   backed_up_at     DateTime @default(now())
   job              job      @relation(fields: [original_job_id], references: [id], onDelete: Cascade)
 
@@ -306,13 +310,33 @@ model job_retry_backup {
 }
 
 model job_history {
-  id         String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  job_id     String   @db.Uuid
-  status     String
-  data       Json?
-  created_at DateTime @default(now())
-  message    String?
-  job        job      @relation(fields: [job_id], references: [id], onDelete: Cascade)
+  id            String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  job_id        String   @db.Uuid
+  status        String
+  data          Json?
+  created_at    DateTime @default(now())
+  message       String?
+  retry_attempt Int      @default(0)
+  job           job      @relation(fields: [job_id], references: [id], onDelete: Cascade)
+}
+
+model step {
+  id            String    @id @db.Uuid
+  job_id        String    @db.Uuid
+  step_name     String
+  step_type     String    // 'delegated', 'local', 'test'
+  status        String    @default("pending") // 'pending', 'processing', 'completed', 'failed'
+  started_at    DateTime  @default(now())
+  completed_at  DateTime?
+  input_data    Json?
+  output_data   Json?
+  error_message String?
+  step_order    Int?
+  retry_attempt Int?
+  job           job       @relation(fields: [job_id], references: [id], onDelete: Cascade)
+
+  @@index([job_id])
+  @@index([status])
 }
 
 model miniapp_collection_config {

@@ -748,7 +748,36 @@ export default function JobForensics() {
   const user = miniappData?.user;
   const generation = miniappData?.generation;
   const payment = miniappData?.payment;
-  const notificationAttestation = forensicsData?.job?.payload?._notification_attestation;
+
+  // State for notification attestations from Redis
+  const [notificationAttestations, setNotificationAttestations] = useState<any[]>([]);
+  const [attestationsLoaded, setAttestationsLoaded] = useState(false);
+
+  // Load notification attestations when forensics data is available
+  useEffect(() => {
+    const loadNotificationAttestations = async () => {
+      if (forensicsData?.job?.workflow_id && !attestationsLoaded) {
+        try {
+          const apiBaseUrl = process.env.NEXT_PUBLIC_API_URL;
+          const response = await fetch(`${apiBaseUrl}/api/attestations?workflow_id=${forensicsData.job.workflow_id}`);
+          if (response.ok) {
+            const data = await response.json();
+            if (data.success) {
+              setNotificationAttestations(data.notification_attestations || []);
+            }
+          }
+        } catch (error) {
+          console.error('Failed to load notification attestations:', error);
+        }
+        setAttestationsLoaded(true);
+      }
+    };
+
+    loadNotificationAttestations();
+  }, [forensicsData?.job?.workflow_id, attestationsLoaded]);
+
+  // Check if notification was successfully sent
+  const notificationSent = notificationAttestations.some(att => att.success === true);
 
   // Debug logging to understand the data structure
   console.log('🔍 JobForensics Debug for job:', forensicsData?.job?.id);
@@ -1846,6 +1875,8 @@ export default function JobForensics() {
                         <div className={`font-medium ${generation ? 'text-teal-800' : 'text-gray-600'}`}>
                           Miniapp Completion
                         </div>
+
+
                         <div className={`text-sm ${generation ? 'text-teal-600' : 'text-gray-500'}`}>
                           {generation
                             ? `Miniapp generation record created (Status: ${generation.status})`
@@ -1868,32 +1899,33 @@ export default function JobForensics() {
 
                     {/* Step 7: Customer Notified (Redis attestation) */}
                     <div className={`flex items-center gap-4 p-4 border rounded-lg ${
-                      notificationAttestation && notificationAttestation.success ? 'border-emerald-200 bg-emerald-50' : 'border-gray-200 bg-gray-50'
+                      notificationSent ? 'border-emerald-200 bg-emerald-50' : 'border-gray-200 bg-gray-50'
                     }`}>
                       <div className="flex-shrink-0">
                         <div className={`w-8 h-8 rounded-full flex items-center justify-center text-sm font-semibold ${
-                          notificationAttestation && notificationAttestation.success ? 'bg-emerald-600 text-white' : 'bg-gray-400 text-white'
+                          notificationSent ? 'bg-emerald-600 text-white' : 'bg-gray-400 text-white'
                         }`}>7</div>
                       </div>
                       <div className="flex-1">
-                        <div className={`font-medium ${notificationAttestation && notificationAttestation.success ? 'text-emerald-800' : 'text-gray-600'}`}>
+                        <div className={`font-medium ${notificationSent ? 'text-emerald-800' : 'text-gray-600'}`}>
                           Customer Notified
                         </div>
-                        <div className={`text-sm ${notificationAttestation && notificationAttestation.success ? 'text-emerald-600' : 'text-gray-500'}`}>
-                          {notificationAttestation && notificationAttestation.success
-                            ? `Customer notification sent successfully`
-                            : notificationAttestation && !notificationAttestation.success
-                            ? `Notification failed: ${notificationAttestation.error_message || 'Unknown error'}`
+                        <div className={`text-sm ${notificationSent ? 'text-emerald-600' : 'text-gray-500'}`}>
+                          {notificationSent
+                            ? `Customer notification sent successfully (${notificationAttestations.filter(att => att.success).length} of ${notificationAttestations.length} attempts)`
+                            : notificationAttestations.length > 0
+                            ? `Notification failed: ${notificationAttestations.filter(att => !att.success).length} failed attempts`
                             : 'Customer notification pending'}
                         </div>
-                        {notificationAttestation && notificationAttestation.success && (
+                        {notificationSent && notificationAttestations.length > 0 && (
                           <div className="text-xs text-emerald-500 mt-1">
                             <CheckCircle className="h-3 w-3 inline mr-1" />
-                            Notified at: {new Date(notificationAttestation.attested_at).toLocaleString()} | Method: {notificationAttestation.notification_method}
+                            Latest: {new Date(notificationAttestations.find(att => att.success)?.attested_at).toLocaleString()} |
+                            Method: {notificationAttestations.find(att => att.success)?.notification_method}
                           </div>
                         )}
                       </div>
-                      {notificationAttestation && notificationAttestation.success ? <CheckCircle className="h-5 w-5 text-emerald-600" /> : <Clock className="h-5 w-5 text-gray-400" />}
+                      {notificationSent ? <CheckCircle className="h-5 w-5 text-emerald-600" /> : <Clock className="h-5 w-5 text-gray-400" />}
                     </div>
                   </div>
 
@@ -1923,7 +1955,7 @@ export default function JobForensics() {
                       </div>
                       <div className="text-center p-3 bg-amber-50 rounded-lg border border-amber-200">
                         <div className="text-lg font-semibold text-amber-600">
-                          {notificationAttestation && notificationAttestation.success ? '✓' : '○'}
+                          {notificationSent ? '✓' : '○'}
                         </div>
                         <div className="text-xs text-amber-600 font-medium">Notification</div>
                       </div>

@@ -51,6 +51,7 @@ interface WebhookEndpoint {
     max_delay_ms: number;
   };
   active: boolean;
+  static?: boolean;
   created_at: number;
   updated_at: number;
 }
@@ -129,6 +130,7 @@ export default function WebhookManagementPage() {
   const [formSecret, setFormSecret] = useState("");
   const [formEvents, setFormEvents] = useState<WebhookEventType[]>(['job_submitted', 'complete_job', 'job_failed']);
   const [formActive, setFormActive] = useState(true);
+  const [formStatic, setFormStatic] = useState(false);
 
   // Edit webhook state
   const [editingWebhook, setEditingWebhook] = useState<WebhookEndpoint | null>(null);
@@ -241,6 +243,7 @@ export default function WebhookManagementPage() {
           url: formUrl,
           events: formEvents,
           active: formActive,
+          static: formStatic,
           secret: formSecret || undefined,
           retry_config: {
             max_attempts: 3,
@@ -262,6 +265,7 @@ export default function WebhookManagementPage() {
         setFormSecret("");
         setFormEvents(['job_submitted', 'complete_job', 'job_failed']);
         setFormActive(true);
+        setFormStatic(false);
         fetchWebhooks();
       } else {
         throw new Error(data.error || 'Failed to create webhook');
@@ -282,6 +286,7 @@ export default function WebhookManagementPage() {
     setFormSecret(webhook.secret || "");
     setFormEvents(webhook.events);
     setFormActive(webhook.active);
+    setFormStatic(webhook.static || false);
     setShowEditForm(true);
     setShowCreateForm(false);
   };
@@ -306,6 +311,7 @@ export default function WebhookManagementPage() {
           url: formUrl,
           events: formEvents,
           active: formActive,
+          static: formStatic,
           secret: formSecret || undefined,
           retry_config: {
             max_attempts: 3,
@@ -328,6 +334,7 @@ export default function WebhookManagementPage() {
         setFormSecret("");
         setFormEvents(['job_submitted', 'complete_job', 'job_failed']);
         setFormActive(true);
+        setFormStatic(false);
         fetchWebhooks();
       } else {
         throw new Error(data.error || 'Failed to update webhook');
@@ -349,6 +356,7 @@ export default function WebhookManagementPage() {
     setFormSecret("");
     setFormEvents(['complete_job', 'job_failed']);
     setFormActive(true);
+    setFormStatic(false);
   };
 
   const deleteWebhook = async (id: string) => {
@@ -564,6 +572,7 @@ export default function WebhookManagementPage() {
     setFormUrl(testUrl);
     setFormEvents(Object.keys(EVENT_TYPE_LABELS) as WebhookEventType[]);
     setFormActive(true);
+    setFormStatic(false);
     setFormSecret(''); // Clear any existing secret
 
     toast({
@@ -727,6 +736,7 @@ export default function WebhookManagementPage() {
     setFormUrl(testReceiver.url);
     setFormEvents(['complete_job', 'job_failed']);
     setFormActive(true);
+    setFormStatic(false);
     setShowCreateForm(true);
     
     toast({
@@ -970,6 +980,11 @@ export default function WebhookManagementPage() {
                               <Badge variant={webhook.active ? "default" : "secondary"}>
                                 {webhook.active ? "Active" : "Inactive"}
                               </Badge>
+                              {webhook.static && (
+                                <Badge variant="outline" className="text-xs bg-amber-50 text-amber-700 border-amber-200">
+                                  Static
+                                </Badge>
+                              )}
                               <span className="font-mono text-sm">{webhook.url}</span>
                             </div>
                             <div className="flex items-center gap-2">
@@ -1016,6 +1031,7 @@ export default function WebhookManagementPage() {
                           <div className="text-xs text-muted-foreground mt-2">
                             Created: {formatTimestamp(webhook.created_at)}
                             {webhook.secret && " • Has Secret"}
+                            {webhook.static && " • Static (Never disconnects)"}
                           </div>
                         </div>
                       ))}
@@ -1089,14 +1105,31 @@ export default function WebhookManagementPage() {
                       </div>
                     </div>
 
-                    <div className="flex items-center space-x-2">
-                      <Checkbox
-                        id="webhook-active"
-                        checked={formActive}
-                        onCheckedChange={(checked) => setFormActive(checked as boolean)}
-                      />
-                      <Label htmlFor="webhook-active">Active</Label>
+                    <div className="grid grid-cols-2 gap-4">
+                      <div className="flex items-center space-x-2">
+                        <Checkbox
+                          id="webhook-active"
+                          checked={formActive}
+                          onCheckedChange={(checked) => setFormActive(checked as boolean)}
+                        />
+                        <Label htmlFor="webhook-active">Active</Label>
+                      </div>
+                      <div className="flex items-center space-x-2">
+                        <Checkbox
+                          id="webhook-static"
+                          checked={formStatic}
+                          onCheckedChange={(checked) => setFormStatic(checked as boolean)}
+                        />
+                        <Label htmlFor="webhook-static" className="text-sm">
+                          Static (Never auto-disconnect)
+                        </Label>
+                      </div>
                     </div>
+                    {formStatic && (
+                      <div className="text-xs text-amber-600 bg-amber-50 border border-amber-200 rounded p-2">
+                        ⚠️ Static webhooks will never be automatically disconnected due to failures. Use this for critical webhooks that must always receive events.
+                      </div>
+                    )}
 
                     <div className="flex items-center gap-2">
                       <Button onClick={createWebhook}>
@@ -1160,14 +1193,31 @@ export default function WebhookManagementPage() {
                       </div>
                     </div>
 
-                    <div className="flex items-center space-x-2">
-                      <Checkbox
-                        id="edit-webhook-active"
-                        checked={formActive}
-                        onCheckedChange={(checked) => setFormActive(checked as boolean)}
-                      />
-                      <Label htmlFor="edit-webhook-active">Active</Label>
+                    <div className="grid grid-cols-2 gap-4">
+                      <div className="flex items-center space-x-2">
+                        <Checkbox
+                          id="edit-webhook-active"
+                          checked={formActive}
+                          onCheckedChange={(checked) => setFormActive(checked as boolean)}
+                        />
+                        <Label htmlFor="edit-webhook-active">Active</Label>
+                      </div>
+                      <div className="flex items-center space-x-2">
+                        <Checkbox
+                          id="edit-webhook-static"
+                          checked={formStatic}
+                          onCheckedChange={(checked) => setFormStatic(checked as boolean)}
+                        />
+                        <Label htmlFor="edit-webhook-static" className="text-sm">
+                          Static (Never auto-disconnect)
+                        </Label>
+                      </div>
                     </div>
+                    {formStatic && (
+                      <div className="text-xs text-amber-600 bg-amber-50 border border-amber-200 rounded p-2">
+                        ⚠️ Static webhooks will never be automatically disconnected due to failures. Use this for critical webhooks that must always receive events.
+                      </div>
+                    )}
 
                     <div className="flex items-center gap-2">
                       <Button onClick={updateWebhook}>

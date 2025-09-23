@@ -163,7 +163,6 @@ function CdnImage({ format, ...props }: SmartImageProps) {
 export default function SmartImage({ src, alt = "image", fallbackSrc, format, ...props }: SmartImageProps) {
   // Handle null/undefined src
   if (!src) {
-    console.log('🚫 SmartImage: No src provided, using fallback');
     return <Image src={fallbackSrc || "/placeholder.png"} alt={alt} {...props} />;
   }
 
@@ -171,23 +170,19 @@ export default function SmartImage({ src, alt = "image", fallbackSrc, format, ..
   const srcString = typeof src === 'string' ? src : (src as any).src || '';
 
   if (!srcString) {
-    console.log('🚫 SmartImage: Empty src string, using fallback');
     return <Image src={fallbackSrc || "/placeholder.png"} alt={alt} {...props} />;
   }
 
   // For emprops CDN images, use CdnImage for Thumbor optimization
   if (isEmpropsCdn(srcString)) {
-    console.log('🎯 SmartImage → CdnImage routing:', srcString);
     return <CdnImage src={src} alt={alt} format={format} {...props} />;
   }
 
   // For configured domains, use regular Next.js Image with optimization
   if (isConfiguredDomain(srcString)) {
-    console.log('📸 SmartImage → Next.js Image (configured domain):', srcString);
     return <Image src={src} alt={alt} {...props} />;
   }
 
   // For unknown external domains, bypass optimization to avoid errors
-  console.log('🚫 SmartImage → Next.js Image (unoptimized):', srcString);
   return <Image src={src} alt={alt} {...props} unoptimized />;
 }
