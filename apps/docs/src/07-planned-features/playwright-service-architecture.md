@@ -87,6 +87,12 @@ interface P5Job {
   bucket: string;
   prefix: string;
   filename: string;
+
+  // GPU resource requirements
+  usesWebGL: boolean;              // WebGL/3D graphics flag
+  gpuComplexity: 'low' | 'medium' | 'high';  // Resource estimation
+  estimatedGPUMemory?: number;     // MB estimate for complex jobs
+
   context?: {
     hash: string;
     variables: Record<string, any>;
@@ -144,12 +150,41 @@ const browserOptions = {
 };
 ```
 
-## Context Pool Management
+## Worker Architecture
 
-- Maintain pool of browser contexts for performance
-- Reuse contexts when possible to reduce startup time
-- Cleanup contexts after job completion
-- Monitor memory usage and restart contexts as needed
+### Single-Job Worker Pattern
+Following the existing emp-job-queue worker architecture:
+- **One job per worker**: Each playwright worker handles one P5.js job at a time
+- **Multiple workers**: Scale through worker count, not internal concurrency
+- **Resource isolation**: Each worker has dedicated browser instance and GPU allocation
+- **Simple failure recovery**: Worker failures don't affect other jobs
+
+### GPU Resource Constraints
+
+#### WebGL P5.js Jobs
+P5.js sketches using WebGL create GPU contexts with shared memory constraints:
+- **GPU Memory Sharing**: Multiple WebGL contexts compete for VRAM
+- **Context Limits**: Typically 16-32 concurrent WebGL contexts per GPU
+- **Resource Allocation**: ~1-2GB GPU memory per complex WebGL sketch
+
+#### CPU-Only P5.js Jobs
+Non-WebGL P5.js sketches have minimal GPU requirements:
+- **Browser Rendering**: Software-based canvas operations
+- **High Concurrency**: Limited only by CPU and RAM
+- **Memory Usage**: ~50-100MB per sketch context
+
+### Worker Configuration Strategy
+
+```bash
+# GPU-bound WebGL P5.js (8GB GPU machine)
+WORKERS="comfyui:2,playwright:4"  # 4 playwright workers, ~1.5GB GPU each
+
+# CPU-only P5.js (16GB CPU machine)
+WORKERS="playwright:12"           # 12 workers, ~1GB RAM each
+
+# Mixed workload (32GB GPU machine)
+WORKERS="comfyui:2,playwright:8"  # Balance GPU between services
+```
 
 ## Deployment Architecture
 
@@ -172,10 +207,10 @@ CDN_URI=https://cdn-dev.emprops.ai
 REDIS_URL=redis://localhost:6379
 REDIS_QUEUE_NAME=playwright-jobs
 
-# Browser Configuration
-BROWSER_POOL_SIZE=4
-GPU_ACCELERATION=true
-CONTEXT_TIMEOUT=300000
+# Worker Configuration
+WORKERS="playwright:8"            # Number of playwright workers
+GPU_ACCELERATION=auto            # Auto-detect GPU availability
+BROWSER_TIMEOUT=30000            # Browser instance timeout
 
 # Service Configuration
 SERVICE_ID=playwright-worker-1
@@ -247,24 +282,44 @@ The service integrates with existing monitoring:
 
 ## Performance Optimizations
 
-### Browser Context Pooling
-- Pre-warm browser contexts
-- Reuse contexts for multiple jobs
-- Smart cleanup based on memory usage
+### Browser Instance Management
+- One dedicated browser instance per worker
+- Fast browser startup with optimized flags
+- Graceful browser restart on memory leaks
+- Process isolation for failure recovery
 
-### GPU Acceleration
-- Hardware-accelerated WebGL rendering
-- GPU-accelerated video encoding
-- Canvas operations optimization
+### GPU Resource Management
 
-### Parallel Processing
-- Multiple browser contexts per worker
-- Concurrent job processing
-- Load balancing across contexts
+#### Auto-Detection and Configuration
+```typescript
+const gpuAvailable = await detectGPU();
+const browserOptions = {
+  args: gpuAvailable ? [
+    '--use-gl=desktop',
+    '--enable-gpu-sandbox',
+    '--enable-webgl',
+    '--enable-accelerated-2d-canvas'
+  ] : [
+    '--disable-gpu',
+    '--disable-software-rasterizer'
+  ]
+};
+```
 
-### Caching
-- Template caching for faster startup
-- Asset caching for common libraries
+#### WebGL Resource Allocation
+- Monitor GPU memory usage per worker
+- Intelligent job routing based on WebGL requirements
+- Fallback to CPU rendering for resource-constrained scenarios
+
+### Worker Scaling Strategy
+- **CPU Pool**: High worker count for non-WebGL P5.js jobs
+- **GPU Pool**: Limited workers sharing GPU memory efficiently
+- **Dynamic Scaling**: Adjust worker count based on job queue depth and type
+
+### Caching Optimizations
+- Browser binary caching for faster startup
+- P5.js library caching to reduce download time
+- Template caching for common sketch patterns
 - DNS caching for CDN verification
 
 ## Implementation Phases
