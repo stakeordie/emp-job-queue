@@ -48,16 +48,34 @@ function AttestationRecords({ jobId, workflowId }: { jobId: string; workflowId?:
             // Set notification attestations
             setNotificationAttestations(data.notification_attestations || []);
 
-            // Handle worker attestations (support multi-step workflows)
+            // Handle worker attestations (group by retry number)
             if (data.worker_attestations && data.worker_attestations.length > 0) {
-              if (data.worker_attestations.length === 1) {
-                setWorkerAttestation(data.worker_attestations[0]);
+              // Group attestations by retry_count
+              const groupedByRetry = data.worker_attestations.reduce((acc: any, att: any) => {
+                const retryCount = att.retry_count || 0;
+                if (!acc[retryCount]) acc[retryCount] = [];
+                acc[retryCount].push(att);
+                return acc;
+              }, {});
+
+              // Sort by retry count
+              const sortedRetryGroups = Object.keys(groupedByRetry)
+                .sort((a, b) => parseInt(a) - parseInt(b))
+                .map(retryCount => ({
+                  retry_count: parseInt(retryCount),
+                  attestations: groupedByRetry[retryCount]
+                }));
+
+              if (sortedRetryGroups.length === 1 && sortedRetryGroups[0].attestations.length === 1) {
+                // Single attestation, single retry
+                setWorkerAttestation(sortedRetryGroups[0].attestations[0]);
               } else {
-                // Create a combined view for multi-step workflows
+                // Multiple retries or multiple steps - create grouped view
                 setWorkerAttestation({
                   ...data.worker_attestations[0],
-                  _multi_step: true,
-                  _all_steps: data.worker_attestations
+                  _grouped_by_retry: true,
+                  _retry_groups: sortedRetryGroups,
+                  _all_attestations: data.worker_attestations
                 });
               }
             } else {
@@ -240,15 +258,26 @@ function AttestationRecords({ jobId, workflowId }: { jobId: string; workflowId?:
 
       {hasAttestations && (
         <div className="space-y-3 p-3 bg-yellow-50 border border-yellow-200 rounded">
-          {/* Worker Attestations - Show each step separately */}
-          {workerAttestation && workerAttestation._multi_step && workerAttestation._all_steps ? (
-            // Multi-step workflow - show each step's attestation
-            <div className="space-y-4">
-              {workerAttestation._all_steps.map((step: any, idx: number) => (
+          {/* Worker Attestations - Grouped by retry number */}
+          {workerAttestation && workerAttestation._grouped_by_retry && workerAttestation._retry_groups ? (
+            // Multiple retries or steps - show grouped by retry
+            <div className="space-y-6">
+              {workerAttestation._retry_groups.map((retryGroup: any, groupIdx: number) => (
+                <div key={groupIdx} className="border border-gray-200 rounded p-3">
+                  <div className="text-sm font-medium text-gray-700 mb-3 flex items-center gap-2">
+                    <Badge variant={retryGroup.retry_count === 0 ? 'default' : 'secondary'}>
+                      {retryGroup.retry_count === 0 ? 'Initial Attempt' : `Retry ${retryGroup.retry_count}`}
+                    </Badge>
+                    <span className="text-xs text-gray-500">
+                      ({retryGroup.attestations.length} attestation{retryGroup.attestations.length > 1 ? 's' : ''})
+                    </span>
+                  </div>
+                  <div className="space-y-4">
+                    {retryGroup.attestations.map((step: any, idx: number) => (
                 <div key={idx}>
                   <div className="text-sm font-medium text-green-800 mb-2 flex items-center gap-1">
                     <CheckCircle className="h-4 w-4" />
-                    Worker Completion Proof - Step {step.current_step || idx + 1} of {step.total_steps || workerAttestation._all_steps.length}
+                    Worker Completion Proof{step.current_step ? ` - Step ${step.current_step}` : ''}{step.total_steps ? ` of ${step.total_steps}` : ''}
                   </div>
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-3 text-xs">
                     <div>
@@ -268,6 +297,16 @@ function AttestationRecords({ jobId, workflowId }: { jobId: string; workflowId?:
                       <Badge variant={step.status === 'completed' ? 'default' : 'destructive'}>
                         {step.status}
                       </Badge>
+                    </div>
+                    <div>
+                      <div className="font-medium text-muted-foreground">Retry Count</div>
+                      <Badge variant={step.retry_count > 0 ? 'secondary' : 'outline'}>
+                        {step.retry_count || 0}
+                      </Badge>
+                    </div>
+                    <div>
+                      <div className="font-medium text-muted-foreground">Machine ID</div>
+                      <code className="bg-white px-2 py-1 rounded border text-[10px]">{step.machine_id || 'unknown'}</code>
                     </div>
                   </div>
                   {/* Asset locations for this step */}
@@ -324,6 +363,24 @@ function AttestationRecords({ jobId, workflowId }: { jobId: string; workflowId?:
                       })()}
                     </div>
                   )}
+                  {step.raw_service_output && (
+                    <div className="mt-2">
+                      <div className="text-xs font-medium text-muted-foreground mb-1">Raw Service Output (Debugging)</div>
+                      <details className="border rounded bg-gray-50">
+                        <summary className="px-2 py-1 text-xs cursor-pointer hover:bg-gray-100">
+                          Click to view raw service response for step {step.current_step || idx + 1}
+                        </summary>
+                        <pre className="p-2 text-xs overflow-auto max-h-40 text-gray-700">
+                          {typeof step.raw_service_output === 'string'
+                            ? step.raw_service_output
+                            : JSON.stringify(step.raw_service_output, null, 2)}
+                        </pre>
+                      </details>
+                    </div>
+                  )}
+                </div>
+                    ))}
+                  </div>
                 </div>
               ))}
             </div>
@@ -352,6 +409,16 @@ function AttestationRecords({ jobId, workflowId }: { jobId: string; workflowId?:
                 <div>
                   <div className="font-medium text-muted-foreground">Machine ID</div>
                   <code className="bg-white px-2 py-1 rounded border text-xs">{workerAttestation.machine_id}</code>
+                </div>
+                <div>
+                  <div className="font-medium text-muted-foreground">Retry Count</div>
+                  <Badge variant={workerAttestation.retry_count > 0 ? 'secondary' : 'outline'}>
+                    {workerAttestation.retry_count || 0}
+                  </Badge>
+                </div>
+                <div>
+                  <div className="font-medium text-muted-foreground">Worker Version</div>
+                  <code className="bg-white px-2 py-1 rounded border text-xs">{workerAttestation.worker_version || 'unknown'}</code>
                 </div>
               </div>
               {workerAttestation.result && (
@@ -405,6 +472,21 @@ function AttestationRecords({ jobId, workflowId }: { jobId: string; workflowId?:
                       );
                     }
                   })()}
+                </div>
+              )}
+              {workerAttestation.raw_service_output && (
+                <div className="mt-2">
+                  <div className="text-xs font-medium text-muted-foreground mb-1">Raw Service Output (Debugging)</div>
+                  <details className="border rounded bg-gray-50">
+                    <summary className="px-2 py-1 text-xs cursor-pointer hover:bg-gray-100">
+                      Click to view raw service response
+                    </summary>
+                    <pre className="p-2 text-xs overflow-auto max-h-40 text-gray-700">
+                      {typeof workerAttestation.raw_service_output === 'string'
+                        ? workerAttestation.raw_service_output
+                        : JSON.stringify(workerAttestation.raw_service_output, null, 2)}
+                    </pre>
+                  </details>
                 </div>
               )}
             </div>
