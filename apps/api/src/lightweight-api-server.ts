@@ -4811,36 +4811,82 @@ export class LightweightAPIServer {
       // Step 5: Failsafe - force complete the entire job
       logger.info(`🔧 Step 5: Failsafe - force completing entire job ${workflowId}...`);
 
-      // Transform job result into proper generationOutputs format
-      const generationOutputs = jobCompletion.result ? [{
-        id: workflowId,
-        generation: {
-          id: 0,
-          hash: `job_${jobCompletion.job_id.replace(/[^a-zA-Z0-9]/g, '').substring(0, 16)}`
-        },
-        steps: [{
-          id: 1,
-          nodeName: jobCompletion.job_id.includes('step-') ? jobCompletion.job_id.split('-')[1] : 'completion',
-          nodeAlias: 'ForceCompletion1',
-          nodeResponse: {
-            // Extract image URL and format exactly like normal completions
-            src: jobCompletion.result?.data?.image_url || jobCompletion.result?.image_url,
-            mimeType: "image/png"
+      // Use the complete stored workflow data instead of fabricating
+      // Normal completions send jobCompletion.result.data.result which contains the full workflow
+      // Recovery should send the EXACT SAME data structure for consistency
+      let generationOutputs = [];
+
+      if (jobCompletion.result?.data?.result) {
+        // Use the complete stored ComfyUI workflow result - this contains variables + final steps
+        logger.info(`🔄 Using stored complete workflow data from job completion`);
+        generationOutputs = jobCompletion.result.data.result;
+
+        logger.info(`📋 STORED WORKFLOW STRUCTURE:`);
+        logger.info(`📋   - Type: ${Array.isArray(generationOutputs) ? 'Array' : typeof generationOutputs}`);
+        logger.info(`📋   - Length: ${Array.isArray(generationOutputs) ? generationOutputs.length : 'N/A'}`);
+        if (Array.isArray(generationOutputs) && generationOutputs[0]) {
+          logger.info(`📋   - First item has steps: ${generationOutputs[0].steps ? generationOutputs[0].steps.length : 'NO STEPS'}`);
+          if (generationOutputs[0].steps) {
+            generationOutputs[0].steps.forEach((step: any, idx: number) => {
+              logger.info(`📋     Step ${idx}: ${step.nodeName} (${step.nodeAlias || 'no alias'})`);
+            });
           }
-        }]
-      }] : [];
+        }
+      } else {
+        // Fallback: create minimal structure if no stored workflow
+        logger.warn(`⚠️  No stored workflow data found, creating fallback structure`);
+        generationOutputs = [{
+          id: workflowId,
+          generation: {
+            id: 0,
+            hash: `job_${jobCompletion.job_id.replace(/[^a-zA-Z0-9]/g, '').substring(0, 16)}`
+          },
+          steps: [{
+            id: 1,
+            nodeName: 'completion',
+            nodeAlias: 'ForceCompletion1',
+            nodeResponse: {
+              src: jobCompletion.result?.data?.image_url || jobCompletion.result?.image_url,
+              mimeType: "image/png"
+            }
+          }]
+        }];
+      }
+
+      // Extract the final image URL for direct workflow_output
+      const finalImageUrl = jobCompletion.result?.data?.image_url || jobCompletion.result?.image_url || null;
+
+      // 🚨🚨🚨 FORCE COMPLETION: Direct workflow override - no extraction needed 🚨🚨🚨
+      const requestPayload = {
+        // Include synthetic outputs for compatibility, but EmProps should use workflow_output directly
+        outputs: generationOutputs,
+        // CRITICAL: Direct workflow_output field - EmProps should use this, not extract from outputs
+        workflow_output: finalImageUrl,
+        metadata: {
+          completed_by_job_queue: true,
+          last_job_id: jobCompletion.job_id,
+          recovery_timestamp: new Date().toISOString(),
+          override_completion: true, // Signal that this is a direct completion override
+          skip_extraction: true // Signal that EmProps should use workflow_output directly
+        }
+      };
+
+      logger.info(`🚨🚨🚨 FORCE COMPLETION PAYLOAD TO EMPROPS API 🚨🚨🚨`);
+      logger.info(`📋 ENDPOINT: POST ${empropsApiUrl}/jobs/${workflowId}/complete`);
+      logger.info(`📋 PAYLOAD TYPE: ${typeof requestPayload.outputs} (should be 'object')`);
+      logger.info(`📋 OUTPUTS IS ARRAY: ${Array.isArray(requestPayload.outputs)}`);
+      logger.info(`📋 OUTPUTS LENGTH: ${requestPayload.outputs?.length || 0}`);
+      logger.info(`📋 🎯 WORKFLOW_OUTPUT: ${requestPayload.workflow_output || 'NOT_SET'}`);
+      logger.info(`📋 🎯 OVERRIDE_COMPLETION: ${requestPayload.metadata.override_completion}`);
+      logger.info(`📋 🎯 SKIP_EXTRACTION: ${requestPayload.metadata.skip_extraction}`);
+      logger.info(`📋 FULL PAYLOAD STRUCTURE:`);
+      logger.info(JSON.stringify(requestPayload, null, 2));
+      logger.info(`🚨🚨🚨 END FORCE COMPLETION PAYLOAD 🚨🚨🚨`);
 
       const completeJobResponse = await fetch(`${empropsApiUrl}/jobs/${workflowId}/complete`, {
         method: 'POST',
         headers,
-        body: JSON.stringify({
-          outputs: generationOutputs,
-          metadata: {
-            completed_by_job_queue: true,
-            last_job_id: jobCompletion.job_id,
-            recovery_timestamp: new Date().toISOString()
-          }
-        }),
+        body: JSON.stringify(requestPayload),
         signal: AbortSignal.timeout(10000)
       });
 
