@@ -390,15 +390,34 @@ export abstract class AsyncRESTConnector extends BaseConnector {
 
         if (pollingResult.completed) {
           if (pollingResult.error) {
+            // Helper function to safely serialize any value to string
+            const safeStringify = (value: unknown): string => {
+              if (value === null || value === undefined) {
+                return 'null';
+              }
+              if (typeof value === 'string') {
+                return value;
+              }
+              if (typeof value === 'object') {
+                try {
+                  return JSON.stringify(value);
+                } catch {
+                  return String(value);
+                }
+              }
+              return String(value);
+            };
+
             // Job completed with error - create enhanced error with response data
-            const completionError = new Error(`Async job failed: ${pollingResult.error}`);
+            const serializedError = safeStringify(pollingResult.error);
+            const completionError = new Error(`Async job failed: ${serializedError}`);
             (completionError as any).isCompletionError = true; // Mark as completion error
             
             // Add OpenAI response data to error for telemetry
             if (this.lastPollingResponse) {
               (completionError as any).openaiResponseData = JSON.stringify(smartTruncateObject(this.lastPollingResponse));
               logger.error(`📡 Job completion error with OpenAI response data:`, {
-                error: pollingResult.error,
+                error: serializedError,
                 asyncJobId: asyncJobId,
                 openaiResponse: `[SMART-TRUNCATED] ${JSON.stringify(smartTruncateObject(this.lastPollingResponse))}`
               });

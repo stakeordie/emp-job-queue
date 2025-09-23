@@ -325,9 +325,30 @@ export class RestAsyncConnector implements ConnectorInterface {
   }
 
   private extractError(data: Record<string, unknown>): string {
-    return (
-      String(data.error) || String(data.error_message) || String(data.message) || 'Unknown error'
-    );
+    // Helper function to safely serialize any value to string
+    const safeStringify = (value: unknown): string => {
+      if (value === null || value === undefined) {
+        return '';
+      }
+      if (typeof value === 'string') {
+        return value;
+      }
+      if (typeof value === 'object') {
+        try {
+          return JSON.stringify(value);
+        } catch {
+          return String(value);
+        }
+      }
+      return String(value);
+    };
+
+    const error = safeStringify(data.error) ||
+                  safeStringify(data.error_message) ||
+                  safeStringify(data.message) ||
+                  'Unknown error';
+
+    return error;
   }
 
   private isJobComplete(status: string): boolean {

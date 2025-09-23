@@ -779,11 +779,15 @@ export default function JobForensics() {
   // Check if notification was successfully sent
   const notificationSent = notificationAttestations.some(att => att.success === true);
 
+  // Check if miniapp is actually complete (status = "complete" AND has image)
+  const isMiniappComplete = generation && generation.status === 'complete' && generation.generated_image;
+
   // Debug logging to understand the data structure
   console.log('🔍 JobForensics Debug for job:', forensicsData?.job?.id);
   console.log('miniappData:', miniappData);
   console.log('generation:', generation);
   console.log('generation status check:', generation?.status);
+  console.log('isMiniappComplete:', isMiniappComplete);
 
   // Filter jobs based on search query
   // Server-side search is now handled in the API, so we use allJobs directly
@@ -1864,32 +1868,31 @@ export default function JobForensics() {
 
                     {/* Step 6: Job Completed Miniapp (miniapp_generation table) */}
                     <div className={`flex items-center gap-4 p-4 border rounded-lg ${
-                      generation ? 'border-teal-200 bg-teal-50' : 'border-gray-200 bg-gray-50'
+                      isMiniappComplete ? 'border-teal-200 bg-teal-50' : 'border-gray-200 bg-gray-50'
                     }`}>
                       <div className="flex-shrink-0">
                         <div className={`w-8 h-8 rounded-full flex items-center justify-center text-sm font-semibold ${
-                          generation ? 'bg-teal-600 text-white' : 'bg-gray-400 text-white'
+                          isMiniappComplete ? 'bg-teal-600 text-white' : 'bg-gray-400 text-white'
                         }`}>6</div>
                       </div>
                       <div className="flex-1">
-                        <div className={`font-medium ${generation ? 'text-teal-800' : 'text-gray-600'}`}>
+                        <div className={`font-medium ${isMiniappComplete ? 'text-teal-800' : 'text-gray-600'}`}>
                           Miniapp Completion
                         </div>
 
-
-                        <div className={`text-sm ${generation ? 'text-teal-600' : 'text-gray-500'}`}>
+                        <div className={`text-sm ${isMiniappComplete ? 'text-teal-600' : 'text-gray-500'}`}>
                           {generation
-                            ? `Miniapp generation record created (Status: ${generation.status})`
+                            ? `Miniapp generation record found (Status: ${generation.status})`
                             : 'Miniapp webhook completion pending'}
                         </div>
                         {generation && (
-                          <div className="text-xs text-teal-500 mt-1">
-                            <CheckCircle className="h-3 w-3 inline mr-1" />
+                          <div className={`text-xs mt-1 ${isMiniappComplete ? 'text-teal-500' : 'text-amber-600'}`}>
+                            {isMiniappComplete ? <CheckCircle className="h-3 w-3 inline mr-1" /> : <Clock className="h-3 w-3 inline mr-1" />}
                             Generation ID: {generation.id.substring(0, 8)}... | {generation.generated_image ? 'Image available' : 'No image'}
                           </div>
                         )}
                       </div>
-                      {generation ? <CheckCircle className="h-5 w-5 text-teal-600" /> : <Clock className="h-5 w-5 text-gray-400" />}
+                      {isMiniappComplete ? <CheckCircle className="h-5 w-5 text-teal-600" /> : <Clock className="h-5 w-5 text-gray-400" />}
                     </div>
 
                     {/* Arrow */}
@@ -1947,11 +1950,11 @@ export default function JobForensics() {
                         </div>
                         <div className="text-xs text-emerald-600 font-medium">EmProps Table</div>
                       </div>
-                      <div className="text-center p-3 bg-teal-50 rounded-lg border border-teal-200">
-                        <div className="text-lg font-semibold text-teal-600">
-                          {generation ? '✓' : '○'}
+                      <div className={`text-center p-3 rounded-lg border ${isMiniappComplete ? 'bg-teal-50 border-teal-200' : 'bg-gray-50 border-gray-200'}`}>
+                        <div className={`text-lg font-semibold ${isMiniappComplete ? 'text-teal-600' : 'text-gray-400'}`}>
+                          {isMiniappComplete ? '✓' : '○'}
                         </div>
-                        <div className="text-xs text-teal-600 font-medium">Miniapp Table</div>
+                        <div className={`text-xs font-medium ${isMiniappComplete ? 'text-teal-600' : 'text-gray-400'}`}>Miniapp Table</div>
                       </div>
                       <div className="text-center p-3 bg-amber-50 rounded-lg border border-amber-200">
                         <div className="text-lg font-semibold text-amber-600">
