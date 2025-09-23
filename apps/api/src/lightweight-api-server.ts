@@ -4811,11 +4811,26 @@ export class LightweightAPIServer {
       // Step 5: Failsafe - force complete the entire job
       logger.info(`🔧 Step 5: Failsafe - force completing entire job ${workflowId}...`);
 
+      // Transform job result into proper generationOutputs format
+      const generationOutputs = jobCompletion.result ? [{
+        id: workflowId,
+        generation: {
+          id: 0,
+          hash: `job_${jobCompletion.job_id.replace(/[^a-zA-Z0-9]/g, '').substring(0, 16)}`
+        },
+        steps: [{
+          id: 1,
+          nodeName: jobCompletion.job_id.includes('step-') ? jobCompletion.job_id.split('-')[1] : 'completion',
+          nodeAlias: 'ForceCompletion1',
+          nodeResponse: jobCompletion.result
+        }]
+      }] : [];
+
       const completeJobResponse = await fetch(`${empropsApiUrl}/jobs/${workflowId}/complete`, {
         method: 'POST',
         headers,
         body: JSON.stringify({
-          outputs: jobCompletion.result,
+          outputs: generationOutputs,
           metadata: {
             completed_by_job_queue: true,
             last_job_id: jobCompletion.job_id,
