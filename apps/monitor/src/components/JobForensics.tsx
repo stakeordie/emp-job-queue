@@ -568,7 +568,9 @@ export default function JobForensics() {
     setJobsLoading(true);
     try {
       const offset = page * jobsPerPage;
-      const searchParam = searchTerm ? `&search=${encodeURIComponent(searchTerm)}` : '';
+      // Ensure searchTerm is always a string to prevent [object Object] issues
+      const safSearchTerm = String(searchTerm || '').trim();
+      const searchParam = safSearchTerm ? `&search=${encodeURIComponent(safSearchTerm)}` : '';
       const response = await fetch(`/api/jobs/all?limit=${jobsPerPage}&offset=${offset}${searchParam}`);
       const data = await response.json();
       if (data.success) {
@@ -829,7 +831,7 @@ export default function JobForensics() {
                     onChange={(e) => setSearchQuery(e.target.value)}
                     className="flex-1"
                   />
-                  <Button onClick={loadAllJobs} disabled={jobsLoading}>
+                  <Button onClick={() => loadAllJobs(searchQuery)} disabled={jobsLoading}>
                     {jobsLoading ? <RefreshCw className="h-4 w-4 animate-spin mr-2" /> : <RefreshCw className="h-4 w-4 mr-2" />}
                     Refresh
                   </Button>
