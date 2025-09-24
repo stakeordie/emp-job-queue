@@ -58,12 +58,19 @@ function AttestationRecords({ jobId, workflowId }: { jobId: string; workflowId?:
                 return acc;
               }, {});
 
-              // Sort by retry count
+              // Sort by retry count and sort attestations within each group by step number
               const sortedRetryGroups = Object.keys(groupedByRetry)
                 .sort((a, b) => parseInt(a) - parseInt(b))
                 .map(retryCount => ({
                   retry_count: parseInt(retryCount),
-                  attestations: groupedByRetry[retryCount]
+                  attestations: groupedByRetry[retryCount].sort((a: any, b: any) => {
+                    // Sort by current_step if available, otherwise by completed_at timestamp
+                    const stepA = parseInt(a.current_step || '0');
+                    const stepB = parseInt(b.current_step || '0');
+                    if (stepA !== stepB) return stepA - stepB;
+                    // Fallback to timestamp if steps are equal
+                    return new Date(a.completed_at || 0).getTime() - new Date(b.completed_at || 0).getTime();
+                  })
                 }));
 
               if (sortedRetryGroups.length === 1 && sortedRetryGroups[0].attestations.length === 1) {
