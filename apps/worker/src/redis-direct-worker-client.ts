@@ -835,6 +835,9 @@ export class RedisDirectWorkerClient {
       const jobData = await this.redis.hgetall(`job:${jobId}`);
       const completedAt = new Date().toISOString();
 
+      // Debug logging for retry count
+      logger.info(`🔍 Worker ${this.workerId} completing job ${jobId} - retry_count in jobData: "${jobData.retry_count}" (type: ${typeof jobData.retry_count})`);
+
       // 🚨 CRITICAL: Create persistent completion attestation FIRST
       // This is the worker's authoritative "I finished this" record
       // Must happen BEFORE releasing the job to prevent orphaning
@@ -845,6 +848,9 @@ export class RedisDirectWorkerClient {
       // Create raw service output with base64 scrubbed for debugging
       const rawServiceOutput = sanitizeBase64Data(result);
 
+      const retryCount = parseInt(jobData.retry_count || '0');
+      logger.info(`🔍 Worker ${this.workerId} creating attestation for job ${jobId} with retry_count: ${retryCount} (parsed from "${jobData.retry_count}")`);
+
       const workerCompletionRecord = {
         job_id: jobId,
         worker_id: this.workerId,
@@ -852,7 +858,7 @@ export class RedisDirectWorkerClient {
         completed_at: completedAt,
         result: JSON.stringify(sanitizedResult),
         raw_service_output: JSON.stringify(rawServiceOutput),
-        retry_count: parseInt(jobData.retry_count || '0'),
+        retry_count: retryCount,
         workflow_id: jobData.workflow_id || null,
         current_step: jobData.current_step || null,
         total_steps: jobData.total_steps || null,
