@@ -4377,6 +4377,7 @@ export class LightweightAPIServer {
       const attestationData = {
         workflow_id: workflowId,
         api_determined_complete_at: new Date().toISOString(),
+        retry_count: retryAttempt || 0,
         job_completion_data: jobCompletion ? {
           job_id: jobCompletion.job_id,
           worker_id: jobCompletion.worker_id,

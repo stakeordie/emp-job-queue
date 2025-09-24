@@ -523,6 +523,16 @@ function AttestationRecords({ jobId, workflowId }: { jobId: string; workflowId?:
                   <div className="font-medium text-muted-foreground">Asset Count</div>
                   <Badge variant="outline">{apiAttestation.asset_locations?.length || 0} assets</Badge>
                 </div>
+                <div>
+                  <div className="font-medium text-muted-foreground">Retry Count</div>
+                  <Badge variant={apiAttestation.retry_count > 0 ? 'secondary' : 'outline'}>
+                    {apiAttestation.retry_count || 0}
+                  </Badge>
+                </div>
+                <div>
+                  <div className="font-medium text-muted-foreground">API Version</div>
+                  <code className="bg-white px-2 py-1 rounded border text-xs">{apiAttestation.api_version || 'unknown'}</code>
+                </div>
               </div>
               {apiAttestation.asset_locations && apiAttestation.asset_locations.length > 0 && (
                 <div className="mt-2">
