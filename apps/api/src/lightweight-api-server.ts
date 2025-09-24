@@ -3357,7 +3357,7 @@ export class LightweightAPIServer {
       customer_id: jobData.customer_id as string,
       created_at: now,
       status: JobStatus.PENDING,
-      retry_count: 0,
+      retry_count: (jobData.retry_count as number) || 0,
       max_retries: (jobData.max_retries as number) || 3,
       workflow_id: jobData.workflow_id as string | undefined,
       workflow_priority: jobData.workflow_priority as number | undefined,
