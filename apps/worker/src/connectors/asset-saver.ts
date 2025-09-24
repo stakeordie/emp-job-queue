@@ -42,6 +42,18 @@ export class AssetSaver {
       // Storage configuration is now provided at jobData.ctx (API change)
       const ctx = jobData.ctx || {};
       const storageConfig = ctx.storage || {};
+
+      // 🔍 ASSET SAVER DEBUG - Log what we receive
+      logger.info(`🔍🔍🔍 ASSET SAVER DEBUG for job ${jobId} 🔍🔍🔍`);
+      logger.info(`📦 jobData keys: ${Object.keys(jobData).join(', ')}`);
+      logger.info(`📦 ctx structure:`, {
+        ctx_exists: !!ctx,
+        ctx_keys: ctx ? Object.keys(ctx) : 'no ctx',
+        ctx_retry_count: ctx?.retry_count,
+        ctx_retryCount: ctx?.retryCount,
+        ctx_full: JSON.stringify(ctx, null, 2)
+      });
+      logger.info(`📦 storageConfig:`, storageConfig);
       
       // Storage configuration MUST come from job payload - no environment variable fallbacks
       const provider = storageConfig.provider || ctx.provider;
@@ -91,8 +103,22 @@ export class AssetSaver {
           .digest('hex')
           .slice(0, 8);
         // Add retry suffix if this is a retry attempt
-        const retryCount = ctx?.retry_count || ctx?.retryCount || 0;
+        // 🔍 RETRY SUFFIX DEBUG - Log exactly what data we have before creating suffix
+        logger.info(`🔍🔍🔍 RETRY SUFFIX DEBUG for job ${jobId} 🔍🔍🔍`);
+        logger.info(`📦 ctx object:`, ctx);
+        logger.info(`📦 ctx?.retry_count:`, ctx?.retry_count);
+        logger.info(`📦 ctx?.retryCount:`, ctx?.retryCount);
+        logger.info(`📦 ctx?.workflow_context?.retry_attempt:`, ctx?.workflow_context?.retry_attempt);
+        logger.info(`📦 typeof ctx?.retry_count:`, typeof ctx?.retry_count);
+        logger.info(`📦 typeof ctx?.retryCount:`, typeof ctx?.retryCount);
+        logger.info(`📦 typeof ctx?.workflow_context?.retry_attempt:`, typeof ctx?.workflow_context?.retry_attempt);
+
+        const retryCount = ctx?.workflow_context?.retry_attempt || ctx?.retry_count || ctx?.retryCount || 0;
+        logger.info(`📦 Final calculated retryCount:`, retryCount);
+        logger.info(`📦 typeof final retryCount:`, typeof retryCount);
+
         const retrySuffix = retryCount > 0 ? `_r${retryCount}` : '';
+        logger.info(`📦 Generated retrySuffix:`, retrySuffix);
 
         fileName = `${jobId}_${timestamp}_${hash}${retrySuffix}.${actualFormat}`;
       }

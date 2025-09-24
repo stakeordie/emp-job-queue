@@ -835,8 +835,24 @@ export class RedisDirectWorkerClient {
       const jobData = await this.redis.hgetall(`job:${jobId}`);
       const completedAt = new Date().toISOString();
 
-      // Debug logging for retry count
+      // Debug logging for retry count - let's see what's actually in the job data
       logger.info(`🔍 Worker ${this.workerId} completing job ${jobId} - retry_count in jobData: "${jobData.retry_count}" (type: ${typeof jobData.retry_count})`);
+
+      // Parse payload to check if retry_count is there
+      let parsedPayload: any = {};
+      try {
+        parsedPayload = typeof jobData.payload === 'string' ? JSON.parse(jobData.payload) : jobData.payload || {};
+        logger.info(`🔍 Parsed payload for job ${jobId}:`, {
+          has_ctx: !!parsedPayload.ctx,
+          ctx_retry_count: parsedPayload.ctx?.retry_count,
+          ctx_retryCount: parsedPayload.ctx?.retryCount,
+          payload_retry_count: parsedPayload.retry_count,
+          payload_retryCount: parsedPayload.retryCount,
+          full_payload: JSON.stringify(parsedPayload, null, 2)
+        });
+      } catch (e) {
+        logger.warn(`Failed to parse payload for job ${jobId}: ${e.message}`);
+      }
 
       // 🚨 CRITICAL: Create persistent completion attestation FIRST
       // This is the worker's authoritative "I finished this" record
@@ -848,8 +864,62 @@ export class RedisDirectWorkerClient {
       // Create raw service output with base64 scrubbed for debugging
       const rawServiceOutput = sanitizeBase64Data(result);
 
-      const retryCount = parseInt(jobData.retry_count || '0');
-      logger.info(`🔍 Worker ${this.workerId} creating attestation for job ${jobId} with retry_count: ${retryCount} (parsed from "${jobData.retry_count}")`);
+      // 🔍 COMPREHENSIVE ATTESTATION DEBUG - Log ALL available data
+      logger.info(`🔍🔍🔍 COMPREHENSIVE ATTESTATION DEBUG for job ${jobId} 🔍🔍🔍`);
+      logger.info(`📦 Raw jobData keys: ${Object.keys(jobData).join(', ')}`);
+      logger.info(`📦 Raw jobData values:`, {
+        id: jobData.id,
+        workflow_id: jobData.workflow_id,
+        service_required: jobData.service_required,
+        retry_count: jobData.retry_count,
+        max_retries: jobData.max_retries,
+        status: jobData.status,
+        priority: jobData.priority,
+        payload_type: typeof jobData.payload,
+        payload_length: jobData.payload?.length || 0,
+        created_at: jobData.created_at,
+        assigned_at: jobData.assigned_at,
+        started_at: jobData.started_at
+      });
+
+      logger.info(`📦 Parsed payload structure:`, {
+        type: typeof parsedPayload,
+        keys: Object.keys(parsedPayload || {}),
+        has_ctx: !!parsedPayload.ctx,
+        ctx_keys: parsedPayload.ctx ? Object.keys(parsedPayload.ctx) : 'no ctx',
+        ctx_full: parsedPayload.ctx || 'undefined',
+        top_level_retry_count: parsedPayload.retry_count,
+        top_level_retryCount: parsedPayload.retryCount
+      });
+
+      logger.info(`📦 Job result data:`, {
+        result_type: typeof result,
+        result_keys: result && typeof result === 'object' ? Object.keys(result) : 'not object',
+        result_summary: result ? JSON.stringify(result, null, 2).substring(0, 200) + '...' : 'undefined'
+      });
+
+      // Get retry count from the same place asset-saver gets it: ctx.workflow_context.retry_attempt
+      // parsedPayload.ctx is undefined, but jobData.ctx contains the workflow_context as JSON string
+      let parsedCtx: any = null;
+      try {
+        parsedCtx = typeof jobData.ctx === 'string' ? JSON.parse(jobData.ctx) : jobData.ctx;
+      } catch (error) {
+        logger.warn(`Failed to parse jobData.ctx: ${error.message}`);
+      }
+
+      const retryCount =
+        parsedCtx?.workflow_context?.retry_attempt ||
+        parsedPayload.ctx?.retry_count ||
+        parsedPayload.ctx?.retryCount ||
+        parseInt(jobData.retry_count || '0');
+
+      logger.info(`🔍 Final retry_count determination:`, {
+        from_jobData_ctx_workflow_context_retry_attempt: parsedCtx?.workflow_context?.retry_attempt,
+        from_ctx_retry_count: parsedPayload.ctx?.retry_count,
+        from_ctx_retryCount: parsedPayload.ctx?.retryCount,
+        from_jobData_retry_count: jobData.retry_count,
+        final_retryCount: retryCount
+      });
 
       const workerCompletionRecord = {
         job_id: jobId,

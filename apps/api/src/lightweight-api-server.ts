@@ -3543,11 +3543,35 @@ export class LightweightAPIServer {
     const jobData = await this.redis.hgetall(`job:${jobId}`);
     if (!jobData.id) return null;
 
+    // Parse payload to get retry_count from ctx (same as asset-saver)
+    let parsedPayload: any = {};
+    try {
+      parsedPayload = JSON.parse(jobData.payload || '{}');
+    } catch (e) {
+      logger.warn(`Failed to parse payload for job ${jobId}: ${e.message}`);
+      parsedPayload = {};
+    }
+
+    // Get retry count from the same place asset-saver gets it: ctx.workflow_context.retry_attempt
+    // parsedPayload.ctx is undefined, but jobData.ctx contains the workflow_context as JSON string
+    let parsedCtx: any = null;
+    try {
+      parsedCtx = typeof jobData.ctx === 'string' ? JSON.parse(jobData.ctx) : jobData.ctx;
+    } catch (error) {
+      // Continue without ctx if parsing fails
+    }
+
+    const retryCount =
+      parsedCtx?.workflow_context?.retry_attempt ||
+      parsedPayload.ctx?.retry_count ||
+      parsedPayload.ctx?.retryCount ||
+      parseInt(jobData.retry_count || '0');
+
     return {
       id: jobData.id,
       service_required: jobData.service_required,
       priority: parseInt(jobData.priority || '50'),
-      payload: JSON.parse(jobData.payload || '{}'),
+      payload: parsedPayload,
       requirements: jobData.requirements ? JSON.parse(jobData.requirements) : undefined,
       customer_id: jobData.customer_id || undefined,
       created_at: jobData.created_at,
@@ -3557,7 +3581,7 @@ export class LightweightAPIServer {
       failed_at: jobData.failed_at || undefined,
       worker_id: jobData.worker_id || undefined,
       status: (jobData.status || 'pending') as JobStatus,
-      retry_count: parseInt(jobData.retry_count || '0'),
+      retry_count: retryCount,
       max_retries: parseInt(jobData.max_retries || '3'),
       last_failed_worker: jobData.last_failed_worker || undefined,
       processing_time: jobData.processing_time ? parseInt(jobData.processing_time) : undefined,
@@ -3720,11 +3744,35 @@ export class LightweightAPIServer {
   private parseJobData(jobData: Record<string, string>): Job | null {
     if (!jobData.id) return null;
 
+    // Parse payload to get retry_count from ctx (same as asset-saver)
+    let parsedPayload: any = {};
+    try {
+      parsedPayload = JSON.parse(jobData.payload || '{}');
+    } catch (e) {
+      logger.warn(`Failed to parse payload for job ${jobData.id}: ${e.message}`);
+      parsedPayload = {};
+    }
+
+    // Get retry count from the same place asset-saver gets it: ctx.workflow_context.retry_attempt
+    // parsedPayload.ctx is undefined, but jobData.ctx contains the workflow_context as JSON string
+    let parsedCtx: any = null;
+    try {
+      parsedCtx = typeof jobData.ctx === 'string' ? JSON.parse(jobData.ctx) : jobData.ctx;
+    } catch (error) {
+      // Continue without ctx if parsing fails
+    }
+
+    const retryCount =
+      parsedCtx?.workflow_context?.retry_attempt ||
+      parsedPayload.ctx?.retry_count ||
+      parsedPayload.ctx?.retryCount ||
+      parseInt(jobData.retry_count || '0');
+
     return {
       id: jobData.id,
       service_required: jobData.service_required,
       priority: parseInt(jobData.priority || '50'),
-      payload: JSON.parse(jobData.payload || '{}'),
+      payload: parsedPayload,
       requirements: jobData.requirements ? JSON.parse(jobData.requirements) : undefined,
       customer_id: jobData.customer_id || undefined,
       created_at: jobData.created_at,
@@ -3734,7 +3782,7 @@ export class LightweightAPIServer {
       failed_at: jobData.failed_at || undefined,
       worker_id: jobData.worker_id || undefined,
       status: (jobData.status || 'pending') as JobStatus,
-      retry_count: parseInt(jobData.retry_count || '0'),
+      retry_count: retryCount,
       max_retries: parseInt(jobData.max_retries || '3'),
       last_failed_worker: jobData.last_failed_worker || undefined,
       processing_time: jobData.processing_time ? parseInt(jobData.processing_time) : undefined,
@@ -4151,10 +4199,22 @@ export class LightweightAPIServer {
 
         const jobData = await this.redis.hgetall(`job:${jobId}`);
         if (jobData.id) {
+          // Parse payload to get retry_count from ctx (same as asset-saver)
+          let parsedPayload: any = {};
+          try {
+            parsedPayload = JSON.parse(jobData.payload || '{}');
+          } catch (e) {
+            logger.warn(`Failed to parse payload for job ${jobId}: ${e.message}`);
+            parsedPayload = {};
+          }
+
+          // Get retry count from the same place asset-saver gets it: ctx.retry_count
+          const retryCount = parsedPayload.ctx?.retry_count || parsedPayload.ctx?.retryCount || parseInt(jobData.retry_count || '0');
+
           // Convert Redis hash data to Job object
           const job = {
             id: jobData.id,
-            retry_count: parseInt(jobData.retry_count || '0'),
+            retry_count: retryCount,
             max_retries: parseInt(jobData.max_retries || '3'),
             worker_id: jobData.worker_id || '',
             priority: parseInt(jobData.priority || '50'),
@@ -4933,34 +4993,27 @@ export class LightweightAPIServer {
     // This is the API's authoritative "I believe this workflow is done" record
     // Must happen BEFORE EmProps verification to prevent orphaning
 
-    // First, try to get the retry count from EmProps API for accurate attestation key
+    // Get retry count from job data (same way as worker and asset-saver)
     let retryAttempt: number | undefined;
-    try {
-      const empropsApiUrl = process.env.EMPROPS_API_URL;
-      if (empropsApiUrl) {
-        const headers: Record<string, string> = {
-          'Content-Type': 'application/json',
-          'Accept': 'application/json'
-        };
-        const empropsAuth = process.env.EMPROPS_API_KEY;
-        if (empropsAuth) {
-          headers['Authorization'] = `Bearer ${empropsAuth}`;
-        }
+    if (originalJobCompletion?.job_id) {
+      try {
+        const jobKey = `job:${originalJobCompletion.job_id}`;
+        const jobData = await this.redis.hgetall(jobKey);
 
-        const response = await fetch(`${empropsApiUrl}/jobs/${workflowId}`, {
-          method: 'GET',
-          headers,
-          signal: AbortSignal.timeout(3000) // Quick timeout for retry count lookup
-        });
-
-        if (response.ok) {
-          const jobData = await response.json();
-          retryAttempt = jobData?.data?.retry_count;
+        if (jobData && jobData.ctx) {
+          // Parse ctx JSON string to get workflow_context.retry_attempt
+          let parsedCtx: any = null;
+          try {
+            parsedCtx = JSON.parse(jobData.ctx);
+            retryAttempt = parsedCtx?.workflow_context?.retry_attempt;
+            logger.info(`🔍 Found retry count from job context: ${retryAttempt} for workflow ${workflowId}`);
+          } catch (error) {
+            logger.warn(`Failed to parse job ctx for retry count: ${error.message}`);
+          }
         }
+      } catch (error) {
+        logger.warn(`Could not fetch retry count from job data: ${error}`);
       }
-    } catch (error) {
-      logger.warn(`Could not fetch retry count for attestation key: ${error}`);
-      // Continue without retry count - will use default key
     }
 
     await this.createWorkflowCompletionAttestation(workflowId, originalJobCompletion, undefined, retryAttempt);

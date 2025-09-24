@@ -846,6 +846,17 @@ export class RedisDirectBaseWorker {
       //logger.info(`Transformed ${job.service_required} payload for simulation mode`);
     }
 
+    // 🔍 DEBUG: Log what ctx we have from Redis job data
+    logger.info(`🔍🔍🔍 WORKER JOB CTX DEBUG for job ${job.id} 🔍🔍🔍`);
+    logger.info(`📦 job.ctx:`, {
+      ctx_exists: !!job.ctx,
+      ctx_type: typeof job.ctx,
+      ctx_value: job.ctx,
+      ctx_keys: job.ctx ? Object.keys(job.ctx) : 'no ctx',
+      retry_count_from_ctx: job.ctx?.retry_count,
+      retryCount_from_ctx: job.ctx?.retryCount
+    });
+
     // Process the job (convert to connector interface)
     const jobData = {
       id: job.id,
