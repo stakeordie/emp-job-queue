@@ -121,7 +121,11 @@ export class OpenAIText2ImgConnector extends OpenAIBaseConnector {
           .update(base64Data.slice(0, 100))
           .digest('hex')
           .slice(0, 8);
-        fileName = `${jobId}_${timestamp}_${hash}.${format}`;
+        // Add retry suffix if this is a retry attempt
+        const retryCount = ctx?.retry_count || ctx?.retryCount || 0;
+        const retrySuffix = retryCount > 0 ? `_r${retryCount}` : '';
+
+        fileName = `${jobId}_${timestamp}_${hash}${retrySuffix}.${format}`;
       }
 
       // Ensure prefix ends with '/'
