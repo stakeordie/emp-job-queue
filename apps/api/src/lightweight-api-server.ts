@@ -989,8 +989,7 @@ export class LightweightAPIServer {
                   // Only add if we haven't already found this attestation
                   const alreadyExists = allAttestations.some(att =>
                     att.type === 'worker' &&
-                    att.data.step_id === parsed.step_id &&
-                    att.data.timestamp === parsed.timestamp
+                    att.data.job_id === parsed.job_id
                   );
                   if (!alreadyExists) {
                     addAttestation('worker', parsed);
