@@ -122,6 +122,7 @@ export class OpenAIText2ImgConnector extends OpenAIBaseConnector {
           .digest('hex')
           .slice(0, 8);
         // Add retry suffix if this is a retry attempt
+        const ctx = jobData.payload?.ctx;
         const retryCount = ctx?.retry_count || ctx?.retryCount || 0;
         const retrySuffix = retryCount > 0 ? `_r${retryCount}` : '';
 
