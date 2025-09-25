@@ -1,0 +1,71 @@
+{
+  "config": {
+    "groupOrder": [
+      "main",
+      "advanced"
+    ],
+    "componentGroup": "text"
+  },
+  "fields": [
+    {
+      "id": "prompt",
+      "name": "Prompt",
+      "type": "prompt_editor",
+      "placeholder": "Enter your text prompt...",
+      "default": "",
+      "display": true,
+      "group": [
+        "main",
+        "advanced"
+      ],
+      "required": true
+    },
+    {
+      "id": "max_tokens",
+      "name": "Max Tokens",
+      "type": "slider",
+      "default": 200,
+      "constraints": {
+        "min": 1,
+        "max": 4000,
+        "step": 1
+      },
+      "display": true,
+      "group": [
+        "main",
+        "advanced"
+      ]
+    },
+    {
+      "id": "temperature",
+      "name": "Temperature",
+      "type": "slider",
+      "default": 0.7,
+      "constraints": {
+        "min": 0,
+        "max": 2,
+        "step": 0.1
+      },
+      "display": true,
+      "group": "advanced"
+    },
+    {
+      "id": "model",
+      "name": "Model",
+      "type": "select",
+      "default": "qwen3:0.6b",
+      "options": [
+        {
+          "value": "qwen3:0.6b",
+          "label": "Qwen 3"
+        },
+        {
+          "value": "tinyllama:1.1b",
+          "label": "Tiny LLAMA"
+        }
+      ],
+      "display": true,
+      "group": "advanced"
+    }
+  ]
+}

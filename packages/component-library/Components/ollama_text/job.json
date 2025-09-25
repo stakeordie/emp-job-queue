@@ -1,0 +1,13 @@
+{
+  "service_required": "ollama",
+  "priority": 5,
+  "payload": {
+    "job_type": "generate",
+    "prompt": "",
+    "max_tokens": 200,
+    "temperature": 0.7,
+    "model": "llama3.2:1b"
+  },
+  "output_field": "data.text",
+  "requirements": {}
+}

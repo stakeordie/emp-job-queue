@@ -684,13 +684,24 @@ async function generatePM2EcosystemConfig() {
       logger.error(`🔥🔥🔥 [INDEX-PM2-FILE-VERIFICATION] ERROR reading generator file: ${readError.message}`);
     }
     
-    await execa('node', ['/service-manager/generate-pm2-ecosystem-worker-driven.js'], {
+    const generatorResult = await execa('node', ['/service-manager/generate-pm2-ecosystem-worker-driven.js'], {
       cwd: '/workspace',
       env: {
         ...process.env,
         MACHINE_NUM_GPUS: config.machine.gpu.count.toString()
-      }
+      },
+      stdio: 'pipe'
     });
+
+    // Display all generator output
+    if (generatorResult.stdout) {
+      logger.info('🔥🔥🔥 [GENERATOR-STDOUT] Generator stdout:');
+      console.log(generatorResult.stdout);
+    }
+    if (generatorResult.stderr) {
+      logger.info('🔥🔥🔥 [GENERATOR-STDERR] Generator stderr:');
+      console.log(generatorResult.stderr);
+    }
     
     logger.info('PM2 ecosystem config generated successfully');
     
@@ -716,7 +727,8 @@ async function generatePM2EcosystemConfig() {
         ...configLines.slice(-10)
       ].join('\n');
       
-      console.log(truncatedConfig);
+      // Commented out to reduce log noise - was requested to comment out ENV var dumps
+      // console.log(truncatedConfig);
     } catch (error) {
       logger.error('Failed to read generated ecosystem config:', error);
     }
