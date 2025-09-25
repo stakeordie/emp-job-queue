@@ -31,7 +31,8 @@
       "Bash(pnpm lint:*)",
       "Bash(pnpm run:*)",
       "Bash(pnpm d:machine:build:push:*)",
-      "Bash(git add:*)"
+      "Bash(git add:*)",
+      "Bash(git commit:*)"
     ],
     "deny": [],
     "ask": []
