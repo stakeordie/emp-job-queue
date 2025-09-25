@@ -4,7 +4,7 @@ set -euo pipefail
 # =====================================================
 # Telemetry Stack Installation Script
 # =====================================================
-# Installs nginx-full, Fluent Bit, and OTEL Collector
+# Installs OTEL Collector only (Fluent Bit removed)
 # Used by: API, webhook, and machine containers
 # =====================================================
 
@@ -52,38 +52,9 @@ install_system_deps() {
     log_info "✅ System dependencies installed"
 }
 
-# =====================================================
-# Install nginx with Stream Module
-# =====================================================
-install_nginx() {
-    log_section "Installing nginx with Stream Module"
-    
-    log_info "Installing nginx-extras (includes stream module for Forward protocol proxy)..."
-    DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends nginx-extras
-    
-    log_info "✅ nginx-extras installed with stream module support"
-    log_info "📋 nginx can now proxy Forward protocol: localhost:24224 → production Fluentd"
-}
+# nginx removed - direct logging approach only
 
-# =====================================================
-# Install Fluent Bit
-# =====================================================
-install_fluent_bit() {
-    log_section "Installing Fluent Bit"
-    
-    local FLUENT_BIT_VERSION="3.1.8"
-    
-    log_info "Adding Fluent Bit repository..."
-    curl -fsSL "https://packages.fluentbit.io/fluentbit.key" | apt-key add -
-    echo "deb https://packages.fluentbit.io/ubuntu/jammy jammy main" | tee /etc/apt/sources.list.d/fluent-bit.list
-    
-    log_info "Installing Fluent Bit ${FLUENT_BIT_VERSION}..."
-    apt-get update
-    apt-get install -y fluent-bit=${FLUENT_BIT_VERSION}*
-    
-    log_info "✅ Fluent Bit ${FLUENT_BIT_VERSION} installed"
-    log_info "📋 Fluent Bit will monitor log files and send via Forward protocol"
-}
+# Fluent Bit removed - direct logging approach only
 
 # =====================================================
 # Install OTEL Collector
@@ -100,7 +71,7 @@ install_otel_collector() {
     chmod +x /usr/local/bin/otelcol-contrib
     
     log_info "✅ OTEL Collector ${OTEL_VERSION} installed"
-    log_info "📋 OTEL Collector will export traces and metrics to Dash0"
+    log_info "📋 OTEL Collector will export traces and metrics to Dash0 (direct approach)"
 }
 
 # =====================================================
@@ -118,16 +89,11 @@ create_directories() {
         "${SERVICE_DIR}/configs" \
         "${SERVICE_DIR}/tmp" \
         "${SERVICE_DIR}/scripts" \
-        "${SERVICE_DIR}/fluent-bit" \
-        "${SERVICE_DIR}/otel" \
-        "${SERVICE_DIR}/nginx" \
-        "/var/log/nginx" \
-        "/tmp/fluent-bit-buffer"
+        "${SERVICE_DIR}/otel"
     
     log_info "✅ Directory structure created"
     log_info "📁 Logs: ${SERVICE_DIR}/logs"
-    log_info "📁 Configs: ${SERVICE_DIR}/{fluent-bit,otel,nginx}"
-    log_info "📁 nginx logs: /var/log/nginx"
+    log_info "📁 Configs: ${SERVICE_DIR}/otel"
 }
 
 # =====================================================
@@ -153,8 +119,6 @@ main() {
     log_info "Target directory: ${SERVICE_DIR:-/app}"
     
     install_system_deps
-    install_nginx
-    install_fluent_bit
     install_otel_collector
     create_directories
     cleanup
@@ -162,10 +126,8 @@ main() {
     log_section "Installation Complete"
     log_info "✅ Telemetry stack installed successfully"
     log_info "📋 Components installed:"
-    log_info "   - nginx-full (with stream module)"
-    log_info "   - Fluent Bit 3.1.8"
-    log_info "   - OTEL Collector 0.114.0"
-    log_info "📋 Ready for TelemetryClient configuration and startup"
+    log_info "   - OTEL Collector 0.114.0 (direct approach)"
+    log_info "📋 Ready for TelemetryClient configuration and startup (Fluent Bit removed)"
 }
 
 # Run main function

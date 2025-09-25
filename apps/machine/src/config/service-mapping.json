@@ -120,6 +120,32 @@
           "worker_service": "gem-nano-banana"
         }
       ]
+    },
+    "ollama": {
+      "type": "daemon_client",
+      "daemon_dependency": "ollama",
+      "services": ["ollama"],
+      "is_gpu_bound": false,
+      "scaling_strategy": "concurrency",
+      "required_env": ["OLLAMA_HOST", "OLLAMA_PORT", "OLLAMA_DEFAULT_MODEL"],
+      "job_service_required_map": [
+        {
+          "job_service_required": "ollama",
+          "worker_service": "ollama"
+        },
+        {
+          "job_service_required": "text_generation",
+          "worker_service": "ollama"
+        },
+        {
+          "job_service_required": "chat_completion",
+          "worker_service": "ollama"
+        },
+        {
+          "job_service_required": "embeddings",
+          "worker_service": "ollama"
+        }
+      ]
     }
   },
 
@@ -199,13 +225,17 @@
     "MockConnector": {
       "path": "./redis-direct-worker.js",
       "description": "Mock connector for testing retry completion without external dependencies"
+    },
+    "OllamaConnector": {
+      "path": "./redis-direct-worker.js",
+      "description": "Ollama local LLM connector - GPU-accelerated text generation, chat, and embeddings"
     }
   },
 
   "services": {
     "comfyui": {
       "connector": "ComfyUIWebSocketConnector",
-      "type": "internal",
+      "type": "pm2_service",
       "installer": "ComfyUIManagementClient",
       "installer_filename": "./services/comfyui-management-client.js",
       "is_gpu_bound": true,
@@ -242,7 +272,7 @@
     
     "a1111": {
       "connector": "A1111WebSocketConnector",
-      "type": "internal",
+      "type": "pm2_service",
       "installer": "A1111ManagementClient",
       "installer_filename": "./services/a1111-management-client.js",
       "is_gpu_bound": true,
@@ -275,7 +305,7 @@
     
     "comfyui-remote": {
       "connector": "ComfyUIRemoteConnector",
-      "type": "external",
+      "type": "external_service",
       "installer": null,
       "installer_filename": null,
       "is_gpu_bound": false,
@@ -285,7 +315,7 @@
     
     "simulation-http": {
       "connector": "SimulationHttpConnector",
-      "type": "internal",
+      "type": "pm2_service",
       "installer": null,
       "installer_filename": null,
       "is_gpu_bound": true,
@@ -315,7 +345,7 @@
 
     "simulation-websocket": {
       "connector": "SimulationWebsocketConnector",
-      "type": "internal",
+      "type": "pm2_service",
       "installer": null,
       "installer_filename": null,
       "is_gpu_bound": true,
@@ -333,7 +363,7 @@
     
     "openai-text": {
       "connector": "OpenAITextConnector",
-      "type": "external",
+      "type": "external_api",
       "installer": null,
       "installer_filename": null,
       "is_gpu_bound": false,
@@ -367,7 +397,7 @@
     
     "openai-image": {
       "connector": "OpenAIText2ImgConnector", 
-      "type": "external",
+      "type": "external_api",
       "installer": null,
       "installer_filename": null,
       "is_gpu_bound": false,
@@ -401,7 +431,7 @@
     
     "openai-img2img": {
       "connector": "OpenAIImg2ImgConnector",
-      "type": "external",
+      "type": "external_api",
       "installer": null,
       "installer_filename": null,
       "is_gpu_bound": false, 
@@ -435,7 +465,7 @@
 
     "openai-responses": {
       "connector": "OpenAIResponsesConnector",
-      "type": "external",
+      "type": "external_api",
       "installer": null,
       "installer_filename": null,
       "is_gpu_bound": false,
@@ -465,7 +495,7 @@
     
     "gem-nano-banana": {
       "connector": "GeminiConnector",
-      "type": "external",
+      "type": "external_api",
       "installer": null,
       "installer_filename": null,
       "is_gpu_bound": false,
@@ -494,7 +524,7 @@
 
     "mock_test": {
       "connector": "MockConnector",
-      "type": "external",
+      "type": "external_api",
       "installer": null,
       "installer_filename": null,
       "is_gpu_bound": false,
@@ -512,21 +542,93 @@
           "description": "Mock service processing logs for testing and development"
         }
       ]
+    },
+
+    "ollama": {
+      "connector": "OllamaConnector",
+      "type": "daemon_service",
+      "installer": "OllamaDaemonInstaller",
+      "installer_filename": "../services/ollama-daemon-installer.js",
+      "daemon_command": "ollama serve",
+      "health_endpoint": "/api/tags",
+      "port": "${OLLAMA_BASE_PORT:-11434}",
+      "build_stage": "ollama",
+      "port_increment": "${OLLAMA_PORT_INCREMENT:-1}",
+      "required_env": ["OLLAMA_DEFAULT_MODEL"],
+      "description": "Ollama local LLM service for GPU-accelerated text generation, chat, and embeddings",
+      "installer_config": {
+        "install_method": "${OLLAMA_INSTALL_METHOD:-script}",
+        "install_url": "${OLLAMA_INSTALL_URL:-https://ollama.ai/install.sh}",
+        "default_models": "${OLLAMA_DEFAULT_MODELS:-llama3.2,llama3.2:1b}",
+        "model_storage_path": "${OLLAMA_MODEL_STORAGE_PATH:-/workspace/ollama/models}",
+        "gpu_memory_fraction": "${OLLAMA_GPU_MEMORY_FRACTION:-0.9}",
+        "max_loaded_models": "${OLLAMA_MAX_LOADED_MODELS:-2}",
+        "install_timeout": "${OLLAMA_INSTALL_TIMEOUT:-600}",
+        "model_download_timeout": "${OLLAMA_MODEL_DOWNLOAD_TIMEOUT:-1800}"
+      },
+      "api_config": {
+        "base_url": "http://${OLLAMA_HOST:-localhost}:${OLLAMA_BASE_PORT:-11434}",
+        "timeout": "${OLLAMA_TIMEOUT_SECONDS:-300}",
+        "max_retries": "${OLLAMA_RETRY_ATTEMPTS:-3}",
+        "max_concurrent_jobs": "${OLLAMA_MAX_CONCURRENT_JOBS:-1}",
+        "request_timeout_ms": "${OLLAMA_REQUEST_TIMEOUT_MS:-300000}"
+      },
+      "telemetry_logs": [
+        {
+          "path": "/workspace/ollama/logs/ollama-gpu*.log",
+          "name": "ollama-gpu-output",
+          "description": "Ollama GPU output logs (all GPUs)"
+        },
+        {
+          "path": "/workspace/ollama/logs/model_download.log",
+          "name": "ollama-model-downloads",
+          "description": "Ollama model download logs"
+        },
+        {
+          "path": "/workspace/ollama/logs/inference.log",
+          "name": "ollama-inference",
+          "description": "Ollama model inference and performance logs"
+        }
+      ]
     }
   },
   
   "service_types": {
-    "internal": {
-      "description": "Services that require installation and setup",
+    "pm2_service": {
+      "description": "PM2-managed processes (ComfyUI, simulation services)",
       "requires_installer": true,
       "has_ports": true,
-      "has_pm2_process": true
+      "has_pm2_process": true,
+      "scaling_strategy": "gpu_bound"
     },
-    "external": {
-      "description": "External API services (no installation)",
+    "daemon_service": {
+      "description": "Binary daemon services (Ollama, vLLM, Redis, PostgreSQL)",
+      "requires_installer": true,
+      "has_ports": true,
+      "has_pm2_process": false,
+      "scaling_strategy": "singleton",
+      "startup_order": "before_pm2"
+    },
+    "managed_service": {
+      "description": "Legacy: Binary services we install and manage (being phased out)",
+      "requires_installer": true,
+      "has_ports": true,
+      "has_pm2_process": false,
+      "scaling_strategy": "singleton"
+    },
+    "external_api": {
+      "description": "External API services (OpenAI, Gemini)",
       "requires_installer": false,
       "has_ports": false,
-      "has_pm2_process": false
+      "has_pm2_process": false,
+      "scaling_strategy": "concurrency"
+    },
+    "external_service": {
+      "description": "Remote services (remote ComfyUI, remote databases)",
+      "requires_installer": false,
+      "has_ports": false,
+      "has_pm2_process": false,
+      "scaling_strategy": "concurrency"
     }
   }
 }

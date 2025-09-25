@@ -118,6 +118,7 @@ export interface JobResult {
     model_used?: string;
     processing_stats?: Record<string, unknown>;
   };
+  raw_request_payload?: unknown; // Raw request sent to the service for forensics
 }
 
 export interface OutputFile {

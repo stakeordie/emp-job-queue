@@ -242,6 +242,106 @@ setup_worker_bundle() {
 }
 
 # =====================================================
+# System Services Setup (Ollama, etc.)
+# =====================================================
+setup_system_services() {
+    log_section "System Services Setup"
+
+    # Parse workers to see what system services we need
+    local workers="${WORKERS:-}"
+    log_info "🔍 Checking workers for system service requirements: $workers"
+
+    # Check if we need Ollama for ollama workers
+    if [[ "$workers" =~ ollama ]]; then
+        log_info "🦙 Ollama worker detected - setting up Ollama service"
+
+        # Check if ollama is already installed
+        if command -v ollama >/dev/null 2>&1; then
+            log_info "✅ Ollama is already installed"
+        else
+            log_info "📦 Installing Ollama..."
+            echo "🌐 EXECUTING: curl -fsSL https://ollama.ai/install.sh | sh"
+            if curl -fsSL https://ollama.ai/install.sh | sh; then
+                log_info "✅ Ollama installation completed"
+            else
+                log_warn "⚠️ Ollama installation failed, but continuing..."
+                return 0  # Don't fail the entire startup
+            fi
+        fi
+
+        # Start ollama serve in background if not already running
+        if ! pgrep -f "ollama serve" >/dev/null 2>&1; then
+            log_info "🚀 Starting Ollama daemon..."
+            echo "🆔 EXECUTING: ollama serve (background)"
+
+            # Set environment for ollama
+            export OLLAMA_HOST="${OLLAMA_HOST:-0.0.0.0:11434}"
+            export OLLAMA_MODELS="${OLLAMA_MODELS:-/workspace/models}"
+            mkdir -p /workspace/models
+
+            # Start in background
+            nohup ollama serve > /workspace/logs/ollama.log 2>&1 &
+            local ollama_pid=$!
+            log_info "🆔 Ollama daemon started with PID: $ollama_pid"
+
+            # Wait a few seconds for startup
+            sleep 3
+        else
+            log_info "✅ Ollama daemon is already running"
+        fi
+
+        # Always check if daemon is responding and download models if needed
+        log_info "⏳ Waiting for Ollama to become ready..."
+        local max_retries=10
+        local retry=0
+        while [ $retry -lt $max_retries ]; do
+            if curl -s http://localhost:11434/api/tags >/dev/null 2>&1; then
+                log_info "✅ Ollama daemon is responding"
+                break
+            else
+                log_info "⏳ Ollama not ready yet, waiting... ($((retry+1))/$max_retries)"
+                sleep 2
+                ((retry++))
+            fi
+        done
+
+        if [ $retry -ge $max_retries ]; then
+            log_warn "⚠️ Ollama daemon not responding after $max_retries retries, but continuing..."
+        else
+            # Download default models if specified
+            local default_models="${OLLAMA_DEFAULT_MODELS:-}"
+            if [[ -n "$default_models" ]]; then
+                log_info "📥 Downloading default models: $default_models"
+                echo "📥 Models to download: $default_models"
+                IFS=',' read -ra MODELS <<< "$default_models"
+                for model in "${MODELS[@]}"; do
+                    model=$(echo "$model" | xargs)  # trim whitespace
+                    if [[ -n "$model" ]]; then
+                        echo "📥 EXECUTING: ollama pull $model"
+                        if timeout 300 ollama pull "$model"; then
+                            echo "✅ Model downloaded: $model"
+                            log_info "✅ Model downloaded: $model"
+                        else
+                            echo "❌ Failed to download model: $model"
+                            log_warn "⚠️ Failed to download model: $model (but continuing...)"
+                        fi
+                    fi
+                done
+            else
+                log_info "ℹ️ No default models specified in OLLAMA_DEFAULT_MODELS"
+            fi
+        fi
+    fi
+
+    # Add other system services here as needed (Redis, PostgreSQL, etc.)
+    # if [[ "$workers" =~ redis ]]; then
+    #     setup_redis_service
+    # fi
+
+    log_info "🎉 System services setup completed"
+}
+
+# =====================================================
 # Machine Service Manager Setup
 # =====================================================
 setup_service_manager() {
@@ -384,6 +484,7 @@ main() {
     setup_environment || exit 1
     setup_directories || exit 1
     setup_worker_bundle || exit 1
+    setup_system_services || log_warn "System services setup had warnings but continuing..."
     setup_service_manager || exit 1
     perform_health_check || log_warn "Health check had warnings but continuing..."
     

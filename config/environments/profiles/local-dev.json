@@ -6,8 +6,12 @@
       "default",
       "local"
     ],
-    "ngrok": [
+    "api-tokens": [
       "default"
+    ],
+    "comfyui": [
+      "default",
+      "local"
     ],
     "database": [
       "default",
@@ -16,18 +20,10 @@
     "emprops": [
       "default"
     ],
-    "webhook-service": [
-      "default",
-      "local"
-    ],
-    "api-tokens": [
+    "gemini": [
       "default"
     ],
     "machine": [
-      "default",
-      "local"
-    ],
-    "worker": [
       "default",
       "local"
     ],
@@ -35,34 +31,39 @@
       "default",
       "local"
     ],
-    "redis": [
-      "default",
-      "local"
-    ],
-    "storage-provider": [
-      "default",
-      "dev"
-    ],
-    "comfyui": [
-      "default",
-      "local"
-    ],
-    "ollama": [
+    "ngrok": [
       "default"
     ],
-    "simulation": [
+    "ollama": [
+      "default",
       "local"
     ],
     "openai": [
       "default",
       "local"
     ],
-    "gemini": [
-      "default"
+    "redis": [
+      "default",
+      "local"
+    ],
+    "simulation": [
+      "local"
+    ],
+    "storage-provider": [
+      "default",
+      "dev"
     ],
     "telemetry": [
       "default",
       "development"
+    ],
+    "webhook-service": [
+      "default",
+      "local"
+    ],
+    "worker": [
+      "default",
+      "local"
     ]
   },
   "services": {}

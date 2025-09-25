@@ -21,7 +21,17 @@
       "Bash(PGPASSWORD=:*)",
       "Bash(npm run build:*)",
       "Bash(mkdir:*)",
-      "Bash(curl:*)"
+      "Bash(curl:*)",
+      "Bash(git worktree:*)",
+      "mcp__context7__resolve-library-id",
+      "mcp__context7__get-library-docs",
+      "Bash(docker logs:*)",
+      "mcp__playwright__browser_navigate",
+      "Bash(pnpm test:*)",
+      "Bash(pnpm lint:*)",
+      "Bash(pnpm run:*)",
+      "Bash(pnpm d:machine:build:push:*)",
+      "Bash(git add:*)"
     ],
     "deny": [],
     "ask": []

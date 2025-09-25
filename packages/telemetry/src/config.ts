@@ -16,7 +16,7 @@ export interface TelemetryConfig {
   environment: string;
   buildDate?: string;
 
-  // OTEL Configuration
+  // OTEL Configuration (optional, for traces/metrics only if needed)
   otel: {
     enabled: boolean;
     collectorEndpoint: string;
@@ -24,22 +24,10 @@ export interface TelemetryConfig {
     serviceVersion: string;
   };
 
-  // Fluent Bit / Fluentd Configuration  
+  // Local Logging Configuration
   logging: {
     enabled: boolean;
-    fluentdHost: string;
-    fluentdPort: number;
-    fluentdSecure: boolean;
     logDir?: string;
-  };
-
-  // Dash0 Configuration
-  dash0: {
-    apiKey: string;
-    dataset: string;
-    tracesEndpoint: string;
-    metricsEndpoint: string;
-    logsEndpoint: string;
   };
 }
 
@@ -86,31 +74,21 @@ export class TelemetryConfigManager {
       environment: getRequiredEnv('TELEMETRY_ENV', 'Deployment environment (development/staging/production)'),
       buildDate: process.env.BUILD_DATE, // Optional
 
-      // OTEL Configuration (using getRequiredEnv where needed)
+      // OTEL Configuration (optional)
       otel: {
-        enabled: process.env.OTEL_ENABLED !== 'false',
+        enabled: process.env.OTEL_ENABLED === 'true', // Disabled by default
         collectorEndpoint: process.env.OTEL_COLLECTOR_TRACES_ENDPOINT || serviceDefaults.otelEndpoint,
-        serviceName: getRequiredEnv('SERVICE_NAME', 'Service name for OTEL traces'),
-        serviceVersion: getRequiredEnv('SERVICE_VERSION', 'Service version for OTEL traces'),
+        serviceName: process.env.SERVICE_NAME || serviceName,
+        serviceVersion: process.env.SERVICE_VERSION || '1.0.0',
       },
 
-      // Logging Configuration (using getRequiredEnv)
+      // Direct Logging Configuration (Fluent Bit removed)
       logging: {
-        enabled: process.env.FLUENT_BIT_ENABLED !== 'false',
-        fluentdHost: getRequiredEnv('FLUENTD_HOST', 'Fluentd server hostname for log forwarding'),
-        fluentdPort: getRequiredEnvInt('FLUENTD_PORT', 'Fluentd server port for log forwarding'),
-        fluentdSecure: process.env.FLUENTD_SECURE === 'true',
+        enabled: process.env.LOGGING_ENABLED !== 'false',
         logDir: process.env.LOG_DIR, // Optional
       },
 
-      // Dash0 Configuration (using getRequiredEnv)
-      dash0: {
-        apiKey: getRequiredEnv('DASH0_API_KEY', 'Dash0 API key for telemetry ingestion'),
-        dataset: getRequiredEnv('TELEMETRY_ENV', 'Dash0 dataset name (matches environment)'),
-        tracesEndpoint: process.env.DASH0_TRACES_ENDPOINT || 'https://ingress.us-west-2.aws.dash0.com:4317',
-        metricsEndpoint: process.env.DASH0_METRICS_ENDPOINT || 'https://ingress.us-west-2.aws.dash0.com:4317',
-        logsEndpoint: process.env.DASH0_LOGS_ENDPOINT || 'https://ingress.us-west-2.aws.dash0.com/logs/json',
-      },
+      // No external logging services - local logging only
 
       // Apply any custom defaults
       ...options.defaults,
@@ -146,23 +124,15 @@ export class TelemetryConfigManager {
     const defaults = {
       api: {
         otelEndpoint: 'http://localhost:4318/v1/traces',
-        fluentdHost: 'host.docker.internal',  // Default for containers in development
-        fluentdPort: 24224,
       },
       webhook: {
-        otelEndpoint: 'http://localhost:4318/v1/traces', 
-        fluentdHost: 'host.docker.internal',  // Default for containers in development
-        fluentdPort: 24224,
+        otelEndpoint: 'http://localhost:4318/v1/traces',
       },
       machine: {
         otelEndpoint: 'http://localhost:4318/v1/traces',
-        fluentdHost: 'host.docker.internal',  // Default for containers in development
-        fluentdPort: 24224,
       },
       worker: {
         otelEndpoint: 'http://localhost:4318/v1/traces',
-        fluentdHost: 'host.docker.internal',  // Default for containers in development
-        fluentdPort: 24224,
       }
     };
 
@@ -179,27 +149,14 @@ export class TelemetryConfigManager {
     }
     console.log(`✅ TelemetryConfigManager: OTEL endpoint validation passed: ${this.config.otel.collectorEndpoint}`);
 
-    // Validate Fluentd configuration
+    // Direct logging validation (Fluent Bit removed)
     if (this.config.logging.enabled) {
-      if (!this.config.logging.fluentdHost) {
-        console.error(`❌ TelemetryConfigManager: Missing FLUENTD_HOST`);
-        throw new Error('FATAL: FLUENTD_HOST is required when logging is enabled');
-      }
-      if (isNaN(this.config.logging.fluentdPort) || this.config.logging.fluentdPort <= 0) {
-        console.error(`❌ TelemetryConfigManager: Invalid FLUENTD_PORT: ${this.config.logging.fluentdPort}`);
-        throw new Error(`FATAL: Invalid FLUENTD_PORT: ${this.config.logging.fluentdPort}`);
-      }
-      console.log(`✅ TelemetryConfigManager: Fluentd validation passed: ${this.config.logging.fluentdHost}:${this.config.logging.fluentdPort}`);
+      console.log(`✅ TelemetryConfigManager: Direct logging enabled`);
     } else {
-      console.log(`🔍 TelemetryConfigManager: Fluentd logging disabled, skipping validation`);
+      console.log(`🔍 TelemetryConfigManager: Direct logging disabled`);
     }
 
-    // Validate Dash0 configuration
-    if (!this.config.dash0.apiKey.startsWith('auth_')) {
-      console.error(`❌ TelemetryConfigManager: Invalid DASH0_API_KEY format: ${this.config.dash0.apiKey.substring(0, 10)}...`);
-      throw new Error('FATAL: DASH0_API_KEY must start with "auth_"');
-    }
-    console.log(`✅ TelemetryConfigManager: Dash0 validation passed`);
+    // No external service validation needed - local logging only
   }
 
   public getConfig(): TelemetryConfig {
@@ -212,8 +169,8 @@ export class TelemetryConfigManager {
     console.log(`  Machine: ${this.config.machineId}`);
     console.log(`  Environment: ${this.config.environment}`);
     console.log(`  OTEL: ${this.config.otel.enabled ? 'enabled' : 'disabled'} → ${this.config.otel.collectorEndpoint}`);
-    console.log(`  Logging: ${this.config.logging.enabled ? 'enabled' : 'disabled'} → ${this.config.logging.fluentdHost}:${this.config.logging.fluentdPort}`);
-    console.log(`  Dash0: ${this.config.dash0.dataset} → ${this.config.dash0.tracesEndpoint}`);
+    console.log(`  Logging: ${this.config.logging.enabled ? 'enabled' : 'disabled'} → direct file logging`);
+    console.log(`  External Services: None - local logging only`);
   }
 }
 

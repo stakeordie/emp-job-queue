@@ -587,17 +587,20 @@ export abstract class HTTPConnector extends BaseConnector {
         });
         
         // Start polling for completion
-        return await this.pollForCompletion(serviceJobId, jobData, progressCallback);
+        return await this.pollForCompletion(serviceJobId, jobData, progressCallback, requestConfig);
       } else {
         // Synchronous response - parse and return immediately
         const result = this.parseResponse(response, jobData);
-        
+
+        // Add raw request payload for forensics
+        result.raw_request_payload = requestConfig.data;
+
         logger.debug(`HTTP job completed synchronously`, {
           connector: this.connector_id,
           jobId: jobData.id,
           status: response.status
         });
-        
+
         return result;
       }
 
@@ -616,9 +619,10 @@ export abstract class HTTPConnector extends BaseConnector {
    * Poll service for job completion
    */
   private async pollForCompletion(
-    serviceJobId: string, 
-    jobData: JobData, 
-    progressCallback?: ProgressCallback
+    serviceJobId: string,
+    jobData: JobData,
+    progressCallback?: ProgressCallback,
+    requestConfig?: any
   ): Promise<JobResult> {
     const pollInterval = this.httpConfig.polling_interval_ms || 2000; // Default 2s
     const pollTimeout = (this.httpConfig.polling_timeout_seconds || 300) * 1000; // Default 5min
@@ -662,8 +666,14 @@ export abstract class HTTPConnector extends BaseConnector {
             serviceJobId,
             pollingDuration: Date.now() - startTime
           });
-          
-          return statusResult.result!;
+
+          // Add raw request payload for forensics
+          const finalResult = statusResult.result!;
+          if (requestConfig) {
+            finalResult.raw_request_payload = requestConfig.data;
+          }
+
+          return finalResult;
         }
         
         // Job still running - call progress callback if provided

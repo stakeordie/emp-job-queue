@@ -30,8 +30,7 @@ export * from './services/webhook-redis-storage.js';
 // Log Interpretation
 export * from './log-interpretation/index.js';
 
-// Telemetry and Observability
-export * from './telemetry/fluent-bit-transport-fixed.js';
+// Telemetry and Observability (Fluent Bit transport removed)
 export * from './telemetry/message-bus.js';
 export * from './telemetry/connector-log-schemas.js';
 export * from './telemetry/otel-client.js';

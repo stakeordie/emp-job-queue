@@ -12,7 +12,9 @@
   "scripts": {
     "build": "tsc",
     "dev": "mkdir -p ../../logs && echo '   - Logs:         pnpm logs:worker' && echo '   - All Logs:     pnpm logs:all' && tsx watch src/redis-direct-worker.ts 2>&1 | tee ../../logs/worker.log",
+    "dev:ollama": "mkdir -p ../../logs && echo '   - Logs:         pnpm logs:ollama' && echo '   - All Logs:     pnpm logs:all' && tsx watch src/ollama-worker.ts 2>&1 | tee ../../logs/ollama-worker.log",
     "start": "node dist/redis-direct-worker.js",
+    "start:ollama": "node dist/ollama-worker.js",
     "test": "vitest run",
     "test:watch": "vitest",
     "test:ui": "vitest --ui",

@@ -226,7 +226,47 @@ RUN echo "Image built at: ${BUILD_TIMESTAMP}" > /workspace/BUILD_INFO.txt && \
 ENTRYPOINT ["/scripts/entrypoint-machine-final.sh"]
 
 
-# Profile: simulation - Testing and simulation  
+# Profile: ollama - Local LLM service with GPU acceleration
+FROM base-machine AS ollama
+
+# Accept build args from compose generator
+ARG WORKER_SPEC
+ARG WORKERS
+ARG MACHINE_ID
+ARG ENV_FILE=.env
+
+# Convert build args to environment variables so they're baked into the container
+ENV WORKERS=${WORKERS}
+ENV MACHINE_ID=${MACHINE_ID}
+
+# Copy encrypted environment file and decryption script
+COPY env.encrypted /service-manager/env.encrypted
+COPY env.encrypted.info /service-manager/env.encrypted.info
+
+# Add build metadata at the very end to preserve Docker cache
+ARG BUILD_TIMESTAMP
+ARG MACHINE_VERSION=latest
+ARG BUILD_DATE
+ARG GIT_COMMIT=unknown
+ARG GIT_BRANCH=unknown
+ARG BUILD_ENV=production
+ENV BUILD_TIMESTAMP=${BUILD_TIMESTAMP}
+ENV MACHINE_VERSION=${MACHINE_VERSION}
+ENV BUILD_DATE=${BUILD_DATE}
+ENV GIT_COMMIT=${GIT_COMMIT}
+ENV GIT_BRANCH=${GIT_BRANCH}
+ENV BUILD_ENV=${BUILD_ENV}
+ENV BUILD_VERSION=${MACHINE_VERSION}
+ENV NODE_VERSION="18"
+RUN echo "Image built at: ${BUILD_TIMESTAMP}" > /workspace/BUILD_INFO.txt && \
+    echo "MACHINE_VERSION=${MACHINE_VERSION}" > /service-manager/.version && \
+    echo "BUILD_DATE=${BUILD_DATE}" >> /service-manager/.version
+
+# Use machine-final entrypoint (service manager handles Ollama-specific logic at runtime)
+ENTRYPOINT ["/scripts/entrypoint-machine-final.sh"]
+
+
+# Profile: simulation - Testing and simulation
 FROM base-machine AS simulation
 
 # Accept build args from compose generator

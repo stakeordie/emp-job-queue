@@ -370,6 +370,21 @@ function AttestationRecords({ jobId, workflowId }: { jobId: string; workflowId?:
                       })()}
                     </div>
                   )}
+                  {step.raw_service_request && (
+                    <div className="mt-2">
+                      <div className="text-xs font-medium text-muted-foreground mb-1">Raw Service Request (Debugging)</div>
+                      <details className="border rounded bg-blue-50">
+                        <summary className="px-2 py-1 text-xs cursor-pointer hover:bg-blue-100">
+                          Click to view raw request sent to service for step {step.current_step || idx + 1}
+                        </summary>
+                        <pre className="p-2 text-xs overflow-auto max-h-40 text-blue-700">
+                          {typeof step.raw_service_request === 'string'
+                            ? step.raw_service_request
+                            : JSON.stringify(step.raw_service_request, null, 2)}
+                        </pre>
+                      </details>
+                    </div>
+                  )}
                   {step.raw_service_output && (
                     <div className="mt-2">
                       <div className="text-xs font-medium text-muted-foreground mb-1">Raw Service Output (Debugging)</div>
@@ -479,6 +494,21 @@ function AttestationRecords({ jobId, workflowId }: { jobId: string; workflowId?:
                       );
                     }
                   })()}
+                </div>
+              )}
+              {workerAttestation.raw_service_request && (
+                <div className="mt-2">
+                  <div className="text-xs font-medium text-muted-foreground mb-1">Raw Service Request (Debugging)</div>
+                  <details className="border rounded bg-blue-50">
+                    <summary className="px-2 py-1 text-xs cursor-pointer hover:bg-blue-100">
+                      Click to view raw request sent to service
+                    </summary>
+                    <pre className="p-2 text-xs overflow-auto max-h-40 text-blue-700">
+                      {typeof workerAttestation.raw_service_request === 'string'
+                        ? workerAttestation.raw_service_request
+                        : JSON.stringify(workerAttestation.raw_service_request, null, 2)}
+                    </pre>
+                  </details>
                 </div>
               )}
               {workerAttestation.raw_service_output && (
@@ -914,6 +944,21 @@ export default function JobForensics() {
   const user = miniappData?.user;
   const generation = miniappData?.generation;
   const payment = miniappData?.payment;
+
+  // Helper function to safely format dates
+  const formatDate = (dateValue: any): string => {
+    if (!dateValue) return 'N/A';
+
+    try {
+      const date = new Date(dateValue);
+      if (isNaN(date.getTime())) {
+        return 'Invalid date';
+      }
+      return date.toLocaleString();
+    } catch (error) {
+      return 'Invalid date';
+    }
+  };
 
   // State for notification attestations from Redis
   const [notificationAttestations, setNotificationAttestations] = useState<any[]>([]);
@@ -1505,7 +1550,7 @@ export default function JobForensics() {
                     </div>
                     <div>
                       <div className="text-sm font-medium text-muted-foreground">Created</div>
-                      <div className="text-sm">{new Date(String(forensicsData.job.created_at)).toLocaleString()}</div>
+                      <div className="text-sm">{formatDate(forensicsData.job.created_at)}</div>
                     </div>
                     <div>
                       <div className="text-sm font-medium text-muted-foreground">Retries</div>
@@ -1721,7 +1766,7 @@ export default function JobForensics() {
                               <div>
                                 <div className="text-sm font-medium text-violet-800">User Created</div>
                                 <div className="text-sm text-violet-700">
-                                  {new Date(miniappData.user.created_at).toLocaleString()}
+                                  {formatDate(miniappData.user.created_at)}
                                 </div>
                               </div>
                               {miniappData.user.notification_token && (
@@ -1778,7 +1823,7 @@ export default function JobForensics() {
                             <div>
                               <div className="text-sm font-medium text-pink-800">Created</div>
                               <div className="text-sm text-pink-700">
-                                {new Date(miniappData.generation.created_at).toLocaleString()}
+                                {formatDate(miniappData.generation.created_at)}
                               </div>
                             </div>
                             {miniappData.generation.retry_count > 0 && (
@@ -1869,13 +1914,13 @@ export default function JobForensics() {
                           <div>
                             <div className="text-sm font-medium text-emerald-800">Amount</div>
                             <div className="text-sm text-emerald-700 font-medium">
-                              {miniappData.payment.amount} {miniappData.payment.currency}
+                              ${miniappData.payment.amount || 'N/A'}
                             </div>
                           </div>
                           <div>
                             <div className="text-sm font-medium text-emerald-800">Status</div>
-                            <Badge className={getStatusColor(String(miniappData.payment.status))}>
-                              {String(miniappData.payment.status)}
+                            <Badge className={getStatusColor(String(miniappData.payment.payment_status || 'Unknown'))}>
+                              {String(miniappData.payment.payment_status || 'Unknown')}
                             </Badge>
                           </div>
                           <div>
@@ -1887,7 +1932,7 @@ export default function JobForensics() {
                           <div>
                             <div className="text-sm font-medium text-emerald-800">Created</div>
                             <div className="text-sm text-emerald-700">
-                              {new Date(miniappData.payment.created_at).toLocaleString()}
+                              {formatDate(miniappData.payment.created_at)}
                             </div>
                           </div>
                         </div>
@@ -1924,7 +1969,7 @@ export default function JobForensics() {
                         {forensicsData.job.created_at && (
                           <div className="text-xs text-blue-500 mt-1">
                             <Clock className="h-3 w-3 inline mr-1" />
-                            {new Date(forensicsData.job.created_at).toLocaleString()}
+                            {formatDate(forensicsData.job.created_at)}
                           </div>
                         )}
                       </div>
@@ -2031,7 +2076,7 @@ export default function JobForensics() {
                             forensicsData.job.status === 'in_progress' ? 'text-blue-500' : 'text-gray-400'
                           }`}>
                             <Play className="h-3 w-3 inline mr-1" />
-                            Started: {new Date(forensicsData.job.started_at).toLocaleString()}
+                            Started: {formatDate(forensicsData.job.started_at)}
                           </div>
                         )}
                       </div>
@@ -2064,7 +2109,7 @@ export default function JobForensics() {
                         {forensicsData.job.completed_at && (
                           <div className="text-xs text-emerald-500 mt-1">
                             <CheckCircle className="h-3 w-3 inline mr-1" />
-                            {new Date(forensicsData.job.completed_at).toLocaleString()}
+                            {formatDate(forensicsData.job.completed_at)}
                           </div>
                         )}
                       </div>
@@ -2132,7 +2177,7 @@ export default function JobForensics() {
                         {notificationSent && notificationAttestations.length > 0 && (
                           <div className="text-xs text-emerald-500 mt-1">
                             <CheckCircle className="h-3 w-3 inline mr-1" />
-                            Latest: {new Date(notificationAttestations.find(att => att.success)?.attested_at).toLocaleString()} |
+                            Latest: {formatDate(notificationAttestations.find(att => att.success)?.attested_at)} |
                             Method: {notificationAttestations.find(att => att.success)?.notification_method}
                           </div>
                         )}

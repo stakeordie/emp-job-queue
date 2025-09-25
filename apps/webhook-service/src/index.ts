@@ -179,7 +179,7 @@ async function main(): Promise<void> {
       startup_time_ms: Date.now() - startupTime,
       environment: process.env.TELEMETRY_ENV,
       validation_type: 'webhook_startup',
-      expected_pipeline: 'webhook-service.log → fluent-bit → fluentd → dash0'
+      expected_pipeline: 'local file logging only (Fluent Bit removed)'
     });
 
     // Send a test metric (non-fatal if it fails)
@@ -227,7 +227,7 @@ async function main(): Promise<void> {
         environment: process.env.TELEMETRY_ENV,
         server_ready: true,
         validation_type: 'webhook_ready',
-        expected_result: 'Webhook service is now accepting connections and logs are flowing to Dash0'
+        expected_result: 'Webhook service is now accepting connections with local file logging'
       });
       
       try {

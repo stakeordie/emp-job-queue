@@ -771,4 +771,5 @@ export interface JobResult {
   metadata?: Record<string, unknown>;
   processing_time?: number;
   output_files?: string[];
+  raw_request_payload?: unknown; // Raw request sent to the service for forensics
 }

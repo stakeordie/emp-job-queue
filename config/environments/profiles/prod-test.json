@@ -48,7 +48,8 @@
       "default"
     ],
     "ollama": [
-      "default"
+      "default",
+      "production"
     ],
     "simulation": [
       "local"

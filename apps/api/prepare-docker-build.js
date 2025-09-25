@@ -192,8 +192,6 @@ console.log('📋 Checking for required Docker build files...');
 const requiredFiles = [
   'entrypoint-api-final.sh',
   'install-telemetry-stack.sh',
-  'conf/fluent-bit-api.conf.template',
-  'conf/fluent-bit-api-forward.conf.template',
   'conf/otel-collector-api.yaml.template'
 ];
 

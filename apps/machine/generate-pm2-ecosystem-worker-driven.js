@@ -12,15 +12,19 @@ async function main() {
   try {
     console.log(`🔥🔥🔥 [GENERATOR] WORKER-DRIVEN GENERATOR ACTIVE - ${new Date().toISOString()}`);
     console.log('🔥🔥🔥 [GENERATOR] Using primary generator file...');
-    
-    // Always use enhanced generator (no legacy fallback)
+
+    console.log('🔥🔥🔥 [GENERATOR] Creating EnhancedPM2EcosystemGenerator instance...');
     const generator = new EnhancedPM2EcosystemGenerator();
+    console.log('🔥🔥🔥 [GENERATOR] Generator instance created, calling generateEcosystem()...');
+
     await generator.generateEcosystem();
-    
+
     console.log('✅ PM2 ecosystem generation completed successfully');
-    
+
   } catch (error) {
-    console.error('❌ PM2 ecosystem generation failed:', error);
+    console.error('❌❌❌ PM2 ecosystem generation failed:', error);
+    console.error('❌❌❌ Error message:', error.message);
+    console.error('❌❌❌ Stack trace:', error.stack);
     process.exit(1);
   }
 }

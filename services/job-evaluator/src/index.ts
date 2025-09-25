@@ -1,10 +1,7 @@
 #!/usr/bin/env node
 
-import { PrismaClient } from '@emp/emprops-prisma-client';
+import { prisma } from '@emp/database';
 import { logger } from '@emp/core';
-
-// Use logger from @emp/core directly
-const prisma = new PrismaClient();
 
 interface JobEvaluationResult {
   status_category: 'complete' | 'incomplete' | 'data_structure_issue';

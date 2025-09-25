@@ -25,7 +25,7 @@ FROM ubuntu:22.04
     # Set up workspace structure
     WORKDIR /webhook-server
     # Directories already created by install-telemetry-stack.sh
-    RUN mkdir -p /tmp/fluent-bit-buffer
+    # Fluent Bit removed - using direct logging approach
 
     # Create .workspace-packages directory structure for monorepo support
     RUN mkdir -p /webhook-server/.workspace-packages
@@ -39,8 +39,7 @@ FROM ubuntu:22.04
     ENV BUILD_DATE=${BUILD_DATE}
     ENV MACHINE_ID=${MACHINE_ID}
 
-    # Copy Fluent Bit configuration template
-    COPY conf/fluent-bit-webhook.conf.template /webhook-server/fluent-bit/fluent-bit-webhook.conf.template
+    # Fluent Bit removed - using direct logging approach
 
     # Copy OTEL collector configuration template
     COPY conf/otel-collector-webhook.yaml.template /webhook-server/otel/otel-collector-webhook.yaml.template

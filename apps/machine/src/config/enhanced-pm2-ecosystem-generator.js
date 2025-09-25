@@ -10,6 +10,7 @@ import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import { HardwareDetector } from './hardware-detector.js';
+import { SERVICE_TYPES, WORKER_TYPES, isValidServiceType } from './service-types.js';
 // import { getRequiredEnvInt } from '@emp/core/utils';
 
 const __filename = fileURLToPath(import.meta.url);
@@ -17,18 +18,19 @@ const __dirname = path.dirname(__filename);
 
 export class EnhancedPM2EcosystemGenerator {
   constructor() {
-    const BUILD_TIMESTAMP = '2025-08-18T23:01:30.000Z';
-    const FILE_VERSION = 'ENHANCED-ALT-v2';
-    
-    console.log(`🔥🔥🔥 [EXTREME-ALT-ENHANCED] === ALTERNATE PM2 ECOSYSTEM GENERATOR ACTIVE ===`);
-    console.log(`🔥🔥🔥 [EXTREME-ALT-ENHANCED] BUILD TIMESTAMP: ${BUILD_TIMESTAMP}`);
-    console.log(`🔥🔥🔥 [EXTREME-ALT-ENHANCED] FILE VERSION: ${FILE_VERSION}`);
-    console.log(`🔥🔥🔥 [EXTREME-ALT-ENHANCED] Current Time: ${new Date().toISOString()}`);
-    console.log(`🔥🔥🔥 [EXTREME-ALT-ENHANCED] THIS IS THE ALTERNATE ENHANCED GENERATOR FILE!`);
+    const BUILD_TIMESTAMP = '2025-09-25T06:30:00.000Z';
+    const FILE_VERSION = 'ENHANCED-DAEMON-LOGS-v1';
+
+    console.log(`🎉🎉🎉 [ENHANCED-GENERATOR-CONSTRUCTOR] === ENHANCED PM2 ECOSYSTEM GENERATOR CONSTRUCTOR CALLED ===`);
+    console.log(`🎉🎉🎉 [ENHANCED-GENERATOR-CONSTRUCTOR] BUILD TIMESTAMP: ${BUILD_TIMESTAMP}`);
+    console.log(`🎉🎉🎉 [ENHANCED-GENERATOR-CONSTRUCTOR] FILE VERSION: ${FILE_VERSION}`);
+    console.log(`🎉🎉🎉 [ENHANCED-GENERATOR-CONSTRUCTOR] Current Time: ${new Date().toISOString()}`);
+    console.log(`🎉🎉🎉 [ENHANCED-GENERATOR-CONSTRUCTOR] CONSTRUCTOR EXECUTING SUCCESSFULLY`);
+
     this.logger = {
-      log: (msg) => console.log(`[🔥 ALT Enhanced PM2 Generator] ${msg}`),
-      warn: (msg) => console.warn(`[🔥 ALT Enhanced PM2 Generator] ${msg}`),
-      error: (msg) => console.error(`[🔥 ALT Enhanced PM2 Generator] ${msg}`)
+      log: (msg) => console.log(`[🔥 Enhanced Generator] ${msg}`),
+      warn: (msg) => console.warn(`[🔥 Enhanced Generator] ${msg}`),
+      error: (msg) => console.error(`[🔥 Enhanced Generator] ${msg}`)
     };
     
     this.hardwareDetector = new HardwareDetector();
@@ -68,6 +70,10 @@ export class EnhancedPM2EcosystemGenerator {
       console.log('🎯🎯🎯🎯🎯🎯🎯🎯🎯🎯🎯🎯🎯🎯🎯🎯🎯🎯🎯🎯🎯🎯🎯🎯🎯🎯🎯🎯🎯🎯');
       console.log('');
       
+      // Skip daemon services - now handled at system level in entrypoint
+      this.logger.log('⭐⭐⭐ [ECOSYSTEM-TRACE] Skipping daemon services (handled at system level)...');
+      this.logger.log('⭐⭐⭐ [ECOSYSTEM-TRACE] System-level services (Ollama, etc.) should already be running');
+
       // Parse worker specifications from environment
       this.logger.log('⭐⭐⭐ [ECOSYSTEM-TRACE] Parsing worker specifications...');
       const workerSpecs = this.parseWorkerSpecs();
@@ -89,6 +95,143 @@ export class EnhancedPM2EcosystemGenerator {
       throw error;
     }
   }
+
+  /**
+   * Start daemon services (binary daemons like Ollama that don't run in PM2)
+   */
+  async startDaemonServices() {
+    this.logger.log('🔍🔍🔍 [DAEMON-SERVICE-DETECTION] Starting daemon service detection...');
+
+    // First get the worker specs to know what we actually need
+    const workerSpecs = this.parseWorkerSpecs();
+    this.logger.log(`🔍 [DAEMON-SERVICE-DETECTION] Worker specs: ${JSON.stringify(workerSpecs)}`);
+
+    // Get services needed by these workers
+    const neededServices = new Set();
+    for (const spec of workerSpecs) {
+      const workerConfig = this.serviceMapping.workers[spec.type];
+      if (workerConfig && workerConfig.services) {
+        workerConfig.services.forEach(service => neededServices.add(service));
+      }
+    }
+    this.logger.log(`🔍 [DAEMON-SERVICE-DETECTION] Services needed by workers: ${Array.from(neededServices).join(', ')}`);
+
+    // Log all available services for debugging
+    const allServices = Object.entries(this.serviceMapping.services);
+    this.logger.log(`🔍 [DAEMON-SERVICE-DETECTION] Total services in mapping: ${allServices.length}`);
+    for (const [serviceName, serviceConfig] of allServices) {
+      this.logger.log(`🔍 [DAEMON-SERVICE-DETECTION] Service: ${serviceName}, type: "${serviceConfig.type}"`);
+    }
+
+    // Filter for daemon services that are actually needed by current workers
+    const daemonServices = Object.entries(this.serviceMapping.services)
+      .filter(([serviceName, serviceConfig]) => {
+        const isDaemonService = serviceConfig.type === SERVICE_TYPES.DAEMON_SERVICE ||
+                               serviceConfig.type === SERVICE_TYPES.MANAGED_SERVICE; // Legacy support
+        const isNeeded = neededServices.has(serviceName);
+        this.logger.log(`🔍 [DAEMON-SERVICE-DETECTION] Service ${serviceName}: isDaemon=${isDaemonService}, isNeeded=${isNeeded}`);
+        return isDaemonService && isNeeded;
+      });
+
+    this.logger.log(`🔍 [DAEMON-SERVICE-DETECTION] SERVICE_TYPES.DAEMON_SERVICE = "${SERVICE_TYPES.DAEMON_SERVICE}"`);
+    this.logger.log(`🔍 [DAEMON-SERVICE-DETECTION] SERVICE_TYPES.MANAGED_SERVICE = "${SERVICE_TYPES.MANAGED_SERVICE}"`);
+
+    if (daemonServices.length === 0) {
+      this.logger.log('⚠️ [DAEMON-SERVICE-DETECTION] No daemon services needed by current workers - skipping daemon startup');
+      return;
+    }
+
+    this.logger.log(`🎉 [DAEMON-SERVICE-DETECTION] Found ${daemonServices.length} daemon services needed by workers:`);
+
+    for (const [serviceName, serviceConfig] of daemonServices) {
+      console.log(`🚀🚀🚀 [DAEMON-SERVICE-LOOP] STARTING DAEMON SERVICE: ${serviceName} (${serviceConfig.type})`);
+      this.logger.log(`🚀 [DAEMON-SERVICE-DETECTION] Starting: ${serviceName} (${serviceConfig.type})`);
+
+      try {
+        console.log(`🔧🔧🔧 [DAEMON-SERVICE-LOOP] CALLING startDaemonService for: ${serviceName}`);
+        await this.startDaemonService(serviceName, serviceConfig);
+        console.log(`✅✅✅ [DAEMON-SERVICE-LOOP] DAEMON SERVICE STARTED: ${serviceName}`);
+        this.logger.log(`✅ Started daemon service: ${serviceName}`);
+      } catch (error) {
+        console.log(`❌❌❌ [DAEMON-SERVICE-LOOP] DAEMON SERVICE FAILED: ${serviceName} - ${error.message}`);
+        this.logger.error(`❌ Failed to start daemon service ${serviceName}: ${error.message}`);
+        this.logger.error(`❌ Stack trace: ${error.stack}`);
+        // Don't throw - continue with other services and PM2 apps
+        // The daemon client workers will handle connection failures
+      }
+    }
+
+    console.log(`🎉🎉🎉 [DAEMON-SERVICE-LOOP] ALL DAEMON SERVICES PROCESSED (${daemonServices.length} total)`);
+    this.logger.log(`🎉 All daemon services processed`);
+  }
+
+  /**
+   * Start a single daemon service
+   */
+  async startDaemonService(serviceName, serviceConfig) {
+    this.logger.log(`🚀🚀🚀 [DAEMON-INSTALLER] Starting daemon service: ${serviceName}`);
+    this.logger.log(`🔧 [DAEMON-INSTALLER] Service config: ${JSON.stringify(serviceConfig, null, 2)}`);
+
+    const { installer, installer_filename } = serviceConfig;
+
+    if (!installer) {
+      const errorMsg = `Daemon service ${serviceName} has no installer specified`;
+      this.logger.error(`❌ [DAEMON-INSTALLER] ${errorMsg}`);
+      throw new Error(errorMsg);
+    }
+
+    this.logger.log(`🔍 [DAEMON-INSTALLER] Installer class: ${installer}`);
+    this.logger.log(`🔍 [DAEMON-INSTALLER] Installer filename: ${installer_filename || 'not specified'}`);
+
+    try {
+      // Use installer_filename if provided, otherwise fall back to auto-generation
+      let installerPath;
+      if (installer_filename) {
+        installerPath = installer_filename;
+        this.logger.log(`📂 [DAEMON-INSTALLER] Using explicit installer path: ${installerPath}`);
+      } else {
+        // Auto-generate path from installer class name (legacy support)
+        installerPath = `./services/${installer.toLowerCase().replace(/([a-z])([A-Z])/g, '$1-$2').toLowerCase().replace('installer', '-installer')}.js`;
+        this.logger.log(`🔧 [DAEMON-INSTALLER] Auto-generated installer path: ${installerPath}`);
+      }
+
+      this.logger.log(`📦 [DAEMON-INSTALLER] Loading installer module from: ${installerPath}`);
+      const installerModule = await import(installerPath);
+      this.logger.log(`✅ [DAEMON-INSTALLER] Installer module loaded successfully`);
+
+      this.logger.log(`🔍 [DAEMON-INSTALLER] Looking for installer class: ${installer}`);
+      const InstallerClass = installerModule.default || installerModule[installer];
+
+      if (!InstallerClass) {
+        const errorMsg = `Installer class ${installer} not found in ${installerPath}`;
+        this.logger.error(`❌ [DAEMON-INSTALLER] ${errorMsg}`);
+        this.logger.log(`🔍 [DAEMON-INSTALLER] Available exports: ${Object.keys(installerModule).join(', ')}`);
+        throw new Error(errorMsg);
+      }
+
+      this.logger.log(`✅ [DAEMON-INSTALLER] Installer class found: ${InstallerClass.name}`);
+      this.logger.log(`🔧 [DAEMON-INSTALLER] Creating installer instance...`);
+      const installer_instance = new InstallerClass(serviceConfig);
+      this.logger.log(`✅ [DAEMON-INSTALLER] Installer instance created`);
+
+      console.log(`🚀🚀🚀 [DAEMON-INSTALLER] ABOUT TO CALL installer.install() for ${serviceName}...`);
+      this.logger.log(`🚀 [DAEMON-INSTALLER] Calling installer.install() for ${serviceName}...`);
+
+      const installStartTime = Date.now();
+      await installer_instance.install();
+      const installDuration = Date.now() - installStartTime;
+
+      console.log(`🎉🎉🎉 [DAEMON-INSTALLER] installer.install() COMPLETED for ${serviceName} (${Math.round(installDuration / 1000)}s)`);
+      this.logger.log(`🎉 [DAEMON-INSTALLER] Installer.install() completed successfully for ${serviceName}`);
+
+      this.logger.log(`🎉🎉🎉 [DAEMON-INSTALLER] Daemon service ${serviceName} started successfully`);
+    } catch (error) {
+      this.logger.error(`💥 [DAEMON-INSTALLER] Failed to start daemon service ${serviceName}: ${error.message}`);
+      this.logger.error(`💥 [DAEMON-INSTALLER] Stack trace: ${error.stack}`);
+      throw new Error(`Failed to start ${serviceName}: ${error.message}`);
+    }
+  }
+
 
   /**
    * Load service mapping configuration
@@ -170,37 +313,83 @@ export class EnhancedPM2EcosystemGenerator {
         continue;
       }
       
-      // Handle 'auto' count with GPU_MODE logic
+      // Handle 'auto' count with new worker type logic
       let count;
       if (countStr && countStr.toLowerCase() === 'auto') {
         const workerConfig = this.serviceMapping.workers[type];
+        const workerType = workerConfig.type || 'direct_worker'; // Default for existing configs
+        const scalingStrategy = workerConfig.scaling_strategy;
         const isGpuBound = workerConfig.is_gpu_bound;
         const gpuMode = process.env.GPU_MODE || 'actual';
-        
-        if (isGpuBound) {
+
+        if (workerType === WORKER_TYPES.SERVICE_CLIENT) {
+          // Service client workers scale based on concurrency, not GPUs
+          if (scalingStrategy === 'concurrency') {
+            count = parseInt(process.env[`${type.toUpperCase()}_CONCURRENCY`]) || 2;
+            this.logger.log(`🔍 Auto-resolved ${type} ${workerType} workers to ${count} (concurrency-based)`);
+          } else {
+            count = 1; // Default for service client workers
+            this.logger.log(`🔍 Auto-resolved ${type} ${workerType} workers to ${count} (default)`);
+          }
+        } else if (workerType === WORKER_TYPES.DAEMON_CLIENT) {
+          // Daemon client workers should scale based on the daemon's GPU capacity
+          // Even though the workers don't use GPU directly, they send requests to a daemon that does
+          if (scalingStrategy === 'concurrency' && isGpuBound === false) {
+            // Check if this daemon actually needs GPU resources by looking at the daemon service config
+            const daemonServices = workerConfig.services || [];
+            let daemonUsesGpu = false;
+            for (const serviceName of daemonServices) {
+              const serviceConfig = this.serviceMapping.services[serviceName];
+              if (serviceConfig && serviceConfig.type === 'daemon_service') {
+                // For daemon services like Ollama, scale based on GPU count to prevent oversubscription
+                daemonUsesGpu = true;
+                break;
+              }
+            }
+
+            if (daemonUsesGpu) {
+              if (gpuMode === 'mock') {
+                count = Math.max(1, parseInt(process.env.NUM_GPUS) || 1);
+              } else {
+                count = Math.max(1, this.hardwareResources.gpuCount);
+              }
+              this.logger.log(`🔍 Auto-resolved ${type} ${workerType} workers to ${count} (GPU-limited daemon capacity)`);
+            } else {
+              count = parseInt(process.env[`${type.toUpperCase()}_CONCURRENCY`]) || 2;
+              this.logger.log(`🔍 Auto-resolved ${type} ${workerType} workers to ${count} (concurrency-based)`);
+            }
+          } else {
+            count = 1; // Default for daemon client workers
+            this.logger.log(`🔍 Auto-resolved ${type} ${workerType} workers to ${count} (default)`);
+          }
+        } else if (isGpuBound) {
+          // GPU-bound direct workers (traditional pattern)
           if (gpuMode === 'mock') {
-            // GPU-bound workers in mock mode: auto = 1
             count = 1;
             this.logger.log(`🔍 Auto-resolved ${type} GPU workers to ${count} (GPU_MODE=mock: auto=1)`);
           } else {
-            // GPU-bound workers in actual mode: auto = detected GPU count
             count = this.hardwareResources.gpuCount;
             this.logger.log(`🔍 Auto-resolved ${type} GPU workers to ${count} (GPU_MODE=actual: auto=detected GPUs)`);
           }
         } else {
-          // Non-GPU-bound workers: auto = 1
+          // Non-GPU-bound direct workers: auto = 1
           count = 1;
           this.logger.log(`🔍 Auto-resolved ${type} workers to ${count} (non-GPU-bound: auto=1)`);
         }
       } else {
-        // For specific numbers, apply GPU_MODE constraints
+        // For specific numbers, apply worker type constraints
         const requestedCount = parseInt(countStr) || 1;
         const workerConfig = this.serviceMapping.workers[type];
+        const workerType = workerConfig.type || 'direct_worker';
         const isGpuBound = workerConfig.is_gpu_bound;
         const gpuMode = process.env.GPU_MODE || 'actual';
-        
-        if (isGpuBound && gpuMode === 'actual') {
-          // GPU-bound workers in actual mode: limit to detected GPU count
+
+        if (workerType === WORKER_TYPES.SERVICE_CLIENT || workerType === WORKER_TYPES.DAEMON_CLIENT) {
+          // Client workers: use requested count (no GPU limits)
+          count = requestedCount;
+          this.logger.log(`🔍 Using ${type} ${workerType} workers: ${count} (no GPU constraints)`);
+        } else if (isGpuBound && gpuMode === 'actual') {
+          // GPU-bound direct workers in actual mode: limit to detected GPU count
           count = Math.min(requestedCount, this.hardwareResources.gpuCount);
           if (count < requestedCount) {
             this.logger.log(`🔍 Limited ${type} workers from ${requestedCount} to ${count} (GPU_MODE=actual: limited by available GPUs)`);
@@ -546,9 +735,9 @@ This container will now exit. Please fix the deployment configuration and restar
     console.log(`🔍 [FIXED-SERVICE-DEBUG ${new Date().toISOString()}] - serviceConfig.type: "${serviceConfig.type}"`);
     console.log(`🔍 [FIXED-SERVICE-DEBUG ${new Date().toISOString()}] - serviceConfig.is_gpu_bound: ${serviceConfig.is_gpu_bound}`);
     
-    // FIXED: Simple logic - if it's internal, create apps based on installer
-    if (serviceConfig.type === 'internal') {
-      console.log(`✅ [FIXED-SERVICE-DEBUG ${new Date().toISOString()}] Service type is 'internal', proceeding with app creation`);
+    // FIXED: Handle different service types - pm2_service creates PM2 apps, managed_service handled separately
+    if (serviceConfig.type === 'pm2_service') {
+      console.log(`✅ [FIXED-SERVICE-DEBUG ${new Date().toISOString()}] Service type is 'pm2_service', proceeding with PM2 app creation`);
       
       // Use the same instance count as the Redis workers to ensure matching pairs
       const totalInstances = instanceCount;
@@ -581,8 +770,18 @@ This container will now exit. Please fix the deployment configuration and restar
           throw new Error(`Unknown service installer: ${serviceConfig.installer}. Add support in generateServiceApps.`);
         }
       }
+    } else if (serviceConfig.type === 'daemon_service') {
+      console.log(`ℹ️ [FIXED-SERVICE-DEBUG ${new Date().toISOString()}] Service type is 'daemon_service' - singleton daemon, no PM2 apps created here`);
+      // Daemon services (like Ollama) are handled separately as daemons
+      // They don't create PM2 apps - they run as standalone daemon processes
+    } else if (serviceConfig.type === 'managed_service') {
+      console.log(`ℹ️ [FIXED-SERVICE-DEBUG ${new Date().toISOString()}] Service type is 'managed_service' - legacy managed service, no PM2 apps created here`);
+      // Legacy managed services - handled like daemon services
+    } else if (serviceConfig.type === 'external_api' || serviceConfig.type === 'external_service') {
+      console.log(`ℹ️ [FIXED-SERVICE-DEBUG ${new Date().toISOString()}] Service type is '${serviceConfig.type}' - external service, no local apps created`);
+      // External services don't require local PM2 apps
     } else {
-      console.log(`❌ [FIXED-SERVICE-DEBUG ${new Date().toISOString()}] Service type is '${serviceConfig.type}', not 'internal'. Skipping app creation.`);
+      console.log(`❌ [FIXED-SERVICE-DEBUG ${new Date().toISOString()}] Unknown service type: '${serviceConfig.type}'. Supported types: pm2_service, daemon_service, managed_service, external_api, external_service`);
     }
     
     console.log(`🎉 [FIXED-SERVICE-DEBUG ${new Date().toISOString()}] generateServiceApps returning ${apps.length} apps for "${actualServiceName}"`);

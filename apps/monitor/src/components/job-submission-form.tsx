@@ -49,7 +49,7 @@ function generateFreshPayload(jobType: string, useCpuMode: boolean = false): Rec
     payloadKey = 'comfyui-cpu';
   }
   
-  // Generate fresh random content for OpenAI services
+  // Generate fresh random content for text generation services
   if (jobType === 'openai_text') {
     return {
       prompt: generateRandomTextPrompt(),
@@ -57,7 +57,17 @@ function generateFreshPayload(jobType: string, useCpuMode: boolean = false): Rec
       max_tokens: 500
     };
   }
-  
+
+  if (jobType === 'ollama') {
+    return {
+      job_type: "generate",
+      model: "llama3.2:1b",
+      prompt: generateRandomTextPrompt(),
+      temperature: 0.7,
+      max_tokens: 500
+    };
+  }
+
   if (jobType === 'openai_image') {
     return {
       prompt: generateRandomImagePrompt(),
@@ -310,6 +320,13 @@ const DEFAULT_PAYLOADS = {
     quality: "standard",
     n: 1
   },
+  ollama: {
+    job_type: "generate",
+    model: "llama3.2:1b",
+    prompt: "Write a creative short story about a robot learning to paint.",
+    temperature: 0.7,
+    max_tokens: 500
+  },
   delegated: {
     service_name: "external_service",
     task_type: "processing",
@@ -326,6 +343,7 @@ const SERVICE_TYPES = [
   { value: 'simulation', label: 'Simulation' },
   { value: 'comfyui', label: 'ComfyUI' },
   { value: 'a1111', label: 'Automatic1111' },
+  { value: 'ollama', label: 'Ollama LLM' },
   { value: 'openai_text', label: 'OpenAI Text' },
   { value: 'openai_image', label: 'OpenAI Image' },
   { value: 'delegated', label: 'Delegated Job' },

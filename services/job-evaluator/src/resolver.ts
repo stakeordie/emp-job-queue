@@ -1,10 +1,8 @@
 #!/usr/bin/env node
 
-import { PrismaClient } from '@emp/emprops-prisma-client';
+import { prisma } from '@emp/database';
 import { logger } from '@emp/core';
 import { JobEvaluator } from './index.js';
-
-const prisma = new PrismaClient();
 
 async function main() {
   const evaluator = new JobEvaluator();

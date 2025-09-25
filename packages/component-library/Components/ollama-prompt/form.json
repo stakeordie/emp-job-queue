@@ -1,6 +1,10 @@
 {
   "config": {
-    "groupOrder": ["Simple", "System Prompt", "Advanced Settings"],
+    "groupOrder": [
+      "Simple",
+      "System Prompt",
+      "Advanced Settings"
+    ],
     "maxNumberOfGenerations": 6,
     "componentGroup": "image"
   },
@@ -24,7 +28,11 @@
       "type": "prompt_editor",
       "default": "",
       "display": true,
-      "group": ["main", "System Prompt"]
+      "group": [
+        "main",
+        "System Prompt",
+        "Advanced Settings"
+      ]
     },
     {
       "id": "prompt",
@@ -32,7 +40,11 @@
       "type": "prompt_editor",
       "default": "",
       "display": true,
-      "group": ["Simple", "System Prompt", "Advanced Settings"]
+      "group": [
+        "Simple",
+        "System Prompt",
+        "Advanced Settings"
+      ]
     },
     {
       "id": "temperature",

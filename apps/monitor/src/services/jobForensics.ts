@@ -1,4 +1,4 @@
-import { prisma } from '@/lib/database';
+import { prisma } from '@emp/database';
 import Redis from 'ioredis';
 import type { Job, JobForensics } from '@emp/core';
 import { JobStatus } from '@emp/core';

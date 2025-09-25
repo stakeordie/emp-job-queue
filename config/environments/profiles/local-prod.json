@@ -48,7 +48,8 @@
       "local"
     ],
     "ollama": [
-      "default"
+      "default",
+      "local"
     ],
     "simulation": [
       "local"

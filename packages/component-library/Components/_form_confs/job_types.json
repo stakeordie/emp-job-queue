@@ -6,5 +6,9 @@
   {
     "name": "Nano Banana",
     "value": "gem-nano-banana"
+  },
+  {
+    "name": "Ollama",
+    "value": "ollama"
   }
 ]

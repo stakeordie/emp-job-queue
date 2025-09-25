@@ -15,7 +15,7 @@
   },
   "dependencies": {
     "@emp/core": "workspace:*",
-    "@emp/emprops-prisma-client": "workspace:*"
+    "@emp/database": "workspace:*"
   },
   "devDependencies": {
     "@types/node": "^20.0.0",

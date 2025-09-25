@@ -1,7 +1,7 @@
 // Logging Integration Example
 // Demonstrates how to integrate the new structured logging system with existing workers
 
-import { ConnectorLogger, FluentBitTransport } from '@emp/core';
+import { ConnectorLogger } from '@emp/core';
 
 // Example 1: Basic ConnectorLogger usage in a connector
 export class ExampleConnector {
@@ -193,28 +193,24 @@ export async function testLoggingSystem(): Promise<void> {
   WorkerUtilities.reportSystemStats();
 
   console.log('✅ Logging system test completed');
-  console.log('📝 Check Fluent Bit logs and Dash0 for structured log entries');
+  console.log('📝 Check local logs for structured log entries');
 }
 
 // Example 4: Environment configuration helper
 export function getLoggingConfig() {
   return {
-    // Fluent Bit connection
-    fluentBitHost: process.env.FLUENT_BIT_HOST || 'localhost',
-    fluentBitPort: parseInt(process.env.FLUENT_BIT_PORT || '9880'),
-    
     // Worker identification
     machineId: process.env.MACHINE_ID || 'unknown',
     workerId: process.env.WORKER_ID || 'unknown',
     serviceType: process.env.SERVICE_TYPE || 'unknown',
-    
+
     // Railway-specific
     deploymentEnv: process.env.RAILWAY_ENVIRONMENT || 'development',
     region: process.env.RAILWAY_REGION || 'unknown',
     serviceInstance: process.env.RAILWAY_SERVICE_INSTANCE_ID || 'unknown',
-    
-    // Feature flags
-    enableFluentBit: process.env.DISABLE_FLUENT_BIT_LOGGING !== 'true',
+
+    // Feature flags (Fluent Bit removed - using direct logging)
+    enableDirectLogging: process.env.LOGGING_ENABLED !== 'false',
     enableDebugLogs: process.env.LOG_LEVEL === 'debug',
   };
 }

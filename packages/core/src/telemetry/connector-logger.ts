@@ -3,7 +3,7 @@
 
 import { logger as baseLogger } from '../utils/logger.js';
 import winston from 'winston';
-import { FluentBitTransport } from './fluent-bit-transport-fixed.js';
+// Fluent Bit transport removed - direct logging approach only
 
 export interface ConnectorLogContext {
   machineId: string;
@@ -54,9 +54,8 @@ export interface FailureAnalysis {
 export class ConnectorLogger {
   private logger: winston.Logger;
   private context: ConnectorLogContext;
-  private fluentBitTransport?: FluentBitTransport;
 
-  constructor(context: ConnectorLogContext, enableFluentBit: boolean = true) {
+  constructor(context: ConnectorLogContext, enableDirectLogging: boolean = true) {
     this.context = context;
 
     // Create a child logger with connector-specific defaults
@@ -68,34 +67,11 @@ export class ConnectorLogger {
       component: 'connector',
     });
 
-    // Add Fluent Bit transport if enabled
-    if (enableFluentBit && !process.env.DISABLE_FLUENT_BIT_LOGGING) {
-      this.setupFluentBitTransport();
-    }
+    // Direct logging approach - no external transport setup needed
+    console.log(`✅ ConnectorLogger: Direct logging configured for ${context.connectorId}`);
   }
 
-  private setupFluentBitTransport(): void {
-    try {
-      this.fluentBitTransport = new FluentBitTransport({
-        machineId: this.context.machineId,
-        workerId: this.context.workerId,
-        serviceType: this.context.serviceType,
-        connectorId: this.context.connectorId,
-      });
-
-      this.logger.add(this.fluentBitTransport);
-
-      // Handle transport errors gracefully
-      this.fluentBitTransport.on('error', error => {
-        baseLogger.warn('Fluent Bit transport error', { error: error.message });
-      });
-    } catch (error) {
-      baseLogger.warn('Failed to setup Fluent Bit transport', {
-        error: error.message,
-        connector_id: this.context.connectorId,
-      });
-    }
-  }
+  // Fluent Bit transport removed - direct logging approach only
 
   // Standard logging methods
   info(message: string, meta?: any): void {
@@ -192,7 +168,7 @@ export class ConnectorLogger {
   // Update context (useful for job-specific logging)
   withJobContext(jobId: string, sessionId?: string): ConnectorLogger {
     const newContext = { ...this.context, jobId, sessionId };
-    return new ConnectorLogger(newContext, !!this.fluentBitTransport);
+    return new ConnectorLogger(newContext, true); // direct logging always enabled
   }
 
   private getLogMeta(): any {

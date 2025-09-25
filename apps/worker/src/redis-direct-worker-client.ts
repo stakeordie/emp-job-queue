@@ -921,6 +921,9 @@ export class RedisDirectWorkerClient {
         final_retryCount: retryCount
       });
 
+      // Extract raw request payload from job result for forensics
+      const rawRequestPayload = (result as any)?.raw_request_payload || null;
+
       const workerCompletionRecord = {
         job_id: jobId,
         worker_id: this.workerId,
@@ -928,6 +931,7 @@ export class RedisDirectWorkerClient {
         completed_at: completedAt,
         result: JSON.stringify(sanitizedResult),
         raw_service_output: JSON.stringify(rawServiceOutput),
+        raw_service_request: rawRequestPayload ? JSON.stringify(rawRequestPayload) : null, // 🆕 Add raw request for forensics
         retry_count: retryCount,
         workflow_id: jobData.workflow_id || null,
         current_step: jobData.current_step || null,
@@ -1063,6 +1067,7 @@ export class RedisDirectWorkerClient {
           failed_at: failedAt,
           error: error,
           raw_service_output: null, // TODO: Capture failed service responses when available
+          raw_service_request: null, // TODO: Capture request payload when available for failure cases
           retry_count: newRetryCount,
           workflow_id: job.workflow_id || null,
           current_step: job.current_step || null,
