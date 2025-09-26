@@ -280,6 +280,7 @@ const config = defineConfig({
         {
           text: 'Recent Development Work',
           items: [
+            { text: '[2025-09-25] Response Pipeline Architecture 🔄', link: '/10-development-notes/2025-09-25-response-pipeline-architecture' },
             { text: '[2025-09-16] Resilience Quick Wins 🚀', link: '/10-development-notes/2025-09-16-resilience-quick-wins' },
             { text: '[2025-09-16] Resilience Implementation Guide 🛡️', link: '/10-development-notes/2025-09-16-resilience-implementation-guide' },
             { text: '[2025-09-16] Resilience Plan 🏗️', link: '/10-development-notes/2025-09-16-resilience-plan' },
