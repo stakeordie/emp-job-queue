@@ -1189,13 +1189,13 @@ export default function JobForensics() {
                                   <Square className={`h-3 w-3 mr-1 ${resettingJobIds.has(String(job.id)) ? 'animate-pulse' : ''}`} />
                                   {resettingJobIds.has(String(job.id)) ? 'Resetting...' : 'Reset Job'}
                                 </Button>
-                                {job.workflow_id && (
+                                {(job.workflow_id || job.id) && (
                                   <Button
                                     size="sm"
                                     variant="outline"
                                     onClick={async () => {
                                       try {
-                                        const response = await fetch(`/api/workflows/${job.workflow_id}/trigger-webhook`, {
+                                        const response = await fetch(`/api/workflows/${job.workflow_id || job.id}/trigger-webhook`, {
                                           method: 'POST'
                                         });
                                         const result = await response.json();
