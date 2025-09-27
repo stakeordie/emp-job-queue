@@ -127,10 +127,10 @@ export class LightweightAPIServer {
     this.httpServer = createServer(this.app);
     this.wsServer = new WebSocketServer({ server: this.httpServer });
 
-    // Redis connections
-    this.redis = new Redis(config.redisUrl);
-    this.redisService = new RedisService(config.redisUrl);
-    this.progressSubscriber = new Redis(config.redisUrl);
+    // Redis connections - initialized as null, will connect with retry logic
+    this.redis = null as any;
+    this.redisService = null as any;
+    this.progressSubscriber = null as any;
 
     // Database connection for monitoring (direct Neon PostgreSQL)
     const monitoringUrl = process.env.DATABASE_URL;
@@ -153,7 +153,7 @@ export class LightweightAPIServer {
     this.setupMiddleware();
     this.setupHTTPRoutes();
     this.setupWebSocketHandling();
-    this.setupProgressStreaming();
+    // NOTE: setupProgressStreaming() will be called after Redis connections are established
   }
 
   private isValidToken(token: string): boolean {
@@ -164,6 +164,127 @@ export class LightweightAPIServer {
     }
     const validToken = process.env.AUTH_TOKEN;
     return token === validToken;
+  }
+
+  private async testRedisConnection(): Promise<void> {
+    // Simple ping-based test with robust error handling
+    const testClient = new Redis(this.config.redisUrl, {
+      lazyConnect: true,
+      enableReadyCheck: false,
+      maxRetriesPerRequest: 1,
+      connectTimeout: 3000,
+      commandTimeout: 3000,
+    });
+
+    // Suppress errors during testing
+    testClient.on('error', () => {});
+
+    try {
+      await testClient.ping();
+    } finally {
+      try {
+        await testClient.quit();
+      } catch {
+        // Ignore cleanup errors
+      }
+    }
+  }
+
+  private async safeRedisOperation<T>(operation: () => Promise<T>, operationName: string): Promise<T | null> {
+    // Wrapper for Redis operations that prevents crashes on disconnection
+    try {
+      return await operation();
+    } catch (error) {
+      logger.warn(`Redis operation '${operationName}' failed (service continues):`, error.message);
+      return null;
+    }
+  }
+
+  private async connectToRedisWithRetry(): Promise<void> {
+    const maxRetries = 999999; // Essentially infinite retries
+    const retryInterval = 2000; // 2 seconds
+
+    logger.info('🔄 Waiting for Redis to become available...');
+
+    for (let attempt = 1; attempt <= maxRetries; attempt++) {
+      try {
+        // Test basic Redis connectivity
+        await this.testRedisConnection();
+
+        // If we get here, Redis is available - create ONE main connection and ONE subscriber
+        this.redis = new Redis(this.config.redisUrl);
+        const subscriber = new Redis(this.config.redisUrl); // Separate subscriber needed for pub/sub
+
+        // Create RedisService that shares our connections
+        this.redisService = new RedisService(this.redis, undefined, subscriber);
+
+        // Use the subscriber for progress updates
+        this.progressSubscriber = subscriber;
+
+        // Add robust error handlers with reconnection logic
+        this.redis.on('error', (error) => {
+          // Log error but don't crash - Redis client will auto-reconnect
+          logger.warn('Redis main connection error (auto-reconnecting):', error.message);
+        });
+
+        this.redis.on('reconnecting', (ms) => {
+          logger.info(`Redis main connection reconnecting in ${ms}ms...`);
+        });
+
+        this.redis.on('ready', () => {
+          logger.info('Redis main connection restored');
+        });
+
+        subscriber.on('error', (error) => {
+          // Log error but don't crash - Redis client will auto-reconnect
+          logger.warn('Redis subscriber connection error (auto-reconnecting):', error.message);
+        });
+
+        subscriber.on('reconnecting', (ms) => {
+          logger.info(`Redis subscriber reconnecting in ${ms}ms...`);
+        });
+
+        subscriber.on('ready', () => {
+          logger.info('Redis subscriber connection restored');
+        });
+
+        // Test the shared connections
+        await this.redis.ping();
+        await subscriber.ping();
+        await this.redisService.connect();
+
+        // Now that Redis connections are established, set up progress streaming
+        this.setupProgressStreaming();
+
+        logger.info('✅ Redis connections established successfully');
+        return;
+      } catch (error) {
+        // Only log every 30th attempt to reduce noise
+        if (attempt === 1 || attempt % 30 === 0) {
+          logger.info(`⏳ Waiting for Redis... (attempt ${attempt})`);
+        }
+
+        // Clean up failed connections
+        if (this.redis) {
+          try { await this.redis.quit(); } catch {}
+          this.redis = null as any;
+        }
+        if (this.redisService) {
+          try { await this.redisService.disconnect(); } catch {}
+          this.redisService = null as any;
+        }
+        if (this.progressSubscriber) {
+          try { await this.progressSubscriber.quit(); } catch {}
+          this.progressSubscriber = null as any;
+        }
+
+        if (attempt < maxRetries) {
+          await new Promise(resolve => setTimeout(resolve, retryInterval));
+        }
+      }
+    }
+
+    throw new Error('Failed to connect to Redis after maximum retries');
   }
 
   private getWebSocketCloseCodeText(code: number): string {
@@ -4328,9 +4449,8 @@ export class LightweightAPIServer {
 
   async start(): Promise<void> {
     try {
-      // Connect to Redis
-      await this.redis.ping();
-      await this.redisService.connect();
+      // Connect to Redis with retry logic
+      await this.connectToRedisWithRetry();
 
       // Enable keyspace notifications for progress streaming
       // K = Keyspace events, $ = String commands, s = Stream commands, E = Keyevent, x = Expired

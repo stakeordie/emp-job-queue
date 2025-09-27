@@ -31,37 +31,10 @@ export class WebhookServer {
     this.config = config;
     this.app = express();
     this.httpServer = createServer(this.app);
-    
-    // Configure Redis with retry options for production resilience
-    this.redis = new Redis(config.redisUrl, {
-      enableReadyCheck: false,
-      lazyConnect: true,
-      keepAlive: 30000,
-      connectTimeout: 60000,
-      commandTimeout: 15000, // Increased from 5s to 15s for Redis stability issues
-      maxRetriesPerRequest: 5, // Increased retries for unstable Redis
-      autoResubscribe: true,
-      autoResendUnfulfilledCommands: true,
-    });
-    
-    // Add error handling for the main Redis connection
-    this.redis.on('error', (error) => {
-      const errorCode = (error as any).code;
-      if (errorCode === 'ECONNRESET' || errorCode === 'ENOTFOUND' || errorCode === 'ETIMEDOUT') {
-        logger.warn('⚠️ Webhook server Redis connection error (will retry):', {
-          code: errorCode,
-          message: error.message,
-        });
-        return;
-      }
-      logger.error('❌ Webhook server Redis error:', error);
-    });
-    
-    this.redis.on('reconnecting', (delay: number) => {
-      logger.warn('🔄 Webhook server Redis reconnecting...', { delay });
-    });
-    
-    this.webhookProcessor = new WebhookProcessor(this.redis, config.telemetryClient);
+
+    // Redis will be initialized later after connection retry
+    this.redis = null as any;
+    this.webhookProcessor = null as any;
 
     this.setupMiddleware();
     this.setupRoutes();
@@ -131,10 +104,12 @@ export class WebhookServer {
     // Health check endpoint (must be before 404 handler)
     this.setupHealthcheck();
 
-    // Webhook management routes
-    setupWebhookRoutes(this.app, this.webhookProcessor);
+    // Note: Webhook management routes will be set up after webhookProcessor is initialized
+    // Note: 404 and error handlers will be set up after webhook routes are configured
+  }
 
-    // 404 handler
+  private setupFinalHandlers(): void {
+    // 404 handler (must be after all other routes)
     this.app.use('*', (req: Request, res: Response) => {
       res.status(404).json({
         success: false,
@@ -144,7 +119,7 @@ export class WebhookServer {
       });
     });
 
-    // Error handler
+    // Error handler (must be last)
     this.app.use((error: Error, req: Request, res: Response, _next: express.NextFunction) => {
       logger.error('Webhook service error:', error);
       res.status(500).json({
@@ -164,14 +139,14 @@ export class WebhookServer {
         timestamp: new Date().toISOString(),
         version: '1.0.0',
         redis: {
-          connected: this.redis.status === 'ready',
-          status: this.redis.status,
+          connected: this.redis ? this.redis.status === 'ready' : false,
+          status: this.redis ? this.redis.status : 'initializing',
         },
         processor: {
-          active_webhooks: this.webhookProcessor.getActiveWebhookCount(),
-          total_deliveries: this.webhookProcessor.getTotalDeliveries(),
-          failed_deliveries: this.webhookProcessor.getFailedDeliveries(),
-          workflow_tracking: this.webhookProcessor.getWorkflowStats(),
+          active_webhooks: this.webhookProcessor ? this.webhookProcessor.getActiveWebhookCount() : 0,
+          total_deliveries: this.webhookProcessor ? this.webhookProcessor.getTotalDeliveries() : 0,
+          failed_deliveries: this.webhookProcessor ? this.webhookProcessor.getFailedDeliveries() : 0,
+          workflow_tracking: this.webhookProcessor ? this.webhookProcessor.getWorkflowStats() : { tracked: 0, completed: 0 },
         },
         request: {
           method: req.method,
@@ -185,8 +160,145 @@ export class WebhookServer {
     });
   }
 
+  private async testRedisConnection(): Promise<void> {
+    // Simple ping-based test with robust error handling
+    const testClient = new Redis(this.config.redisUrl, {
+      lazyConnect: true,
+      enableReadyCheck: false,
+      maxRetriesPerRequest: 1,
+      connectTimeout: 3000,
+      commandTimeout: 3000,
+    });
+
+    // Suppress errors during testing
+    testClient.on('error', () => {});
+
+    try {
+      await testClient.ping();
+    } finally {
+      try {
+        await testClient.quit();
+      } catch {
+        // Ignore cleanup errors
+      }
+    }
+  }
+
+  private async safeRedisOperation<T>(operation: () => Promise<T>, operationName: string): Promise<T | null> {
+    // Wrapper for Redis operations that prevents crashes on disconnection
+    try {
+      return await operation();
+    } catch (error) {
+      logger.warn(`Webhook service Redis operation '${operationName}' failed (service continues):`, error.message);
+      return null;
+    }
+  }
+
+  private async connectToRedisWithRetry(): Promise<void> {
+    const maxRetries = 999999; // Essentially infinite retries
+    const retryInterval = 2000; // 2 seconds
+
+    logger.info('🔄 Webhook service waiting for Redis to become available...');
+
+    for (let attempt = 1; attempt <= maxRetries; attempt++) {
+      try {
+        // Test basic Redis connectivity
+        await this.testRedisConnection();
+
+        // If we get here, Redis is available - create ONE main connection and ONE subscriber
+        this.redis = new Redis(this.config.redisUrl, {
+          enableReadyCheck: false,
+          lazyConnect: true,
+          keepAlive: 30000,
+          connectTimeout: 60000,
+          commandTimeout: 15000,
+          maxRetriesPerRequest: 5,
+          autoResubscribe: true,
+          autoResendUnfulfilledCommands: true,
+        });
+
+        const subscriber = new Redis(this.config.redisUrl, {
+          enableReadyCheck: false,
+          lazyConnect: true,
+          keepAlive: 30000,
+          connectTimeout: 60000,
+          commandTimeout: 15000,
+          maxRetriesPerRequest: 5,
+          autoResubscribe: true,
+          autoResendUnfulfilledCommands: true,
+        });
+
+        // Add robust error handlers with reconnection logic
+        this.redis.on('error', (error) => {
+          // Log error but don't crash - Redis client will auto-reconnect
+          logger.warn('Webhook service Redis main connection error (auto-reconnecting):', error.message);
+        });
+
+        this.redis.on('reconnecting', (ms) => {
+          logger.info(`Webhook service Redis main reconnecting in ${ms}ms...`);
+        });
+
+        this.redis.on('ready', () => {
+          logger.info('Webhook service Redis main connection restored');
+        });
+
+        subscriber.on('error', (error) => {
+          // Log error but don't crash - Redis client will auto-reconnect
+          logger.warn('Webhook service Redis subscriber error (auto-reconnecting):', error.message);
+        });
+
+        subscriber.on('reconnecting', (ms) => {
+          logger.info(`Webhook service Redis subscriber reconnecting in ${ms}ms...`);
+        });
+
+        subscriber.on('ready', () => {
+          logger.info('Webhook service Redis subscriber connection restored');
+        });
+
+        // Test both connections
+        await this.redis.ping();
+        await subscriber.ping();
+
+        // Create webhook processor with the established connections
+        this.webhookProcessor = new WebhookProcessor(this.redis, this.config.telemetryClient, subscriber);
+
+        // Now that webhookProcessor is initialized, set up webhook routes
+        setupWebhookRoutes(this.app, this.webhookProcessor);
+        logger.info('✅ Webhook routes configured with initialized processor');
+
+        // Set up 404 and error handlers after all routes are configured
+        this.setupFinalHandlers();
+        logger.info('✅ Final handlers configured');
+
+        logger.info('✅ Webhook service Redis connections established successfully');
+        return;
+      } catch (error) {
+        // Only log every 30th attempt to reduce noise
+        if (attempt === 1 || attempt % 30 === 0) {
+          logger.info(`⏳ Webhook service waiting for Redis... (attempt ${attempt})`);
+        }
+
+        // Clean up failed connections
+        if (this.redis) {
+          try { await this.redis.quit(); } catch {}
+          this.redis = null as any;
+        }
+        if (this.webhookProcessor) {
+          this.webhookProcessor = null as any;
+        }
+
+        await new Promise(resolve => setTimeout(resolve, retryInterval));
+      }
+    }
+
+    throw new Error('Failed to connect to Redis after maximum retries');
+  }
+
   async start(): Promise<void> {
     try {
+      // First, establish Redis connection with retry
+      await this.connectToRedisWithRetry();
+
       // Start webhook processor (Redis event listener)
       await this.webhookProcessor.start();
 

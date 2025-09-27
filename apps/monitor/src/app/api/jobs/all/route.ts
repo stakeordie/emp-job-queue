@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@emp/database';
-import { RedisService } from '@emp/core';
 import type { JobsAPIResponse, JobWithUserInfo } from '@/types/forensics';
+import { getMonitorRedisConnection, safeRedisOperation } from '@/lib/redis-connection';
 
 export async function GET(request: NextRequest) {
   const url = new URL(request.url);
@@ -125,33 +125,14 @@ export async function GET(request: NextRequest) {
 
     // Fetch Redis workflow data (EmProps job.id maps to Redis job.workflow_id)
     let redisWorkflows: any[] = [];
-    try {
-      // Skip Redis lookup for large result sets to improve performance
-      if (empropsJobs.length > 20) {
-        console.log('Skipping Redis lookup for performance - too many jobs');
-      } else {
-        // Use NEXT_PUBLIC_DEFAULT_REDIS_URL for local dev, fallback to individual config
-        const redisUrl = process.env.NEXT_PUBLIC_DEFAULT_REDIS_URL;
-        let redisConfig;
 
-        if (redisUrl) {
-          // Parse URL format: redis://[password@]host:port
-          const url = new URL(redisUrl);
-          redisConfig = {
-            host: url.hostname,
-            port: parseInt(url.port) || 6379,
-            password: url.password || undefined
-          };
-        } else {
-          redisConfig = {
-            host: process.env.REDIS_HOST || 'localhost',
-            port: parseInt(process.env.REDIS_PORT || '6379'),
-            password: process.env.REDIS_PASSWORD
-          };
-        }
-
-        const redis = new RedisService(redisConfig);
-        await redis.connect();
+    // Skip Redis lookup for large result sets to improve performance
+    if (empropsJobs.length > 20) {
+      console.log('Skipping Redis lookup for performance - too many jobs');
+    } else {
+      const redisResult = await safeRedisOperation(async () => {
+        const { redis } = await getMonitorRedisConnection();
+        const workflows: any[] = [];
 
         // Directly lookup specific Redis jobs by ID instead of scanning all keys
         const empropsJobIds = empropsJobs.map(job => job.id);
@@ -159,9 +140,9 @@ export async function GET(request: NextRequest) {
         for (const jobId of empropsJobIds) {
           try {
             // Try direct job lookup first
-            const directJobData = await redis.redis.hgetall(`job:${jobId}`);
+            const directJobData = await redis.hgetall(`job:${jobId}`);
             if (directJobData && Object.keys(directJobData).length > 0) {
-              redisWorkflows.push({
+              workflows.push({
                 redis_job_key: `job:${jobId}`,
                 workflow_id: directJobData.workflow_id || jobId,
                 ...directJobData,
@@ -171,9 +152,9 @@ export async function GET(request: NextRequest) {
             }
 
             // Also check for workflow jobs
-            const workflowJobData = await redis.redis.hgetall(`job:workflow-${jobId}`);
+            const workflowJobData = await redis.hgetall(`job:workflow-${jobId}`);
             if (workflowJobData && Object.keys(workflowJobData).length > 0) {
-              redisWorkflows.push({
+              workflows.push({
                 redis_job_key: `job:workflow-${jobId}`,
                 workflow_id: workflowJobData.workflow_id || jobId,
                 ...workflowJobData,
@@ -186,10 +167,12 @@ export async function GET(request: NextRequest) {
           }
         }
 
-        await redis.disconnect();
+        return workflows;
+      }, 'fetch Redis job data');
+
+      if (redisResult) {
+        redisWorkflows = redisResult;
       }
-    } catch (redisError) {
-      console.warn('Redis connection failed, continuing without Redis data:', redisError);
     }
 
     // Create lookup maps - now miniapp_user comes from miniapp_generation

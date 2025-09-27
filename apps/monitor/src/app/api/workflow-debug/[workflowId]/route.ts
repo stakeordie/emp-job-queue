@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@emp/database';
-import { RedisService } from '@emp/core';
+import { getMonitorRedisConnection, safeRedisOperation } from '@/lib/redis-connection';
 
 interface QueryResult {
   step: string;
@@ -56,17 +56,11 @@ export async function GET(
     step: 'Redis - Direct Job Lookup',
     query: `HGETALL job:${workflowId}`,
     executor: async () => {
-      const redis = await getRedisConnection();
-      if (!redis) return null;
-
-      try {
-        const jobData = await redis.redis.hgetall(`job:${workflowId}`);
-        await redis.disconnect();
+      return await safeRedisOperation(async () => {
+        const { redis } = await getMonitorRedisConnection();
+        const jobData = await redis.hgetall(`job:${workflowId}`);
         return Object.keys(jobData).length > 0 ? jobData : null;
-      } catch (error) {
-        await redis.disconnect();
-        throw error;
-      }
+      }, 'direct job lookup');
     }
   });
 
@@ -75,17 +69,11 @@ export async function GET(
     step: 'Redis - Workflow Job Lookup',
     query: `HGETALL job:workflow-${workflowId}`,
     executor: async () => {
-      const redis = await getRedisConnection();
-      if (!redis) return null;
-
-      try {
-        const jobData = await redis.redis.hgetall(`job:workflow-${workflowId}`);
-        await redis.disconnect();
+      return await safeRedisOperation(async () => {
+        const { redis } = await getMonitorRedisConnection();
+        const jobData = await redis.hgetall(`job:workflow-${workflowId}`);
         return Object.keys(jobData).length > 0 ? jobData : null;
-      } catch (error) {
-        await redis.disconnect();
-        throw error;
-      }
+      }, 'workflow job lookup');
     }
   });
 
@@ -94,16 +82,14 @@ export async function GET(
     step: 'Redis - Jobs with workflow_id',
     query: `KEYS "job:*"\nThen for each key: HGETALL <key>\nFilter where workflow_id = '${workflowId}'`,
     executor: async () => {
-      const redis = await getRedisConnection();
-      if (!redis) return null;
-
-      try {
-        const keys = await redis.redis.keys('job:*');
+      return await safeRedisOperation(async () => {
+        const { redis } = await getMonitorRedisConnection();
+        const keys = await redis.keys('job:*');
         const jobsWithWorkflowId = [];
 
         for (const key of keys.slice(0, 100)) { // Limit to first 100 for performance
           try {
-            const jobData = await redis.redis.hgetall(key);
+            const jobData = await redis.hgetall(key);
             if (jobData.workflow_id === workflowId) {
               jobsWithWorkflowId.push({ key, ...jobData });
             }
@@ -112,12 +98,8 @@ export async function GET(
           }
         }
 
-        await redis.disconnect();
         return jobsWithWorkflowId.length > 0 ? jobsWithWorkflowId : null;
-      } catch (error) {
-        await redis.disconnect();
-        throw error;
-      }
+      }, 'jobs with workflow_id lookup');
     }
   });
 
@@ -126,26 +108,20 @@ export async function GET(
     step: 'Redis - Completed Jobs',
     query: `HGET "jobs:completed" "${workflowId}"`,
     executor: async () => {
-      const redis = await getRedisConnection();
-      if (!redis) return null;
+      return await safeRedisOperation(async () => {
+        const { redis } = await getMonitorRedisConnection();
+        const completedJob = await redis.hget('jobs:completed', workflowId);
+        if (!completedJob) return null;
 
-      try {
-        const completedJob = await redis.redis.hget('jobs:completed', workflowId);
-        await redis.disconnect();
-        return completedJob ? JSON.parse(completedJob) : null;
-      } catch (error) {
-        await redis.disconnect();
-        if (error instanceof SyntaxError) {
-          // Return raw value if JSON parsing fails
-          const redis2 = await getRedisConnection();
-          if (redis2) {
-            const raw = await redis2.redis.hget('jobs:completed', workflowId);
-            await redis2.disconnect();
-            return { raw_value: raw, parsing_error: 'Invalid JSON' };
+        try {
+          return JSON.parse(completedJob);
+        } catch (error) {
+          if (error instanceof SyntaxError) {
+            return { raw_value: completedJob, parsing_error: 'Invalid JSON' };
           }
+          throw error;
         }
-        throw error;
-      }
+      }, 'completed jobs lookup');
     }
   });
 
@@ -154,25 +130,20 @@ export async function GET(
     step: 'Redis - Active Jobs',
     query: `HGET "jobs:active" "${workflowId}"`,
     executor: async () => {
-      const redis = await getRedisConnection();
-      if (!redis) return null;
+      return await safeRedisOperation(async () => {
+        const { redis } = await getMonitorRedisConnection();
+        const activeJob = await redis.hget('jobs:active', workflowId);
+        if (!activeJob) return null;
 
-      try {
-        const activeJob = await redis.redis.hget('jobs:active', workflowId);
-        await redis.disconnect();
-        return activeJob ? JSON.parse(activeJob) : null;
-      } catch (error) {
-        await redis.disconnect();
-        if (error instanceof SyntaxError) {
-          const redis2 = await getRedisConnection();
-          if (redis2) {
-            const raw = await redis2.redis.hget('jobs:active', workflowId);
-            await redis2.disconnect();
-            return { raw_value: raw, parsing_error: 'Invalid JSON' };
+        try {
+          return JSON.parse(activeJob);
+        } catch (error) {
+          if (error instanceof SyntaxError) {
+            return { raw_value: activeJob, parsing_error: 'Invalid JSON' };
           }
+          throw error;
         }
-        throw error;
-      }
+      }, 'active jobs lookup');
     }
   });
 
@@ -181,12 +152,9 @@ export async function GET(
     step: 'Redis - Pending Jobs',
     query: `LRANGE "jobs:pending" 0 -1\nCheck if "${workflowId}" is in the list`,
     executor: async () => {
-      const redis = await getRedisConnection();
-      if (!redis) return null;
-
-      try {
-        const pendingJobs = await redis.redis.lrange('jobs:pending', 0, -1);
-        await redis.disconnect();
+      return await safeRedisOperation(async () => {
+        const { redis } = await getMonitorRedisConnection();
+        const pendingJobs = await redis.lrange('jobs:pending', 0, -1);
 
         const found = pendingJobs.find(job => {
           try {
@@ -198,10 +166,7 @@ export async function GET(
         });
 
         return found ? { found_in_pending: found, total_pending: pendingJobs.length } : null;
-      } catch (error) {
-        await redis.disconnect();
-        throw error;
-      }
+      }, 'pending jobs lookup');
     }
   });
 
@@ -273,31 +238,3 @@ async function executeStep(
   }
 }
 
-async function getRedisConnection() {
-  try {
-    const redisUrl = process.env.NEXT_PUBLIC_DEFAULT_REDIS_URL;
-    let redisConfig;
-
-    if (redisUrl) {
-      const url = new URL(redisUrl);
-      redisConfig = {
-        host: url.hostname,
-        port: parseInt(url.port) || 6379,
-        password: url.password || undefined
-      };
-    } else {
-      redisConfig = {
-        host: process.env.REDIS_HOST || 'localhost',
-        port: parseInt(process.env.REDIS_PORT || '6379'),
-        password: process.env.REDIS_PASSWORD
-      };
-    }
-
-    const redis = new RedisService(redisConfig);
-    await redis.connect();
-    return redis;
-  } catch (error) {
-    console.error('Redis connection failed:', error);
-    return null;
-  }
-}
