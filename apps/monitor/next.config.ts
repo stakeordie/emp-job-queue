@@ -63,7 +63,7 @@ const nextConfig: NextConfig = {
       '**/test/**/*',
       '**/tests/**/*'
     ]
-  }
+  },
 };
 
 export default nextConfig;

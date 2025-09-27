@@ -43,7 +43,6 @@ export class BaseProgressiveMock {
     // Mock job submission endpoint
     this.scope
       .post(this.config.submitEndpoint)
-      .persist()
       .reply((uri, requestBody) => {
         const jobId = this.generateJobId();
         const jobState: MockJobState = {
@@ -69,7 +68,6 @@ export class BaseProgressiveMock {
 
     this.scope
       .get(new RegExp(statusPath))
-      .persist()
       .reply((uri) => {
         // Extract job ID from URL
         const jobId = this.extractJobIdFromUrl(uri);

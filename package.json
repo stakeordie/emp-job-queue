@@ -35,10 +35,14 @@
     "dev:local-redis:stop": "brew services stop redis",
     "redis-cli-local": "redis-cli -h host.docker.internal -p 6379",
     "redis-cli-prod": "redis-cli -h ballast.proxy.rlwy.net -p 30645",
-    "shutdown": "pnpm shutdown:container && ./scripts/shutdown-all.sh",
+    "ngrok:check": "node scripts/ngrok-health-check.js check",
+    "ngrok:start": "node scripts/ngrok-health-check.js start",
+    "ngrok:watch": "node scripts/ngrok-health-check.js watch",
+    "ngrok:status": "ngrok api tunnels list | jq '.tunnels[] | {name: .public_url, forwards_to: .forwards_to}'",
+    "shutdown": "pnpm shutdown:container && ./scripts/shutdown-all.sh && node scripts/terminal/restart-service.js cleanup",
     "shutdown:container": "./scripts/shutdown-docker.sh",
     "setup:developer": "pnpm install && pnpm dev:local-redis",
-    "dev:all": "pnpm dev",
+    "dev:all": "./scripts/start-all.sh",
     "logs": "node scripts/log-viewer.js",
     "logs:redis": "./scripts/redis-monitor-filtered.sh",
     "env:show": "node scripts/show-service-env.js",
@@ -49,6 +53,9 @@
     "compose:profile": "node scripts/env/compose-build.js",
     "dash:dev": "./scripts/terminal/dashboard-dev.sh",
     "dash:staging": "./scripts/terminal/dashboard-staging.sh",
+    "dev:all:stop": "./scripts/stop-all.sh",
+    "dev:all:logs:watch": "tail -f logs/*.log",
+    "dev:all:logs:errors": "tail -f logs/*.log | grep -E '(ERROR|error|Error|failed|Failed|ECONNREFUSED|EADDRINUSE)'",
     "d:api:build": "pnpm check:core && cd apps/api && node prepare-docker-build.js && docker build --platform linux/amd64 --build-arg BUILD_DATE=$(date -u +%Y-%m-%dT%H:%M:%SZ) -t emprops/api:latest .",
     "d:api:build:nocache": "pnpm check:core && cd apps/api && node prepare-docker-build.js && docker build --no-cache --platform linux/amd64 --build-arg BUILD_DATE=$(date -u +%Y-%m-%dT%H:%M:%SZ) -t emprops/api:latest .",
     "d:api:push": "docker push emprops/api:latest",
@@ -98,12 +105,17 @@
     "dev:machine:exec": "cd apps/machine && docker exec -it comfyui-dev bash",
     "dev:machine:debug": "cd apps/machine && DEV_ENV=local-dev WORKERS=comfyui:2 docker-compose -f docker-compose.dev.yml up comfyui-dev",
     "dev:machine:debug:prod": "cd apps/machine && DEV_ENV=local-prod WORKERS=comfyui:2 docker-compose -f docker-compose.dev.yml up comfyui-dev",
+    "ngrok": "ngrok start --all",
+    "ngrok:api": "ngrok start api",
+    "ngrok:emprops": "ngrok start emprops",
+    "ngrok:redis": "ngrok start redis",
     "d:all:build": "pnpm d:api:build && pnpm d:webhook:build",
     "d:all:build:nocache": "pnpm d:api:build:nocache && pnpm d:webhook:build:nocache",
     "d:all:build:push": "pnpm d:api:build:push && pnpm d:webhook:build:push",
     "d:all:build:push:nocache": "pnpm d:api:build:push:nocache && pnpm d:webhook:build:push:nocache",
     "dev:jeval": "cd services/job-evaluator && tsx --env-file=.env.secret.local-dev --env-file=.env.local-dev src/index.ts",
-    "dev:jresolve": "cd services/job-evaluator && tsx --env-file=.env.secret.local-dev --env-file=.env.local-dev src/resolver.ts"
+    "dev:jresolve": "cd services/job-evaluator && tsx --env-file=.env.secret.local-dev --env-file=.env.local-dev src/resolver.ts",
+    "dash:dev:restart": "node scripts/terminal/restart-service.js"
   },
   "devDependencies": {
     "@typescript-eslint/eslint-plugin": "^6.21.0",
@@ -113,6 +125,7 @@
     "eslint": "^8.57.1",
     "eslint-config-prettier": "^9.1.0",
     "eslint-plugin-prettier": "^5.5.1",
+    "js-yaml": "^4.1.0",
     "playwright": "^1.53.2",
     "prettier": "^3.6.2",
     "turbo": "^2.0.0",
@@ -128,7 +141,6 @@
     "tools"
   ],
   "dependencies": {
-    "chalk": "^5.4.1",
-    "js-yaml": "^4.1.0"
+    "chalk": "^5.4.1"
   }
 }

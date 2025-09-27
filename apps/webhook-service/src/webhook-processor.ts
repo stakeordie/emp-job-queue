@@ -92,12 +92,13 @@ export class WebhookProcessor extends EventEmitter {
     'machine:status:*', // Machine status events (pattern subscription)
   ];
 
-  constructor(redis: Redis, telemetryClient?: any) {
+  constructor(redis: Redis, telemetryClient?: any, subscriber?: Redis) {
     super();
     this.redis = redis;
-    
-    // Create subscriber with the same resilient options
-    this.subscriber = new Redis({
+
+    // Use provided subscriber or create one if not provided (for backward compatibility)
+    const subscriberProvided = !!subscriber;
+    this.subscriber = subscriber || new Redis({
       ...redis.options,
       enableReadyCheck: false,
       lazyConnect: true,
@@ -108,7 +109,7 @@ export class WebhookProcessor extends EventEmitter {
       autoResubscribe: true,
       autoResendUnfulfilledCommands: true,
     });
-    
+
     this.webhookStorage = new WebhookRedisStorage(redis);
     this.webhookService = new WebhookNotificationService(redis, telemetryClient);
     this.telemetryClient = telemetryClient || null;
@@ -116,42 +117,46 @@ export class WebhookProcessor extends EventEmitter {
     console.log('🔍 WEBHOOK-PROCESSOR: Constructor called - internal workflow tracking is DISABLED');
     console.log('🔍 WEBHOOK-PROCESSOR: Relying exclusively on Redis workflow_completed events from API server');
 
-    this.setupEventHandlers();
+    this.setupEventHandlers(subscriberProvided);
   }
 
-  private setupEventHandlers(): void {
-    // Handle Redis connection events
-    this.subscriber.on('connect', () => {
-      logger.info('✅ Webhook processor connected to Redis');
-    });
+  private setupEventHandlers(subscriberProvided: boolean): void {
+    // Only add connection event handlers if we created the subscriber ourselves
+    // If subscriber was provided, the parent class already handles connection events
+    if (!subscriberProvided) {
+      // Handle Redis connection events for self-created subscriber
+      this.subscriber.on('connect', () => {
+        logger.info('✅ Webhook processor connected to Redis');
+      });
 
-    this.subscriber.on('ready', () => {
-      logger.info('✅ Webhook processor Redis connection ready');
-    });
+      this.subscriber.on('ready', () => {
+        logger.info('✅ Webhook processor Redis connection ready');
+      });
 
-    this.subscriber.on('reconnecting', (delay: number) => {
-      logger.warn('🔄 Webhook processor Redis reconnecting...', { delay });
-    });
+      this.subscriber.on('reconnecting', (delay: number) => {
+        logger.warn('🔄 Webhook processor Redis reconnecting...', { delay });
+      });
 
-    this.subscriber.on('error', error => {
-      // Handle ECONNRESET and other connection errors gracefully
-      const errorCode = (error as any).code;
-      if (errorCode === 'ECONNRESET' || errorCode === 'ENOTFOUND' || errorCode === 'ETIMEDOUT') {
-        logger.warn('⚠️ Webhook processor Redis connection error (will retry):', {
-          code: errorCode,
-          message: error.message,
-        });
-        // Don't emit these as errors - let ioredis handle reconnection
-        return;
-      }
-      
-      logger.error('❌ Webhook processor Redis error:', error);
-      this.emit('error', error);
-    });
+      this.subscriber.on('error', error => {
+        // Handle ECONNRESET and other connection errors gracefully
+        const errorCode = (error as any).code;
+        if (errorCode === 'ECONNRESET' || errorCode === 'ENOTFOUND' || errorCode === 'ETIMEDOUT') {
+          logger.warn('⚠️ Webhook processor Redis connection error (will retry):', {
+            code: errorCode,
+            message: error.message,
+          });
+          // Don't emit these as errors - let ioredis handle reconnection
+          return;
+        }
 
-    this.subscriber.on('close', () => {
-      logger.warn('⚠️ Webhook processor Redis connection closed');
-    });
+        logger.error('❌ Webhook processor Redis error:', error);
+        this.emit('error', error);
+      });
+
+      this.subscriber.on('close', () => {
+        logger.warn('⚠️ Webhook processor Redis connection closed');
+      });
+    }
 
     // Handle Redis messages
     this.subscriber.on('message', (channel: string, message: string) => {

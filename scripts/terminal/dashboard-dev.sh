@@ -1,7 +1,6 @@
 #!/bin/bash
 
 # Shutdown any existing services
-pnpm shutdown:container
 pnpm shutdown
 
 # Start docs in background

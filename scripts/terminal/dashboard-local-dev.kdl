@@ -12,36 +12,41 @@ layout {
     tab name="Development" {
         pane split_direction="horizontal" {
             pane split_direction="vertical" {
-                pane name="JOB QUEUE API" {
-                    command "bash"
-                    args "-c" "sleep 9 && cd ~/code/emprops/ai_infra/emp-job-queue && pnpm d:api:run local-dev"
-                    start_suspended false
-                }
-                pane name="WEBHOOK SERVICE" {
-                    command "bash" 
-                    args "-c" "sleep 9 && cd ~/code/emprops/ai_infra/emp-job-queue && pnpm d:webhook:run local-dev"
-                    start_suspended false
-                }
-                pane name="JOB NETWORK MONITOR" {
-                    command "bash"
-                    args "-c" "sleep 15 && cd ~/code/emprops/ai_infra/emp-job-queue && pnpm dev:monitor --env local-dev"
-                    start_suspended false
-                }
-            }
-            pane split_direction="vertical" {
                 pane name="Redis Queue" {
                     command "bash"
                     args "-c" "cd ~/code/emprops/ai_infra/emp-job-queue && pnpm dev:redis"
                     start_suspended false
                 }
-                pane name="EmProps API Server" {
+                pane name="JOB QUEUE API" {
+                    command "bash"
+                    args "-c" "cd ~/code/emprops/ai_infra/emp-job-queue && pnpm d:api:run local-dev"
+                    start_suspended false
+                }
+                pane name="Webhook Specialist" {
                     command "bash" 
-                    args "-c" "sleep 15 && cd ~/code/emprops/emprops-open-api && yarn dev:local:dev"
+                    args "-c" "cd ~/code/emprops/ai_infra/emp-job-queue && pnpm d:webhook:run local-dev"
+                    start_suspended false
+                }
+                pane name="Monitor App" {
+                    command "bash"
+                    args "-c" "cd ~/code/emprops/ai_infra/emp-job-queue && pnpm dev:monitor --env local-dev 2>&1 | grep -v 'Watchpack Error.*OrbStack' || true"
+                    start_suspended false
+                }
+            }
+            pane split_direction="vertical" {
+                pane name="EmProps API Server" {
+                    command "bash"
+                    args "-c" "cd ~/code/emprops/emprops-open-api && yarn dev:local:dev"
                     start_suspended false
                 }
                 pane name="EmProps UI" {
                     command "bash"
-                    args "-c" "sleep 25 && cd ~/code/emprops/core-services/emprops-open-interface && yarn dev:local:dev"
+                    args "-c" "cd ~/code/emprops/core-services/emprops-open-interface && yarn dev:local:dev 2>&1 | grep -v 'Watchpack Error.*OrbStack' || true"
+                    start_suspended false
+                }
+                pane name="Emerge MiniApp" {
+                    command "bash"
+                    args "-c" "cd ~/code/emerge/emerge-mini-app && PORT=3002 pnpm dev:local 2>&1 | grep -v 'Watchpack Error.*OrbStack' || true"
                     start_suspended false
                 }
             }

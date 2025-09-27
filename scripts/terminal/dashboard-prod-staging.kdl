@@ -9,9 +9,14 @@ layout {
         }
     }
     
-    tab name="Development" {
+    tab name="Staging" {
         pane split_direction="horizontal" {
             pane split_direction="vertical" {
+                pane name="Redis Queue" {
+                    command "bash"
+                    args "-c" "cd ~/code/emprops/ai_infra/emp-job-queue && pnpm dev:redis"
+                    start_suspended false
+                }
                 pane name="JOB QUEUE API" {
                     command "bash"
                     args "-c" "sleep 9 && cd ~/code/emprops/ai_infra/emp-job-queue && pnpm d:api:run prod-staging"
@@ -29,16 +34,6 @@ layout {
                 }
             }
             pane split_direction="vertical" {
-                pane name="Redis Queue" {
-                    command "bash"
-                    args "-c" "cd ~/code/emprops/ai_infra/emp-job-queue && pnpm dev:redis"
-                    start_suspended false
-                }
-                pane name="Fluentd" {
-                    command "bash"
-                    args "-c" "sleep 9 && cd ~/code/emprops/ai_infra/emp-job-queue && pnpm d:fluentd:run prod-staging"
-                    start_suspended false
-                }
                 pane name="EmProps API Server" {
                     command "bash" 
                     args "-c" "sleep 15 && cd ~/code/emprops/emprops-open-api && yarn dev:local:staging"
@@ -47,6 +42,11 @@ layout {
                 pane name="EmProps UI" {
                     command "bash"
                     args "-c" "sleep 25 && cd ~/code/emprops/core-services/emprops-open-interface && yarn dev:local:dev"
+                    start_suspended false
+                }
+                pane name="Emerge MiniApp" {
+                    command "bash"
+                    args "-c" "sleep 25 && cd ~/code/emerge/emerge-mini-app && pnpm dev:local"
                     start_suspended false
                 }
             }

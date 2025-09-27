@@ -32,7 +32,10 @@
       "Bash(pnpm run:*)",
       "Bash(pnpm d:machine:build:push:*)",
       "Bash(git add:*)",
-      "Bash(git commit:*)"
+      "Bash(git commit:*)",
+      "Bash(docker stop:*)",
+      "Bash(pnpm d:webhook:run:*)",
+      "Bash(ngrok api tcp-addresses:*)"
     ],
     "deny": [],
     "ask": []

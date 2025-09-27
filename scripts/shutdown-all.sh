@@ -32,6 +32,8 @@ pkill -f "emp-job-queue/apps/docs"
 echo "🔥 Killing services on ports 8080 and 3000..."
 lsof -ti:8080 | xargs kill -9 2>/dev/null || true
 lsof -ti:3000 | xargs kill -9 2>/dev/null || true
+lsof -ti:3001 | xargs kill -9 2>/dev/null || true
+lsof -ti:3002 | xargs kill -9 2>/dev/null || true
 
 # Kill Redis
 echo "🔥 Killing Redis..."

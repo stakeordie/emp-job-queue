@@ -19,17 +19,25 @@ export class RedisService implements RedisServiceInterface {
   private subscriptions = new Map<string, (message) => void>();
   private eventBroadcaster?: EventBroadcaster;
 
-  constructor(redisUrl: string, eventBroadcaster?: EventBroadcaster) {
+  constructor(redisUrlOrInstance: string | Redis, eventBroadcaster?: EventBroadcaster, subscriberInstance?: Redis) {
     this.eventBroadcaster = eventBroadcaster;
-    this.redis = new Redis(redisUrl, {
-      enableReadyCheck: true,
-      maxRetriesPerRequest: 3,
-    });
 
-    this.subscriber = new Redis(redisUrl, {
-      enableReadyCheck: true,
-      maxRetriesPerRequest: 3,
-    });
+    if (typeof redisUrlOrInstance === 'string') {
+      // Legacy: create new connections
+      this.redis = new Redis(redisUrlOrInstance, {
+        enableReadyCheck: true,
+        maxRetriesPerRequest: 3,
+      });
+
+      this.subscriber = new Redis(redisUrlOrInstance, {
+        enableReadyCheck: true,
+        maxRetriesPerRequest: 3,
+      });
+    } else {
+      // New: use shared connections
+      this.redis = redisUrlOrInstance;
+      this.subscriber = subscriberInstance || redisUrlOrInstance;
+    }
 
     this.setupEventHandlers();
   }
@@ -47,6 +55,10 @@ export class RedisService implements RedisServiceInterface {
 
     this.redis.on('error', error => {
       logger.error('Redis error:', error);
+    });
+
+    this.subscriber.on('error', error => {
+      logger.error('Redis subscriber error:', error);
     });
 
     this.subscriber.on('message', (channel, message) => {
