@@ -199,10 +199,10 @@ export class JobForensicsService {
       } as Job;
 
       // Get related flat files (generated images) for this job
-      const flatFiles = await this.getJobFlatFiles(empropsJob.id, jobData?.collectionId);
+      const flatFiles = await this.getJobFlatFiles(empropsJob.id, jobData?.collectionId as string);
 
       // Get mini-app user data for this job
-      const miniAppData = await this.getMiniAppUserData(empropsJob.id, jobData?.collectionId);
+      const miniAppData = await this.getMiniAppUserData(empropsJob.id, jobData?.collectionId as string);
 
       // Add collection info, images, and user data to payload for forensics display
       job.payload = {
@@ -214,7 +214,7 @@ export class JobForensicsService {
 
       // Also add result field with image outputs if available
       if (flatFiles.length > 0) {
-        (job as Record<string, unknown>).result = {
+        (job as unknown as Record<string, unknown>).result = {
           success: true,
           output_files: flatFiles.map(f => f.url).filter(Boolean),
           metadata: {
