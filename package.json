@@ -115,7 +115,9 @@
     "d:all:build:push:nocache": "pnpm d:api:build:push:nocache && pnpm d:webhook:build:push:nocache",
     "dev:jeval": "cd services/job-evaluator && tsx --env-file=.env.secret.local-dev --env-file=.env.local-dev src/index.ts",
     "dev:jresolve": "cd services/job-evaluator && tsx --env-file=.env.secret.local-dev --env-file=.env.local-dev src/resolver.ts",
-    "dash:dev:restart": "node scripts/terminal/restart-service.js"
+    "dash:dev:restart": "node scripts/terminal/restart-service.js",
+    "test:infrastructure": "./scripts/test-infrastructure.sh",
+    "test:infrastructure:ui": "cd apps/webhook-service && pnpm test:ui"
   },
   "devDependencies": {
     "@typescript-eslint/eslint-plugin": "^6.21.0",

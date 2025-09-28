@@ -13,7 +13,7 @@ interface RedisConnectionResult {
   redisService: RedisService;
 }
 
-class MonitorRedisManager {
+export class MonitorRedisManager {
   private redis: Redis | null = null;
   private redisService: RedisService | null = null;
   private connectionPromise: Promise<RedisConnectionResult> | null = null;

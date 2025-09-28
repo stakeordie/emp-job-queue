@@ -35,7 +35,9 @@
       "Bash(git commit:*)",
       "Bash(docker stop:*)",
       "Bash(pnpm d:webhook:run:*)",
-      "Bash(ngrok api tcp-addresses:*)"
+      "Bash(ngrok api tcp-addresses:*)",
+      "Bash(chmod:*)",
+      "Bash(pnpm test:infrastructure:ui:*)"
     ],
     "deny": [],
     "ask": []
