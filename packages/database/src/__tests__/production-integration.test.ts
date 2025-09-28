@@ -63,7 +63,7 @@ describe('Production Database Integration', () => {
 
   describe('Query Operations', () => {
     it('should execute raw query successfully', async () => {
-      const result = await prisma.$queryRaw`SELECT 1 as test`;
+      const result = await prisma.$queryRaw`SELECT 1 as test` as any[];
       expect(result).toBeDefined();
       expect(Array.isArray(result)).toBe(true);
       expect(result[0]).toHaveProperty('test', 1);
@@ -74,7 +74,7 @@ describe('Production Database Integration', () => {
         prisma.$queryRaw`SELECT ${i} as num, NOW() as time`
       );
 
-      const results = await Promise.all(queries);
+      const results = await Promise.all(queries) as any[][];
       expect(results).toHaveLength(15);
       results.forEach((result, index) => {
         expect(result[0]).toHaveProperty('num', index);
@@ -84,8 +84,8 @@ describe('Production Database Integration', () => {
 
     it('should handle transaction correctly', async () => {
       const result = await prisma.$transaction(async (tx) => {
-        const check = await tx.$queryRaw`SELECT 1 as value`;
-        const time = await tx.$queryRaw`SELECT NOW() as current_time`;
+        const check = await tx.$queryRaw`SELECT 1 as value` as any[];
+        const time = await tx.$queryRaw`SELECT NOW() as current_time` as any[];
         return { check, time };
       });
 
@@ -98,7 +98,7 @@ describe('Production Database Integration', () => {
       const longQuery = prisma.$queryRaw`SELECT pg_sleep(0.5), 1 as result`;
 
       // Should complete since 0.5s < 60s timeout
-      const result = await longQuery;
+      const result = await longQuery as any[];
       expect(result[0]).toHaveProperty('result', 1);
     });
   });
@@ -146,7 +146,7 @@ describe('Production Database Integration', () => {
       expect(results).toHaveLength(18);
 
       // Check we got different backend PIDs (connection pooling working)
-      const pids = new Set(results.map(r => r[0].pid));
+      const pids = new Set((results as any[][]).map(r => r[0].pid));
       expect(pids.size).toBeGreaterThan(1); // Should use multiple connections
       expect(pids.size).toBeLessThanOrEqual(20); // Should not exceed pool limit
     });
@@ -166,11 +166,11 @@ describe('Production Database Integration', () => {
   describe('Production Readiness Checks', () => {
     it('should have correct isolation level', async () => {
       const result = await prisma.$transaction(async (tx) => {
-        const isolation = await tx.$queryRaw`SHOW transaction_isolation`;
+        const isolation = await tx.$queryRaw`SHOW transaction_isolation` as any[];
         return isolation;
       });
 
-      expect(result[0].transaction_isolation).toBe('read committed');
+      expect((result as any[])[0].transaction_isolation).toBe('read committed');
     });
 
     it('should handle disconnection gracefully', async () => {
@@ -194,7 +194,7 @@ describe('Production Database Integration', () => {
       `;
 
       expect(tables).toBeDefined();
-      const tableNames = tables.map((t: any) => t.table_name);
+      const tableNames = (tables as any[]).map((t: any) => t.table_name);
       expect(tableNames).toContain('job');
       expect(tableNames).toContain('workflow');
     });
