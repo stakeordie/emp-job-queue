@@ -1,0 +1,196 @@
+#!/usr/bin/env node
+
+/**
+ * Prepare Docker build files for telemetry collector
+ * Based on webhook service's prepare-docker-build.js
+ */
+
+import fs from 'fs';
+import path from 'path';
+import { fileURLToPath } from 'url';
+import { spawn } from 'child_process';
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+
+console.log('🔧 Preparing Docker build files for telemetry collector...');
+
+// Step 0: Build telemetry collector if needed
+console.log('🏗️ Building telemetry collector...');
+
+function runCommand(cmd, args, cwd = process.cwd()) {
+  return new Promise((resolve, reject) => {
+    const process = spawn(cmd, args, {
+      stdio: 'inherit',
+      cwd,
+      shell: true
+    });
+
+    process.on('close', (code) => {
+      if (code === 0) {
+        resolve();
+      } else {
+        reject(new Error(`Command failed with exit code ${code}`));
+      }
+    });
+  });
+}
+
+try {
+  await runCommand('pnpm', ['build'], __dirname);
+  console.log('✅ Telemetry collector built successfully');
+} catch (error) {
+  console.error('❌ Telemetry collector build failed:', error.message);
+  console.error('💡 Fix the telemetry collector build errors before continuing with Docker build');
+  process.exit(1);
+}
+
+// Read the current package.json
+const packageJson = JSON.parse(fs.readFileSync(path.join(__dirname, 'package.json'), 'utf8'));
+
+// Create package.docker.json with workspace references replaced
+const dockerPackageJson = JSON.parse(JSON.stringify(packageJson));
+
+// Replace workspace references with file references for Docker
+if (dockerPackageJson.dependencies) {
+  Object.keys(dockerPackageJson.dependencies).forEach(key => {
+    if (dockerPackageJson.dependencies[key].startsWith('workspace:')) {
+      // Map workspace dependencies to .workspace-packages
+      const packageName = key.replace('@emp/', '');
+      dockerPackageJson.dependencies[key] = `file:.workspace-packages/${packageName}`;
+    }
+  });
+}
+
+// Write package.docker.json
+const dockerPackagePath = path.join(__dirname, 'package.docker.json');
+const dockerPackageContent = JSON.stringify(dockerPackageJson, null, 2);
+
+// Check if content has changed
+let shouldWrite = true;
+if (fs.existsSync(dockerPackagePath)) {
+  const existingContent = fs.readFileSync(dockerPackagePath, 'utf8');
+  if (existingContent === dockerPackageContent) {
+    console.log('✅ package.docker.json unchanged (preserving cache)');
+    shouldWrite = false;
+  }
+}
+
+if (shouldWrite) {
+  fs.writeFileSync(dockerPackagePath, dockerPackageContent);
+  console.log('✅ package.docker.json updated');
+}
+
+// Create .workspace-packages directory structure
+const workspacePackagesDir = path.join(__dirname, '.workspace-packages');
+if (!fs.existsSync(workspacePackagesDir)) {
+  fs.mkdirSync(workspacePackagesDir, { recursive: true });
+}
+
+// Copy required workspace packages (matching API pattern)
+const copyWorkspacePackage = (packageName) => {
+  const sourceDir = path.join(__dirname, '../../packages', packageName);
+  const targetDir = path.join(workspacePackagesDir, packageName);
+
+  if (fs.existsSync(sourceDir)) {
+    // Create target directory
+    if (!fs.existsSync(targetDir)) {
+      fs.mkdirSync(targetDir, { recursive: true });
+    }
+
+    // Copy package.json and convert workspace dependencies
+    const packageJsonPath = path.join(sourceDir, 'package.json');
+    if (fs.existsSync(packageJsonPath)) {
+      const packageJsonContent = JSON.parse(fs.readFileSync(packageJsonPath, 'utf8'));
+
+      // Convert workspace dependencies to file references (matching machine pattern)
+      if (packageJsonContent.dependencies) {
+        Object.keys(packageJsonContent.dependencies).forEach(key => {
+          if (packageJsonContent.dependencies[key].startsWith('workspace:')) {
+            const packageName = key.replace('@emp/', '');
+            packageJsonContent.dependencies[key] = `file:../${packageName}`;
+          }
+        });
+      }
+
+      fs.writeFileSync(path.join(targetDir, 'package.json'), JSON.stringify(packageJsonContent, null, 2));
+    }
+
+    // Copy dist directory if it exists
+    const distDir = path.join(sourceDir, 'dist');
+    if (fs.existsSync(distDir)) {
+      const copyRecursive = (src, dest) => {
+        const stat = fs.statSync(src);
+        if (stat.isDirectory()) {
+          if (!fs.existsSync(dest)) {
+            fs.mkdirSync(dest, { recursive: true });
+          }
+          fs.readdirSync(src).forEach(file => {
+            copyRecursive(path.join(src, file), path.join(dest, file));
+          });
+        } else {
+          fs.copyFileSync(src, dest);
+        }
+      };
+
+      const targetDistDir = path.join(targetDir, 'dist');
+      copyRecursive(distDir, targetDistDir);
+    }
+
+    console.log(`✅ Copied @emp/${packageName} package`);
+  } else {
+    console.warn(`⚠️ Package not found: ${sourceDir}`);
+  }
+};
+
+// Validate workspace packages are built before copying
+console.log('🔍 Validating workspace packages...');
+const requiredPackages = ['core'];
+for (const pkg of requiredPackages) {
+  const pkgPath = path.join(__dirname, '../../packages', pkg);
+  const distPath = path.join(pkgPath, 'dist');
+  const indexPath = path.join(distPath, 'index.js');
+
+  if (!fs.existsSync(distPath)) {
+    console.error(`❌ Package @emp/${pkg} dist/ directory missing at ${distPath}`);
+    console.error(`💡 Run: pnpm --filter @emp/${pkg} build`);
+    process.exit(1);
+  }
+
+  if (!fs.existsSync(indexPath)) {
+    console.error(`❌ Package @emp/${pkg} missing index.js at ${indexPath}`);
+    console.error(`💡 Run: pnpm --filter @emp/${pkg} build`);
+    process.exit(1);
+  }
+
+  console.log(`  ✅ @emp/${pkg} build validated`);
+}
+console.log('✅ All workspace packages validated');
+
+// Copy core package only (telemetry collector only needs core)
+copyWorkspacePackage('core');
+
+// Step 3: Copy pnpm-lock.yaml from monorepo root (matching API pattern)
+console.log('📋 Copying pnpm-lock.yaml...');
+const monorepoRoot = path.join(__dirname, '../..');
+const lockfileSrc = path.join(monorepoRoot, 'pnpm-lock.yaml');
+const lockfileDest = path.join(__dirname, 'pnpm-lock.yaml');
+
+if (fs.existsSync(lockfileSrc)) {
+  fs.copyFileSync(lockfileSrc, lockfileDest);
+  console.log('✅ Copied pnpm-lock.yaml');
+} else {
+  console.log('⚠️ pnpm-lock.yaml not found in monorepo root');
+}
+
+console.log('\n🎉 Docker build preparation complete!');
+console.log('  Files prepared:');
+console.log('    - package.docker.json');
+console.log('    - .workspace-packages/');
+console.log('    - pnpm-lock.yaml');
+
+if (shouldWrite) {
+  console.log('  Docker cache will be invalidated for changed layers');
+} else {
+  console.log('  ✨ No files changed - Docker cache will be fully utilized!');
+}

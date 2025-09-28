@@ -35,10 +35,6 @@ export const WebhookServiceEnvInterface = {
     // Note: MACHINE_ID and WORKER_ID are set dynamically by machine/worker initialization code
     // Note: NODE_ENV not needed - use DASH0_DATASET for environment type
     
-    // Fluent Bit configuration
-    "FLUENTD_HOST": "TELEMETRY_FLUENTD_HOST",
-    "FLUENTD_PORT": "TELEMETRY_FLUENTD_PORT",
-    "FLUENTD_SECURE": "TELEMETRY_FLUENTD_SECURE",
 
     "EMPROPS_API_URL": "EMPROPS_API_URL",
     "NODE_ENV": "API_NODE_ENV"

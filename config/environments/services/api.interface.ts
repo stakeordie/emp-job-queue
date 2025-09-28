@@ -35,9 +35,6 @@ export const ApiEnvInterface = {
     // Note: NODE_ENV not needed - use DASH0_DATASET for environment type
     
     // Fluent Bit configuration
-    "FLUENTD_HOST": "TELEMETRY_FLUENTD_HOST",
-    "FLUENTD_PORT": "TELEMETRY_FLUENTD_PORT",
-    "FLUENTD_SECURE": "TELEMETRY_FLUENTD_SECURE",
     "NODE_ENV": "API_NODE_ENV",
     "EMPROPS_API_URL":"EMPROPS_API_URL"
   },

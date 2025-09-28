@@ -27,6 +27,8 @@ import {
   WorkerStatusChangedEvent,
   JobInstrumentation,
   WorkflowInstrumentation,
+  createEventClient,
+  EventTypes,
 } from '@emp/core';
 import { createRequire } from 'module';
 
@@ -95,6 +97,7 @@ export class LightweightAPIServer {
   private eventBroadcaster: EventBroadcaster;
   private config: LightweightAPIConfig;
   private dbPool?: Pool;
+  private telemetry: any;
 
   // Connection tracking
   private wsConnections = new Map<string, WebSocketConnection>();
@@ -126,6 +129,9 @@ export class LightweightAPIServer {
     this.app = express();
     this.httpServer = createServer(this.app);
     this.wsServer = new WebSocketServer({ server: this.httpServer });
+
+    // Initialize telemetry
+    this.telemetry = createEventClient('api', config.redisUrl);
 
     // Redis connections - initialized as null, will connect with retry logic
     this.redis = null as any;
@@ -397,6 +403,86 @@ export class LightweightAPIServer {
 
     this.app.use(express.json({ limit: '10mb' }));
     this.app.use(express.urlencoded({ extended: true }));
+
+    // Global error handler middleware for telemetry
+    this.app.use((error: any, req: express.Request, res: express.Response, next: express.NextFunction) => {
+      // Emit error telemetry event
+      this.telemetry.event(EventTypes.ERROR_OCCURRED, {
+        error_type: 'express_middleware',
+        error_message: error.message,
+        error_stack: error.stack,
+        request_method: req.method,
+        request_url: req.originalUrl,
+        request_headers: req.headers,
+        user_agent: req.headers['user-agent'] || 'unknown',
+        status_code: error.status || 500
+      }).catch(telError => logger.debug('Telemetry error:', telError));
+
+      logger.error('Express middleware error:', error);
+
+      // Continue with normal error handling
+      if (!res.headersSent) {
+        res.status(error.status || 500).json({
+          error: 'Internal server error',
+          message: error.message,
+          timestamp: new Date().toISOString()
+        });
+      }
+    });
+  }
+
+  private setupGlobalErrorHandlers(): void {
+    // Handle uncaught exceptions
+    process.on('uncaughtException', (error: Error) => {
+      this.telemetry.event(EventTypes.ERROR_OCCURRED, {
+        error_type: 'uncaught_exception',
+        error_message: error.message,
+        error_stack: error.stack,
+        process_id: process.pid,
+        memory_usage_mb: Math.round(process.memoryUsage().heapUsed / 1024 / 1024),
+        uptime_seconds: Math.floor(process.uptime())
+      }).catch(telError => logger.debug('Telemetry error:', telError));
+
+      logger.error('Uncaught exception:', error);
+      process.exit(1);
+    });
+
+    // Handle unhandled promise rejections
+    process.on('unhandledRejection', (reason: any, promise: Promise<any>) => {
+      this.telemetry.event(EventTypes.ERROR_OCCURRED, {
+        error_type: 'unhandled_rejection',
+        error_message: reason?.message || String(reason),
+        error_stack: reason?.stack || 'No stack trace available',
+        process_id: process.pid,
+        memory_usage_mb: Math.round(process.memoryUsage().heapUsed / 1024 / 1024),
+        uptime_seconds: Math.floor(process.uptime())
+      }).catch(telError => logger.debug('Telemetry error:', telError));
+
+      logger.error('Unhandled promise rejection:', reason, 'at promise:', promise);
+    });
+
+    // Handle SIGTERM and SIGINT gracefully
+    process.on('SIGTERM', () => {
+      this.telemetry.event(EventTypes.SERVICE_STOPPED, {
+        signal: 'SIGTERM',
+        process_id: process.pid,
+        uptime_seconds: Math.floor(process.uptime())
+      }).catch(telError => logger.debug('Telemetry error:', telError));
+
+      logger.info('Received SIGTERM, shutting down gracefully');
+      this.stop();
+    });
+
+    process.on('SIGINT', () => {
+      this.telemetry.event(EventTypes.SERVICE_STOPPED, {
+        signal: 'SIGINT',
+        process_id: process.pid,
+        uptime_seconds: Math.floor(process.uptime())
+      }).catch(telError => logger.debug('Telemetry error:', telError));
+
+      logger.info('Received SIGINT, shutting down gracefully');
+      this.stop();
+    });
   }
 
   private setupHTTPRoutes(): void {
@@ -415,6 +501,17 @@ export class LightweightAPIServer {
           workers: this.getActiveWorkerCount(),
         },
       };
+
+      // Emit health check telemetry event
+      this.telemetry.event(EventTypes.HEALTH_CHECK, {
+        status: healthInfo.status,
+        origin: req.headers.origin || 'unknown',
+        user_agent: req.headers['user-agent'] || 'unknown',
+        monitor_count: healthInfo.connections.monitors,
+        worker_count: healthInfo.connections.workers,
+        uptime_seconds: Math.floor(process.uptime()),
+        memory_usage_mb: Math.round(process.memoryUsage().heapUsed / 1024 / 1024)
+      }).catch(error => logger.debug('Telemetry error:', error));
 
       logger.info(`Health check from ${req.headers.origin || 'unknown origin'}`);
       res.json(healthInfo);
@@ -788,9 +885,27 @@ export class LightweightAPIServer {
 
     // Job submission (modern HTTP endpoint)
     this.app.post('/api/jobs', async (req: Request, res: Response) => {
+      const startTime = Date.now();
       try {
+        // Emit API request telemetry
+        await this.telemetry.event(EventTypes.API_REQUEST, {
+          method: 'POST',
+          path: '/api/jobs',
+          user_agent: req.get('User-Agent'),
+          content_type: req.get('Content-Type')
+        });
+
         const jobData = req.body;
         const jobId = await this.submitJob(jobData);
+
+        // Emit API response telemetry
+        await this.telemetry.event(EventTypes.API_RESPONSE, {
+          method: 'POST',
+          path: '/api/jobs',
+          status_code: 201,
+          duration_ms: Date.now() - startTime,
+          job_id: jobId
+        });
 
         res.status(201).json({
           success: true,
@@ -799,6 +914,13 @@ export class LightweightAPIServer {
           timestamp: new Date().toISOString(),
         });
       } catch (error) {
+        // Emit error telemetry
+        await this.telemetry.errorEvent(error, {
+          method: 'POST',
+          path: '/api/jobs',
+          duration_ms: Date.now() - startTime
+        });
+
         logger.error('Job submission failed:', error);
         res.status(500).json({
           success: false,
@@ -1272,6 +1394,15 @@ export class LightweightAPIServer {
     this.eventBroadcaster.addMonitor(monitorId, ws);
     logger.info(`[API] Monitor ${monitorId} added to EventBroadcaster successfully`);
 
+    // Emit WebSocket monitor connection telemetry event
+    this.telemetry.event(EventTypes.WEBSOCKET_CONNECTION, {
+      connection_type: 'monitor',
+      monitor_id: monitorId,
+      client_id: connection.clientId,
+      total_monitors: this.monitorConnections.size,
+      token_provided: Boolean(token)
+    }).catch(error => logger.debug('Telemetry error:', error));
+
     logger.info(`Monitor ${monitorId} connected`);
     logger.debug(`📊 Total monitors connected: ${this.monitorConnections.size}`);
 
@@ -1397,6 +1528,16 @@ export class LightweightAPIServer {
       const reasonText = reason ? reason.toString() : 'No reason provided';
       const codeText = this.getWebSocketCloseCodeText(code);
 
+      // Emit WebSocket monitor disconnection telemetry event
+      this.telemetry.event(EventTypes.WEBSOCKET_DISCONNECTION, {
+        connection_type: 'monitor',
+        monitor_id: monitorId,
+        close_code: code,
+        close_reason: reasonText,
+        close_code_text: codeText,
+        total_monitors_remaining: this.monitorConnections.size
+      }).catch(error => logger.debug('Telemetry error:', error));
+
       logger.info(
         `Monitor ${monitorId} disconnected - Code: ${code} (${codeText}), Reason: ${reasonText}`
       );
@@ -1476,6 +1617,18 @@ export class LightweightAPIServer {
     };
 
     this.clientConnections.set(clientId, connection);
+
+    // Emit WebSocket client connection telemetry event
+    this.telemetry.event(EventTypes.WEBSOCKET_CONNECTION, {
+      connection_type: 'client',
+      client_id: clientId,
+      client_type: clientType,
+      ip_address: connection.ipAddress,
+      user_agent: connection.userAgent || 'unknown',
+      total_clients: this.clientConnections.size,
+      token_provided: Boolean(token)
+    }).catch(error => logger.debug('Telemetry error:', error));
+
     logger.info(`Client ${clientId} connected (type: ${clientType})`);
 
     // Register client with EventBroadcaster for real-time events
@@ -1587,6 +1740,14 @@ export class LightweightAPIServer {
       }
       this.clientConnections.delete(clientId);
       this.eventBroadcaster.removeClient(clientId);
+
+      // Emit WebSocket client disconnection telemetry event
+      this.telemetry.event(EventTypes.WEBSOCKET_DISCONNECTION, {
+        connection_type: 'client',
+        client_id: clientId,
+        total_clients_remaining: this.clientConnections.size
+      }).catch(error => logger.debug('Telemetry error:', error));
+
       logger.info(`Client ${clientId} disconnected`);
     });
 
@@ -3330,7 +3491,15 @@ export class LightweightAPIServer {
 
     const jobId = providedJobId || uuidv4();
     logger.info(`🔍 [SUBMIT_JOB_DEBUG] Using jobId: ${jobId}`);
-    
+
+    // Emit telemetry event for job submission
+    await this.telemetry.jobEvent(jobId, EventTypes.JOB_SUBMITTED, {
+      service_required: jobData.service_required,
+      workflow_id: jobData.workflow_id,
+      user_id: jobData.user_id,
+      provided_id: Boolean(providedJobId)
+    });
+
     // Handle workflow tracing if this job is part of a workflow
     let workflowStepSpanContext: { traceId: string; spanId: string } | undefined;
     let parentSpanContext: { traceId: string; spanId: string } | undefined;
@@ -3507,6 +3676,9 @@ export class LightweightAPIServer {
     console.log(`🚨 STORING workflow_span_id: ${workflowStepSpanContext?.spanId || 'NONE'}`);
     console.log(`🚨🚨🚨\n`);
     
+    // Track Redis operation timing
+    const redisStartTime = Date.now();
+
     try {
       await this.redis.hmset(`job:${jobId}`, {
       id: job.id,
@@ -3538,7 +3710,33 @@ export class LightweightAPIServer {
     console.log(`\n🚨🚨🚨 API: REDIS STORAGE COMPLETE FOR JOB ${jobId}`);
     console.log(`🚨 JOB: ${jobId} - STORED IN REDIS WITH TRACE IDs`);
     console.log(`🚨🚨🚨\n`);
+
+      // Emit Redis operation completion telemetry
+      const redisEndTime = Date.now();
+      this.telemetry.event(EventTypes.REDIS_OPERATION, {
+        operation: 'HMSET',
+        key: `job:${jobId}`,
+        duration_ms: redisEndTime - redisStartTime,
+        success: true,
+        fields_count: Object.keys({
+          id: job.id,
+          service_required: job.service_required,
+          priority: job.priority.toString(),
+          // ... (approximate field count for performance)
+        }).length + 10 // Approximate total fields
+      }).catch(error => logger.debug('Telemetry error:', error));
+
     } catch (error) {
+      // Emit Redis operation failure telemetry
+      const redisEndTime = Date.now();
+      this.telemetry.event(EventTypes.REDIS_OPERATION, {
+        operation: 'HMSET',
+        key: `job:${jobId}`,
+        duration_ms: redisEndTime - redisStartTime,
+        success: false,
+        error: error.message
+      }).catch(telError => logger.debug('Telemetry error:', telError));
+
       logger.error(`🔍 [SUBMIT_JOB_DEBUG] FAILED to store job in Redis hash:`, error);
       throw error;
     }
@@ -3567,13 +3765,53 @@ export class LightweightAPIServer {
     logger.info(`🔍 [SUBMIT_JOB_DEBUG] About to add job to pending queue with score: ${score}`);
     
     try {
+      // Track Redis ZADD operation
+      const zaddStartTime = Date.now();
       await this.redis.zadd('jobs:pending', score, jobId);
+      const zaddEndTime = Date.now();
+
+      // Emit Redis operation telemetry
+      this.telemetry.event(EventTypes.REDIS_OPERATION, {
+        operation: 'ZADD',
+        key: 'jobs:pending',
+        duration_ms: zaddEndTime - zaddStartTime,
+        success: true,
+        score: score,
+        member: jobId
+      }).catch(error => logger.debug('Telemetry error:', error));
+
+      // Emit job queued telemetry event
+      await this.telemetry.jobEvent(jobId, EventTypes.JOB_STARTED, {
+        queue_name: 'jobs:pending',
+        priority_score: score,
+        service_required: job.service_required,
+        workflow_id: job.workflow_id
+      });
+
       logger.info(`🔍 [SUBMIT_JOB_DEBUG] Successfully added job to pending queue`);
       logger.info(
         `[JOB SUBMIT] Job ${jobId} added to pending queue - Monitor still connected: ${this.eventBroadcaster.getMonitorCount()} monitors`
       );
     } catch (error) {
       logger.error(`🔍 [SUBMIT_JOB_DEBUG] FAILED to add job to pending queue:`, error);
+
+      // Emit Redis operation failure telemetry
+      this.telemetry.event(EventTypes.REDIS_OPERATION, {
+        operation: 'ZADD',
+        key: 'jobs:pending',
+        success: false,
+        error: error.message,
+        score: score,
+        member: jobId
+      }).catch(telError => logger.debug('Telemetry error:', telError));
+
+      // Emit job queue failure telemetry
+      await this.telemetry.jobEvent(jobId, EventTypes.JOB_FAILED, {
+        stage: 'queuing',
+        error: error.message,
+        service_required: job.service_required
+      });
+
       throw error;
     }
 
@@ -4449,6 +4687,15 @@ export class LightweightAPIServer {
 
   async start(): Promise<void> {
     try {
+      // Emit service startup telemetry
+      await this.telemetry.event(EventTypes.SERVICE_STARTED, {
+        port: this.config.port,
+        version: packageJson.version
+      });
+
+      // Setup global process error handlers with telemetry
+      this.setupGlobalErrorHandlers();
+
       // Connect to Redis with retry logic
       await this.connectToRedisWithRetry();
 

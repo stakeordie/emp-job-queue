@@ -8,7 +8,7 @@ nohup pnpm dev:docs &
 
 # Dashboard setup
 PROFILE=${1:-local-dev}
-PROJECT_ROOT="$HOME/code/emprops/ai_infra/emp-job-queue"
+PROJECT_ROOT="$HOME/code/emprops/ai_infra/emp-telemetry-implementation"
 ENV_FILE="$PROJECT_ROOT/.env.$PROFILE"
 KDL_FILE="$PROJECT_ROOT/scripts/terminal/dashboard-$PROFILE.kdl"
 

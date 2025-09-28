@@ -14,26 +14,31 @@ layout {
             pane split_direction="vertical" {
                 pane name="Redis Queue" {
                     command "bash"
-                    args "-c" "cd ~/code/emprops/ai_infra/emp-job-queue && pnpm dev:redis"
+                    args "-c" "cd ~/code/emprops/ai_infra/emp-telemetry-implementation && pnpm dev:redis"
                     start_suspended false
                 }
                 pane name="JOB QUEUE API" {
                     command "bash"
-                    args "-c" "cd ~/code/emprops/ai_infra/emp-job-queue && pnpm d:api:run local-dev"
+                    args "-c" "cd ~/code/emprops/ai_infra/emp-telemetry-implementation && pnpm d:api:run local-dev"
                     start_suspended false
                 }
-                pane name="Webhook Specialist" {
+                pane name="Webhook Service" {
                     command "bash" 
-                    args "-c" "cd ~/code/emprops/ai_infra/emp-job-queue && pnpm d:webhook:run local-dev"
+                    args "-c" "cd ~/code/emprops/ai_infra/emp-telemetry-implementation && pnpm d:webhook:run local-dev"
                     start_suspended false
                 }
-                pane name="Monitor App" {
+                pane name="Telemetry Collector" {
                     command "bash"
-                    args "-c" "cd ~/code/emprops/ai_infra/emp-job-queue && pnpm dev:monitor --env local-dev 2>&1 | grep -v 'Watchpack Error.*OrbStack' || true"
+                    args "-c" "cd ~/code/emprops/ai_infra/emp-telemetry-implementation && pnpm d:telcollect:run local-dev"
                     start_suspended false
                 }
             }
             pane split_direction="vertical" {
+                pane name="Monitor App" {
+                    command "bash"
+                    args "-c" "cd ~/code/emprops/ai_infra/emp-telemetry-implementation && pnpm dev:monitor --env local-dev 2>&1 | grep -v 'Watchpack Error.*OrbStack' || true"
+                    start_suspended false
+                }
                 pane name="EmProps API Server" {
                     command "bash"
                     args "-c" "cd ~/code/emprops/emprops-open-api && yarn dev:local:dev"

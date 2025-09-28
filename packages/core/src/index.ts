@@ -9,6 +9,9 @@ export * from './message-handler.js';
 export * from './enhanced-message-handler.js';
 export * from './connection-manager.js';
 
+// Telemetry System
+export * from './telemetry/index.js';
+
 // Utilities
 export * from './utils/index.js';
 

@@ -11,6 +11,8 @@ import {
   RedisJobData,
   logger,
   sanitizeBase64Data,
+  createEventClient,
+  EventTypes,
 } from '@emp/core';
 
 export class RedisDirectWorkerClient {
@@ -23,6 +25,7 @@ export class RedisDirectWorkerClient {
   private pollTimeout?: NodeJS.Timeout;
   private heartbeatTimeout?: NodeJS.Timeout;
   private currentStatus: 'idle' | 'busy' = 'idle';
+  private telemetry: any;
 
   constructor(hubRedisUrl: string, workerId: string) {
     logger.info(
@@ -32,6 +35,9 @@ export class RedisDirectWorkerClient {
     this.hubRedisUrl = hubRedisUrl;
     this.workerId = workerId;
     logger.info(`🔍 [WORKER-ID-DEBUG] this.workerId set to: ${this.workerId}`);
+
+    // Initialize telemetry
+    this.telemetry = createEventClient('worker', hubRedisUrl);
 
     // Configuration from environment
     this.pollIntervalMs = parseInt(process.env.WORKER_POLL_INTERVAL_MS || '1000');
@@ -84,6 +90,14 @@ export class RedisDirectWorkerClient {
       // Register worker capabilities in Redis
       logger.info(`📝 Worker ${this.workerId} - registering worker capabilities`);
       await this.registerWorker(capabilities);
+
+      // Emit worker registration telemetry
+      await this.telemetry.event(EventTypes.WORKER_REGISTERED, {
+        worker_id: this.workerId,
+        machine_id: capabilities.machine_id,
+        service_types: capabilities.service_types,
+        max_concurrent_jobs: capabilities.max_concurrent_jobs
+      });
 
       // Start heartbeat
       logger.info(`💓 Worker ${this.workerId} - starting heartbeat`);
@@ -609,6 +623,12 @@ export class RedisDirectWorkerClient {
         logger.warn(`Worker ${this.workerId} - Claimed job ${jobId} not found`);
         return null;
       }
+
+      // Emit job claimed telemetry
+      await this.telemetry.jobEvent(jobId, EventTypes.JOB_CLAIMED, {
+        worker_id: this.workerId,
+        service_required: job.service_required
+      });
 
       if (process.env.LOG_LEVEL === 'debug') {
         logger.debug(`Worker ${this.workerId} claimed job ${jobId} via Redis-direct polling`);
