@@ -588,6 +588,27 @@ pnpm debug:events:health
 **Duration:** 4 hours
 **Location:** `apps/worker/src/`
 
+#### Architecture Decision: Streams vs Pub/Sub
+**Critical:** Separate persistent telemetry events from ephemeral status updates
+
+##### Use Redis Streams for Telemetry Events
+- **Purpose**: Audit trail, debugging, observability
+- **Examples**: job.created, job.completed, worker.connected, errors
+- **Characteristics**:
+  - Persistent (survives Redis restart with persistence)
+  - Guaranteed delivery to collectors
+  - Replay-able for debugging
+  - Forwarded to Dash0 for analysis
+
+##### Use Redis Pub/Sub for High-Frequency Status
+- **Purpose**: Real-time UI updates, progress monitoring
+- **Examples**: job progress (1/sec), GPU stats, FPS, preview images
+- **Characteristics**:
+  - Zero storage overhead
+  - Fire-and-forget delivery
+  - Real-time only (lost if no listeners)
+  - Not forwarded to Dash0 (reduces noise)
+
 #### Key Integration Points
 
 1. **Worker Lifecycle Events**
@@ -655,21 +676,41 @@ abstract class BaseConnector {
 }
 ```
 
-3. **Job Progress Events**
+3. **Dual-Mode Job Progress**
 ```typescript
 // apps/worker/src/services/job-progress.ts
 class JobProgressTracker {
-  async updateProgress(jobId: string, progress: number, details?: string) {
-    await workerTelemetry.jobEvent(jobId, 'job.progress_updated', {
-      progress,
-      details,
+  private statusInterval: NodeJS.Timeout;
+
+  async startProgressTracking(jobId: string) {
+    // Important event → Stream (persistent telemetry)
+    await workerTelemetry.jobEvent(jobId, 'job.processing_started', {
+      workerId: this.workerId,
       timestamp: Date.now()
     });
 
-    // Existing progress update logic...
+    // High-frequency status → Pub/Sub (ephemeral updates)
+    this.statusInterval = setInterval(async () => {
+      const status = {
+        jobId,
+        progress: this.getCurrentProgress(),
+        fps: this.getFramesPerSecond(),
+        eta: this.calculateETA(),
+        gpuTemp: await this.getGPUTemp(),
+        vramUsage: await this.getVRAMUsage(),
+        preview: this.getLatestPreview() // Base64 preview image
+      };
+
+      // Pub/Sub - no storage, real-time only
+      await redis.publish(`job:${jobId}:status`, JSON.stringify(status));
+    }, 1000); // Every second
   }
 
   async markCompleted(jobId: string, result: JobResult) {
+    // Stop high-frequency updates
+    clearInterval(this.statusInterval);
+
+    // Important event → Stream (persistent telemetry)
     await workerTelemetry.jobEvent(jobId, 'job.completed', {
       resultType: typeof result,
       hasAssets: result.assets?.length > 0,
@@ -679,11 +720,132 @@ class JobProgressTracker {
 }
 ```
 
+4. **Status-Only Updates (No Stream Storage)**
+```typescript
+// apps/worker/src/services/realtime-status.ts
+class RealtimeStatusPublisher {
+  // These NEVER go to streams - pure pub/sub
+  async publishGPUStatus(machineId: string) {
+    setInterval(async () => {
+      const gpuStats = await this.collectGPUStats();
+      await redis.publish(`machine:${machineId}:gpu`, JSON.stringify({
+        timestamp: Date.now(),
+        gpus: gpuStats.map(gpu => ({
+          index: gpu.index,
+          utilization: gpu.utilization,
+          memory: gpu.memory,
+          temperature: gpu.temperature,
+          powerDraw: gpu.powerDraw
+        }))
+      }));
+    }, 1000);
+  }
+
+  async publishComfyUIProgress(jobId: string, nodeProgress: any) {
+    // ComfyUI generates tons of node progress updates
+    await redis.publish(`comfyui:${jobId}:progress`, JSON.stringify({
+      currentNode: nodeProgress.node,
+      step: nodeProgress.step,
+      totalSteps: nodeProgress.totalSteps,
+      preview: nodeProgress.previewImage // Latest generated image
+    }));
+  }
+}
+```
+
 **Acceptance Criteria:**
-- Worker startup and shutdown events captured
-- Job claiming and processing events logged
-- Progress updates tracked throughout job execution
+- Worker startup and shutdown events captured in streams
+- Job claiming and processing events logged to streams
+- High-frequency progress updates use pub/sub only
+- No stream pollution from 1/sec status updates
 - Connector-specific events for different AI services
+
+### Task 4.1b: Monitor UI Dual Subscription
+**Duration:** 2 hours
+**Location:** `apps/monitor/src/`
+
+#### Implementation for Consuming Both Systems
+
+```typescript
+// apps/monitor/src/services/event-consumer.ts
+class MonitorEventConsumer {
+  constructor(private io: Server) {}
+
+  // Subscribe to important events from stream
+  async consumeTelemetryEvents() {
+    const redis = createRedisClient();
+
+    // Read from stream for historical and important events
+    while (true) {
+      const events = await redis.xread(
+        'BLOCK', 1000,
+        'STREAMS', 'telemetry:events', this.lastEventId
+      );
+
+      if (events) {
+        events[0][1].forEach(([id, fields]) => {
+          const event = parseEvent(fields);
+
+          // Emit to relevant UI channels
+          if (event.jobId) {
+            this.io.to(`job:${event.jobId}`).emit('telemetry', event);
+          }
+
+          this.lastEventId = id;
+        });
+      }
+    }
+  }
+
+  // Subscribe to real-time status via pub/sub
+  async subscribeToStatusUpdates() {
+    const subscriber = createRedisClient();
+
+    // Subscribe to all job status channels
+    await subscriber.psubscribe('job:*:status');
+    await subscriber.psubscribe('machine:*:gpu');
+    await subscriber.psubscribe('comfyui:*:progress');
+
+    subscriber.on('pmessage', (pattern, channel, message) => {
+      const data = JSON.parse(message);
+
+      // Parse channel to get entity ID
+      const [entity, id, type] = channel.split(':');
+
+      // Emit to UI subscribers
+      if (entity === 'job') {
+        this.io.to(`job:${id}`).emit('status', data);
+        this.updateProgressBar(id, data.progress);
+        this.updatePreview(id, data.preview);
+      } else if (entity === 'machine') {
+        this.io.to('machines').emit('gpu-stats', { machineId: id, ...data });
+      } else if (entity === 'comfyui') {
+        this.io.to(`job:${id}`).emit('node-progress', data);
+      }
+    });
+  }
+
+  // Hybrid approach for job timeline
+  async getJobTimeline(jobId: string) {
+    // Get historical events from stream
+    const streamEvents = await this.searchStreamForJob(jobId);
+
+    // Get current status from pub/sub (if job is active)
+    const currentStatus = await redis.get(`job:${jobId}:latest-status`);
+
+    return {
+      events: streamEvents,  // Important milestones
+      currentStatus: currentStatus ? JSON.parse(currentStatus) : null
+    };
+  }
+}
+```
+
+**Benefits of Dual System:**
+- Stream provides complete audit trail for debugging
+- Pub/Sub enables real-time UI without storage overhead
+- Monitor can replay history OR watch live
+- Different retention policies for different data types
 
 ### Task 4.2: Machine Integration
 **Duration:** 3 hours
@@ -1179,9 +1341,219 @@ Production Telemetry Dashboard
     └── Anomaly detection alerts
 ```
 
+## Appendix A: Separate Error Stream Architecture
+
+**Added:** September 28, 2025
+**Context:** Production-scale error handling requires dedicated stream architecture for optimal performance and operational clarity.
+
+### Error Stream Design
+
+#### Architecture Overview
+Implement a separate Redis Stream (`emp:errors`) dedicated to error events, providing:
+- **Isolated Processing**: Error events don't compete with regular telemetry for processing resources
+- **Different Retention**: Longer retention for errors (7 days vs 24 hours for regular events)
+- **Specialized Alerting**: Direct integration with monitoring systems for immediate error notification
+- **Enhanced Debugging**: Error-specific correlation and analysis tools
+
+#### Implementation Strategy
+
+##### 1. Dual Stream Configuration
+```typescript
+// packages/core/src/telemetry/stream-config.ts
+export const TELEMETRY_CONFIG = {
+  // Regular telemetry stream
+  eventStream: {
+    name: 'emp:events',
+    maxLength: 10000,
+    retention: 24 * 60 * 60 * 1000, // 24 hours
+    trimStrategy: 'MAXLEN'
+  },
+
+  // Dedicated error stream
+  errorStream: {
+    name: 'emp:errors',
+    maxLength: 50000, // More errors retained
+    retention: 7 * 24 * 60 * 60 * 1000, // 7 days
+    trimStrategy: 'MAXLEN'
+  }
+};
+```
+
+##### 2. Enhanced Event Client
+```typescript
+// packages/core/src/telemetry/event-client.ts
+export class EventClient {
+  // Regular event emission (existing)
+  async event(type: string, data: Record<string, any> = {}): Promise<void> {
+    // Emit to emp:events stream
+  }
+
+  // Error-specific methods
+  async error(errorType: string, error: Error, context?: Record<string, any>): Promise<void> {
+    const errorEvent = {
+      timestamp: Date.now(),
+      service: this.serviceName,
+      eventType: `error.${errorType}`,
+      traceId: context?.traceId || this.generateTraceId(),
+      data: {
+        message: error.message,
+        stack: error.stack,
+        name: error.constructor.name,
+        ...context
+      }
+    };
+
+    // Emit to emp:errors stream
+    await this.emitToStream('emp:errors', errorEvent);
+  }
+
+  // Convenience error methods
+  async jobError(jobId: string, error: Error, context?: Record<string, any>): Promise<void>
+  async workerError(workerId: string, error: Error, context?: Record<string, any>): Promise<void>
+  async machineError(machineId: string, error: Error, context?: Record<string, any>): Promise<void>
+}
+```
+
+##### 3. Dual Consumer Architecture
+```typescript
+// apps/telemetry-collector/src/redis-consumer.ts
+export class DualStreamConsumer {
+  constructor(
+    private config: ConsumerConfig,
+    private onEvent: (event: TelemetryEvent) => Promise<void>,
+    private onError: (error: ErrorEvent) => Promise<void>
+  ) {
+    // Create separate consumers for each stream
+    this.eventConsumer = new RedisConsumer({
+      ...config,
+      streamKey: 'emp:events',
+      consumerGroup: 'telemetry-collectors'
+    }, onEvent);
+
+    this.errorConsumer = new RedisConsumer({
+      ...config,
+      streamKey: 'emp:errors',
+      consumerGroup: 'error-collectors'
+    }, onError);
+  }
+
+  async start(): Promise<void> {
+    // Start both consumers in parallel
+    await Promise.all([
+      this.eventConsumer.start(),
+      this.errorConsumer.start()
+    ]);
+  }
+}
+```
+
+##### 4. Error-Specific Debugging Tools
+```javascript
+// tools/debug-events/error-analysis.js
+async function analyzeErrors(options = {}) {
+  const errors = await searchErrorStream({
+    since: options.since || '-1h',
+    service: options.service,
+    errorType: options.errorType
+  });
+
+  // Group by error type and frequency
+  const errorGroups = groupBy(errors, 'data.name');
+
+  // Calculate error rates
+  const errorRates = Object.entries(errorGroups).map(([errorType, errors]) => ({
+    errorType,
+    count: errors.length,
+    rate: errors.length / getTimeRangeHours(options.since || '-1h'),
+    lastSeen: Math.max(...errors.map(e => e.timestamp)),
+    services: [...new Set(errors.map(e => e.service))]
+  }));
+
+  console.log('\n🚨 Error Analysis Report\n');
+  console.table(errorRates);
+
+  // Show recent error details
+  const recentErrors = errors.slice(-10);
+  console.log('\n📋 Recent Errors:');
+  recentErrors.forEach(error => {
+    console.log(`${formatTimestamp(error.timestamp)} [${error.service}] ${error.data.name}: ${error.data.message}`);
+  });
+}
+
+// Enhanced CLI commands
+yargs
+  .command('errors', 'Analyze error patterns', {
+    service: { type: 'string', describe: 'Filter by service' },
+    since: { type: 'string', describe: 'Time range (e.g. -1h, -24h)' },
+    type: { type: 'string', describe: 'Filter by error type' }
+  })
+  .parse();
+```
+
+##### 5. Monitoring Integration
+```typescript
+// apps/telemetry-collector/src/error-alerting.ts
+export class ErrorAlerting {
+  private errorCounts = new Map<string, number>();
+  private alertThresholds = {
+    criticalErrors: 10, // per minute
+    serviceFailures: 5,  // per minute
+    newErrorTypes: 1     // immediate alert
+  };
+
+  async processError(error: ErrorEvent): Promise<void> {
+    // Track error frequency
+    const key = `${error.service}:${error.data.name}`;
+    this.errorCounts.set(key, (this.errorCounts.get(key) || 0) + 1);
+
+    // Check for alert conditions
+    if (this.shouldAlert(error)) {
+      await this.sendAlert({
+        type: 'error_threshold_exceeded',
+        service: error.service,
+        errorType: error.data.name,
+        count: this.errorCounts.get(key),
+        timeframe: '1 minute'
+      });
+    }
+
+    // Forward to monitoring systems
+    await this.forwardToMonitoring(error);
+  }
+}
+```
+
+#### Benefits of Separate Error Stream
+
+1. **Performance Isolation**: Regular telemetry processing not impacted by error bursts
+2. **Specialized Retention**: Longer error retention without inflating regular stream storage
+3. **Enhanced Alerting**: Immediate error notifications without filtering noise
+4. **Focused Debugging**: Error-specific tools and correlation analysis
+5. **Operational Clarity**: Clear separation between operational telemetry and error tracking
+
+#### Migration Strategy
+
+1. **Phase 1**: Implement dual event client with backwards compatibility
+2. **Phase 2**: Deploy dual stream consumer to telemetry collector
+3. **Phase 3**: Update services to use error-specific methods
+4. **Phase 4**: Enable error-specific monitoring and alerting
+
+#### CLI Integration
+```bash
+# New error-specific debugging commands
+pnpm debug:errors --service=api-server --since=-1h
+pnpm debug:errors:timeline --jobId=job_123
+pnpm debug:errors:patterns --type=ValidationError
+pnpm debug:errors:alerts --threshold=critical
+```
+
+---
+
 ## Conclusion
 
 This execution plan provides a structured approach to implementing the Redis Event Stream + Single Collector Container Architecture, delivering immediate debugging value while establishing the foundation for production observability. The incremental implementation strategy ensures continuous value delivery and minimizes risk, while the comprehensive testing and monitoring approach ensures system reliability and performance.
+
+The addition of separate error stream architecture ensures production-scale error handling with dedicated processing, retention, and alerting capabilities.
 
 **Next Steps:**
 1. Review and approve execution plan

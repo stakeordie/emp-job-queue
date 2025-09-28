@@ -37,7 +37,13 @@
       "Bash(pnpm d:webhook:run:*)",
       "Bash(ngrok api tcp-addresses:*)",
       "Bash(chmod:*)",
-      "Bash(pnpm test:infrastructure:ui:*)"
+      "Bash(pnpm test:infrastructure:ui:*)",
+      "Bash(REDIS_URL=redis://localhost:6379 pnpm test src/__tests__/redis-stream.integration.test.ts -t \"should emit event to Redis stream\")",
+      "Bash(REDIS_URL=redis://localhost:6379 pnpm test:integration)",
+      "WebFetch(domain:github.com)",
+      "WebFetch(domain:www.dash0.com)",
+      "WebFetch(domain:www.otelbin.io)",
+      "Bash(pnpm d:telcollect:build:*)"
     ],
     "deny": [],
     "ask": []
