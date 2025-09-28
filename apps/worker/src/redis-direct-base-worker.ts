@@ -653,6 +653,19 @@ export class RedisDirectBaseWorker {
   }
 
   /**
+   * Generate a hash of the job payload for failure analysis
+   */
+  private generatePayloadHash(payload: any): string {
+    try {
+      const crypto = require('crypto');
+      const payloadStr = typeof payload === 'string' ? payload : JSON.stringify(payload);
+      return crypto.createHash('sha256').update(payloadStr).digest('hex').substring(0, 16);
+    } catch (error) {
+      return 'hash_failed';
+    }
+  }
+
+  /**
    * Extract clean, essential error information for logging
    * Removes massive HTTP internals, circular references, and socket details
    */
@@ -790,7 +803,22 @@ export class RedisDirectBaseWorker {
       // Extract clean error information for logging
       const cleanError = this.extractCleanErrorInfo(error);
       logger.error(`Worker ${this.workerId} job ${job.id} processing failed:`, cleanError);
-      await this.failJob(job.id, error instanceof Error ? error.message : 'Unknown error');
+
+      // Enhanced failure information for attestation
+      const failureDetails = {
+        error_message: error instanceof Error ? error.message : 'Unknown error',
+        error_type: error instanceof Error ? error.constructor.name : 'UnknownError',
+        stack_trace: error instanceof Error ? error.stack : null,
+        connector_type: job.service_required,
+        job_payload_hash: this.generatePayloadHash(job.payload),
+        processing_duration: Date.now() - (this.jobStartTimes.get(job.id) || Date.now()),
+        memory_usage: process.memoryUsage(),
+        node_version: process.version,
+        platform: process.platform,
+        timestamp: Date.now()
+      };
+
+      await this.failJob(job.id, JSON.stringify(failureDetails));
     }
   }
 

@@ -201,9 +201,39 @@ export class OpenAIResponsesConnector extends AsyncRESTConnector {
       // For image generation jobs, we need an actual image, not just text
       if (hasImageGeneration) {
         if (!imageBase64Data) {
+          // Check if we have explanatory text instead of image data
+          const explanation = textContent.trim();
+          const errorMessage = explanation
+            ? `Image generation failed: ${explanation}`
+            : 'Image generation completed but no image data found in response';
+
+          logger.error(`🚫 Semantic failure detected: ${errorMessage}`);
           return {
             completed: true,
-            error: 'Image generation completed but no image data found in response'
+            error: errorMessage
+          };
+        }
+
+        // Additional semantic validation - check for refusal patterns in text
+        const refusalPatterns = [
+          /cannot generate/i,
+          /unable to create/i,
+          /can't generate/i,
+          /cannot create/i,
+          /policy violation/i,
+          /content policy/i,
+          /inappropriate/i,
+          /not allowed/i,
+          /refused/i,
+          /declined/i
+        ];
+
+        const hasRefusalText = refusalPatterns.some(pattern => pattern.test(textContent));
+        if (hasRefusalText && imageBase64Data) {
+          logger.error(`🚫 Semantic failure detected: OpenAI generated image but included refusal text: ${textContent.trim()}`);
+          return {
+            completed: true,
+            error: `Content generation refused: ${textContent.trim()}`
           };
         }
 
