@@ -5,7 +5,7 @@
     "build": {
       "dependsOn": ["^build"],
       "outputs": ["dist/**", ".next/**", "build/**", "src/.vitepress/dist/**"],
-      "env": ["NODE_ENV", "CURRENT_ENV", "SKIP_TYPE_CHECK", "DATABASE_URL"]
+      "env": ["NODE_ENV", "CURRENT_ENV", "SKIP_TYPE_CHECK"]
     },
     "test": {
       "dependsOn": ["build"],

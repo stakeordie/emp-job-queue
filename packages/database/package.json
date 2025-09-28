@@ -6,8 +6,6 @@
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
   "scripts": {
-    "postinstall": "prisma generate",
-    "prebuild": "prisma generate",
     "build": "rm -rf dist && tsc && cp -r src/generated dist/",
     "dev": "tsc --watch",
     "db:generate": "prisma generate",
