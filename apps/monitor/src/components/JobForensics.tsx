@@ -2381,8 +2381,8 @@ export default function JobForensics() {
                       <div>
                         <div className="text-sm font-medium text-muted-foreground mb-2">Attempted Workers</div>
                         <div className="flex flex-wrap gap-2">
-                          {forensicsData.forensics.attempted_workers.map((worker: unknown, idx: number) => (
-                            <Badge key={idx} variant="outline">{String(worker)}</Badge>
+                          {forensicsData.forensics.attempted_workers.map((worker: string, idx: number) => (
+                            <Badge key={idx} variant="outline">{worker}</Badge>
                           ))}
                         </div>
                       </div>
