@@ -869,6 +869,66 @@ export default function JobForensics() {
     }
   };
 
+  // Format date safely, handling invalid dates
+  const formatDate = (dateValue: any): string => {
+    if (!dateValue) return 'N/A';
+
+    // Handle empty objects (common API response issue)
+    if (typeof dateValue === 'object' && Object.keys(dateValue).length === 0) {
+      return 'N/A';
+    }
+
+    try {
+      // Handle different input types
+      let date: Date;
+
+      if (typeof dateValue === 'string') {
+        // If it's already a formatted string, return it
+        if (dateValue.includes('GMT') || dateValue.includes('Z') || dateValue.includes('+')) {
+          date = new Date(dateValue);
+        } else {
+          // Try parsing as timestamp or ISO string
+          const timestamp = parseInt(dateValue);
+          date = isNaN(timestamp) ? new Date(dateValue) : new Date(timestamp);
+        }
+      } else if (typeof dateValue === 'number') {
+        // Handle timestamp (both seconds and milliseconds)
+        date = new Date(dateValue > 1e10 ? dateValue : dateValue * 1000);
+      } else {
+        date = new Date(dateValue);
+      }
+
+      // Check if date is valid
+      if (isNaN(date.getTime())) {
+        return 'N/A';
+      }
+
+      // Format as readable date string
+      return date.toLocaleString('en-US', {
+        year: 'numeric',
+        month: 'short',
+        day: 'numeric',
+        hour: '2-digit',
+        minute: '2-digit',
+        second: '2-digit'
+      });
+    } catch (error) {
+      console.warn('Date formatting error:', error, 'Input:', dateValue);
+      return 'N/A';
+    }
+  };
+
+  // Safely get payment status with fallback
+  const getPaymentStatus = (payment: any): string => {
+    if (!payment) return 'Unknown';
+
+    // Try different possible status field names
+    return payment.payment_status ||
+           payment.status ||
+           payment.state ||
+           'pending';
+  };
+
   // Classify job types with better labels
   const getJobTypeInfo = (job: JobWithUserInfo) => {
     // Check if it has miniapp data (user-facing collection generation)
@@ -944,21 +1004,6 @@ export default function JobForensics() {
   const user = miniappData?.user;
   const generation = miniappData?.generation;
   const payment = miniappData?.payment;
-
-  // Helper function to safely format dates
-  const formatDate = (dateValue: any): string => {
-    if (!dateValue) return 'N/A';
-
-    try {
-      const date = new Date(dateValue);
-      if (isNaN(date.getTime())) {
-        return 'Invalid date';
-      }
-      return date.toLocaleString();
-    } catch (error) {
-      return 'Invalid date';
-    }
-  };
 
   // State for notification attestations from Redis
   const [notificationAttestations, setNotificationAttestations] = useState<any[]>([]);
@@ -1147,7 +1192,7 @@ export default function JobForensics() {
                                       </div>
                                       <div className="text-xs text-muted-foreground flex items-center gap-2 flex-wrap">
                                         <span>
-                                          {job.created_at ? new Date(String(job.created_at)).toLocaleString() : 'Unknown date'}
+                                          {formatDate(job.created_at)}
                                         </span>
                                         {(() => {
                                           const typeInfo = getJobTypeInfo(job);
@@ -1331,19 +1376,19 @@ export default function JobForensics() {
                                   <div className="grid grid-cols-1 md:grid-cols-4 gap-4 text-xs">
                                     <div>
                                       <div className="font-medium">Created</div>
-                                      <div>{job.created_at ? new Date(String(job.created_at)).toLocaleString() : 'N/A'}</div>
+                                      <div>{formatDate(job.created_at)}</div>
                                     </div>
                                     <div>
                                       <div className="font-medium">Started</div>
-                                      <div>{job.started_at ? new Date(String(job.started_at)).toLocaleString() : 'N/A'}</div>
+                                      <div>{formatDate(job.started_at)}</div>
                                     </div>
                                     <div>
                                       <div className="font-medium">Updated</div>
-                                      <div>{job.updated_at ? new Date(String(job.updated_at)).toLocaleString() : 'N/A'}</div>
+                                      <div>{formatDate(job.updated_at)}</div>
                                     </div>
                                     <div>
                                       <div className="font-medium">Completed</div>
-                                      <div>{job.completed_at ? new Date(String(job.completed_at)).toLocaleString() : 'N/A'}</div>
+                                      <div>{formatDate(job.completed_at)}</div>
                                     </div>
                                   </div>
                                 </div>
@@ -1473,7 +1518,7 @@ export default function JobForensics() {
                                           <div>
                                             <div className="text-xs font-medium text-muted-foreground">Generated</div>
                                             <div className="text-xs">
-                                              {new Date(String(job.miniapp_data.created_at)).toLocaleString()}
+                                              {formatDate(job.miniapp_data.created_at)}
                                             </div>
                                           </div>
                                         )}
@@ -1946,8 +1991,8 @@ export default function JobForensics() {
                           </div>
                           <div>
                             <div className="text-sm font-medium text-emerald-800">Status</div>
-                            <Badge className={getStatusColor(String(miniappData.payment.payment_status || 'Unknown'))}>
-                              {String(miniappData.payment.payment_status || 'Unknown')}
+                            <Badge className={getStatusColor(getPaymentStatus(miniappData.payment))}>
+                              {getPaymentStatus(miniappData.payment)}
                             </Badge>
                           </div>
                           <div>
