@@ -5,7 +5,7 @@
   "packageManager": "pnpm@10.12.4",
   "scripts": {
     "dev": "mkdir -p ../../logs && (echo '   - Logs:         pnpm logs:monitor' && echo '   - All Logs:     pnpm logs:all' && echo && next dev -p 3333) 2>&1 | tee ../../logs/monitor.log",
-    "prebuild": "(cat .env.local-dev; echo; cat .env.secret.local-dev) > .env.local",
+    "prebuild": "(cat .env.local-dev; echo; cat .env.secret.local-dev) > .env.local && cd ../../packages/database && pnpm prisma generate",
     "build": "next build",
     "start": "next start -p 3333",
     "lint": "next lint",
