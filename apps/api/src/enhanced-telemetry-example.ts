@@ -4,7 +4,7 @@
  * Shows how to implement telemetry with debugging context like the OpenTelemetry demo
  */
 
-import { WorkflowTelemetryClient, EmpWorkflows, EmpOperations } from '@emp/core/src/workflow-telemetry';
+import { WorkflowTelemetryClient, EmpWorkflows, EmpOperations } from '@emp/core';
 import Redis from 'ioredis';
 
 // Example: Job Submission with Rich Context
@@ -88,7 +88,7 @@ export async function submitJobWithRichTelemetry(
           errorContext['validation.step'] = 'resource_check';
           errorContext['resources.gpu_available'] = 0;
           errorContext['resources.queue_full'] = true;
-          errorContext['model.size_gb'] = resourceCheck?.modelSize;
+          errorContext['model.size_gb'] = 4.2; // Default model size
         }
 
         workflowClient.markSpanError(validationSpan.spanId, error as Error, errorContext);
@@ -115,6 +115,7 @@ export async function downloadModelWithTelemetry(
     EmpOperations.MODEL_DOWNLOAD,
     workflow,
     async (downloadSpan) => {
+      const downloadUrl = `https://huggingface.co/runwayml/${modelName}`;
       try {
         // Record system state before download
         workflowClient.recordResourceUsage(downloadSpan.spanId, {
@@ -134,7 +135,6 @@ export async function downloadModelWithTelemetry(
         });
 
         // Step 2: Download
-        const downloadUrl = `https://huggingface.co/runwayml/${modelName}`;
         workflowClient.addSpanEvent(downloadSpan.spanId, 'download.started', {
           'download.url': downloadUrl,
           'download.method': 'HTTP',

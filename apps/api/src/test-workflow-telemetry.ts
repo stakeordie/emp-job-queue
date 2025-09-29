@@ -6,7 +6,7 @@
  */
 
 import Redis from 'ioredis';
-import { WorkflowTelemetryClient, EmpWorkflows, EmpOperations } from '@emp/core/src/workflow-telemetry';
+import { WorkflowTelemetryClient, EmpWorkflows, EmpOperations } from '@emp/core';
 
 // Mock event emitter that sends to Redis Stream
 function createWorkflowEventEmitter(redis: Redis) {

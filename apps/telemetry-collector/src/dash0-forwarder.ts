@@ -4,8 +4,7 @@
  * Converts telemetry events to OTLP format and forwards to Dash0
  */
 
-import { TelemetryEvent, OtelSpan } from '@emp/core';
-import { WorkflowSpan } from '@emp/core/src/workflow-telemetry';
+import { TelemetryEvent, OtelSpan, WorkflowSpan } from '@emp/core';
 
 export interface Dash0Config {
   endpoint: string;
@@ -169,12 +168,6 @@ export class Dash0Forwarder {
     }));
   }
 
-  private convertResourceAttributes(resource: Record<string, any>): Array<{ key: string; value: { stringValue: string } }> {
-    return Object.entries(resource).map(([key, value]) => ({
-      key,
-      value: { stringValue: String(value) }
-    }));
-  }
 
   private convertEventDataToAttributes(event: TelemetryEvent): Array<{ key: string; value: any }> {
     const attributes: Array<{ key: string; value: any }> = [];
