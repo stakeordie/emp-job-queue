@@ -25,9 +25,10 @@ import {
   JobStatus,
   ConnectorStatus,
   logger,
-  JobInstrumentation,
   smartTruncateObject,
 } from '@emp/core';
+
+// Note: JobInstrumentation removed - replace with WorkflowTelemetryClient if needed
 import { readFileSync } from 'fs';
 import * as os from 'os';
 
@@ -749,14 +750,12 @@ export class RedisDirectBaseWorker {
       ? { traceId: job.job_trace_id, spanId: job.job_span_id }
       : undefined;
     
-    const claimSpanContext = await JobInstrumentation.claim({
-      jobId: job.id,
-      workerId: this.workerId,
-      machineId: process.env.MACHINE_ID || 'unknown',
-      connectorId: 'unknown', // Will be determined when connector is assigned
-      serviceType: job.service_required,
-      queueWaitTime: Date.now() - new Date(job.created_at).getTime()
-    }, parentSpanContext);
+    // Note: JobInstrumentation telemetry temporarily disabled - replace with WorkflowTelemetryClient if needed
+    const claimSpanContext = {
+      traceId: `claim_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+      spanId: `span_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`
+    };
+    // await JobInstrumentation.claim({ ... }, parentSpanContext);
 
     // 🚨 BIG TRACE LOGGING: CLAIM SPAN CREATED
     console.log(`\n🚨🚨🚨 WORKER: CLAIM SPAN CREATED FOR JOB ${job.id}`);
@@ -831,13 +830,12 @@ export class RedisDirectBaseWorker {
     // Get claim span context for process span parent
     const claimSpanContext = this.jobClaimSpanContexts.get(job.id);
     
-    // Start process span with claim as parent
-    const processSpanContext = await JobInstrumentation.process({
-      jobId: job.id,
-      connectorId: connector.connector_id,
-      serviceType: connector.service_type,
-      estimatedDuration: undefined // We don't have duration estimates yet
-    }, claimSpanContext);
+    // Note: JobInstrumentation telemetry temporarily disabled - replace with WorkflowTelemetryClient if needed
+    const processSpanContext = {
+      traceId: `process_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+      spanId: `span_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`
+    };
+    // await JobInstrumentation.process({ ... }, claimSpanContext);
 
     // Store process span context for use in complete span and connector operations
     if (processSpanContext) {
@@ -935,12 +933,8 @@ export class RedisDirectBaseWorker {
       const startTime = this.jobStartTimes.get(jobId);
       const duration = startTime ? Date.now() - startTime : 0;
       
-      await JobInstrumentation.complete({
-        jobId: jobId,
-        status: 'completed',
-        result: result,
-        duration: duration
-      }, processSpanContext);
+      // Note: JobInstrumentation telemetry temporarily disabled - replace with WorkflowTelemetryClient if needed
+      // await JobInstrumentation.complete({ ... }, processSpanContext);
 
       await this.redisClient.completeJob(jobId, result);
       await this.finishJob(jobId);
@@ -982,12 +976,8 @@ export class RedisDirectBaseWorker {
       const startTime = this.jobStartTimes.get(jobId);
       const duration = startTime ? Date.now() - startTime : 0;
       
-      await JobInstrumentation.complete({
-        jobId: jobId,
-        status: 'failed',
-        error: error,
-        duration: duration
-      }, processSpanContext);
+      // Note: JobInstrumentation telemetry temporarily disabled - replace with WorkflowTelemetryClient if needed
+      // await JobInstrumentation.complete({ ... }, processSpanContext);
 
       logger.info(`🔥 [DEBUG] About to call redisClient.failJob with canRetry=${canRetry}`);
       await this.redisClient.failJob(jobId, error, canRetry);

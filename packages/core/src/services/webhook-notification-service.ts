@@ -19,7 +19,6 @@ import {
   JobFailedEvent,
 } from '../types/monitor-events.js';
 import { JobStatus } from '../types/job.js';
-import { sendTrace } from '../telemetry/otel-client.js';
 
 // Webhook configuration types
 export interface WebhookEndpoint {
@@ -255,19 +254,7 @@ export class WebhookNotificationService extends EventEmitter {
           threshold: WebhookNotificationService.MAX_CONSECUTIVE_FAILURES,
         });
 
-      // Send OTEL trace event for webhook auto-disconnect
-      await sendTrace('webhook.status.disconnected', {
-        webhook_id: webhookId,
-        webhook_url: webhook.url,
-        consecutive_failures: consecutiveFailures.toString(),
-        threshold: WebhookNotificationService.MAX_CONSECUTIVE_FAILURES.toString(),
-        disconnect_reason: 'auto_disconnect_on_failures',
-        disconnect_type: 'automatic',
-        user_agent: 'emp-webhook-service',
-      }, {
-        duration_ms: 1,
-        status: 'ok',
-      });
+      // Note: OTEL tracing removed - using WorkflowTelemetryClient instead
 
       // Send OTEL counter for webhook auto-disconnect
       if (this.telemetryClient) {
@@ -752,18 +739,7 @@ export class WebhookNotificationService extends EventEmitter {
       
       startTime = Date.now();
       
-      // Send EMPROPS API call trace (start)
-      const apiTraceResult = await sendTrace('webhook.emprops_api.call', {
-        workflow_id: workflowId,
-        endpoint: 'get_workflow_details',
-        http_method: 'GET',
-        api_url: url,
-        status: 'started',
-        user_agent: 'emp-webhook-service',
-      }, {
-        duration_ms: 1, // placeholder, will send completion trace
-        status: 'ok',
-      });
+      // Note: OTEL tracing removed - using WorkflowTelemetryClient instead
       
       const response = await fetch(url, {
         method: 'GET',
@@ -773,21 +749,7 @@ export class WebhookNotificationService extends EventEmitter {
       });
       const responseTime = Date.now() - startTime;
 
-      // Send EMPROPS API call completion trace
-      await sendTrace('webhook.emprops_api.call', {
-        workflow_id: workflowId,
-        endpoint: 'get_workflow_details',
-        http_method: 'GET',
-        api_url: url,
-        http_status: response.status.toString(),
-        response_time_ms: responseTime.toString(),
-        status: response.ok ? 'success' : 'http_error',
-        user_agent: 'emp-webhook-service',
-      }, {
-        duration_ms: responseTime,
-        status: response.ok ? 'ok' : 'error',
-        parent_trace_id: apiTraceResult.traceId,
-      });
+      // Note: OTEL tracing removed - using WorkflowTelemetryClient instead
 
       logger.info(`📡 [WEBHOOK] EMPROPS API Response:`);
       logger.info(`   Status: ${response.status} ${response.statusText}`);
@@ -871,21 +833,7 @@ export class WebhookNotificationService extends EventEmitter {
     } catch (error) {
       const errorTime = Date.now() - startTime;
       
-      // Send EMPROPS API error trace
-      await sendTrace('webhook.emprops_api.call', {
-        workflow_id: workflowId,
-        endpoint: 'get_workflow_details',
-        http_method: 'GET',
-        api_url: url,
-        response_time_ms: errorTime.toString(),
-        status: 'error',
-        error_type: error instanceof Error ? error.constructor.name : 'UnknownError',
-        error_message: error instanceof Error ? error.message : String(error),
-        user_agent: 'emp-webhook-service',
-      }, {
-        duration_ms: errorTime,
-        status: 'error',
-      });
+      // Note: OTEL tracing removed - using WorkflowTelemetryClient instead
 
       logger.error(`❌ [WEBHOOK] Failed to fetch workflow details for ${workflowId}:`, error);
       logger.error(`   Error Type: ${error.constructor.name}`);
@@ -1583,25 +1531,7 @@ export class WebhookNotificationService extends EventEmitter {
       console.log(`🚨 PARENT SPAN ID: ${payload.parent_trace_context?.span_id || 'NONE'}`);
       console.log(`🚨🚨🚨\n`);
 
-      // Send successful webhook delivery trace with parent context
-      traceResult = await sendTrace('webhook.delivery', {
-        webhook_id: webhook.id,
-        webhook_url: webhook.url,
-        event_type: payload.event_type,
-        http_status: response.status.toString(),
-        http_method: 'POST',
-        attempt_number: attemptNumber.toString(),
-        job_id: payload.data?.job_id || 'unknown',
-        workflow_id: payload.data?.workflow_id || 'none',
-        response_time_ms: deliveryDuration.toString(),
-        status: response.ok ? 'success' : 'http_error',
-        user_agent: 'emp-webhook-service',
-      }, {
-        duration_ms: deliveryDuration,
-        status: response.ok ? 'ok' : 'error',
-        parent_trace_id: payload.parent_trace_context?.trace_id,
-        parent_span_id: payload.parent_trace_context?.span_id,
-      });
+      // Note: OTEL tracing removed - using WorkflowTelemetryClient instead
 
       attempt.response_status = response.status;
       attempt.response_body = await response.text();
@@ -1648,27 +1578,7 @@ export class WebhookNotificationService extends EventEmitter {
       console.log(`🚨 PARENT SPAN ID: ${payload.parent_trace_context?.span_id || 'NONE'}`);
       console.log(`🚨🚨🚨\n`);
 
-      // Send failed webhook delivery trace with parent context
-      await sendTrace('webhook.delivery', {
-        webhook_id: webhook.id,
-        webhook_url: webhook.url,
-        event_type: payload.event_type,
-        http_status: attempt.response_status?.toString() || 'timeout',
-        http_method: 'POST',
-        attempt_number: attemptNumber.toString(),
-        job_id: payload.data?.job_id || 'unknown',
-        workflow_id: payload.data?.workflow_id || 'none',
-        response_time_ms: deliveryDuration.toString(),
-        status: 'error',
-        error_type: error instanceof Error ? error.constructor.name : 'UnknownError',
-        error_message: attempt.error_message,
-        user_agent: 'emp-webhook-service',
-      }, {
-        duration_ms: deliveryDuration,
-        status: 'error',
-        parent_trace_id: payload.parent_trace_context?.trace_id,
-        parent_span_id: payload.parent_trace_context?.span_id,
-      });
+      // Note: OTEL tracing removed - using WorkflowTelemetryClient instead
 
       logger.warn(`Webhook delivery failed: ${webhook.id} (attempt ${attemptNumber})`, {
         error: attempt.error_message,

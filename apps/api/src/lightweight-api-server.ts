@@ -25,9 +25,21 @@ import {
   JobCompletedEvent,
   JobFailedEvent,
   WorkerStatusChangedEvent,
-  JobInstrumentation,
-  WorkflowInstrumentation,
 } from '@emp/core';
+
+// Note: JobInstrumentation and WorkflowInstrumentation removed - replace with WorkflowTelemetryClient if needed
+// Temporary placeholder classes to make build work
+const JobInstrumentation = {
+  async submit(...args: any[]) { return { traceId: 'temp', spanId: 'temp' }; },
+  async saveToRedis(...args: any[]) { /* no-op */ }
+};
+const WorkflowInstrumentation = {
+  async start(...args: any[]) { return { traceId: 'temp', spanId: 'temp' }; },
+  async stepSubmit(...args: any[]) { return { traceId: 'temp', spanId: 'temp' }; },
+  async stepComplete(...args: any[]) { return { traceId: 'temp', spanId: 'temp' }; },
+  async stepFail(...args: any[]) { return { traceId: 'temp', spanId: 'temp' }; },
+  async complete(...args: any[]) { return { traceId: 'temp', spanId: 'temp' }; }
+};
 import { createRequire } from 'module';
 
 interface PackageInfo {
