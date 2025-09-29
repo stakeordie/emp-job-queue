@@ -1,0 +1,48 @@
+# Real OpenTelemetry Collector Setup
+# Architecture: EventClient → Redis → Bridge → OTEL Collector → Dash0
+
+version: '3.8'
+
+services:
+  # Real OpenTelemetry Collector
+  otel-collector:
+    image: otel/opentelemetry-collector-contrib:latest
+    command: ["--config=/etc/otel-collector-config.yaml"]
+    volumes:
+      - ./otel-config.yaml:/etc/otel-collector-config.yaml
+    ports:
+      - "4317:4317"   # gRPC
+      - "4318:4318"   # HTTP
+      - "8888:8888"   # Prometheus metrics
+      - "8889:8889"   # Prometheus metrics
+    environment:
+      - DASH0_AUTH_TOKEN=${DASH0_AUTH_TOKEN}
+      - DASH0_DATASET=${DASH0_DATASET:-emp-job-queue-dev}
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8888/"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # Redis to OTLP Bridge
+  telemetry-bridge:
+    build:
+      context: .
+      dockerfile: Dockerfile.bridge
+    depends_on:
+      - otel-collector
+    environment:
+      - HUB_REDIS_URL=${HUB_REDIS_URL}
+      - REDIS_URL=${REDIS_URL}
+      - OTLP_ENDPOINT=http://otel-collector:4318/v1/traces
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3001/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+networks:
+  default:
+    name: emp-telemetry-network

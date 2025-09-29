@@ -9,6 +9,7 @@ This section serves as a development journal and technical analysis feed, docume
 
 ## Recent Entries
 
+- **[2025-01-15 14:45] - [Semantic Cleanup Initiative](./2025-01-15-semantic-cleanup-initiative.md)** - Major terminology alignment project: workflow→job, job→step, removing step- prefixes. Comprehensive 5-phase migration plan with automation tools and backwards compatibility strategy
 - **[2025-09-16 12:00] - [Resilience Implementation Guide](./2025-09-16-resilience-implementation-guide.md)** - Detailed step-by-step implementation guide for building resilience across emp-job-queue, emprops-open-api, and emerge-mini-app with event-driven saga pattern, circuit breakers, and guaranteed delivery
 - **[2025-09-16 11:30] - [Resilience Plan](./2025-09-16-resilience-plan.md)** - Comprehensive architecture design for system-wide resilience using event sourcing, workflow orchestration, and automatic recovery to ensure eventual consistency across all three interconnected systems
 - **[2025-08-25 21:00] - [Modernization Detailed TODO List](./2025-08-25-modernization-detailed-todo-list.md)** - Comprehensive, sequenced task breakdown for the 4-week modernization initiative with 23 detailed issues across cleanup, service refactor, and EmProps integration, optimized for execution order and risk management

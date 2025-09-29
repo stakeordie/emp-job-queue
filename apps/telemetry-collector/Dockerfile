@@ -16,6 +16,12 @@ FROM ubuntu:22.04
         apt-get clean && \
         rm -rf /var/lib/apt/lists/*
 
+    # Install OpenTelemetry Collector binary
+    RUN wget https://github.com/open-telemetry/opentelemetry-collector-releases/releases/download/v0.91.0/otelcol-contrib_0.91.0_linux_amd64.tar.gz && \
+        tar -xzf otelcol-contrib_0.91.0_linux_amd64.tar.gz && \
+        mv otelcol-contrib /usr/local/bin/ && \
+        rm otelcol-contrib_0.91.0_linux_amd64.tar.gz
+
     # Set up workspace structure
     WORKDIR /telemetry-collector
 
@@ -47,6 +53,9 @@ FROM ubuntu:22.04
     # Copy application source
     COPY dist/ /telemetry-collector/dist/
     COPY src/ /telemetry-collector/src/
+    COPY otel-config.yaml /telemetry-collector/otel-config.yaml
+    COPY start-telemetry.sh /telemetry-collector/start-telemetry.sh
+    RUN chmod +x /telemetry-collector/start-telemetry.sh
 
     # Set environment
     ENV NODE_ENV=production \
@@ -61,5 +70,5 @@ FROM ubuntu:22.04
     HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
         CMD curl -f http://localhost:9090/health || exit 1
 
-    # Start the collector
-    CMD ["node", "dist/index.js"]
+    # Start both OTEL Collector and Bridge
+    CMD ["./start-telemetry.sh"]

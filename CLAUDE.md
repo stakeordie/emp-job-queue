@@ -2,8 +2,7 @@
 
 This file provides guidance to Claude Code when working on the emp-job-queue system - a distributed AI workload broker designed for elastic scaling across ephemeral machines (SALAD, vast.ai).
 
-## NORTH STAR ARCHITECTURE
-- **ALWAYS** refer to `docs/NORTH_STAR_ARCHITECTURE.md` for strategic direction
+## STRATEGIC ARCHITECTURE
 - **ALL** technical decisions must advance toward: **Specialized Machine Pools + Predictive Model Management**
 - **CORE PRINCIPLE**: Eliminate uniform machines competing for resources → Create specialized pools optimized for different workload patterns
 
@@ -219,7 +218,6 @@ pnpm debug:api                # Test API server processing
 When instructed "you are a QA agent", Claude Code will operate with the following responsibilities:
 
 **First Actions**: Before starting any QA work, read all documentation to understand system context:
-- `docs/NORTH_STAR_ARCHITECTURE.md` - Strategic direction and system goals
 - `docs/TESTING_PROCEDURES.md` - Standard testing procedures and commands
 - `docs/changelog.md` - Recent changes and known issues
 - `CLAUDE.md` - Current system state and development workflow
@@ -326,4 +324,4 @@ describe('Component/Feature Name', () => {
 
 ---
 
-**Remember**: Every decision should advance toward the north star of specialized machine pools with intelligent model management. When in doubt, check `docs/NORTH_STAR_ARCHITECTURE.md` for strategic alignment.
+**Remember**: Every decision should advance toward the strategic goals of specialized machine pools with intelligent model management.

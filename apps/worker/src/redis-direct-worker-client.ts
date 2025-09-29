@@ -929,9 +929,10 @@ export class RedisDirectWorkerClient {
       };
 
       // Store worker completion attestation with 7-day TTL for recovery
-      // Use workflow-aware key structure for efficient searching
-      const workflowPrefix = jobData.workflow_id ? `workflow-${jobData.workflow_id}:` : '';
-      const completionKey = `worker:completion:${workflowPrefix}job-${jobId}:attempt:${retryCount + 1}`;
+      // Use semantic naming: workflow->job, job->step, remove step- prefix
+      const stepId = jobId.startsWith('step-') ? jobId.substring(5) : jobId;
+      const jobPrefix = jobData.workflow_id ? `job-id:${jobData.workflow_id}:` : '';
+      const completionKey = `worker:completion:${jobPrefix}step-id:${stepId}:attempt:${retryCount + 1}`;
 
       await this.redis.setex(
         completionKey,
@@ -1097,11 +1098,12 @@ export class RedisDirectWorkerClient {
       };
 
       // Store worker failure attestation with 7-day TTL for recovery
-      // Use workflow-aware key structure for efficient searching
-      const workflowPrefix = freshJobData.workflow_id ? `workflow-${freshJobData.workflow_id}:` : '';
+      // Use semantic naming: workflow->job, job->step, remove step- prefix
+      const stepId = jobId.startsWith('step-') ? jobId.substring(5) : jobId;
+      const jobPrefix = freshJobData.workflow_id ? `job-id:${freshJobData.workflow_id}:` : '';
       const attestationKey = shouldRetry
-        ? `worker:failure:${workflowPrefix}job-${jobId}:attempt:${newRetryCount}`
-        : `worker:failure:${workflowPrefix}job-${jobId}:permanent`;
+        ? `worker:failure:${jobPrefix}step-id:${stepId}:attempt:${newRetryCount}`
+        : `worker:failure:${jobPrefix}step-id:${stepId}:permanent`;
 
       await this.redis.setex(
         attestationKey,
@@ -1113,9 +1115,10 @@ export class RedisDirectWorkerClient {
 
       // Also maintain the original completion key for permanent failures for backwards compatibility
       if (!shouldRetry) {
+        const stepId = jobId.startsWith('step-') ? jobId.substring(5) : jobId;
         const backwardsCompatKey = freshJobData.workflow_id
-          ? `worker:completion:workflow-${freshJobData.workflow_id}:job-${jobId}`
-          : `worker:completion:job-${jobId}`;
+          ? `worker:completion:job-id:${freshJobData.workflow_id}:step-id:${stepId}`
+          : `worker:completion:step-id:${stepId}`;
 
         await this.redis.setex(
           backwardsCompatKey,

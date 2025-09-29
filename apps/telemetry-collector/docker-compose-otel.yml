@@ -1,0 +1,32 @@
+version: '3.8'
+
+services:
+  # Official OpenTelemetry Collector
+  otel-collector:
+    image: otel/opentelemetry-collector-contrib:latest
+    command: ["--config=/etc/otel-collector-config.yaml"]
+    volumes:
+      - ./otel-config.yaml:/etc/otel-collector-config.yaml
+    ports:
+      - "4317:4317"   # gRPC
+      - "4318:4318"   # HTTP
+      - "8888:8888"   # Prometheus metrics
+    env_file:
+      - .env.local-dev
+      - .env.secret.local-dev
+    environment:
+      - DASH0_DATASET=${DASH0_DATASET:-emp-job-queue-dev}
+    networks:
+      - telemetry-network
+
+  # Redis (if not already running)
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+    networks:
+      - telemetry-network
+
+networks:
+  telemetry-network:
+    driver: bridge

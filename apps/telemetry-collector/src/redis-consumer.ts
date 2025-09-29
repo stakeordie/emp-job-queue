@@ -163,17 +163,40 @@ export class RedisConsumer {
     for (const [streamKey, messages] of results) {
       for (const [messageId, fields] of messages) {
         try {
+          // Validate fields structure
+          if (!Array.isArray(fields) || fields.length < 2) {
+            console.log(`⚠️  Skipping malformed message ${messageId}: invalid fields structure`);
+            continue;
+          }
+
           // Parse data from Redis fields
           const dataType = fields[0]; // 'event' or 'span'
           const dataJson = fields[1];
 
+          // Validate JSON string
+          if (typeof dataJson !== 'string') {
+            console.log(`⚠️  Skipping message ${messageId}: data is not a string`);
+            continue;
+          }
+
           let data: TelemetryEvent | OtelSpan;
 
-          if (dataType === 'span') {
-            data = JSON.parse(dataJson) as OtelSpan;
-          } else {
-            // Legacy event format or 'event' type
-            data = JSON.parse(dataJson) as TelemetryEvent;
+          try {
+            if (dataType === 'span') {
+              data = JSON.parse(dataJson) as OtelSpan;
+            } else {
+              // Legacy event format or 'event' type
+              data = JSON.parse(dataJson) as TelemetryEvent;
+            }
+          } catch (parseError) {
+            console.log(`⚠️  Skipping message ${messageId}: invalid JSON - ${dataJson.substring(0, 50)}...`);
+            continue;
+          }
+
+          // Validate parsed data
+          if (!data || typeof data !== 'object') {
+            console.log(`⚠️  Skipping message ${messageId}: parsed data is not an object`);
+            continue;
           }
 
           // Process the data
@@ -228,15 +251,39 @@ export class RedisConsumer {
 
             if (claimed && claimed.length > 0) {
               const [claimedId, fields] = (claimed as any[])[0];
+
+              // Validate fields structure
+              if (!Array.isArray(fields) || fields.length < 2) {
+                console.log(`⚠️  Skipping malformed pending message ${messageId}: invalid fields structure`);
+                continue;
+              }
+
               const dataType = fields[0];
               const dataJson = fields[1];
 
+              // Validate JSON string
+              if (typeof dataJson !== 'string') {
+                console.log(`⚠️  Skipping pending message ${messageId}: data is not a string`);
+                continue;
+              }
+
               let data: TelemetryEvent | OtelSpan;
 
-              if (dataType === 'span') {
-                data = JSON.parse(dataJson) as OtelSpan;
-              } else {
-                data = JSON.parse(dataJson) as TelemetryEvent;
+              try {
+                if (dataType === 'span') {
+                  data = JSON.parse(dataJson) as OtelSpan;
+                } else {
+                  data = JSON.parse(dataJson) as TelemetryEvent;
+                }
+              } catch (parseError) {
+                console.log(`⚠️  Skipping pending message ${messageId}: invalid JSON - ${dataJson.substring(0, 50)}...`);
+                continue;
+              }
+
+              // Validate parsed data
+              if (!data || typeof data !== 'object') {
+                console.log(`⚠️  Skipping pending message ${messageId}: parsed data is not an object`);
+                continue;
               }
 
               await this.onEvent(data);

@@ -1,0 +1,79 @@
+# OpenTelemetry Collector Configuration for Dash0
+# Using real OTEL Collector instead of custom implementation
+
+receivers:
+  # Receive OTLP data via HTTP (we'll send from EventClient)
+  otlp:
+    protocols:
+      http:
+        endpoint: 0.0.0.0:4318
+      grpc:
+        endpoint: 0.0.0.0:4317
+
+processors:
+  # Batch spans for efficiency
+  batch:
+    timeout: 1s
+    send_batch_size: 100
+    send_batch_max_size: 500
+
+  # Add resource attributes
+  resource:
+    attributes:
+      - key: service.name
+        value: emp-job-queue
+        action: upsert
+      - key: deployment.environment
+        value: development
+        action: upsert
+
+  # Transform attribute names for consistency
+  attributes:
+    actions:
+      # Rename correlation IDs to semantic conventions
+      - key: jobId
+        new_key: emp.job.id
+        action: update
+      - key: workerId
+        new_key: emp.worker.id
+        action: update
+      - key: machineId
+        new_key: emp.machine.id
+        action: update
+      - key: userId
+        new_key: emp.user.id
+        action: update
+
+exporters:
+  # Export to Dash0 via OTLP gRPC
+  otlp/dash0:
+    endpoint: https://ingress.eu-west-1.dash0.com:4317
+    headers:
+      authorization: Bearer ${DASH0_AUTH_TOKEN}
+      dash0-dataset: ${DASH0_DATASET:-emp-job-queue-dev}
+    compression: gzip
+    tls:
+      insecure: false
+
+  # Debug exporter for local development
+  debug:
+    verbosity: detailed
+
+service:
+  pipelines:
+    traces:
+      receivers: [otlp]
+      processors: [resource, attributes, batch]
+      exporters: [otlp/dash0, debug]
+
+    metrics:
+      receivers: [otlp]
+      processors: [resource, batch]
+      exporters: [otlp/dash0, debug]
+
+    logs:
+      receivers: [otlp]
+      processors: [resource, batch]
+      exporters: [otlp/dash0, debug]
+
+  extensions: []

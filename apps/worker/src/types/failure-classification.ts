@@ -73,6 +73,8 @@ export enum FailureReason {
   MISSING_REQUIRED_FIELD = 'missing_required_field',
   INVALID_FORMAT = 'invalid_format',
   UNSUPPORTED_OPERATION = 'unsupported_operation',
+  MODEL_NOT_FOUND = 'model_not_found',
+  COMPONENT_ERROR = 'component_error',
 
   // RESOURCE_LIMIT reasons
   OUT_OF_MEMORY = 'out_of_memory',
@@ -108,6 +110,7 @@ export enum FailureReason {
   INTERNAL_ERROR = 'internal_error',
   CONFIG_ERROR = 'config_error',
   DEPENDENCY_ERROR = 'dependency_error',
+  GPU_ERROR = 'gpu_error',
   UNKNOWN_ERROR = 'unknown_error'
 }
 
@@ -174,6 +177,11 @@ export class FailureClassifier {
       return this.classifyResponseError(error);
     }
 
+    // System errors
+    if (this.isSystemError(error)) {
+      return this.classifySystemError(error);
+    }
+
     // Default to system error
     return {
       failure_type: FailureType.SYSTEM_ERROR,
@@ -187,12 +195,24 @@ export class FailureClassifier {
       'cannot generate', 'unable to create', 'can\'t generate', 'cannot create',
       'policy violation', 'content policy', 'inappropriate', 'not allowed',
       'refused', 'declined', 'safety', 'harmful', 'violence', 'nsfw',
-      'copyright', 'intellectual property'
+      'copyright', 'intellectual property', 'moderation_blocked', 'safety system',
+      'blocked', 'adult content'
     ];
     return refusalPatterns.some(pattern => error.includes(pattern));
   }
 
   private static classifyGenerationRefusal(error: string): FailureClassification {
+    // OpenAI moderation blocking
+    if (error.includes('moderation_blocked') || error.includes('safety system')) {
+      const requestIdMatch = error.match(/wfr_[a-zA-Z0-9]+/);
+      const requestId = requestIdMatch ? requestIdMatch[0] : '';
+      return {
+        failure_type: FailureType.GENERATION_REFUSAL,
+        failure_reason: FailureReason.SAFETY_FILTER,
+        failure_description: `Content refused by safety system${requestId ? ` (request ID: ${requestId})` : ''}`
+      };
+    }
+
     if (error.includes('violence') || error.includes('violent')) {
       return {
         failure_type: FailureType.GENERATION_REFUSAL,
@@ -209,7 +229,7 @@ export class FailureClassifier {
       };
     }
 
-    if (error.includes('nsfw') || error.includes('explicit') || error.includes('adult')) {
+    if (error.includes('nsfw') || error.includes('explicit') || error.includes('adult content') || (error.includes('blocked') && error.includes('adult'))) {
       return {
         failure_type: FailureType.GENERATION_REFUSAL,
         failure_reason: FailureReason.NSFW_CONTENT,
@@ -328,11 +348,12 @@ export class FailureClassifier {
   private static isNetworkError(error: string): boolean {
     return error.includes('network') || error.includes('connection') ||
            error.includes('dns') || error.includes('ssl') ||
-           error.includes('econnrefused') || error.includes('timeout');
+           error.includes('econnrefused') || error.includes('enotfound') ||
+           error.includes('timeout');
   }
 
   private static classifyNetworkError(error: string): FailureClassification {
-    if (error.includes('dns')) {
+    if (error.includes('dns') || error.includes('enotfound')) {
       return {
         failure_type: FailureType.NETWORK_ERROR,
         failure_reason: FailureReason.DNS_RESOLUTION,
@@ -356,6 +377,14 @@ export class FailureClassifier {
       };
     }
 
+    if (error.includes('timeout')) {
+      return {
+        failure_type: FailureType.NETWORK_ERROR,
+        failure_reason: FailureReason.NETWORK_TIMEOUT,
+        failure_description: 'Network connection timed out'
+      };
+    }
+
     return {
       failure_type: FailureType.NETWORK_ERROR,
       failure_reason: FailureReason.CONNECTION_FAILED,
@@ -371,7 +400,7 @@ export class FailureClassifier {
 
   private static classifyResourceLimit(error: string): FailureClassification {
     if (error.includes('memory')) {
-      if (error.includes('gpu')) {
+      if (error.includes('gpu') || error.includes('cuda')) {
         return {
           failure_type: FailureType.RESOURCE_LIMIT,
           failure_reason: FailureReason.GPU_MEMORY_FULL,
@@ -485,10 +514,31 @@ export class FailureClassifier {
   private static isValidationError(error: string): boolean {
     return error.includes('validation') || error.includes('invalid') ||
            error.includes('missing') || error.includes('required') ||
-           error.includes('format');
+           error.includes('format') || error.includes('component') ||
+           error.includes('model') || error.includes('does not exist');
   }
 
   private static classifyValidationError(error: string): FailureClassification {
+    // Component errors
+    if (error.includes('error in component')) {
+      const componentMatch = error.match(/component ['"]([^'"]+)['"]/);
+      const componentName = componentMatch ? componentMatch[1] : 'unknown';
+      return {
+        failure_type: FailureType.VALIDATION_ERROR,
+        failure_reason: FailureReason.COMPONENT_ERROR,
+        failure_description: `Error in component ${componentName}`
+      };
+    }
+
+    // Model not found errors
+    if (error.includes('model') && (error.includes('does not exist') || error.includes('not found'))) {
+      return {
+        failure_type: FailureType.VALIDATION_ERROR,
+        failure_reason: FailureReason.MODEL_NOT_FOUND,
+        failure_description: 'Model not found or does not exist'
+      };
+    }
+
     if (error.includes('missing') || error.includes('required')) {
       return {
         failure_type: FailureType.VALIDATION_ERROR,
@@ -554,6 +604,48 @@ export class FailureClassifier {
       failure_type: FailureType.RESPONSE_ERROR,
       failure_reason: FailureReason.INVALID_RESPONSE_FORMAT,
       failure_description: 'Response error due to invalid format'
+    };
+  }
+
+  private static isSystemError(error: string): boolean {
+    // Don't classify network errors as system errors
+    if (error.includes('dns') || error.includes('enotfound') || error.includes('network') || error.includes('timeout')) {
+      return false;
+    }
+    return error.includes('cuda') || error.includes('gpu') ||
+           error.includes('internal') || error.includes('config') ||
+           error.includes('dependency');
+  }
+
+  private static classifySystemError(error: string): FailureClassification {
+    if (error.includes('cuda') || error.includes('gpu')) {
+      return {
+        failure_type: FailureType.SYSTEM_ERROR,
+        failure_reason: FailureReason.GPU_ERROR,
+        failure_description: 'System error due to GPU/CUDA issues'
+      };
+    }
+
+    if (error.includes('config')) {
+      return {
+        failure_type: FailureType.SYSTEM_ERROR,
+        failure_reason: FailureReason.CONFIG_ERROR,
+        failure_description: 'System error due to configuration issues'
+      };
+    }
+
+    if (error.includes('dependency')) {
+      return {
+        failure_type: FailureType.SYSTEM_ERROR,
+        failure_reason: FailureReason.DEPENDENCY_ERROR,
+        failure_description: 'System error due to dependency issues'
+      };
+    }
+
+    return {
+      failure_type: FailureType.SYSTEM_ERROR,
+      failure_reason: FailureReason.INTERNAL_ERROR,
+      failure_description: 'Internal system error'
     };
   }
 }

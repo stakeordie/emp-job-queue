@@ -1,8 +1,8 @@
 /**
- * Redis Stream-based Event Client
+ * OpenTelemetry-based Event Client
  * Phase 4 Implementation from Execution Plan
  *
- * Lightweight, fire-and-forget event emission to Redis Stream
+ * Lightweight, fire-and-forget event emission to OpenTelemetry Collector
  * Never blocks service operation - silent failure on errors
  */
 import Redis from 'ioredis';
@@ -79,20 +79,20 @@ export class EventClient {
         eventType: type,
         traceId: this.generateTraceId(),
         data,
-        level: data.level || 'info'
+        level: data.level || 'info',
+        jobId: data.jobId,
+        workerId: data.workerId,
+        machineId: data.machineId,
+        userId: data.userId
       };
 
-      // Add to Redis Stream with automatic trimming
+      // Add to Redis Stream in format expected by collector: [dataType, eventJson]
       await this.redis.xadd(
         TELEMETRY_CONFIG.streamName,
         'MAXLEN', '~', TELEMETRY_CONFIG.maxLength,
         '*', // Let Redis generate timestamp ID
-        'timestamp', event.timestamp.toString(),
-        'service', event.service,
-        'eventType', event.eventType,
-        'traceId', event.traceId,
-        'level', event.level || 'info',
-        'data', JSON.stringify(event.data)
+        'event', // dataType field - collector expects this as fields[0]
+        JSON.stringify(event) // full event JSON - collector expects this as fields[1]
       );
     } catch (error) {
       // Silent failure - never break service operation
@@ -131,6 +131,29 @@ export class EventClient {
       level: 'error',
       ...context
     });
+  }
+
+  /**
+   * Send span data to Redis Stream
+   * Never blocks service operation
+   */
+  async span(spanData: Record<string, any>): Promise<void> {
+    if (!this.redis || !this.connected) {
+      return; // Silent failure - service continues
+    }
+
+    try {
+      // Add to Redis Stream in format expected by collector: [dataType, spanJson]
+      await this.redis.xadd(
+        TELEMETRY_CONFIG.streamName,
+        'MAXLEN', '~', TELEMETRY_CONFIG.maxLength,
+        '*', // Let Redis generate timestamp ID
+        'span', // dataType field - collector expects this as fields[0]
+        JSON.stringify(spanData) // full span JSON - collector expects this as fields[1]
+      );
+    } catch (error) {
+      // Silent failure - never break service operation
+    }
   }
 
   /**

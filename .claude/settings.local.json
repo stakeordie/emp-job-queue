@@ -50,7 +50,14 @@
       "Bash(lsof:*)",
       "Bash(xargs kill:*)",
       "Bash(pnpm dev:*)",
-      "Bash(pnpm debug:redis-only:*)"
+      "Bash(pnpm debug:redis-only:*)",
+      "Bash(REDIS_URL=redis://localhost:6379 pnpm test src/__tests__/redis-to-otlp-bridge.test.ts)",
+      "Bash(REDIS_URL=redis://localhost:6379 pnpm test src/__tests__/event-client-redis.integration.test.ts)",
+      "Bash(REDIS_URL=redis://localhost:6379 pnpm test src/__tests__/event-client-redis.integration.test.ts -t \"should handle multiple events correctly\")",
+      "Bash(REDIS_URL=redis://localhost:6379 pnpm test src/__tests__/event-client-redis.integration.test.ts --reporter=verbose --no-coverage)",
+      "Bash(REDIS_URL=redis://localhost:6379 pnpm test src/__tests__/event-client-redis.integration.test.ts -t \"should handle job events with correlation IDs\")",
+      "Bash(REDIS_URL=redis://localhost:6379 pnpm test src/__tests__/redis-to-otlp-bridge.test.ts src/__tests__/event-client-redis.integration.test.ts)",
+      "Bash(REDIS_URL=redis://localhost:6379 pnpm test src/__tests__/)"
     ],
     "deny": [],
     "ask": []

@@ -13,6 +13,11 @@ tunnels:
     addr: 8080
     domain: emp-emprops-dev.ngrok-free.app
     inspect: false
+  dash0-webhook:
+    proto: http
+    addr: 9876
+    domain: emerge-dash0-delivery.ngrok.pizza
+    inspect: false
   redis:
     proto: tcp
     addr: 6379

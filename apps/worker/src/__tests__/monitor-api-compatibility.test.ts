@@ -15,7 +15,14 @@ class MockMonitorAPI {
   // Simulate individual job worker attestation search
   async findWorkerAttestation(jobId: string) {
     const searchPatterns = [
-      // New workflow-aware patterns
+      // Current semantic format: workflow->job, job->step, remove step- prefix
+      `worker:completion:job-id:*:step-id:${jobId}`,
+      `worker:completion:job-id:*:step-id:${jobId}:attempt:*`,
+      `worker:completion:step-id:${jobId}`,
+      `worker:completion:step-id:${jobId}:attempt:*`,
+      `worker:failure:job-id:*:step-id:${jobId}:*`,
+      `worker:failure:step-id:${jobId}:*`,
+      // Legacy workflow-aware patterns
       `worker:completion:workflow-*:job-${jobId}`,
       `worker:completion:workflow-*:job-${jobId}:attempt:*`,
       `worker:completion:job-${jobId}`,
@@ -66,15 +73,19 @@ class MockMonitorAPI {
   async findWorkflowAttestations(workflowId: string) {
     const results: any[] = [];
 
-    // 🚀 EFFICIENT: Direct workflow-specific search
-    const workflowCompletionKeys = await this.redis.keys(`worker:completion:workflow-${workflowId}:*`);
-    const workflowFailureKeys = await this.redis.keys(`worker:failure:workflow-${workflowId}:*`);
+    // 🚀 EFFICIENT: Direct job-specific search (semantic: workflow->job)
+    const jobCompletionKeys = await this.redis.keys(`worker:completion:job-id:${workflowId}:*`);
+    const jobFailureKeys = await this.redis.keys(`worker:failure:job-id:${workflowId}:*`);
     const workflowLevelFailureKeys = await this.redis.keys(`workflow:failure:${workflowId}:*`);
 
-    // Process workflow-specific attestations (guaranteed to match)
-    const allWorkflowKeys = [...workflowCompletionKeys, ...workflowFailureKeys];
+    // Legacy patterns for backwards compatibility
+    const legacyCompletionKeys = await this.redis.keys(`worker:completion:workflow-${workflowId}:*`);
+    const legacyFailureKeys = await this.redis.keys(`worker:failure:workflow-${workflowId}:*`);
 
-    for (const key of allWorkflowKeys) {
+    // Process job-specific attestations (guaranteed to match)
+    const allJobKeys = [...jobCompletionKeys, ...jobFailureKeys, ...legacyCompletionKeys, ...legacyFailureKeys];
+
+    for (const key of allJobKeys) {
       const data = await this.redis.get(key);
       if (data) {
         const parsed = JSON.parse(data);

@@ -1,11 +1,11 @@
-# Redis Event Stream + Single Collector Container Architecture - Execution Plan
+# Redis Event Stream + Real OpenTelemetry Collector Architecture - Execution Plan
 
 **Date:** September 27, 2025
-**Status:** Phase 2 Completed ✅ - API Server Integration Complete
+**Status:** Phase 6 Completed ✅ - Real OTEL Collector Integration Complete
 **Priority:** High - Critical for Development Productivity
-**Initiative:** Simplified Telemetry & Observability
-**Estimated Duration:** 5-7 days (Core implementation + Basic integration)
-**Last Updated:** September 28, 2025
+**Initiative:** Production-Ready Telemetry & Observability
+**Estimated Duration:** 7 days (Core implementation + OTEL integration)
+**Last Updated:** September 29, 2025
 
 ## Implementation Status
 
@@ -38,9 +38,60 @@
 - Performance impact validation (<5% overhead requirement)
 - Documentation and training materials
 
-### ⏳ Phase 6: Advanced Features (PENDING)
-- Dash0 integration with OpenTelemetry format
-- Event correlation analysis and performance monitoring
+### ✅ Phase 6: Real OpenTelemetry Collector (COMPLETED)
+- Single container architecture with real OTEL Collector binary
+- Redis-to-OTLP bridge for seamless data translation
+- Direct gRPC export to Dash0 with proper authentication
+- Production-ready configuration with environment injection
+
+## FINAL ARCHITECTURE OVERVIEW
+
+### Production-Ready Architecture
+```
+┌─────────────────────────────────────────────────────────────────┐
+│                     Single Container                            │
+│  ┌─────────────────┐    ┌─────────────────────────────────┐     │
+│  │ Redis-to-OTLP   │    │   Real OTEL Collector          │     │
+│  │ Bridge          │───▶│   (otelcol-contrib binary)     │     │
+│  │ (Node.js)       │    │                                 │     │
+│  └─────────────────┘    └─────────────────────────────────┘     │
+│         ▲                              │                        │
+│         │                              ▼                        │
+│   Redis Stream                    Dash0 (gRPC)                  │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+### Key Components
+
+#### 1. EventClient (Fixed Format)
+**Location:** `packages/core/src/telemetry/event-client.ts`
+- Writes events in `[dataType, jsonData]` format expected by collector
+- Maintains all correlation IDs (jobId, workerId, machineId, userId)
+- Fire-and-forget Redis Stream emission
+
+#### 2. Redis-to-OTLP Bridge
+**Location:** `apps/telemetry-collector/src/redis-to-otlp-bridge.ts`
+- Reads from Redis Stream using consumer groups
+- Converts events to proper OTLP format
+- Sends to local OTEL Collector via HTTP
+
+#### 3. Real OpenTelemetry Collector
+**Binary:** `/usr/local/bin/otelcol-contrib` (embedded in container)
+**Config:** `apps/telemetry-collector/otel-config.yaml`
+- Receives OTLP data via HTTP (port 4318)
+- Processes with batch, resource, and attribute processors
+- Exports to Dash0 via gRPC with authentication headers
+
+#### 4. Single Container Orchestration
+**Startup Script:** `apps/telemetry-collector/start-telemetry.sh`
+- Starts OTEL Collector in background
+- Starts Redis bridge in foreground
+- Handles graceful shutdown of both processes
+
+### Environment Integration
+- Uses existing `.env.local-dev` and `.env.secret.local-dev` pattern
+- Dash0 credentials automatically injected via Docker env files
+- Compatible with `pnpm d:telcollect:run local-dev` workflow
 
 ## Implementation Strategy
 

@@ -7,7 +7,6 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import Redis from 'ioredis';
 import { EventClient, TelemetryEvent, OtelSpan } from '@emp/core';
-import { RedisConsumer, ConsumerConfig } from '../redis-consumer.js';
 
 // Helper function to convert OTEL span to legacy event format for test compatibility
 function spanToEvent(span: OtelSpan): TelemetryEvent {
@@ -28,11 +27,8 @@ function spanToEvent(span: OtelSpan): TelemetryEvent {
 describe('Redis Stream Integration', () => {
   let redis: Redis;
   let eventClient: EventClient;
-  let consumer: RedisConsumer;
-  let receivedEvents: TelemetryEvent[] = [];
 
-  const testStreamKey = 'test:telemetry:events';
-  const testGroupName = 'test-collectors';
+  const testStreamKey = 'telemetry:events';
 
   beforeEach(async () => {
     // Clear received events

@@ -1,0 +1,24 @@
+# Redis to OTLP Bridge Dockerfile
+FROM node:20-alpine
+
+WORKDIR /app
+
+# Copy package files
+COPY package.json ./
+COPY ../../packages/core/package.json ./packages/core/package.json
+
+# Install dependencies
+RUN npm install
+
+# Copy source code
+COPY src/ ./src/
+COPY ../../packages/core/dist/ ./packages/core/dist/
+
+# Build the application
+RUN npm run build
+
+# Expose health check port (optional)
+EXPOSE 3001
+
+# Run the bridge
+CMD ["node", "dist/main-otel.js"]

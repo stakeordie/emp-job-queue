@@ -1,5 +1,7 @@
+// TODO-SEMANTIC: This file contains "Job" types that should be "Step" - worker processing unit
 // Job types - core job definitions and lifecycle management
 
+// TODO-SEMANTIC: This 'Job' interface should be 'Step' - represents what workers process
 export interface Job {
   id: string;
   service_required: string;
@@ -163,6 +165,29 @@ export interface JobSearchResult {
   has_more: boolean;
 }
 
+// Job attestation from Redis (worker failure/completion records)
+export interface JobAttestation {
+  attestation_key: string;
+  attestation_type: 'worker_failure' | 'worker_completion' | 'workflow_failure' | 'workflow_completion' | 'failure_retry' | 'failure_permanent' | 'unknown_attestation';
+  job_id?: string;
+  workflow_id?: string;
+  worker_id?: string;
+  error_message?: string;
+  status?: string;
+  timestamp?: number;
+  failed_at?: number;
+  completed_at?: number;
+  retry_count?: number;
+  can_retry?: boolean;
+  will_retry?: boolean;
+  workflow_impact?: string;
+  failure_type?: string; // From structured failure classification
+  failure_reason?: string; // From structured failure classification
+  failure_description?: string; // From structured failure classification
+  retrieved_at: number;
+  [key: string]: any; // Allow additional dynamic properties from Redis
+}
+
 // Comprehensive job forensics for debugging and recovery
 export interface JobForensics {
   // Creation source tracking
@@ -208,6 +233,26 @@ export interface JobForensics {
   // State consistency tracking
   state_checks?: StateCheck[];
   cross_system_refs?: CrossSystemReference[];
+
+  // Enhanced attestation tracking (for missing attempt logs issue)
+  attestations?: JobAttestation[];
+
+  // Structured failure classification (from 2-tiered failure system)
+  structured_failure?: {
+    failure_type: string;
+    failure_reason: string;
+    failure_description: string;
+    classified_at: number;
+  };
+
+  // Status consistency verification
+  status_consistency?: {
+    redis_status?: string;
+    emprops_status?: string;
+    discrepancy_detected?: boolean;
+    source_priority: 'redis' | 'emprops';
+    verified_at: number;
+  };
 }
 
 export interface JobLifecycleEvent {

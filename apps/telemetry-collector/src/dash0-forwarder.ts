@@ -68,11 +68,13 @@ export class Dash0Forwarder {
   }
 
   private isWorkflowSpan(event: TelemetryEvent | OtelSpan | WorkflowSpan): event is WorkflowSpan {
-    return 'spanId' in event && 'traceId' in event && 'operationName' in event && 'events' in event;
+    return event && typeof event === 'object' &&
+           'spanId' in event && 'traceId' in event && 'operationName' in event && 'events' in event;
   }
 
   private isOtelSpan(event: TelemetryEvent | OtelSpan | WorkflowSpan): event is OtelSpan {
-    return 'operationName' in event && 'spanId' in event && !('events' in event);
+    return event && typeof event === 'object' &&
+           'operationName' in event && 'spanId' in event && !('events' in event);
   }
 
   private convertWorkflowSpanToOtlp(span: WorkflowSpan): OtlpSpan {

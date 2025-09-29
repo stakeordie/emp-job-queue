@@ -39,15 +39,22 @@ export class JobForensicsService {
     } = options;
 
     try {
-      // 1. Try to get job from Redis (job queue system) first
+      // 1. Get job from Redis (authoritative source for job status)
       let job = await this.getRedisJob(jobId);
 
-      // 2. If not found in Redis, try EmProps database (workflows)
-      if (!job) {
-        job = await this.getEmpropsJob(jobId);
-        if (!job) {
-          return null;
-        }
+      // 2. Get EmProps job data for additional workflow context
+      const empropsJob = await this.getEmpropsJob(jobId);
+
+      if (job && empropsJob) {
+        // Both sources exist - merge data but prioritize Redis status
+        const redisStatus = job.status;
+        job = { ...empropsJob, ...job, status: redisStatus };
+        console.log(`📊 [FORENSICS] Merged job data - Redis status: ${redisStatus}, EmProps status: ${empropsJob.status}`);
+      } else if (!job && empropsJob) {
+        // Only EmProps has data
+        job = empropsJob;
+      } else if (!job && !empropsJob) {
+        return null;
       }
 
       // 3. Get forensics data
@@ -449,6 +456,85 @@ export class JobForensicsService {
   }
 
   /**
+   * Get comprehensive job attestations from Redis patterns
+   */
+  private async getJobAttestations(jobId: string, workflowId?: string): Promise<any[]> {
+    const attestations: any[] = [];
+
+    // Define search patterns - semantic naming: workflow->job, job->step, remove step- prefix
+    const stepId = jobId.startsWith('step-') ? jobId.substring(5) : jobId;
+    const patterns = [
+      // Current format: worker:failure:job-id:{job_id}:step-id:{step_id}:xyz
+      `worker:failure:*step-id:${stepId}*`,
+      `worker:completion:*step-id:${stepId}*`,
+      // Legacy patterns for backwards compatibility
+      `worker:failure:*job-id:${jobId}*`,
+      `worker:completion:*job-id:${jobId}*`,
+      `worker:failure:*job-${jobId}*`,
+      `worker:completion:*job-${jobId}*`,
+      `worker:failure:${jobId}*`,
+      `worker:completion:${jobId}*`,
+    ];
+
+    // Add job-specific patterns if job ID is available (formerly workflow ID)
+    if (workflowId) {
+      patterns.push(
+        `workflow:failure:${workflowId}*`, // Legacy workflow failure pattern
+        // Current job patterns (semantic: workflow->job)
+        `worker:failure:job-id:${workflowId}*`,
+        `worker:completion:job-id:${workflowId}*`,
+        // Legacy patterns
+        `worker:failure:workflow-id:${workflowId}*`,
+        `worker:completion:workflow-id:${workflowId}*`,
+        `worker:failure:workflow-${workflowId}*`,
+        `worker:completion:workflow-${workflowId}*`
+      );
+    }
+
+    for (const pattern of patterns) {
+      try {
+        const keys = await this.redis.keys(pattern);
+        for (const key of keys) {
+          const data = await this.redis.get(key);
+          if (data) {
+            const attestation = {
+              ...JSON.parse(data),
+              attestation_key: key,
+              attestation_type: this.extractAttestationType(key),
+              retrieved_at: Date.now()
+            };
+            attestations.push(attestation);
+          }
+        }
+      } catch (error) {
+        console.error(`Error retrieving attestations for pattern ${pattern}:`, error);
+      }
+    }
+
+    // Sort attestations by timestamp for chronological order
+    return attestations.sort((a, b) =>
+      (a.timestamp || a.failed_at || a.completed_at || 0) -
+      (b.timestamp || b.failed_at || b.completed_at || 0)
+    );
+  }
+
+  /**
+   * Extract attestation type from Redis key
+   */
+  private extractAttestationType(key: string): string {
+    if (key.includes('failure')) {
+      if (key.includes('workflow:failure')) return 'workflow_failure';
+      if (key.includes(':attempt:')) return 'failure_retry';
+      if (key.includes(':permanent')) return 'failure_permanent';
+      return 'worker_failure';
+    } else if (key.includes('completion')) {
+      if (key.includes('workflow:completion')) return 'workflow_completion';
+      return 'worker_completion';
+    }
+    return 'unknown_attestation';
+  }
+
+  /**
    * Build comprehensive forensics data
    */
   private async buildForensicsData(
@@ -456,6 +542,41 @@ export class JobForensicsService {
     options: { includeHistory: boolean; includeCrossSystemRefs: boolean }
   ): Promise<JobForensics> {
     const forensics: JobForensics = {};
+
+    // Comprehensive attestation retrieval
+    const attestations = await this.getJobAttestations(job.id, job.workflow_id);
+    if (attestations.length > 0) {
+      forensics.attestations = attestations;
+
+      // Extract structured failure data if available
+      const failureAttestations = attestations.filter(a =>
+        a.attestation_type?.includes('failure') && (a.failure_type || a.failure_reason)
+      );
+      if (failureAttestations.length > 0) {
+        const latestFailure = failureAttestations[failureAttestations.length - 1];
+        forensics.structured_failure = {
+          failure_type: latestFailure.failure_type,
+          failure_reason: latestFailure.failure_reason,
+          failure_description: latestFailure.failure_description,
+          classified_at: latestFailure.timestamp
+        };
+      }
+    }
+
+    // Status consistency verification (using local empropsJob from earlier scope)
+    if (job && empropsJob) {
+      forensics.status_consistency = {
+        redis_status: job.status,
+        emprops_status: empropsJob.status,
+        discrepancy_detected: job.status !== empropsJob.status,
+        source_priority: 'redis' as const,
+        verified_at: Date.now()
+      };
+
+      if (job.status !== empropsJob.status) {
+        console.warn(`⚠️ [FORENSICS] Status discrepancy detected for job ${job.id}: Redis=${job.status}, EmProps=${empropsJob.status}`);
+      }
+    }
 
     // Source tracking - try to determine where this job came from
     if (job.workflow_id) {
