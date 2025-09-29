@@ -114,7 +114,7 @@ describe('EventProcessor', () => {
         spanId: 'span-456',
         operationName: 'test.operation',
         startTime: Date.now() * 1_000_000, // Nanoseconds
-        status: { code: 1 },
+        status: { code: 1, message: 'OK' },
         resource: {
           'service.name': 'test-service',
           'service.version': '1.0.0',
@@ -138,7 +138,7 @@ describe('EventProcessor', () => {
         spanId: 'span-456',
         operationName: 'test.operation',
         startTime: NaN, // Invalid startTime
-        status: { code: 1 },
+        status: { code: 1, message: 'OK' },
         resource: {
           'service.name': 'test-service',
           'service.version': '1.0.0',
@@ -157,7 +157,7 @@ describe('EventProcessor', () => {
         spanId: 'span-456',
         operationName: 'test.operation',
         startTime: 0, // Zero startTime
-        status: { code: 1 },
+        status: { code: 1, message: 'OK' },
         resource: {
           'service.name': 'test-service',
           'service.version': '1.0.0',
@@ -176,7 +176,7 @@ describe('EventProcessor', () => {
         spanId: 'span-456',
         operationName: 'test.operation',
         startTime: -1_000_000, // Negative nanoseconds
-        status: { code: 1 },
+        status: { code: 1, message: 'OK' },
         resource: {
           'service.name': 'test-service',
           'service.version': '1.0.0',
@@ -197,7 +197,7 @@ describe('EventProcessor', () => {
         spanId: 'span-456',
         operationName: 'service.started',
         startTime: Date.now() * 1_000_000,
-        status: { code: 1 },
+        status: { code: 1, message: 'OK' },
         resource: {
           'service.name': 'api',
           'service.version': '1.0.0',
@@ -216,7 +216,7 @@ describe('EventProcessor', () => {
         spanId: 'span-456',
         operationName: 'health.check',
         startTime: Date.now() * 1_000_000,
-        status: { code: 1 },
+        status: { code: 1, message: 'OK' },
         resource: {
           'service.name': 'api',
           'service.version': '1.0.0',
@@ -235,7 +235,7 @@ describe('EventProcessor', () => {
         spanId: 'span-456',
         operationName: 'websocket.connection',
         startTime: Date.now() * 1_000_000,
-        status: { code: 1 },
+        status: { code: 1, message: 'OK' },
         resource: {
           'service.name': 'api',
           'service.version': '1.0.0',
@@ -254,7 +254,7 @@ describe('EventProcessor', () => {
         spanId: 'span-456',
         operationName: 'redis.operation',
         startTime: Date.now() * 1_000_000,
-        status: { code: 1 },
+        status: { code: 1, message: 'OK' },
         resource: {
           'service.name': 'api',
           'service.version': '1.0.0',
@@ -277,7 +277,7 @@ describe('EventProcessor', () => {
         spanId: 'span-456',
         operationName: 'error.uncaught',
         startTime: Date.now() * 1_000_000,
-        status: { code: 2 }, // Error status
+        status: { code: 2, message: 'ERROR' }, // Error status
         resource: {
           'service.name': 'api',
           'service.version': '1.0.0',

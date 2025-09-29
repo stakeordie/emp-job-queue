@@ -271,7 +271,8 @@ export class EventProcessor {
       operationName: event.eventType,
       startTime: event.timestamp * 1_000_000, // Convert to nanoseconds
       status: {
-        code: event.level === 'error' ? 2 : 1 // ERROR = 2, OK = 1
+        code: event.level === 'error' ? 2 : 1, // ERROR = 2, OK = 1
+        message: event.level === 'error' ? 'ERROR' : 'OK'
       },
       resource: {
         'service.name': event.service,

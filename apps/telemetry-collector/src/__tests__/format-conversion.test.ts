@@ -42,7 +42,7 @@ describe('Format Conversion', () => {
       expect(span.traceId).toBe('trace-abc123');
       expect(span.operationName).toBe('job.created');
       expect(span.startTime).toBe(1632847200000 * 1_000_000); // Converted to nanoseconds
-      expect(span.status.code).toBe(SpanStatusCode.OK); // info level = OK
+      expect(span.status.code).toBe(1); // info level = OK
 
       // Verify resource attributes
       expect(span.resource['service.name']).toBe('test-service');
@@ -73,7 +73,7 @@ describe('Format Conversion', () => {
       const span: OtelSpan = convertMethod(errorEvent);
 
       // Verify error status
-      expect(span.status.code).toBe(SpanStatusCode.ERROR);
+      expect(span.status.code).toBe(2);
 
       // Verify EMP-specific attributes are mapped
       expect(span.attributes['emp.job.id']).toBe('job-789');
@@ -120,7 +120,7 @@ describe('Format Conversion', () => {
         spanId: 'span-valid-456',
         operationName: EmpSpanTypes.JOB_CREATE,
         startTime: Date.now() * 1_000_000,
-        status: { code: SpanStatusCode.OK },
+        status: { code: 1, message: 'OK' },
         resource: {
           'service.name': 'test-service',
           'service.version': '1.0.0',
@@ -143,7 +143,7 @@ describe('Format Conversion', () => {
       const incompleteSpan = {
         traceId: 'trace-incomplete-123',
         // Missing spanId, operationName, etc.
-        status: { code: SpanStatusCode.OK }
+        status: { code: 1 }
       };
 
       const isOtelSpan = (processor as any).isOtelSpan.bind(processor);
@@ -172,7 +172,7 @@ describe('Format Conversion', () => {
           spanId: 'span-1a',
           operationName: 'job.created',
           startTime: Date.now() * 1_000_000,
-          status: { code: SpanStatusCode.OK },
+          status: { code: 1, message: 'OK' },
           resource: { 'service.name': 'api' } as any,
           attributes: {}
         },
@@ -181,7 +181,7 @@ describe('Format Conversion', () => {
           spanId: 'span-1b',
           operationName: 'job.queued',
           startTime: Date.now() * 1_000_000,
-          status: { code: SpanStatusCode.OK },
+          status: { code: 1, message: 'OK' },
           resource: { 'service.name': 'api' } as any,
           attributes: {}
         },
@@ -190,7 +190,7 @@ describe('Format Conversion', () => {
           spanId: 'span-2a',
           operationName: 'worker.started',
           startTime: Date.now() * 1_000_000,
-          status: { code: SpanStatusCode.OK },
+          status: { code: 1, message: 'OK' },
           resource: { 'service.name': 'worker' } as any,
           attributes: {}
         }
@@ -254,7 +254,7 @@ describe('Format Conversion', () => {
         startTime: 1632847200000 * 1_000_000,
         endTime: 1632847205000 * 1_000_000,
         duration: 5000 * 1_000_000, // 5 seconds in nanoseconds
-        status: { code: SpanStatusCode.OK },
+        status: { code: 1, message: 'OK' },
         resource: {
           'service.name': 'worker-service',
           'service.version': '2.0.0',
@@ -301,7 +301,7 @@ describe('Format Conversion', () => {
         operationName: 'job.failed',
         startTime: Date.now() * 1_000_000,
         status: {
-          code: SpanStatusCode.ERROR,
+          code: 2, // ERROR
           message: 'Job execution failed'
         },
         resource: {
@@ -361,7 +361,7 @@ describe('Format Conversion', () => {
           spanId: 'span-mixed-456',
           operationName: EmpSpanTypes.HTTP_REQUEST,
           startTime: 1632847200100 * 1_000_000,
-          status: { code: SpanStatusCode.OK },
+          status: { code: 1, message: 'OK' },
           resource: {
             'service.name': 'api-service',
             'service.version': '1.0.0',
