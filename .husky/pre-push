@@ -1,5 +1,5 @@
 echo "🔍 Running production build check before push..."
-pnpm build:prod
+FORCE_COLOR=0 TURBO_UI=stream pnpm build:prod
 
 if [ $? -ne 0 ]; then
   echo "❌ Production build failed - push aborted"
