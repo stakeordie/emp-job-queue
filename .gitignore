@@ -12,6 +12,9 @@ bundled/
 */worker-bundled/
 *.tsbuildinfo
 
+# Exception: Allow database package dist (needed for Vercel deployment)
+!packages/database/dist/
+
 # Build metadata (generated during build)
 **/build-metadata.json
 build-metadata.json

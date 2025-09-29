@@ -1,5 +1,5 @@
 {
-  "buildCommand": "pnpm build --filter=monitor...",
+  "buildCommand": "cd apps/monitor && pnpm build",
   "installCommand": "pnpm install --frozen-lockfile",
   "outputDirectory": "apps/monitor/.next",
   "ignoreCommand": "git diff HEAD^ HEAD --quiet ."

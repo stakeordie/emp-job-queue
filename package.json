@@ -6,6 +6,8 @@
   "type": "module",
   "scripts": {
     "build": "turbo run build",
+    "build:prod": "CURRENT_ENV=production turbo run build",
+    "build:dev": "CURRENT_ENV=development turbo run build",
     "dev": "turbo run dev",
     "dev:local": "turbo run dev --parallel",
     "dev:prod": "NODE_ENV=production turbo run dev",
@@ -117,7 +119,8 @@
     "dev:jresolve": "cd services/job-evaluator && tsx --env-file=.env.secret.local-dev --env-file=.env.local-dev src/resolver.ts",
     "dash:dev:restart": "node scripts/terminal/restart-service.js",
     "test:infrastructure": "./scripts/test-infrastructure.sh",
-    "test:infrastructure:ui": "cd apps/webhook-service && pnpm test:ui"
+    "test:infrastructure:ui": "cd apps/webhook-service && pnpm test:ui",
+    "prepare": "husky"
   },
   "devDependencies": {
     "@typescript-eslint/eslint-plugin": "^6.21.0",
@@ -127,6 +130,7 @@
     "eslint": "^8.57.1",
     "eslint-config-prettier": "^9.1.0",
     "eslint-plugin-prettier": "^5.5.1",
+    "husky": "^9.1.7",
     "js-yaml": "^4.1.0",
     "playwright": "^1.53.2",
     "prettier": "^3.6.2",
