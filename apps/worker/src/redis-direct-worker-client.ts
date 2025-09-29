@@ -1057,34 +1057,51 @@ export class RedisDirectWorkerClient {
 
       logger.info(`🔥 [DEBUG] Calculated: newRetryCount=${newRetryCount}, shouldRetry=${shouldRetry} (canRetry=${canRetry} && ${newRetryCount} < ${job.max_retries})`);
 
-      // 🚨 CRITICAL: Create persistent failure attestation FIRST (for permanent failures)
-      // This ensures we have proof the worker processed it, even if downstream verification fails
-      if (!shouldRetry) {
-        const workerFailureRecord = {
-          job_id: jobId,
-          worker_id: this.workerId,
-          status: 'failed',
-          failed_at: failedAt,
-          error: error,
-          raw_service_output: null, // TODO: Capture failed service responses when available
-          raw_service_request: null, // TODO: Capture request payload when available for failure cases
-          retry_count: newRetryCount,
-          workflow_id: job.workflow_id || null,
-          current_step: job.current_step || null,
-          total_steps: job.total_steps || null,
-          machine_id: process.env.MACHINE_ID || 'unknown',
-          worker_version: process.env.VERSION || 'unknown',
-          attestation_created_at: Date.now()
-        };
+      // 🚨 CRITICAL: Create persistent failure attestation FIRST (for ALL failures)
+      // This ensures we have proof the worker processed it and failed, regardless of retry status
+      // Each failure attempt gets its own attestation for complete audit trail
+      const attestationType = shouldRetry ? 'failure_retry' : 'failure_permanent';
+      const workerFailureRecord = {
+        attestation_type: attestationType,
+        job_id: jobId,
+        worker_id: this.workerId,
+        status: shouldRetry ? 'failed_retrying' : 'failed_permanent',
+        failed_at: failedAt,
+        error_message: error,
+        raw_service_output: null, // TODO: Capture failed service responses when available
+        raw_service_request: null, // TODO: Capture request payload when available for failure cases
+        retry_count: newRetryCount,
+        will_retry: shouldRetry,
+        max_retries: job.max_retries,
+        workflow_id: job.workflow_id || null,
+        current_step: job.current_step || null,
+        total_steps: job.total_steps || null,
+        machine_id: process.env.MACHINE_ID || 'unknown',
+        worker_version: process.env.VERSION || 'unknown',
+        attestation_created_at: Date.now()
+      };
 
-        // Store worker failure attestation with 7-day TTL for recovery
+      // Store worker failure attestation with 7-day TTL for recovery
+      // Use unique key for each failure attempt to preserve all failure history
+      const attestationKey = shouldRetry
+        ? `worker:failure:${jobId}:attempt:${newRetryCount}`
+        : `worker:completion:${jobId}`;
+
+      await this.redis.setex(
+        attestationKey,
+        7 * 24 * 60 * 60, // 7 days
+        JSON.stringify(workerFailureRecord)
+      );
+
+      logger.info(`🔐 Worker ${this.workerId} created ${attestationType} attestation for job ${jobId} (retry: ${newRetryCount}, will_retry: ${shouldRetry})`);
+
+      // Also maintain the original completion key for permanent failures for backwards compatibility
+      if (!shouldRetry) {
         await this.redis.setex(
           `worker:completion:${jobId}`,
           7 * 24 * 60 * 60, // 7 days
           JSON.stringify(workerFailureRecord)
         );
-
-        logger.info(`🔐 Worker ${this.workerId} created failure attestation for job ${jobId} (retry: ${newRetryCount})`);
       }
 
       if (shouldRetry) {
