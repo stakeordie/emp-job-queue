@@ -1874,34 +1874,34 @@ export default function JobForensics() {
                     {/* Mini-App Generation Data */}
                     {generation && (
                       <div className="space-y-3">
-                        <div className="text-lg font-semibold text-pink-700 border-b border-pink-200 pb-2">
+                        <div className="text-lg font-semibold text-orange-700 border-b border-orange-200 pb-2">
                           Mini-App Generation Record
                         </div>
 
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                           <div className="space-y-3">
                             <div>
-                              <div className="text-sm font-medium text-pink-800">Generation ID</div>
-                              <code className="text-xs bg-pink-100 text-pink-800 px-2 py-1 rounded font-mono">
+                              <div className="text-sm font-medium text-orange-800">Generation ID</div>
+                              <code className="text-xs bg-orange-100 text-orange-800 px-2 py-1 rounded font-mono">
                                 {miniappData.generation.id}
                               </code>
                             </div>
                             <div>
-                              <div className="text-sm font-medium text-pink-800">Status</div>
+                              <div className="text-sm font-medium text-orange-800">Status</div>
                               <Badge className={getStatusColor(String(miniappData.generation.status))}>
                                 {String(miniappData.generation.status)}
                               </Badge>
                             </div>
                             <div>
-                              <div className="text-sm font-medium text-pink-800">Created</div>
-                              <div className="text-sm text-pink-700">
+                              <div className="text-sm font-medium text-orange-800">Created</div>
+                              <div className="text-sm text-orange-700">
                                 {formatDate(miniappData.generation.created_at)}
                               </div>
                             </div>
                             {miniappData.generation.retry_count > 0 && (
                               <div>
-                                <div className="text-sm font-medium text-pink-800">Retry Count</div>
-                                <Badge variant="outline" className="text-pink-700">
+                                <div className="text-sm font-medium text-orange-800">Retry Count</div>
+                                <Badge variant="outline" className="text-orange-700">
                                   {miniappData.generation.retry_count}
                                 </Badge>
                               </div>
@@ -1911,13 +1911,13 @@ export default function JobForensics() {
                           <div className="space-y-3">
                             {miniappData.generation.output_url && (
                               <div>
-                                <div className="text-sm font-medium text-pink-800">Output URL</div>
-                                <div className="text-xs text-pink-700 font-mono break-all bg-pink-50 p-2 rounded border">
+                                <div className="text-sm font-medium text-orange-800">Output URL</div>
+                                <div className="text-xs text-orange-700 font-mono break-all bg-orange-50 p-2 rounded border">
                                   <a
                                     href={miniappData.generation.output_url}
                                     target="_blank"
                                     rel="noopener noreferrer"
-                                    className="text-pink-600 hover:underline"
+                                    className="text-orange-600 hover:underline"
                                   >
                                     {miniappData.generation.output_url}
                                   </a>
@@ -1926,13 +1926,13 @@ export default function JobForensics() {
                             )}
                             {miniappData.generation.generated_image && (
                               <div>
-                                <div className="text-sm font-medium text-pink-800">Generated Image</div>
-                                <div className="text-xs text-pink-700 font-mono break-all bg-pink-50 p-2 rounded border">
+                                <div className="text-sm font-medium text-orange-800">Generated Image</div>
+                                <div className="text-xs text-orange-700 font-mono break-all bg-orange-50 p-2 rounded border">
                                   <a
                                     href={miniappData.generation.generated_image}
                                     target="_blank"
                                     rel="noopener noreferrer"
-                                    className="text-pink-600 hover:underline"
+                                    className="text-orange-600 hover:underline"
                                   >
                                     {miniappData.generation.generated_image}
                                   </a>
@@ -1941,7 +1941,7 @@ export default function JobForensics() {
                             )}
                             {miniappData.generation.error_message && (
                               <div>
-                                <div className="text-sm font-medium text-pink-800">Error Message</div>
+                                <div className="text-sm font-medium text-orange-800">Error Message</div>
                                 <div className="text-xs text-red-700 bg-red-50 p-2 rounded border border-red-200">
                                   {miniappData.generation.error_message}
                                 </div>
@@ -1954,20 +1954,20 @@ export default function JobForensics() {
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                           {miniappData.generation.input_data && (
                             <details className="space-y-2">
-                              <summary className="text-sm font-medium text-pink-800 cursor-pointer hover:text-pink-900">
+                              <summary className="text-sm font-medium text-orange-800 cursor-pointer hover:text-orange-900">
                                 Generation Input Data
                               </summary>
-                              <pre className="text-xs bg-pink-50 p-3 rounded border max-h-32 overflow-y-auto">
+                              <pre className="text-xs bg-orange-50 p-3 rounded border max-h-32 overflow-y-auto">
                                 {JSON.stringify(miniappData.generation.input_data, null, 2)}
                               </pre>
                             </details>
                           )}
                           {miniappData.generation.output_data && (
                             <details className="space-y-2">
-                              <summary className="text-sm font-medium text-pink-800 cursor-pointer hover:text-pink-900">
+                              <summary className="text-sm font-medium text-orange-800 cursor-pointer hover:text-orange-900">
                                 Generation Output Data
                               </summary>
-                              <pre className="text-xs bg-pink-50 p-3 rounded border max-h-32 overflow-y-auto">
+                              <pre className="text-xs bg-orange-50 p-3 rounded border max-h-32 overflow-y-auto">
                                 {JSON.stringify(miniappData.generation.output_data, null, 2)}
                               </pre>
                             </details>
