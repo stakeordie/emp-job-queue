@@ -31,6 +31,19 @@ export async function GET(request: NextRequest) {
       await prisma.$connect();
     } catch (connectError) {
       console.error('Database connection failed:', connectError);
+      const errorDetails = {
+        message: connectError instanceof Error ? connectError.message : 'Unknown error',
+        name: connectError instanceof Error ? connectError.name : 'Unknown',
+        code: (connectError as any)?.code || 'Unknown',
+        databaseUrl: process.env.DATABASE_URL ?
+          `${process.env.DATABASE_URL.split('@')[0]}@***` : 'Not set',
+        nodeEnv: process.env.NODE_ENV,
+        currentEnv: process.env.CURRENT_ENV,
+        vercelEnv: process.env.VERCEL_ENV
+      };
+
+      console.error('Database connection error details:', errorDetails);
+
       const connectionFailedResponse: JobsAPIResponse = {
         success: true,
         jobs: [],
@@ -38,7 +51,8 @@ export async function GET(request: NextRequest) {
         limit,
         offset,
         hasMore: false,
-        warning: 'Database connection failed - showing empty results'
+        warning: `Database connection failed: ${errorDetails.message}`,
+        debug: errorDetails
       };
       return NextResponse.json(connectionFailedResponse);
     }

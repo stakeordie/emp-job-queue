@@ -44,7 +44,8 @@
       "WebFetch(domain:www.dash0.com)",
       "WebFetch(domain:www.otelbin.io)",
       "Bash(pnpm d:telcollect:build:*)",
-      "mcp__dash0__ListDatasets"
+      "mcp__dash0__ListDatasets",
+      "Read(//Users/the_dusky/Screenshots/raw/**)"
     ],
     "deny": [],
     "ask": []

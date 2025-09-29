@@ -322,6 +322,15 @@ export interface JobsAPIResponse {
   hasMore: boolean;
   warning?: string;
   error?: string;
+  debug?: {
+    message: string;
+    name: string;
+    code: string;
+    databaseUrl: string;
+    nodeEnv?: string;
+    currentEnv?: string;
+    vercelEnv?: string;
+  };
 }
 
 export interface FailedJobsAnalysis {
