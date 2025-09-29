@@ -1,4 +1,4 @@
-import { PrismaClient } from './generated/index.js'
+import { PrismaClient } from '@prisma/client'
 
 // Create a singleton Prisma client with proper connection pooling (matching EmProps setup)
 export const createPrismaClient = () => {
@@ -56,10 +56,10 @@ export type {
   project as Project,
   customer as Customer,
   profile as Profile
-} from './generated/index.js'
+} from '@prisma/client'
 
 // Export PrismaClient as both type and value
-export { PrismaClient } from './generated/index.js'
+export { PrismaClient } from '@prisma/client'
 
 // Graceful shutdown helper (matching EmProps)
 export const disconnectPrisma = async () => {

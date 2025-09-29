@@ -285,6 +285,12 @@ importers:
       '@melloware/react-logviewer':
         specifier: ^6.3.1
         version: 6.3.1(react-dom@19.1.0(react@19.1.0))(react@19.1.0)(vue@3.5.17(typescript@5.8.3))
+      '@prisma/client':
+        specifier: ^5.22.0
+        version: 5.22.0(prisma@5.22.0)
+      '@prisma/nextjs-monorepo-workaround-plugin':
+        specifier: ^6.16.2
+        version: 6.16.2
       '@radix-ui/react-alert-dialog':
         specifier: ^1.1.14
         version: 1.1.14(@types/react-dom@19.1.6(@types/react@19.1.8))(@types/react@19.1.8)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
@@ -394,6 +400,9 @@ importers:
       jsdom:
         specifier: ^26.1.0
         version: 26.1.0
+      prisma:
+        specifier: ^5.22.0
+        version: 5.22.0
       raw-loader:
         specifier: ^4.0.2
         version: 4.0.2(webpack@5.101.3(esbuild@0.25.6))
@@ -2407,6 +2416,9 @@ packages:
 
   '@prisma/get-platform@5.22.0':
     resolution: {integrity: sha512-pHhpQdr1UPFpt+zFfnPazhulaZYCUqeIcPpJViYoq9R+D/yw4fjE+CtnsnKzPYm0ddUbeXUzjGVGIRVgPDCk4Q==}
+
+  '@prisma/nextjs-monorepo-workaround-plugin@6.16.2':
+    resolution: {integrity: sha512-5/co+MrRpw/8Sx42hG3ZUAYvqnSQq0Znh/XBK9zrg8K8LiC634Sodx78W0pEN9RFkN+dkTcejIUnZ8iRZdZHrQ==}
 
   '@protobufjs/aspromise@1.1.2':
     resolution: {integrity: sha512-j+gKExEuLmKwvz3OgROXtrJ2UG2x8Ch2YZUxahh+s1F2HZ+wAceUNLkvy6zKCPVRkU++ZWQrdxsUeQXmcg4uoQ==}
@@ -9200,6 +9212,8 @@ snapshots:
   '@prisma/get-platform@5.22.0':
     dependencies:
       '@prisma/debug': 5.22.0
+
+  '@prisma/nextjs-monorepo-workaround-plugin@6.16.2': {}
 
   '@protobufjs/aspromise@1.1.2': {}
 
