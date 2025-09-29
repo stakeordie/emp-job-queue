@@ -42,7 +42,7 @@ export const ApiEnvInterface = {
   secret: {
     // Sensitive authentication tokens and API keys
     "AUTH_TOKEN": "AUTH_TOKEN",
-    "DASH0_API_KEY": "DASH0_API_KEY",
+    "DASH0_API_KEY": "TELEMETRY_DASH0_AUTH_TOKEN",
     "EMPROPS_API_AUTH": "EMPROPS_API_AUTH",
     "EMPROPS_API_KEY": "EMPROPS_API_KEY",
     "DATABASE_URL": "DATABASE_URL"

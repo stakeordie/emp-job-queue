@@ -5,28 +5,72 @@
  */
 
 import { TelemetryEvent, OtelSpan } from '@emp/core';
+import { Dash0Forwarder, Dash0Config } from './dash0-forwarder.js';
 
 export interface ProcessorConfig {
   outputFormat: 'console' | 'otel' | 'both';
   batchSize: number;
   flushInterval: number;
+
+  // Dash0 integration
+  dash0?: {
+    enabled: boolean;
+    endpoint: string;
+    authToken: string;
+    dataset: string;
+    batchSize: number;
+    flushInterval: number;
+  };
 }
 
 export class EventProcessor {
   private eventBatch: (TelemetryEvent | OtelSpan)[] = [];
   private flushTimer: NodeJS.Timeout | null = null;
+  private dash0Forwarder?: Dash0Forwarder;
 
   constructor(private config: ProcessorConfig) {
     this.startFlushTimer();
+
+    // Initialize Dash0 forwarder if enabled
+    if (config.dash0?.enabled) {
+      this.dash0Forwarder = new Dash0Forwarder({
+        endpoint: config.dash0.endpoint,
+        authToken: config.dash0.authToken,
+        dataset: config.dash0.dataset,
+        batchSize: config.dash0.batchSize,
+        flushInterval: config.dash0.flushInterval
+      });
+
+      console.log(`📊 Dash0 forwarder initialized (dataset: ${config.dash0.dataset})`);
+    }
   }
 
   async processEvent(event: TelemetryEvent | OtelSpan): Promise<void> {
-    // Add to batch
+    // Validate event exists
+    if (!event) {
+      console.error('Received null or undefined event');
+      return;
+    }
+
+    // Forward to Dash0 immediately for real-time observability
+    if (this.dash0Forwarder) {
+      try {
+        await this.dash0Forwarder.forwardEvent(event);
+      } catch (error) {
+        console.error('Failed to forward event to Dash0:', error);
+      }
+    }
+
+    // Add to batch for other processing
     this.eventBatch.push(event);
 
     // Console output for immediate visibility
     if (this.config.outputFormat === 'console' || this.config.outputFormat === 'both') {
-      this.logData(event);
+      try {
+        this.logData(event);
+      } catch (error) {
+        console.error('Failed to log event:', error);
+      }
     }
 
     // Flush if batch is full
@@ -56,7 +100,14 @@ export class EventProcessor {
     if (this.flushTimer) {
       clearInterval(this.flushTimer);
     }
+
+    // Flush remaining events
     await this.flush();
+
+    // Stop Dash0 forwarder
+    if (this.dash0Forwarder) {
+      await this.dash0Forwarder.stop();
+    }
   }
 
   private logData(data: TelemetryEvent | OtelSpan): void {
@@ -68,7 +119,19 @@ export class EventProcessor {
   }
 
   private logEvent(event: TelemetryEvent): void {
-    const timestamp = new Date(event.timestamp).toISOString();
+    // Safe timestamp handling
+    let timestamp: string;
+    try {
+      const ts = event.timestamp;
+      if (ts === undefined || ts === null || isNaN(Number(ts))) {
+        timestamp = new Date().toISOString();
+      } else {
+        timestamp = new Date(Number(ts)).toISOString();
+      }
+    } catch (error) {
+      timestamp = new Date().toISOString();
+    }
+
     const level = event.level || 'info';
     const levelIcon = this.getLevelIcon(level);
 
@@ -78,8 +141,21 @@ export class EventProcessor {
   }
 
   private logSpan(span: OtelSpan): void {
-    const timestamp = new Date(Math.floor(span.startTime / 1_000_000)).toISOString();
-    const level = span.status.code === 2 ? 'error' : 'info'; // SpanStatusCode.ERROR = 2
+    // Safe timestamp handling for spans
+    let timestamp: string;
+    try {
+      const startTime = span.startTime;
+      if (startTime === undefined || startTime === null || isNaN(Number(startTime))) {
+        timestamp = new Date().toISOString();
+      } else {
+        // Convert nanoseconds to milliseconds
+        timestamp = new Date(Math.floor(Number(startTime) / 1_000_000)).toISOString();
+      }
+    } catch (error) {
+      timestamp = new Date().toISOString();
+    }
+
+    const level = span.status?.code === 2 ? 'error' : 'info'; // SpanStatusCode.ERROR = 2
     const levelIcon = this.getLevelIcon(level);
     const serviceName = span.resource['service.name'];
 
@@ -107,7 +183,30 @@ export class EventProcessor {
     if (event.traceId) context.push(`trace:${event.traceId.slice(0, 8)}`);
 
     const contextStr = context.length > 0 ? `[${context.join(' ')}]` : '';
-    const dataStr = Object.keys(event.data).length > 0 ? JSON.stringify(event.data) : '';
+
+    // Safe JSON stringification with circular reference handling
+    let dataStr = '';
+    if (event.data && Object.keys(event.data).length > 0) {
+      try {
+        dataStr = JSON.stringify(event.data);
+      } catch (error) {
+        // Handle circular references
+        try {
+          const seen = new WeakSet();
+          dataStr = JSON.stringify(event.data, (key, value) => {
+            if (typeof value === 'object' && value !== null) {
+              if (seen.has(value)) {
+                return '[Circular]';
+              }
+              seen.add(value);
+            }
+            return value;
+          });
+        } catch (fallbackError) {
+          dataStr = '[Complex Data]';
+        }
+      }
+    }
 
     return `${contextStr} ${dataStr}`.trim();
   }

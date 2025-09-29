@@ -43,7 +43,7 @@ export const WebhookServiceEnvInterface = {
   },
   secret: {
     "AUTH_TOKEN": "API_AUTH_TOKEN",
-    "DASH0_API_KEY": "TELEMETRY_DASH0_API_KEY",
+    "DASH0_API_KEY": "TELEMETRY_DASH0_AUTH_TOKEN",
     "EMPROPS_API_AUTH": "EMPROPS_API_AUTH",
     "EMPROPS_API_KEY": "EMPROPS_API_KEY"
   }, 

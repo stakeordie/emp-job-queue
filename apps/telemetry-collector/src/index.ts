@@ -24,11 +24,21 @@ class TelemetryCollector {
       blockTime: parseInt(process.env.BLOCK_TIME || '5000'),
     };
 
-    // Processor configuration
+    // Processor configuration with Dash0 integration
     const processorConfig: ProcessorConfig = {
       outputFormat: (process.env.OUTPUT_FORMAT as any) || 'console',
       batchSize: parseInt(process.env.PROCESSOR_BATCH_SIZE || '50'),
       flushInterval: parseInt(process.env.FLUSH_INTERVAL || '10000'),
+
+      // Dash0 configuration
+      dash0: {
+        enabled: process.env.DASH0_ENABLED === 'true',
+        endpoint: process.env.DASH0_TRACES_ENDPOINT || process.env.DASH0_ENDPOINT + '/v1/traces',
+        authToken: process.env.DASH0_AUTH_TOKEN || '',
+        dataset: process.env.DASH0_DATASET || 'development',
+        batchSize: parseInt(process.env.DASH0_BATCH_SIZE || '20'),
+        flushInterval: parseInt(process.env.DASH0_FLUSH_INTERVAL || '5000'),
+      }
     };
 
     // Create processor

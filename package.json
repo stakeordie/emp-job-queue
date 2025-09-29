@@ -126,7 +126,9 @@
     "dev:jresolve": "cd services/job-evaluator && tsx --env-file=.env.secret.local-dev --env-file=.env.local-dev src/resolver.ts",
     "dash:dev:restart": "node scripts/terminal/restart-service.js",
     "test:infrastructure": "./scripts/test-infrastructure.sh",
-    "test:infrastructure:ui": "cd apps/webhook-service && pnpm test:ui"
+    "test:infrastructure:ui": "cd apps/webhook-service && pnpm test:ui",
+    "test:telemetry:integration": "cd apps/telemetry-collector && pnpm test:integration",
+    "test:telemetry:pipeline": "pnpm test:telemetry:integration"
   },
   "devDependencies": {
     "@typescript-eslint/eslint-plugin": "^6.21.0",
