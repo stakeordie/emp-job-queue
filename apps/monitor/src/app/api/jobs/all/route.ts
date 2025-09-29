@@ -26,6 +26,38 @@ export async function GET(request: NextRequest) {
       return NextResponse.json(noDbResponse);
     }
 
+    // Debug: Check what Prisma files exist at runtime
+    try {
+      const fs = require('fs');
+      const path = require('path');
+
+      const possiblePaths = [
+        '/var/task/apps/monitor/src/generated',
+        '/var/task/apps/monitor/.next/server',
+        '/vercel/path0/packages/database/src/generated',
+        '/var/task/apps/monitor/.prisma/client',
+        '/tmp/prisma-engines',
+        './src/generated',
+        '../../packages/database/src/generated'
+      ];
+
+      console.log('🔍 Checking Prisma file locations:');
+      for (const searchPath of possiblePaths) {
+        try {
+          if (fs.existsSync(searchPath)) {
+            const files = fs.readdirSync(searchPath);
+            console.log(`✅ ${searchPath}: ${files.filter(f => f.includes('engine')).join(', ')}`);
+          } else {
+            console.log(`❌ ${searchPath}: not found`);
+          }
+        } catch (e) {
+          console.log(`🔥 ${searchPath}: error reading - ${e.message}`);
+        }
+      }
+    } catch (debugError) {
+      console.log('Debug error:', debugError);
+    }
+
     // Test database connection first
     try {
       await prisma.$connect();
