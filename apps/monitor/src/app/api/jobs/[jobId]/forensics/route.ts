@@ -3,15 +3,16 @@ import { JobForensicsService } from '@/services/jobForensics';
 
 const REDIS_URL = process.env.NEXT_PUBLIC_DEFAULT_REDIS_URL || process.env.HUB_REDIS_URL || process.env.REDIS_URL || 'redis://localhost:6379';
 
-// Helper to convert BigInt to string for JSON serialization
-function serializeBigInt(obj: any): any {
+// Helper to convert BigInt and Date objects for JSON serialization
+function serializeForJson(obj: any): any {
   if (obj === null || obj === undefined) return obj;
   if (typeof obj === 'bigint') return obj.toString();
-  if (Array.isArray(obj)) return obj.map(serializeBigInt);
+  if (obj instanceof Date) return obj.toISOString();
+  if (Array.isArray(obj)) return obj.map(serializeForJson);
   if (typeof obj === 'object') {
     const result: any = {};
     for (const [key, value] of Object.entries(obj)) {
-      result[key] = serializeBigInt(value);
+      result[key] = serializeForJson(value);
     }
     return result;
   }
@@ -48,7 +49,7 @@ export async function GET(
       );
     }
 
-    const serializedData = serializeBigInt({
+    const serializedData = serializeForJson({
       success: true,
       ...forensicsData,
       timestamp: new Date().toISOString()

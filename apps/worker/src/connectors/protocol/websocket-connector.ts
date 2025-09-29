@@ -10,7 +10,10 @@
 
 import { WebSocket } from 'ws';
 import { BaseConnector, ConnectorConfig } from '../base-connector.js';
-import { JobData, JobResult, ProgressCallback, ServiceInfo, logger, ProcessingInstrumentation, sendTrace, SpanContext } from '@emp/core';
+import { JobData, JobResult, ProgressCallback, ServiceInfo, logger } from '@emp/core';
+
+// Note: Telemetry imports removed - replace with WorkflowTelemetryClient if needed
+type SpanContext = any; // Temporary type for build compatibility
 
 // WebSocket-specific configuration - contains base config fields
 export interface WebSocketConnectorConfig {
@@ -463,36 +466,14 @@ export abstract class WebSocketConnector extends BaseConnector {
       
       // Send OTEL trace for received WebSocket message (skip heartbeats/pings)
       
-      if (!isHeartbeat) {
-        try {
-          sendTrace('connector.websocket_receive', {
-            'connector.id': this.connector_id,
-            'connector.type': 'websocket',
-            'service.type': this.config.service_type,
-            'websocket.message.direction': 'received',
-            'websocket.message.size': rawMessage.length.toString(),
-            'websocket.message.type': messageType,
-            'websocket.message.data_type': typeof messageData,
-            'websocket.message.internal_type': messageType,
-            'websocket.message.payload': rawMessage.substring(0, 2000), // Truncate large payloads
-            'component.type': 'connector',
-            'operation.type': 'websocket_receive'
-          }, {
-            events: [
-              {
-                name: 'websocket.message_received',
-                attributes: {
-                  'message.type': messageType,
-                  'message.size': rawMessage.length.toString(),
-                  'timestamp': new Date().toISOString()
-                }
-              }
-            ]
-          });
-        } catch (traceError) {
-          logger.debug('Failed to send WebSocket receive trace', { error: traceError.message });
-        }
-      }
+      // Note: OTEL telemetry temporarily disabled - replace with WorkflowTelemetryClient if needed
+      // if (!isHeartbeat) {
+      //   try {
+      //     await sendTrace('connector.websocket_receive', { ... });
+      //   } catch (traceError) {
+      //     logger.debug('Failed to send WebSocket receive trace', { error: traceError.message });
+      //   }
+      // }
       
       // Classify and route message
       const message: WebSocketMessage = {
@@ -720,38 +701,14 @@ export abstract class WebSocketConnector extends BaseConnector {
       console.log(`🚨🚨🚨\n`);
     }
     
-    // Send OTEL trace for WebSocket message (skip heartbeats/pings)
-    if (!isHeartbeat) {
-      try {
-        sendTrace('connector.websocket_send', {
-          'connector.id': this.connector_id,
-          'connector.type': 'websocket',
-          'service.type': this.config.service_type,
-          'websocket.message.direction': 'sent',
-          'websocket.message.size': messageString.length.toString(),
-          'websocket.message.type': messageType,
-          'websocket.message.data_type': typeof message,
-          'websocket.message.payload': messageString.substring(0, 2000), // Truncate large payloads
-          'component.type': 'connector',
-          'operation.type': 'websocket_send'
-        }, {
-          parent_trace_id: parentSpan?.traceId,
-          parent_span_id: parentSpan?.spanId,
-          events: [
-            {
-              name: 'websocket.message_sent',
-              attributes: {
-                'message.type': messageType,
-                'message.size': messageString.length.toString(),
-                'timestamp': new Date().toISOString()
-              }
-            }
-          ]
-        });
-      } catch (traceError) {
-        logger.debug('Failed to send WebSocket send trace', { error: traceError.message });
-      }
-    }
+    // Note: OTEL telemetry temporarily disabled - replace with WorkflowTelemetryClient if needed
+    // if (!isHeartbeat) {
+    //   try {
+    //     await sendTrace('connector.websocket_send', { ... });
+    //   } catch (traceError) {
+    //     logger.debug('Failed to send WebSocket send trace', { error: traceError.message });
+    //   }
+    // }
     
     this.websocket.send(messageString);
   }

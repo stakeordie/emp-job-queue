@@ -56,21 +56,7 @@ export const EmpSpanTypes = {
   JOB_PROCESS: 'job_process'
 } as const;
 
-// Enhanced EventClient placeholder for compatibility
-export class EventClient {
-  constructor(public config: any) {}
-
-  async send(...args: any[]) { /* no-op */ }
-  async flush() { /* no-op */ }
-  async close() { /* no-op */ }
-  async disconnect() { /* no-op */ }
-
-  // Event methods expected by tests - accepting variable arguments
-  async event(...args: any[]) { /* no-op */ }
-  async jobEvent(...args: any[]) { /* no-op */ }
-  async workerEvent(...args: any[]) { /* no-op */ }
-  async errorEvent(...args: any[]) { /* no-op */ }
-}
+// EventClient is now exported from event-client.js - removed placeholder
 
 // Additional worker app compatibility exports
 export class ProcessingInstrumentation {
@@ -142,7 +128,13 @@ export const sendTrace = async (...args: any[]) => ({
   spanId: 'temp-span-id'
 });
 
-export const createEventClient = (...args: any[]) => new EventClient({});
+// Import and re-export the real EventClient from event-client.js
+import { EventClient as RealEventClient } from './event-client.js';
+export { EventClient } from './event-client.js';
+
+export const createEventClient = (serviceName: string, redisUrl?: string) => {
+  return new RealEventClient(serviceName, redisUrl);
+};
 
 // SpanContext type for instrumentation
 export interface SpanContext {

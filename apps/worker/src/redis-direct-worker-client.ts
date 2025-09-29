@@ -14,6 +14,7 @@ import {
   createEventClient,
   EventTypes,
 } from '@emp/core';
+import { FailureClassifier, FailureClassification } from './types/failure-classification.js';
 
 export class RedisDirectWorkerClient {
   private redis: Redis;
@@ -248,6 +249,16 @@ export class RedisDirectWorkerClient {
     }
 
     await this.redis.publish('worker:events', JSON.stringify(workerConnectedEvent));
+
+    // PLACEHOLDER: Business stream for worker lifecycle event
+    // TODO: await this.writeToBusinessStream('worker:lifecycle', {
+    //   eventType: 'worker.registered',
+    //   workerId: this.workerId,
+    //   machineId: capabilities.machine_id,
+    //   timestamp: Date.now(),
+    //   capabilities: capabilities.services,
+    //   maxConcurrentJobs: capabilities.max_concurrent_jobs
+    // });
 
     // Also publish to worker_status channel for API discovery
     await this.publishWorkerStatus('idle', capabilities);
@@ -667,23 +678,17 @@ export class RedisDirectWorkerClient {
         await this.redis.hset(`jobs:active:${this.workerId}`, jobId, JSON.stringify(jobData));
       }
 
-      // Publish job assignment to progress stream
-      await this.redis.xadd(
-        `progress:${jobId}`,
-        '*',
-        'job_id',
-        jobId,
-        'worker_id',
-        this.workerId,
-        'status',
-        'assigned',
-        'progress',
-        '0',
-        'message',
-        'Job assigned to worker',
-        'assigned_at',
-        new Date().toISOString()
-      );
+      // PLACEHOLDER: Business stream for critical job lifecycle event
+      // TODO: await this.writeToBusinessStream('job:lifecycle', {
+      //   eventType: 'job.claimed',
+      //   jobId,
+      //   workerId: this.workerId,
+      //   timestamp: Date.now(),
+      //   jobData: { workflow_id, service_required, priority }
+      // });
+
+      // Job assignment is telemetry - handled by telemetry system
+      // Users don't need real-time updates about internal worker assignments
 
       return true;
     } catch (error) {
@@ -729,7 +734,7 @@ export class RedisDirectWorkerClient {
   }
 
   /**
-   * Publish job progress to Redis Stream instead of WebSocket
+   * Publish job progress via Redis pub/sub for real-time updates
    */
   async sendJobProgress(jobId: string, progress: JobProgress): Promise<void> {
     try {
@@ -737,35 +742,7 @@ export class RedisDirectWorkerClient {
         `🔄 Worker ${this.workerId} sending progress for job ${jobId}: ${progress.progress}% - ${progress.message || 'no message'}`
       );
 
-      // Phase 1B: Publish progress to Redis Stream instead of WebSocket
-      const streamResult = await this.redis.xadd(
-        `progress:${jobId}`,
-        '*',
-        'job_id',
-        jobId,
-        'worker_id',
-        this.workerId,
-        'progress',
-        progress.progress.toString(),
-        'status',
-        progress.status || 'in_progress',
-        'message',
-        progress.message || '',
-        'current_step',
-        progress.current_step || '',
-        'total_steps',
-        progress.total_steps?.toString() || '',
-        'estimated_completion',
-        progress.estimated_completion || '',
-        'updated_at',
-        new Date().toISOString()
-      );
-
-      logger.info(
-        `✅ Worker ${this.workerId} wrote to Redis stream progress:${jobId} - ID: ${streamResult}`
-      );
-
-      // Also update job progress in hash for compatibility
+      // Update job progress in hash for API queries
       await this.redis.hmset(`job:${jobId}:progress`, {
         progress: progress.progress.toString(),
         status: progress.status || 'in_progress',
@@ -815,27 +792,17 @@ export class RedisDirectWorkerClient {
 
       logger.info(`✅ Worker ${this.workerId} updated job:${jobId} status to IN_PROGRESS`);
 
-      // Publish job processing start to progress stream
-      const streamResult = await this.redis.xadd(
-        `progress:${jobId}`,
-        '*',
-        'job_id',
-        jobId,
-        'worker_id',
-        this.workerId,
-        'status',
-        'processing',
-        'progress',
-        '0',
-        'message',
-        'Job processing started',
-        'started_at',
-        new Date().toISOString()
-      );
+      // PLACEHOLDER: Business stream for critical job lifecycle event
+      // TODO: await this.writeToBusinessStream('job:lifecycle', {
+      //   eventType: 'job.started',
+      //   jobId,
+      //   workerId: this.workerId,
+      //   timestamp: Date.now(),
+      //   jobData: { workflow_id, current_step, total_steps }
+      // });
 
-      logger.info(
-        `✅ Worker ${this.workerId} wrote processing start to stream progress:${jobId} - ID: ${streamResult}`
-      );
+      // Job start is handled by telemetry system and initial progress updates
+      // Users get notified via actual progress events, not internal state changes
 
       logger.debug(`Worker ${this.workerId} marked job ${jobId} as processing`);
     } catch (error) {
@@ -962,8 +929,12 @@ export class RedisDirectWorkerClient {
       };
 
       // Store worker completion attestation with 7-day TTL for recovery
+      // Use workflow-aware key structure for efficient searching
+      const workflowPrefix = jobData.workflow_id ? `workflow-${jobData.workflow_id}:` : '';
+      const completionKey = `worker:completion:${workflowPrefix}job-${jobId}:attempt:${retryCount + 1}`;
+
       await this.redis.setex(
-        `worker:completion:${jobId}`,
+        completionKey,
         7 * 24 * 60 * 60, // 7 days
         JSON.stringify(workerCompletionRecord)
       );
@@ -993,27 +964,30 @@ export class RedisDirectWorkerClient {
       );
       await this.redis.expire('jobs:completed', 24 * 60 * 60); // 24 hours
 
-      // Publish completion to progress stream
-      const streamResult = await this.redis.xadd(
-        `progress:${jobId}`,
-        '*',
-        'job_id',
-        jobId,
-        'worker_id',
-        this.workerId,
-        'status',
-        'completed',
-        'progress',
-        '100',
-        'message',
-        'Job completed successfully',
-        'completed_at',
-        new Date().toISOString()
-      );
+      // PLACEHOLDER: Business stream for critical job lifecycle event
+      // TODO: await this.writeToBusinessStream('job:lifecycle', {
+      //   eventType: 'job.completed',
+      //   jobId,
+      //   workerId: this.workerId,
+      //   timestamp: Date.now(),
+      //   result: result,
+      //   jobData: { workflow_id, current_step, total_steps, workflow_priority }
+      // });
 
-      logger.info(
-        `✅ Worker ${this.workerId} wrote completion to stream progress:${jobId} - ID: ${streamResult}`
-      );
+      // Also write to workflow stream if part of workflow
+      // TODO: if (jobData.workflow_id) {
+      //   await this.writeToBusinessStream('workflow:lifecycle', {
+      //     eventType: 'workflow.job_completed',
+      //     workflowId: jobData.workflow_id,
+      //     jobId,
+      //     currentStep: jobData.current_step,
+      //     totalSteps: jobData.total_steps,
+      //     timestamp: Date.now()
+      //   });
+      // }
+
+      // Job completion is handled by pub/sub events for real-time delivery
+      // Progress streams are redundant for this use case
 
       // Publish completion event to Redis pub/sub for real-time delivery
       const completionEvent = {
@@ -1059,7 +1033,7 @@ export class RedisDirectWorkerClient {
   /**
    * Fail a job via Redis
    */
-  async failJob(jobId: string, error: string, canRetry = true): Promise<void> {
+  async failJob(jobId: string, error: string, canRetry = true, context?: { httpStatus?: number; serviceType?: string; timeout?: boolean }): Promise<void> {
     try {
       logger.info(`🔥 [DEBUG] Redis client failJob called: jobId=${jobId}, canRetry=${canRetry}, error="${error}"`);
 
@@ -1077,34 +1051,100 @@ export class RedisDirectWorkerClient {
 
       logger.info(`🔥 [DEBUG] Calculated: newRetryCount=${newRetryCount}, shouldRetry=${shouldRetry} (canRetry=${canRetry} && ${newRetryCount} < ${job.max_retries})`);
 
-      // 🚨 CRITICAL: Create persistent failure attestation FIRST (for permanent failures)
-      // This ensures we have proof the worker processed it, even if downstream verification fails
-      if (!shouldRetry) {
-        const workerFailureRecord = {
-          job_id: jobId,
-          worker_id: this.workerId,
-          status: 'failed',
-          failed_at: failedAt,
-          error: error,
-          raw_service_output: null, // TODO: Capture failed service responses when available
-          raw_service_request: null, // TODO: Capture request payload when available for failure cases
-          retry_count: newRetryCount,
-          workflow_id: job.workflow_id || null,
-          current_step: job.current_step || null,
-          total_steps: job.total_steps || null,
-          machine_id: process.env.MACHINE_ID || 'unknown',
-          worker_version: process.env.VERSION || 'unknown',
-          attestation_created_at: Date.now()
-        };
+      // 🚨 CRITICAL: Create persistent failure attestation FIRST (for ALL failures)
+      // This ensures we have proof the worker processed it and failed, regardless of retry status
+      // Each failure attempt gets its own attestation for complete audit trail
 
-        // Store worker failure attestation with 7-day TTL for recovery
+      // 🔧 FIX: Get fresh job data from Redis to ensure we have current workflow info
+      const freshJobData = await this.redis.hgetall(`job:${jobId}`);
+
+      logger.info(`🔧 [DEBUG] Fresh job data for attestation: workflow_id=${freshJobData.workflow_id}, current_step=${freshJobData.current_step}, total_steps=${freshJobData.total_steps}`);
+
+      // 🆕 NEW: Classify the failure for structured error analysis
+      const failureClassification = FailureClassifier.classify(error, {
+        serviceType: context?.serviceType || job.service_required,
+        httpStatus: context?.httpStatus,
+        timeout: context?.timeout
+      });
+
+      logger.info(`🔍 [DEBUG] Failure classified as: ${failureClassification.failure_type}/${failureClassification.failure_reason} - ${failureClassification.failure_description}`);
+
+      const attestationType = shouldRetry ? 'failure_retry' : 'failure_permanent';
+      const workerFailureRecord = {
+        attestation_type: attestationType,
+        job_id: jobId,
+        worker_id: this.workerId,
+        status: shouldRetry ? 'failed_retrying' : 'failed_permanent',
+        failed_at: failedAt,
+        error_message: error,
+        // 🆕 NEW: Add structured failure classification
+        failure_type: failureClassification.failure_type,
+        failure_reason: failureClassification.failure_reason,
+        failure_description: failureClassification.failure_description,
+        raw_service_output: null, // TODO: Capture failed service responses when available
+        raw_service_request: null, // TODO: Capture request payload when available for failure cases
+        retry_count: newRetryCount,
+        will_retry: shouldRetry,
+        max_retries: job.max_retries,
+        // 🔧 FIX: Use fresh Redis data to ensure workflow fields are captured
+        workflow_id: freshJobData.workflow_id || null,
+        current_step: freshJobData.current_step || null,
+        total_steps: freshJobData.total_steps || null,
+        workflow_impact: freshJobData.workflow_id ? (!shouldRetry ? 'workflow_terminated' : 'workflow_interrupted') : null,
+        machine_id: process.env.MACHINE_ID || 'unknown',
+        worker_version: process.env.VERSION || 'unknown',
+        attestation_created_at: Date.now()
+      };
+
+      // Store worker failure attestation with 7-day TTL for recovery
+      // Use workflow-aware key structure for efficient searching
+      const workflowPrefix = freshJobData.workflow_id ? `workflow-${freshJobData.workflow_id}:` : '';
+      const attestationKey = shouldRetry
+        ? `worker:failure:${workflowPrefix}job-${jobId}:attempt:${newRetryCount}`
+        : `worker:failure:${workflowPrefix}job-${jobId}:permanent`;
+
+      await this.redis.setex(
+        attestationKey,
+        7 * 24 * 60 * 60, // 7 days
+        JSON.stringify(workerFailureRecord)
+      );
+
+      logger.info(`🔐 Worker ${this.workerId} created ${attestationType} attestation for job ${jobId} (retry: ${newRetryCount}, will_retry: ${shouldRetry})`);
+
+      // Also maintain the original completion key for permanent failures for backwards compatibility
+      if (!shouldRetry) {
+        const backwardsCompatKey = freshJobData.workflow_id
+          ? `worker:completion:workflow-${freshJobData.workflow_id}:job-${jobId}`
+          : `worker:completion:job-${jobId}`;
+
         await this.redis.setex(
-          `worker:completion:${jobId}`,
+          backwardsCompatKey,
           7 * 24 * 60 * 60, // 7 days
           JSON.stringify(workerFailureRecord)
         );
+      }
 
-        logger.info(`🔐 Worker ${this.workerId} created failure attestation for job ${jobId} (retry: ${newRetryCount})`);
+      // 🚨 NEW: Create workflow failure attestation if this job belongs to a workflow
+      if (freshJobData.workflow_id) {
+        const workflowFailureAttestation = {
+          ...workerFailureRecord,
+          workflow_attestation_type: 'job_failure',
+          failed_job_id: jobId,
+          workflow_status: shouldRetry ? 'failed_retrying' : 'failed_permanent',
+          workflow_impact: !shouldRetry ? 'workflow_terminated' : 'workflow_interrupted'
+        };
+
+        const workflowAttestationKey = shouldRetry
+          ? `workflow:failure:${freshJobData.workflow_id}:attempt:${newRetryCount}`
+          : `workflow:failure:${freshJobData.workflow_id}:permanent`;
+
+        await this.redis.setex(
+          workflowAttestationKey,
+          7 * 24 * 60 * 60, // 7 days
+          JSON.stringify(workflowFailureAttestation)
+        );
+
+        logger.info(`🔐 Worker ${this.workerId} created workflow failure attestation for workflow ${freshJobData.workflow_id} (job ${jobId})`);
       }
 
       if (shouldRetry) {
@@ -1158,25 +1198,32 @@ export class RedisDirectWorkerClient {
       // Remove from worker's active jobs
       await this.redis.hdel(`jobs:active:${this.workerId}`, jobId);
 
-      // Publish failure to progress stream
-      await this.redis.xadd(
-        `progress:${jobId}`,
-        '*',
-        'job_id',
-        jobId,
-        'worker_id',
-        this.workerId,
-        'status',
-        shouldRetry ? 'retrying' : 'failed',
-        'message',
-        error,
-        'retry_count',
-        newRetryCount.toString(),
-        'will_retry',
-        shouldRetry.toString(),
-        'failed_at',
-        new Date().toISOString()
-      );
+      // PLACEHOLDER: Business stream for critical job lifecycle event
+      // TODO: await this.writeToBusinessStream('job:lifecycle', {
+      //   eventType: shouldRetry ? 'job.retry_scheduled' : 'job.failed',
+      //   jobId,
+      //   workerId: this.workerId,
+      //   timestamp: Date.now(),
+      //   error: error,
+      //   retryCount: newRetryCount,
+      //   willRetry: shouldRetry,
+      //   jobData: { workflow_id, current_step, total_steps }
+      // });
+
+      // Also write to workflow stream if part of workflow
+      // TODO: if (freshJobData.workflow_id && !shouldRetry) {
+      //   await this.writeToBusinessStream('workflow:lifecycle', {
+      //     eventType: 'workflow.job_failed',
+      //     workflowId: freshJobData.workflow_id,
+      //     jobId,
+      //     error: error,
+      //     workflowImpact: 'workflow_terminated',
+      //     timestamp: Date.now()
+      //   });
+      // }
+
+      // Job failures are handled by pub/sub events below for real-time delivery
+      // Progress streams are redundant for this use case
 
       // Publish job failure event for webhooks (for permanent failures only)
       if (!shouldRetry) {
@@ -1342,4 +1389,37 @@ export class RedisDirectWorkerClient {
       return url.replace(/:([^@:]+)@/, ':***@');
     }
   }
+
+  /**
+   * PLACEHOLDER: Business stream writer for critical lifecycle events
+   * This would write to durable streams that webhook services and orchestrators read from
+   */
+  // private async writeToBusinessStream(streamName: string, event: Record<string, unknown>): Promise<void> {
+  //   try {
+  //     // Add standard envelope fields
+  //     const enrichedEvent = {
+  //       ...event,
+  //       id: `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+  //       version: '1.0',
+  //       source: 'worker-service',
+  //       correlationId: event.jobId || event.workflowId || this.workerId
+  //     };
+  //
+  //     // Write to Redis stream with automatic trimming
+  //     await this.redis.xadd(
+  //       streamName,
+  //       'MAXLEN', '~', 50000, // Keep last 50k events per stream
+  //       '*', // Auto-generate timestamp ID
+  //       'eventType', enrichedEvent.eventType,
+  //       'timestamp', enrichedEvent.timestamp.toString(),
+  //       'source', enrichedEvent.source,
+  //       'data', JSON.stringify(enrichedEvent)
+  //     );
+  //
+  //     logger.debug(`📤 Wrote business event to ${streamName}: ${enrichedEvent.eventType}`);
+  //   } catch (error) {
+  //     logger.error(`Failed to write business event to ${streamName}:`, error);
+  //     // Don't throw - business streams should never block operations
+  //   }
+  // }
 }

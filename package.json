@@ -6,6 +6,8 @@
   "type": "module",
   "scripts": {
     "build": "turbo run build",
+    "build:prod": "CURRENT_ENV=production turbo run build",
+    "build:dev": "CURRENT_ENV=development turbo run build",
     "dev": "turbo run dev",
     "dev:local": "turbo run dev --parallel",
     "dev:prod": "NODE_ENV=production turbo run dev",
@@ -56,7 +58,7 @@
     "dev:all:stop": "./scripts/stop-all.sh",
     "dev:all:logs:watch": "tail -f logs/*.log",
     "dev:all:logs:errors": "tail -f logs/*.log | grep -E '(ERROR|error|Error|failed|Failed|ECONNREFUSED|EADDRINUSE)'",
-    "d:api:build": "pnpm check:core && cd apps/api && node prepare-docker-build.js && docker build --platform linux/amd64 --build-arg BUILD_DATE=$(date -u +%Y-%m-%dT%H:%M:%SZ) -t emprops/api:latest .",
+    "d:api:build": "pnpm build:prod && cd apps/api && node prepare-docker-build.js && docker build --platform linux/amd64 --build-arg BUILD_DATE=$(date -u +%Y-%m-%dT%H:%M:%SZ) -t emprops/api:latest .",
     "d:api:build:nocache": "pnpm check:core && cd apps/api && node prepare-docker-build.js && docker build --no-cache --platform linux/amd64 --build-arg BUILD_DATE=$(date -u +%Y-%m-%dT%H:%M:%SZ) -t emprops/api:latest .",
     "d:api:push": "docker push emprops/api:latest",
     "d:api:build:push": "pnpm d:api:build && pnpm d:api:push",
@@ -69,7 +71,7 @@
     "check:core": "./scripts/check-and-rebuild-core.sh",
     "d:database:build": "pnpm --filter @emp/database build",
     "d:monitor:build": "pnpm --filter monitor build",
-    "d:webhook:build": "pnpm check:core && cd apps/webhook-service && node prepare-docker-build.js && docker build --platform linux/amd64 --build-arg BUILD_DATE=$(date -u +%Y-%m-%dT%H:%M:%SZ) -t emprops/webhook-service:latest .",
+    "d:webhook:build": "pnpm build:prod && cd apps/webhook-service && node prepare-docker-build.js && docker build --platform linux/amd64 --build-arg BUILD_DATE=$(date -u +%Y-%m-%dT%H:%M:%SZ) -t emprops/webhook-service:latest .",
     "d:webhook:build:nocache": "pnpm check:core && cd apps/webhook-service && node prepare-docker-build.js && docker build --no-cache --platform linux/amd64 --build-arg BUILD_DATE=$(date -u +%Y-%m-%dT%H:%M:%SZ) -t emprops/webhook-service:latest .",
     "d:webhook:push": "docker push emprops/webhook-service:latest",
     "d:webhook:build:push": "pnpm d:webhook:build && pnpm d:webhook:push",
@@ -128,7 +130,8 @@
     "test:infrastructure": "./scripts/test-infrastructure.sh",
     "test:infrastructure:ui": "cd apps/webhook-service && pnpm test:ui",
     "test:telemetry:integration": "cd apps/telemetry-collector && pnpm test:integration",
-    "test:telemetry:pipeline": "pnpm test:telemetry:integration"
+    "test:telemetry:pipeline": "pnpm test:telemetry:integration",
+    "prepare": "husky"
   },
   "devDependencies": {
     "@typescript-eslint/eslint-plugin": "^6.21.0",
@@ -138,6 +141,7 @@
     "eslint": "^8.57.1",
     "eslint-config-prettier": "^9.1.0",
     "eslint-plugin-prettier": "^5.5.1",
+    "husky": "^9.1.7",
     "js-yaml": "^4.1.0",
     "playwright": "^1.53.2",
     "prettier": "^3.6.2",

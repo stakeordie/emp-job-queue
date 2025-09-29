@@ -10,7 +10,10 @@
 
 import axios, { AxiosInstance, AxiosRequestConfig, AxiosResponse, AxiosError } from 'axios';
 import { BaseConnector, ConnectorConfig } from '../base-connector.js';
-import { JobData, JobResult, ProgressCallback, ServiceInfo, logger, ProcessingInstrumentation, sendTrace, SpanContext, smartTruncateObject } from '@emp/core';
+import { JobData, JobResult, ProgressCallback, ServiceInfo, logger, smartTruncateObject } from '@emp/core';
+
+// Note: Telemetry imports removed - replace with WorkflowTelemetryClient if needed
+type SpanContext = any; // Temporary type for build compatibility
 
 // HTTP-specific configuration - contains base config fields
 export interface HTTPConnectorConfig {
@@ -493,83 +496,43 @@ export abstract class HTTPConnector extends BaseConnector {
       console.log(`[TRUNCATION-APPLIED-REQUEST] ${requestOutput}`);
       console.log(`🚨🚨🚨\n`);
 
-      // Send OTEL trace for HTTP request start with parent context
-      try {
-        await ProcessingInstrumentation.httpRequest({
-          jobId: jobData.id,
-          method: requestConfig.method?.toUpperCase() || 'POST',
-          url: fullURL,
-          requestSize: requestPayloadSize,
-          timeout: this.httpConfig.request_timeout_ms || 30000,
-          headers: undefined, // Headers are complex objects, skip for telemetry
-          payload: JSON.stringify(smartTruncateObject(requestConfig.data || requestPayloadString)).substring(0, 2000)
-        }, parentSpan);
-      } catch (traceError) {
-        logger.debug('Failed to send HTTP request trace', { error: traceError.message });
-      }
+      // Note: OTEL telemetry temporarily disabled - replace with WorkflowTelemetryClient if needed
+      // try {
+      //   await ProcessingInstrumentation.httpRequest({ ... }, parentSpan);
+      // } catch (traceError) {
+      //   logger.debug('Failed to send HTTP request trace', { error: traceError.message });
+      // }
       
       // Execute HTTP request
       const response = await this.httpClient.request(requestConfig);
       
       const requestDurationMs = Date.now() - startTime;
 
-      // Send OTEL trace for HTTP request completion with request/response data
-      try {
-        const responsePayloadString = response.data ? 
-          (typeof response.data === 'string' ? response.data : JSON.stringify(response.data)) : '';
-        const responsePayloadSize = responsePayloadString.length;
+      // Calculate and log response payload info
+      const responsePayloadString = response.data ?
+        (typeof response.data === 'string' ? response.data : JSON.stringify(response.data)) : '';
+      const responsePayloadSize = responsePayloadString.length;
 
-        // 🚨 BIG PAYLOAD LOGGING: HTTP RESPONSE FROM SERVICE
-        console.log(`\n🚨🚨🚨 HTTP CONNECTOR: RECEIVED RESPONSE FROM ${this.config.service_type.toUpperCase()}`);
-        console.log(`🚨 JOB: ${jobData.id}`);
-        console.log(`🚨 SERVICE: ${this.config.service_type}`);
-        console.log(`🚨 STATUS: ${response.status}`);
-        console.log(`🚨 DURATION: ${requestDurationMs}ms`);
-        console.log(`🚨 RESPONSE PAYLOAD SIZE: ${responsePayloadSize} bytes`);
-        console.log(`🚨 RESPONSE PAYLOAD (SMART TRUNCATED):`);
-        // Use smart truncation to handle base64 data properly (words >25 chars get truncated)
-        const truncatedResponse = smartTruncateObject(response.data || responsePayloadString);
-        const responseOutput = typeof truncatedResponse === 'string' ? truncatedResponse : JSON.stringify(truncatedResponse);
-        console.log(`[TRUNCATION-APPLIED-RESPONSE] ${responseOutput}`);
-        console.log(`🚨🚨🚨\n`);
-        
-        await sendTrace('connector.http_response', {
-          'job.id': jobData.id,
-          'connector.id': this.connector_id,
-          'connector.type': 'http',
-          'service.type': this.config.service_type,
-          'http.method': requestConfig.method?.toUpperCase() || 'POST',
-          'http.url': fullURL,
-          'http.status_code': response.status.toString(),
-          'http.request_size': requestPayloadSize.toString(),
-          'http.response_size': responsePayloadSize.toString(),
-          'http.request.payload': `[TELEMETRY-TRUNCATED] ${JSON.stringify(smartTruncateObject(requestConfig.data || requestPayloadString)).substring(0, 2000)}`,
-          'http.response.payload': `[TELEMETRY-TRUNCATED] ${JSON.stringify(smartTruncateObject(response.data || responsePayloadString)).substring(0, 2000)}`,
-          'request.payload.size': requestPayloadSize.toString(),
-          'response.payload.size': responsePayloadSize.toString(),
-          'operation.success': (response.status >= 200 && response.status < 300).toString(),
-          'operation.duration_ms': requestDurationMs.toString(),
-          'component.type': 'connector',
-          'process.type': 'http_request_response'
-        }, {
-          duration_ms: requestDurationMs,
-          status: (response.status >= 200 && response.status < 300) ? 'ok' : 'error',
-          parent_trace_id: parentSpan?.traceId,
-          parent_span_id: parentSpan?.spanId,
-          events: [
-            {
-              name: 'http.response_received',
-              attributes: {
-                'response.status': response.status.toString(),
-                'response.size': responsePayloadSize.toString(),
-                'response.content_type': response.headers?.['content-type'] || 'unknown'
-              }
-            }
-          ]
-        });
-      } catch (traceError) {
-        logger.debug('Failed to send HTTP response trace', { error: traceError.message });
-      }
+      // 🚨 BIG PAYLOAD LOGGING: HTTP RESPONSE FROM SERVICE
+      console.log(`\n🚨🚨🚨 HTTP CONNECTOR: RECEIVED RESPONSE FROM ${this.config.service_type.toUpperCase()}`);
+      console.log(`🚨 JOB: ${jobData.id}`);
+      console.log(`🚨 SERVICE: ${this.config.service_type}`);
+      console.log(`🚨 STATUS: ${response.status}`);
+      console.log(`🚨 DURATION: ${requestDurationMs}ms`);
+      console.log(`🚨 RESPONSE PAYLOAD SIZE: ${responsePayloadSize} bytes`);
+      console.log(`🚨 RESPONSE PAYLOAD (SMART TRUNCATED):`);
+      // Use smart truncation to handle base64 data properly (words >25 chars get truncated)
+      const truncatedResponse = smartTruncateObject(response.data || responsePayloadString);
+      const responseOutput = typeof truncatedResponse === 'string' ? truncatedResponse : JSON.stringify(truncatedResponse);
+      console.log(`[TRUNCATION-APPLIED-RESPONSE] ${responseOutput}`);
+      console.log(`🚨🚨🚨\n`);
+
+      // Note: OTEL telemetry temporarily disabled - replace with WorkflowTelemetryClient if needed
+      // try {
+      //   await sendTrace('connector.http_response', { ... });
+      // } catch (traceError) {
+      //   logger.debug('Failed to send HTTP response trace', { error: traceError.message });
+      // }
 
       // Validate response
       if (!this.validateServiceResponse(response)) {

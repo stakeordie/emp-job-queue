@@ -30,6 +30,7 @@ import {
   createEventClient,
   EventTypes,
 } from '@emp/core';
+
 import { createRequire } from 'module';
 
 interface PackageInfo {
@@ -3439,6 +3440,51 @@ export class LightweightAPIServer {
         // Clean up workflow context
         this.workflowTraceContexts.delete(workflowId);
         logger.info(`💥 WORKFLOW FAILED: ${workflowId} at step ${stepNumber}/${totalSteps} - ${failureData.error}`);
+
+        // 🚨 PUBLISH WORKFLOW FAILED WEBHOOK EVENT
+        try {
+          await this.redis.publish('workflow_failed', JSON.stringify({
+            workflow_id: workflowId,
+            failed_job_id: jobId,
+            failed_at_step: stepNumber,
+            total_steps: totalSteps,
+            worker_id: failureData.worker_id,
+            error: failureData.error,
+            failed_at: failureData.timestamp || Date.now(),
+            timestamp: Date.now(),
+            workflow_type: jobData.service_required || 'unknown',
+            message: `Workflow failed at step ${stepNumber}/${totalSteps}: ${failureData.error}`
+          }));
+
+          logger.info(`📤 Published workflow_failed event for workflow ${workflowId}`);
+        } catch (error) {
+          logger.error(`❌ Failed to publish workflow_failed event for ${workflowId}:`, error);
+        }
+      }
+    } else if (jobData.workflow_id) {
+      // Handle single-job workflows (workflows with only one step)
+      const workflowId = jobData.workflow_id;
+
+      logger.info(`💥 SINGLE-JOB WORKFLOW FAILED: ${workflowId} - ${failureData.error}`);
+
+      // 🚨 PUBLISH WORKFLOW FAILED WEBHOOK EVENT FOR SINGLE-JOB WORKFLOWS
+      try {
+        await this.redis.publish('workflow_failed', JSON.stringify({
+          workflow_id: workflowId,
+          failed_job_id: jobId,
+          failed_at_step: 1,
+          total_steps: 1,
+          worker_id: failureData.worker_id,
+          error: failureData.error,
+          failed_at: failureData.timestamp || Date.now(),
+          timestamp: Date.now(),
+          workflow_type: jobData.service_required || 'unknown',
+          message: `Single-job workflow failed: ${failureData.error}`
+        }));
+
+        logger.info(`📤 Published workflow_failed event for single-job workflow ${workflowId}`);
+      } catch (error) {
+        logger.error(`❌ Failed to publish workflow_failed event for single-job workflow ${workflowId}:`, error);
       }
     }
 

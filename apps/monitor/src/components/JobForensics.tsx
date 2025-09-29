@@ -869,6 +869,66 @@ export default function JobForensics() {
     }
   };
 
+  // Format date safely, handling invalid dates
+  const formatDate = (dateValue: any): string => {
+    if (!dateValue) return 'N/A';
+
+    // Handle empty objects (common API response issue)
+    if (typeof dateValue === 'object' && Object.keys(dateValue).length === 0) {
+      return 'N/A';
+    }
+
+    try {
+      // Handle different input types
+      let date: Date;
+
+      if (typeof dateValue === 'string') {
+        // If it's already a formatted string, return it
+        if (dateValue.includes('GMT') || dateValue.includes('Z') || dateValue.includes('+')) {
+          date = new Date(dateValue);
+        } else {
+          // Try parsing as timestamp or ISO string
+          const timestamp = parseInt(dateValue);
+          date = isNaN(timestamp) ? new Date(dateValue) : new Date(timestamp);
+        }
+      } else if (typeof dateValue === 'number') {
+        // Handle timestamp (both seconds and milliseconds)
+        date = new Date(dateValue > 1e10 ? dateValue : dateValue * 1000);
+      } else {
+        date = new Date(dateValue);
+      }
+
+      // Check if date is valid
+      if (isNaN(date.getTime())) {
+        return 'N/A';
+      }
+
+      // Format as readable date string
+      return date.toLocaleString('en-US', {
+        year: 'numeric',
+        month: 'short',
+        day: 'numeric',
+        hour: '2-digit',
+        minute: '2-digit',
+        second: '2-digit'
+      });
+    } catch (error) {
+      console.warn('Date formatting error:', error, 'Input:', dateValue);
+      return 'N/A';
+    }
+  };
+
+  // Safely get payment status with fallback
+  const getPaymentStatus = (payment: any): string => {
+    if (!payment) return 'Unknown';
+
+    // Try different possible status field names
+    return payment.payment_status ||
+           payment.status ||
+           payment.state ||
+           'pending';
+  };
+
   // Classify job types with better labels
   const getJobTypeInfo = (job: JobWithUserInfo) => {
     // Check if it has miniapp data (user-facing collection generation)
@@ -944,21 +1004,6 @@ export default function JobForensics() {
   const user = miniappData?.user;
   const generation = miniappData?.generation;
   const payment = miniappData?.payment;
-
-  // Helper function to safely format dates
-  const formatDate = (dateValue: any): string => {
-    if (!dateValue) return 'N/A';
-
-    try {
-      const date = new Date(dateValue);
-      if (isNaN(date.getTime())) {
-        return 'Invalid date';
-      }
-      return date.toLocaleString();
-    } catch (error) {
-      return 'Invalid date';
-    }
-  };
 
   // State for notification attestations from Redis
   const [notificationAttestations, setNotificationAttestations] = useState<any[]>([]);
@@ -1147,7 +1192,7 @@ export default function JobForensics() {
                                       </div>
                                       <div className="text-xs text-muted-foreground flex items-center gap-2 flex-wrap">
                                         <span>
-                                          {job.created_at ? new Date(String(job.created_at)).toLocaleString() : 'Unknown date'}
+                                          {formatDate(job.created_at)}
                                         </span>
                                         {(() => {
                                           const typeInfo = getJobTypeInfo(job);
@@ -1331,19 +1376,19 @@ export default function JobForensics() {
                                   <div className="grid grid-cols-1 md:grid-cols-4 gap-4 text-xs">
                                     <div>
                                       <div className="font-medium">Created</div>
-                                      <div>{job.created_at ? new Date(String(job.created_at)).toLocaleString() : 'N/A'}</div>
+                                      <div>{formatDate(job.created_at)}</div>
                                     </div>
                                     <div>
                                       <div className="font-medium">Started</div>
-                                      <div>{job.started_at ? new Date(String(job.started_at)).toLocaleString() : 'N/A'}</div>
+                                      <div>{formatDate(job.started_at)}</div>
                                     </div>
                                     <div>
                                       <div className="font-medium">Updated</div>
-                                      <div>{job.updated_at ? new Date(String(job.updated_at)).toLocaleString() : 'N/A'}</div>
+                                      <div>{formatDate(job.updated_at)}</div>
                                     </div>
                                     <div>
                                       <div className="font-medium">Completed</div>
-                                      <div>{job.completed_at ? new Date(String(job.completed_at)).toLocaleString() : 'N/A'}</div>
+                                      <div>{formatDate(job.completed_at)}</div>
                                     </div>
                                   </div>
                                 </div>
@@ -1473,7 +1518,7 @@ export default function JobForensics() {
                                           <div>
                                             <div className="text-xs font-medium text-muted-foreground">Generated</div>
                                             <div className="text-xs">
-                                              {new Date(String(job.miniapp_data.created_at)).toLocaleString()}
+                                              {formatDate(job.miniapp_data.created_at)}
                                             </div>
                                           </div>
                                         )}
@@ -1829,34 +1874,34 @@ export default function JobForensics() {
                     {/* Mini-App Generation Data */}
                     {generation && (
                       <div className="space-y-3">
-                        <div className="text-lg font-semibold text-pink-700 border-b border-pink-200 pb-2">
+                        <div className="text-lg font-semibold text-orange-700 border-b border-orange-200 pb-2">
                           Mini-App Generation Record
                         </div>
 
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                           <div className="space-y-3">
                             <div>
-                              <div className="text-sm font-medium text-pink-800">Generation ID</div>
-                              <code className="text-xs bg-pink-100 text-pink-800 px-2 py-1 rounded font-mono">
+                              <div className="text-sm font-medium text-orange-800">Generation ID</div>
+                              <code className="text-xs bg-orange-100 text-orange-800 px-2 py-1 rounded font-mono">
                                 {miniappData.generation.id}
                               </code>
                             </div>
                             <div>
-                              <div className="text-sm font-medium text-pink-800">Status</div>
+                              <div className="text-sm font-medium text-orange-800">Status</div>
                               <Badge className={getStatusColor(String(miniappData.generation.status))}>
                                 {String(miniappData.generation.status)}
                               </Badge>
                             </div>
                             <div>
-                              <div className="text-sm font-medium text-pink-800">Created</div>
-                              <div className="text-sm text-pink-700">
+                              <div className="text-sm font-medium text-orange-800">Created</div>
+                              <div className="text-sm text-orange-700">
                                 {formatDate(miniappData.generation.created_at)}
                               </div>
                             </div>
                             {miniappData.generation.retry_count > 0 && (
                               <div>
-                                <div className="text-sm font-medium text-pink-800">Retry Count</div>
-                                <Badge variant="outline" className="text-pink-700">
+                                <div className="text-sm font-medium text-orange-800">Retry Count</div>
+                                <Badge variant="outline" className="text-orange-700">
                                   {miniappData.generation.retry_count}
                                 </Badge>
                               </div>
@@ -1866,13 +1911,13 @@ export default function JobForensics() {
                           <div className="space-y-3">
                             {miniappData.generation.output_url && (
                               <div>
-                                <div className="text-sm font-medium text-pink-800">Output URL</div>
-                                <div className="text-xs text-pink-700 font-mono break-all bg-pink-50 p-2 rounded border">
+                                <div className="text-sm font-medium text-orange-800">Output URL</div>
+                                <div className="text-xs text-orange-700 font-mono break-all bg-orange-50 p-2 rounded border">
                                   <a
                                     href={miniappData.generation.output_url}
                                     target="_blank"
                                     rel="noopener noreferrer"
-                                    className="text-pink-600 hover:underline"
+                                    className="text-orange-600 hover:underline"
                                   >
                                     {miniappData.generation.output_url}
                                   </a>
@@ -1881,13 +1926,13 @@ export default function JobForensics() {
                             )}
                             {miniappData.generation.generated_image && (
                               <div>
-                                <div className="text-sm font-medium text-pink-800">Generated Image</div>
-                                <div className="text-xs text-pink-700 font-mono break-all bg-pink-50 p-2 rounded border">
+                                <div className="text-sm font-medium text-orange-800">Generated Image</div>
+                                <div className="text-xs text-orange-700 font-mono break-all bg-orange-50 p-2 rounded border">
                                   <a
                                     href={miniappData.generation.generated_image}
                                     target="_blank"
                                     rel="noopener noreferrer"
-                                    className="text-pink-600 hover:underline"
+                                    className="text-orange-600 hover:underline"
                                   >
                                     {miniappData.generation.generated_image}
                                   </a>
@@ -1896,7 +1941,7 @@ export default function JobForensics() {
                             )}
                             {miniappData.generation.error_message && (
                               <div>
-                                <div className="text-sm font-medium text-pink-800">Error Message</div>
+                                <div className="text-sm font-medium text-orange-800">Error Message</div>
                                 <div className="text-xs text-red-700 bg-red-50 p-2 rounded border border-red-200">
                                   {miniappData.generation.error_message}
                                 </div>
@@ -1909,20 +1954,20 @@ export default function JobForensics() {
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                           {miniappData.generation.input_data && (
                             <details className="space-y-2">
-                              <summary className="text-sm font-medium text-pink-800 cursor-pointer hover:text-pink-900">
+                              <summary className="text-sm font-medium text-orange-800 cursor-pointer hover:text-orange-900">
                                 Generation Input Data
                               </summary>
-                              <pre className="text-xs bg-pink-50 p-3 rounded border max-h-32 overflow-y-auto">
+                              <pre className="text-xs bg-orange-50 p-3 rounded border max-h-32 overflow-y-auto">
                                 {JSON.stringify(miniappData.generation.input_data, null, 2)}
                               </pre>
                             </details>
                           )}
                           {miniappData.generation.output_data && (
                             <details className="space-y-2">
-                              <summary className="text-sm font-medium text-pink-800 cursor-pointer hover:text-pink-900">
+                              <summary className="text-sm font-medium text-orange-800 cursor-pointer hover:text-orange-900">
                                 Generation Output Data
                               </summary>
-                              <pre className="text-xs bg-pink-50 p-3 rounded border max-h-32 overflow-y-auto">
+                              <pre className="text-xs bg-orange-50 p-3 rounded border max-h-32 overflow-y-auto">
                                 {JSON.stringify(miniappData.generation.output_data, null, 2)}
                               </pre>
                             </details>
@@ -1946,8 +1991,8 @@ export default function JobForensics() {
                           </div>
                           <div>
                             <div className="text-sm font-medium text-emerald-800">Status</div>
-                            <Badge className={getStatusColor(String(miniappData.payment.payment_status || 'Unknown'))}>
-                              {String(miniappData.payment.payment_status || 'Unknown')}
+                            <Badge className={getStatusColor(getPaymentStatus(miniappData.payment))}>
+                              {getPaymentStatus(miniappData.payment)}
                             </Badge>
                           </div>
                           <div>
@@ -2336,8 +2381,8 @@ export default function JobForensics() {
                       <div>
                         <div className="text-sm font-medium text-muted-foreground mb-2">Attempted Workers</div>
                         <div className="flex flex-wrap gap-2">
-                          {forensicsData.forensics.attempted_workers.map((worker: unknown, idx: number) => (
-                            <Badge key={idx} variant="outline">{String(worker)}</Badge>
+                          {forensicsData.forensics.attempted_workers.map((worker: string, idx: number) => (
+                            <Badge key={idx} variant="outline">{worker}</Badge>
                           ))}
                         </div>
                       </div>

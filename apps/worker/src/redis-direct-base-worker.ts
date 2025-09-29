@@ -25,9 +25,13 @@ import {
   JobStatus,
   ConnectorStatus,
   logger,
-  JobInstrumentation,
   smartTruncateObject,
 } from '@emp/core';
+
+// Import telemetry for Redis Stream events
+import { getWorkerTelemetry } from '@emp/core';
+
+// Note: JobInstrumentation removed - replace with WorkflowTelemetryClient if needed
 import { readFileSync } from 'fs';
 import * as os from 'os';
 
@@ -94,6 +98,10 @@ export class RedisDirectBaseWorker {
   private pollIntervalMs: number;
   private maxConcurrentJobs: number;
   private jobTimeoutMinutes: number;
+
+  // Telemetry client for Redis Stream events
+  private telemetry = getWorkerTelemetry();
+  private heartbeatInterval?: NodeJS.Timeout;
 
   constructor(
     workerId: string,
@@ -526,6 +534,18 @@ export class RedisDirectBaseWorker {
       this.status = WorkerStatus.IDLE;
       this.running = true;
 
+      // Send telemetry events for worker startup
+      await this.telemetry.workerEvent(this.workerId, 'worker.registered', {
+        machineId: this.machineId,
+        version: getWorkerVersion(),
+        capabilities: this.capabilities.services || [],
+        hardwareSpecs: this.capabilities.hardware,
+        connectorTypes: Object.keys(models),
+        maxConcurrentJobs: this.maxConcurrentJobs,
+        pollIntervalMs: this.pollIntervalMs,
+        status: 'idle'
+      });
+
       // Send worker connected event with version info and capabilities
       await this.sendMachineEvent('worker_status_changed', {
         status: 'idle',
@@ -546,6 +566,9 @@ export class RedisDirectBaseWorker {
 
       // Start periodic connector status updates
       this.startConnectorStatusUpdates();
+
+      // Start worker heartbeat telemetry
+      this.startWorkerHeartbeat();
 
       // Setup and start job health monitoring
       this.jobHealthMonitor.setHealthCheckCallback(async (jobId, job, result) => {
@@ -596,6 +619,12 @@ export class RedisDirectBaseWorker {
     if (this.connectorStatusInterval) {
       clearInterval(this.connectorStatusInterval);
       this.connectorStatusInterval = undefined;
+    }
+
+    // Stop worker heartbeat
+    if (this.heartbeatInterval) {
+      clearInterval(this.heartbeatInterval);
+      this.heartbeatInterval = undefined;
     }
 
     // Stop job health monitoring
@@ -650,6 +679,19 @@ export class RedisDirectBaseWorker {
     this.redisClient.startPolling(this.capabilities, async (job: Job) => {
       await this.handleJobAssignment(job);
     });
+  }
+
+  /**
+   * Generate a hash of the job payload for failure analysis
+   */
+  private generatePayloadHash(payload: any): string {
+    try {
+      const crypto = require('crypto');
+      const payloadStr = typeof payload === 'string' ? payload : JSON.stringify(payload);
+      return crypto.createHash('sha256').update(payloadStr).digest('hex').substring(0, 16);
+    } catch (error) {
+      return 'hash_failed';
+    }
   }
 
   /**
@@ -723,6 +765,16 @@ export class RedisDirectBaseWorker {
     this.jobStartTimes.set(job.id, Date.now());
     this.status = WorkerStatus.BUSY;
 
+    // Send telemetry event for job claimed
+    await this.telemetry.jobEvent(job.id, 'job.claimed', {
+      workerId: this.workerId,
+      machineId: this.machineId,
+      serviceRequired: job.service_required,
+      jobType: job.service_required,
+      priority: job.priority || 'normal',
+      claimTime: Date.now()
+    });
+
     // 🚨 BIG TRACE LOGGING: CREATING JOB CLAIM SPAN
     console.log(`\n🚨🚨🚨 WORKER: CREATING CLAIM SPAN FOR JOB ${job.id}`);
     console.log(`🚨 JOB: ${job.id}`);
@@ -736,14 +788,12 @@ export class RedisDirectBaseWorker {
       ? { traceId: job.job_trace_id, spanId: job.job_span_id }
       : undefined;
     
-    const claimSpanContext = await JobInstrumentation.claim({
-      jobId: job.id,
-      workerId: this.workerId,
-      machineId: process.env.MACHINE_ID || 'unknown',
-      connectorId: 'unknown', // Will be determined when connector is assigned
-      serviceType: job.service_required,
-      queueWaitTime: Date.now() - new Date(job.created_at).getTime()
-    }, parentSpanContext);
+    // Note: JobInstrumentation telemetry temporarily disabled - replace with WorkflowTelemetryClient if needed
+    const claimSpanContext = {
+      traceId: `claim_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+      spanId: `span_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`
+    };
+    // await JobInstrumentation.claim({ ... }, parentSpanContext);
 
     // 🚨 BIG TRACE LOGGING: CLAIM SPAN CREATED
     console.log(`\n🚨🚨🚨 WORKER: CLAIM SPAN CREATED FOR JOB ${job.id}`);
@@ -790,7 +840,33 @@ export class RedisDirectBaseWorker {
       // Extract clean error information for logging
       const cleanError = this.extractCleanErrorInfo(error);
       logger.error(`Worker ${this.workerId} job ${job.id} processing failed:`, cleanError);
-      await this.failJob(job.id, error instanceof Error ? error.message : 'Unknown error');
+
+      // Enhanced failure information for attestation
+      const failureDetails = {
+        error_message: error instanceof Error ? error.message : 'Unknown error',
+        error_type: error instanceof Error ? error.constructor.name : 'UnknownError',
+        stack_trace: error instanceof Error ? error.stack : null,
+        connector_type: job.service_required,
+        job_payload_hash: this.generatePayloadHash(job.payload),
+        processing_duration: Date.now() - (this.jobStartTimes.get(job.id) || Date.now()),
+        memory_usage: process.memoryUsage(),
+        node_version: process.version,
+        platform: process.platform,
+        timestamp: Date.now()
+      };
+
+      // Extract context from thrown error if available (for AsyncRESTConnector errors)
+      const context: { httpStatus?: number; timeout?: boolean } = {};
+      if (error && typeof error === 'object') {
+        if ((error as any).httpStatus) {
+          context.httpStatus = (error as any).httpStatus;
+        }
+        if ((error as any).timeout) {
+          context.timeout = (error as any).timeout;
+        }
+      }
+
+      await this.failJob(job.id, JSON.stringify(failureDetails), true, context);
     }
   }
 
@@ -803,21 +879,37 @@ export class RedisDirectBaseWorker {
     // Get claim span context for process span parent
     const claimSpanContext = this.jobClaimSpanContexts.get(job.id);
     
-    // Start process span with claim as parent
-    const processSpanContext = await JobInstrumentation.process({
-      jobId: job.id,
-      connectorId: connector.connector_id,
-      serviceType: connector.service_type,
-      estimatedDuration: undefined // We don't have duration estimates yet
-    }, claimSpanContext);
+    // Note: JobInstrumentation telemetry temporarily disabled - replace with WorkflowTelemetryClient if needed
+    const processSpanContext = {
+      traceId: `process_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+      spanId: `span_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`
+    };
+    // await JobInstrumentation.process({ ... }, claimSpanContext);
 
     // Store process span context for use in complete span and connector operations
     if (processSpanContext) {
       this.jobProcessSpanContexts.set(job.id, processSpanContext);
     }
 
+    // Transform payload for simulation mode when needed BEFORE using it
+    let transformedPayload = job.payload;
+    if (connector.service_type === 'simulation' && job.service_required !== 'simulation') {
+      transformedPayload = this.transformPayloadForSimulation(job.service_required, job.payload);
+      //logger.info(`Transformed ${job.service_required} payload for simulation mode`);
+    }
+
     // Update job status to IN_PROGRESS when processing begins
     await this.redisClient.startJobProcessing(job.id);
+
+    // Send telemetry event for job started
+    await this.telemetry.jobEvent(job.id, 'job.started', {
+      workerId: this.workerId,
+      machineId: this.machineId,
+      serviceRequired: job.service_required,
+      connectorType: connector.service_type,
+      startTime: Date.now(),
+      payloadSize: JSON.stringify(transformedPayload).length
+    });
 
     // Send job started event to machine aggregator
     if (process.env.UNIFIED_MACHINE_STATUS === 'true') {
@@ -836,15 +928,28 @@ export class RedisDirectBaseWorker {
         ...progress,
         status: progress.status || JobStatus.IN_PROGRESS, // Ensure status is always present
       };
+
+      // Dual-mode progress tracking: WebSocket (existing) + Redis Stream (new)
+
+      // 1. Send to existing WebSocket system via Redis pubsub
       await this.redisClient.sendJobProgress(job.id, progressWithStatus);
+
+      // 2. Send to Redis Stream telemetry system
+      await this.telemetry.jobEvent(job.id, 'job.progress', {
+        workerId: this.workerId,
+        machineId: this.machineId,
+        serviceType: job.service_required,
+        progress: progressWithStatus.progress || 0,
+        message: progressWithStatus.message || '',
+        status: progressWithStatus.status,
+        currentStep: progressWithStatus.current_step,
+        totalSteps: progressWithStatus.total_steps,
+        estimatedCompletion: progressWithStatus.estimated_completion,
+        timestamp: Date.now()
+      });
     };
 
-    // Transform payload for simulation mode when needed
-    let transformedPayload = job.payload;
-    if (connector.service_type === 'simulation' && job.service_required !== 'simulation') {
-      transformedPayload = this.transformPayloadForSimulation(job.service_required, job.payload);
-      //logger.info(`Transformed ${job.service_required} payload for simulation mode`);
-    }
+    // transformedPayload already declared and processed above
 
     // 🔍 DEBUG: Log what ctx we have from Redis job data
     logger.info(`🔍🔍🔍 WORKER JOB CTX DEBUG for job ${job.id} 🔍🔍🔍`);
@@ -891,7 +996,17 @@ export class RedisDirectBaseWorker {
       const errorMessage = result.error || `Job processing failed for service: ${job.service_required}`;
       const canRetry = (result as any).shouldRetry !== false; // Default to true unless explicitly false
       logger.error(`Job ${job.id} failed: ${errorMessage} (retryable: ${canRetry})`);
-      await this.failJob(job.id, errorMessage, canRetry);
+
+      // Extract context from result if available (for AsyncRESTConnector errors)
+      const context: { httpStatus?: number; timeout?: boolean } = {};
+      if ((result as any).httpStatus) {
+        context.httpStatus = (result as any).httpStatus;
+      }
+      if ((result as any).timeout) {
+        context.timeout = (result as any).timeout;
+      }
+
+      await this.failJob(job.id, errorMessage, canRetry, context);
     }
   }
 
@@ -907,12 +1022,18 @@ export class RedisDirectBaseWorker {
       const startTime = this.jobStartTimes.get(jobId);
       const duration = startTime ? Date.now() - startTime : 0;
       
-      await JobInstrumentation.complete({
-        jobId: jobId,
-        status: 'completed',
-        result: result,
-        duration: duration
-      }, processSpanContext);
+      // Note: JobInstrumentation telemetry temporarily disabled - replace with WorkflowTelemetryClient if needed
+      // await JobInstrumentation.complete({ ... }, processSpanContext);
+
+      // Send telemetry event for job completed
+      await this.telemetry.jobEvent(jobId, 'job.completed', {
+        workerId: this.workerId,
+        machineId: this.machineId,
+        serviceType: job?.service_required,
+        duration: duration,
+        completionTime: Date.now(),
+        success: true
+      });
 
       await this.redisClient.completeJob(jobId, result);
       await this.finishJob(jobId);
@@ -940,29 +1061,41 @@ export class RedisDirectBaseWorker {
     }
   }
 
-  private async failJob(jobId: string, error: string, canRetry = true): Promise<void> {
+  private async failJob(jobId: string, error: string, canRetry = true, context?: { httpStatus?: number; timeout?: boolean }): Promise<void> {
     try {
       logger.info(`🔥 [DEBUG] Base worker failJob called: jobId=${jobId}, canRetry=${canRetry}, error="${error}"`);
-      
+
       // Get job info before failing to update connector status
       const job = this.currentJobs.get(jobId);
-      
+
       // Get process span context for complete span parent
       const processSpanContext = this.jobProcessSpanContexts.get(jobId);
-      
+
       // Complete the job with failure instrumentation
       const startTime = this.jobStartTimes.get(jobId);
       const duration = startTime ? Date.now() - startTime : 0;
-      
-      await JobInstrumentation.complete({
-        jobId: jobId,
-        status: 'failed',
+
+      // Note: JobInstrumentation telemetry temporarily disabled - replace with WorkflowTelemetryClient if needed
+      // await JobInstrumentation.complete({ ... }, processSpanContext);
+
+      // Send telemetry event for job failed
+      await this.telemetry.jobEvent(jobId, 'job.failed', {
+        workerId: this.workerId,
+        machineId: this.machineId,
+        serviceType: job?.service_required,
+        duration: duration,
+        failureTime: Date.now(),
         error: error,
-        duration: duration
-      }, processSpanContext);
+        canRetry: canRetry,
+        success: false
+      });
 
       logger.info(`🔥 [DEBUG] About to call redisClient.failJob with canRetry=${canRetry}`);
-      await this.redisClient.failJob(jobId, error, canRetry);
+      // Pass context with service type information for failure classification
+      await this.redisClient.failJob(jobId, error, canRetry, {
+        ...context,
+        serviceType: job?.service_required
+      });
       logger.info(`🔥 [DEBUG] redisClient.failJob completed successfully`);
       await this.finishJob(jobId);
 
@@ -1036,6 +1169,17 @@ export class RedisDirectBaseWorker {
     const newStatus = this.currentJobs.size > 0 ? WorkerStatus.BUSY : WorkerStatus.IDLE;
     const statusChanged = this.status !== newStatus;
     this.status = newStatus;
+
+    // Send telemetry event for status change
+    if (statusChanged) {
+      await this.telemetry.workerEvent(this.workerId, 'worker.status_changed', {
+        machineId: this.machineId,
+        oldStatus: statusChanged ? (newStatus === WorkerStatus.IDLE ? 'busy' : 'idle') : this.status,
+        newStatus: this.status,
+        currentJobs: this.currentJobs.size,
+        timestamp: Date.now()
+      });
+    }
 
     // Send status change event if status changed
     if (statusChanged) {
@@ -1427,6 +1571,24 @@ export class RedisDirectBaseWorker {
     if (this.currentJobs.has(jobId)) {
       this.jobHealthMonitor.updateWebSocketActivity(jobId);
     }
+  }
+
+  /**
+   * Start worker heartbeat telemetry
+   */
+  private startWorkerHeartbeat(): void {
+    // Send heartbeat every 30 seconds
+    this.heartbeatInterval = setInterval(async () => {
+      await this.telemetry.workerEvent(this.workerId, 'worker.heartbeat', {
+        machineId: this.machineId,
+        status: this.status,
+        currentJobs: this.currentJobs.size,
+        maxConcurrentJobs: this.maxConcurrentJobs,
+        uptime: process.uptime(),
+        memoryUsage: process.memoryUsage(),
+        timestamp: Date.now()
+      });
+    }, 30000); // 30 seconds
   }
 
   /**

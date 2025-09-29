@@ -1,4 +1,5 @@
 import type { NextConfig } from "next";
+const { PrismaPlugin } = require('@prisma/nextjs-monorepo-workaround-plugin');
 
 const path = require('path');
 
@@ -10,6 +11,13 @@ const nextConfig: NextConfig = {
   eslint: {
     // Always skip ESLint for forensics/monitoring tool - we use relaxed typing
     ignoreDuringBuilds: true,
+  },
+  webpack: (config: any, { isServer }: { isServer: boolean }) => {
+    if (isServer) {
+      // Add Prisma monorepo workaround plugin for proper binary bundling
+      config.plugins = [...config.plugins, new PrismaPlugin()];
+    }
+    return config;
   },
   images: {
     remotePatterns: [

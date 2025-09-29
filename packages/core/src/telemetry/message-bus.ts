@@ -5,8 +5,6 @@ import { logger as baseLogger } from '../utils/logger.js';
 import winston from 'winston';
 // Fluent Bit transport removed - direct logging approach only
 // Note: OTEL client imports removed - using WorkflowTelemetryClient instead
-// Temporary placeholder function to make build work
-const sendTrace = async (...args: any[]) => ({ traceId: 'temp', spanId: 'temp' });
 
 export interface ConnectorLogContext {
   machineId: string;
@@ -217,12 +215,9 @@ export class MessageBus {
       spanAttributes['workflow.triggers_count'] = workflowTriggers.length;
       spanAttributes['workflow.will_trigger'] = pattern.confidence > 0.7;
       
-      // Send trace to collector and get IDs
-      const { traceId, spanId } = await sendTrace('message-bus.interpret', spanAttributes, {
-        duration_ms: Date.now() - startTime,
-        events,
-        status: 'ok'
-      });
+      // Note: OTEL tracing removed - using WorkflowTelemetryClient instead
+      const traceId = `trace_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+      const spanId = `span_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
       
       // Create operational context with universal structure
       const operationalContext = {
@@ -309,12 +304,7 @@ export class MessageBus {
         }
       });
       
-      // Send error trace to collector
-      await sendTrace('message-bus.interpret', spanAttributes, {
-        duration_ms: Date.now() - startTime,
-        events,
-        status: 'error'
-      });
+      // Note: OTEL tracing removed - using WorkflowTelemetryClient instead
       
       // Still log the error through normal channels
       this.logger.error('MessageBus processing failed', {
@@ -499,36 +489,9 @@ export class MessageBus {
 
   // Route to operational workflows (placeholder for future workflow integration)
   private async routeToWorkflows(triggers: string[], context: any): Promise<void> {
-    const startTime = Date.now();
-    
-    // Collect events for the workflow span
-    const events: Array<{ name: string; attributes?: Record<string, any> }> = [];
-    const attributes = {
-      'workflow.triggers_count': triggers.length,
-      'workflow.triggers': triggers.join(','),
-      'workflow.context_keys': Object.keys(context).join(','),
-    };
-
     try {
-      // Record each trigger as a span event
-      triggers.forEach((trigger, index) => {
-        events.push({
-          name: 'workflow.trigger',
-          attributes: {
-            'trigger.name': trigger,
-            'trigger.index': index.toString(),
-            'trigger.source': context.message_source || 'unknown',
-          }
-        });
-      });
-
-      // Send workflow span to collector
-      const { traceId } = await sendTrace('message-bus.route_workflows', attributes, {
-        duration_ms: Date.now() - startTime,
-        events,
-        status: 'ok',
-        parent_trace_id: context.trace_id
-      });
+      // Note: OTEL tracing removed - using WorkflowTelemetryClient instead
+      const traceId = `workflow_trace_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
 
       // This is where we would integrate with workflow systems
       // For now, just enhance the logging with workflow context
@@ -542,22 +505,10 @@ export class MessageBus {
 
       // Future: Route to workflow orchestration system
       // await this.workflowOrchestrator.trigger(triggers, context);
-      
+
     } catch (error) {
-      // Send error trace
-      await sendTrace('message-bus.route_workflows', attributes, {
-        duration_ms: Date.now() - startTime,
-        events: [...events, {
-          name: 'workflow.routing_failed',
-          attributes: {
-            'error.name': error.name,
-            'error.message': error.message,
-          }
-        }],
-        status: 'error',
-        parent_trace_id: context.trace_id
-      });
-      
+      // Note: OTEL tracing removed - using WorkflowTelemetryClient instead
+
       throw error;
     }
   }

@@ -36,6 +36,7 @@ export * from './log-interpretation/index.js';
 // Telemetry and Observability
 export * from './telemetry/message-bus.js';
 export * from './telemetry/connector-log-schemas.js';
+export * from './telemetry/event-client.js';
 
 // Workflow Telemetry (New service-aware system)
 export * from './workflow-telemetry.js';

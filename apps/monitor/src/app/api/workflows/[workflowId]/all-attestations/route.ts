@@ -44,14 +44,53 @@ export async function GET(
           // Extract job IDs from API attestation to find worker attestations
           if (parsed.job_completion_data?.job_id) {
             // Single job workflow
-            const workerKey = `worker:completion:${parsed.job_completion_data.job_id}`;
-            const workerData = await redis.get(workerKey);
+            const jobId = parsed.job_completion_data.job_id;
+            const workerKey = `worker:completion:${jobId}`;
+            let workerData = await redis.get(workerKey);
+            let foundKey = workerKey;
+
+            // If no basic completion attestation, search for completion attempts
+            if (!workerData) {
+              const completionKeys = await redis.keys(`worker:completion:${jobId}:attempt:*`);
+              if (completionKeys.length > 0) {
+                // Sort by attempt number descending (latest first)
+                completionKeys.sort((a, b) => {
+                  const attemptA = parseInt(a.split(':').pop() || '0');
+                  const attemptB = parseInt(b.split(':').pop() || '0');
+                  return attemptB - attemptA;
+                });
+                foundKey = completionKeys[0];
+                workerData = await redis.get(foundKey);
+              }
+            }
+
+            // If no completion attestation, look for failure attestations
+            if (!workerData) {
+              const failureKeys = await redis.keys(`worker:failure:${jobId}:*`);
+              if (failureKeys.length > 0) {
+                // Sort to prioritize permanent failures over attempts, then by attempt number
+                failureKeys.sort((a, b) => {
+                  // Check if either is permanent
+                  if (a.endsWith(':permanent')) return -1;
+                  if (b.endsWith(':permanent')) return 1;
+
+                  // Both are attempts, sort by attempt number descending
+                  const attemptA = parseInt(a.split(':').pop() || '0');
+                  const attemptB = parseInt(b.split(':').pop() || '0');
+                  return attemptB - attemptA; // Descending order (latest first)
+                });
+                foundKey = failureKeys[0];
+                workerData = await redis.get(foundKey);
+              }
+            }
+
             if (workerData) {
-              const exists = workerAttestations.find(w => w.job_id === parsed.job_completion_data.job_id);
+              const exists = workerAttestations.find(w => w.job_id === jobId);
               if (!exists) {
                 workerAttestations.push({
                   ...JSON.parse(workerData),
-                  key: workerKey
+                  key: foundKey,
+                  attestation_type: foundKey.includes('failure') ? 'failure' : 'completion'
                 });
               }
             }
@@ -62,12 +101,44 @@ export async function GET(
       }
     }
 
-    // Also search for any worker attestations that have this workflow_id
-    // This handles multi-step workflows
-    const allWorkerKeys = await redis.keys('worker:completion:step-*');
+    // 🚀 EFFICIENT: Search directly for workflow-specific attestations using new key structure
+    const workflowCompletionKeys = await redis.keys(`worker:completion:workflow-${workflowId}:*`);
+    const workflowFailureKeys = await redis.keys(`worker:failure:workflow-${workflowId}:*`);
 
-    // Check each worker attestation for matching workflow_id
-    for (const key of allWorkerKeys) {
+    // 🚨 Also search for workflow-level failure attestations
+    const workflowLevelFailureKeys = await redis.keys(`workflow:failure:${workflowId}:*`);
+
+    // Combine all workflow-specific keys - NO MORE FILTERING NEEDED!
+    const allWorkflowKeys = [...workflowCompletionKeys, ...workflowFailureKeys];
+
+    // Process each workflow-specific attestation (all are guaranteed to match this workflow)
+    for (const key of allWorkflowKeys) {
+      const data = await redis.get(key);
+      if (data) {
+        try {
+          const parsed = JSON.parse(data);
+          // Check if we already have this one
+          const exists = workerAttestations.find(w => w.job_id === parsed.job_id);
+          if (!exists) {
+            workerAttestations.push({
+              ...parsed,
+              key,
+              attestation_type: key.includes('failure') ? 'failure' : 'completion'
+            });
+          }
+        } catch (e) {
+          console.error(`Failed to parse workflow attestation ${key}:`, e);
+        }
+      }
+    }
+
+    // 🔄 BACKWARDS COMPATIBILITY: Still search old patterns for existing data
+    const allWorkerCompletionKeys = await redis.keys('worker:completion:step-*');
+    const allWorkerFailureKeys = await redis.keys('worker:failure:step-*');
+    const allOldWorkerKeys = [...allWorkerCompletionKeys, ...allWorkerFailureKeys];
+
+    // Check each old-pattern attestation for matching workflow_id (less efficient but needed for backwards compatibility)
+    for (const key of allOldWorkerKeys) {
       const data = await redis.get(key);
       if (data) {
         try {
@@ -78,12 +149,34 @@ export async function GET(
             if (!exists) {
               workerAttestations.push({
                 ...parsed,
-                key
+                key,
+                attestation_type: key.includes('failure') ? 'failure' : 'completion'
               });
             }
           }
         } catch (e) {
-          console.error(`Failed to parse attestation ${key}:`, e);
+          console.error(`Failed to parse old attestation ${key}:`, e);
+        }
+      }
+    }
+
+    // 🚨 NEW: Process workflow-level failure attestations
+    for (const key of workflowLevelFailureKeys) {
+      const data = await redis.get(key);
+      if (data) {
+        try {
+          const parsed = JSON.parse(data);
+          // Check if we already have this job in worker attestations
+          const exists = workerAttestations.find(w => w.job_id === parsed.job_id);
+          if (!exists) {
+            workerAttestations.push({
+              ...parsed,
+              key,
+              attestation_type: 'workflow_failure'
+            });
+          }
+        } catch (e) {
+          console.error(`Failed to parse workflow failure attestation ${key}:`, e);
         }
       }
     }

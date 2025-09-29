@@ -89,6 +89,7 @@ export class WebhookProcessor extends EventEmitter {
     'worker_status', // Worker status events (published by API/workers)
     'workflow_submitted', // Workflow start events (published by API)
     'workflow_completed', // Verified workflow completion events (published by API)
+    'workflow_failed', // Workflow failure events (published by API)
     'machine:status:*', // Machine status events (pattern subscription)
   ];
 

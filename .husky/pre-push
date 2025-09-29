@@ -1,0 +1,10 @@
+echo "🔍 Running production build check before push..."
+FORCE_COLOR=0 TURBO_UI=stream pnpm build:prod
+
+if [ $? -ne 0 ]; then
+  echo "❌ Production build failed - push aborted"
+  echo "💡 Fix the build issues and try again"
+  exit 1
+fi
+
+echo "✅ Production build successful - proceeding with push"
