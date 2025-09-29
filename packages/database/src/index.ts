@@ -56,13 +56,13 @@ export type {
   project,
   project_history,
   profile,
-} from './generated/index.js'
+} from '@prisma/client'
 
 // Export enums as values (not just types)
-export { social_org_enum } from './generated/index.js'
+export { social_org_enum } from '@prisma/client'
 
 // Re-export Prisma namespace
-export { Prisma } from './generated/index.js'
+export { Prisma } from '@prisma/client'
 
 // Export common database operations
 export * from './operations.js'
