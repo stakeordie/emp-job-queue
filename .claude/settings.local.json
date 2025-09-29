@@ -46,7 +46,11 @@
       "Bash(pnpm d:telcollect:build:*)",
       "mcp__dash0__ListDatasets",
       "Read(//Users/the_dusky/Screenshots/raw/**)",
-      "Bash(git rm:*)"
+      "Bash(git rm:*)",
+      "Bash(lsof:*)",
+      "Bash(xargs kill:*)",
+      "Bash(pnpm dev:*)",
+      "Bash(pnpm debug:redis-only:*)"
     ],
     "deny": [],
     "ask": []

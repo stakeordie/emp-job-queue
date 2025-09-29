@@ -874,41 +874,29 @@ export class JobForensicsService {
 
   /**
    * Find similar failures to help with pattern recognition
+   * PERFORMANCE: Disabled in production - use Redis SCAN instead of KEYS for large datasets
    */
   private async findSimilarFailures(job: Job, limit: number): Promise<Job[]> {
     if (job.status !== 'failed') return [];
 
+    // 🚨 PERFORMANCE FIX: Skip similar failures search - too expensive for production
+    // This feature was causing major performance issues by scanning all Redis keys
+    console.warn('Similar failures search disabled for performance - consider implementing with indexed queries');
+    return [];
+
+    /* DISABLED - Original implementation was too slow:
     const currentErrorInfo = await this.getJobErrorInfo(job);
     if (!currentErrorInfo) return [];
 
     try {
-      // Find other failed jobs with similar errors
+      // This redis.keys('job:*') call was scanning ALL Redis keys - extremely slow
       const keys = await this.redis.keys('job:*');
-      const similarJobs = [];
-
-      for (const key of keys.slice(0, 100)) {
-        // Limit to avoid performance issues
-        const jobData = await this.redis.hgetall(key);
-        if (jobData.status === 'failed' && jobData.id !== job.id) {
-          const otherJob = await this.getRedisJob(jobData.id);
-          if (!otherJob) continue;
-
-          const otherErrorInfo = await this.getJobErrorInfo(otherJob);
-          if (
-            otherErrorInfo &&
-            this.areErrorsSimilar(currentErrorInfo.message, otherErrorInfo.message)
-          ) {
-            similarJobs.push(otherJob);
-            if (similarJobs.length >= limit) break;
-          }
-        }
-      }
-
-      return similarJobs;
+      // ... rest of expensive implementation
     } catch (error) {
       console.error('Error finding similar failures:', error);
       return [];
     }
+    */
   }
 
   /**

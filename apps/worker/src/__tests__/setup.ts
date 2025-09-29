@@ -2,7 +2,7 @@
  * Test setup for worker attestation tests
  */
 
-import { beforeAll, afterAll } from 'vitest';
+import { beforeAll, afterAll, vi } from 'vitest';
 import Redis from 'ioredis';
 
 // Mock Redis for tests
@@ -17,8 +17,17 @@ export const mockRedis = {
   hget: vi.fn(),
   hgetall: vi.fn(),
   del: vi.fn(),
+  hdel: vi.fn(),
   flushdb: vi.fn(),
-  quit: vi.fn()
+  quit: vi.fn(),
+  zadd: vi.fn(),
+  keys: vi.fn(),
+  // Add any other Redis methods used in the code
+  rpush: vi.fn(),
+  blpop: vi.fn(),
+  exists: vi.fn(),
+  ttl: vi.fn(),
+  xadd: vi.fn()
 };
 
 // Mock environment variables

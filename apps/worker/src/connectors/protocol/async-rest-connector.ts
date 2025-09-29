@@ -299,11 +299,12 @@ export abstract class AsyncRESTConnector extends BaseConnector {
           responseData: responseData ? smartTruncateObject(responseData, 1000) : null
         });
         
-        // Throw enhanced error with OpenAI details
+        // Throw enhanced error with OpenAI details and HTTP status for failure classification
         const enhancedError = new Error(enhancedMessage);
         (enhancedError as any).originalError = error;
-        (enhancedError as any).status = status;
+        (enhancedError as any).httpStatus = status;
         (enhancedError as any).responseData = responseData;
+        (enhancedError as any).timeout = axiosError.code === 'ECONNABORTED';
         throw enhancedError;
       }
       
@@ -490,6 +491,10 @@ export abstract class AsyncRESTConnector extends BaseConnector {
         if (Date.now() - startTime + pollInterval >= pollTimeout) {
           const enhancedError = new Error(errorMessage);
           (enhancedError as any).originalError = error;
+          if (error.isAxiosError) {
+            (enhancedError as any).httpStatus = (error as AxiosError).response?.status;
+            (enhancedError as any).timeout = (error as AxiosError).code === 'ECONNABORTED';
+          }
           throw enhancedError;
         }
         

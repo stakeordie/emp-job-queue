@@ -15,6 +15,7 @@ import {
   HealthCheckRequirements,
   logger,
   ConnectorLogger,
+  getWorkerTelemetry,
 } from '@emp/core';
 import Redis from 'ioredis';
 
@@ -83,6 +84,9 @@ export abstract class BaseConnector implements ConnectorInterface {
 
   // Configuration
   protected config: ConnectorConfig;
+
+  // Telemetry client for Redis Stream events
+  protected telemetry = getWorkerTelemetry();
 
   constructor(connectorId: string, config?: Partial<ConnectorConfig>) {
     this.connector_id = connectorId;
@@ -296,6 +300,20 @@ ${Object.keys(process.env).filter(k => k.includes('HUB') || k.includes('REDIS'))
       this.lastReportedStatus = newStatus;
       this.currentStatus = newStatus;
 
+      // Send telemetry event for connector status change
+      await this.telemetry.event('connector.status_changed', {
+        connectorId: this.connector_id,
+        serviceType: this.service_type,
+        workerId: this.workerId,
+        machineId: this.machineId,
+        previousStatus: previousStatus,
+        newStatus: newStatus,
+        errorMessage: errorMessage,
+        jobsProcessed: this.jobsProcessed,
+        uptime: Math.floor((Date.now() - this.startTime) / 1000),
+        timestamp: Date.now()
+      });
+
       logger.info(
         `${this.service_type} connector ${this.connector_id} reported ${
           previousStatus ? 'changed' : 'initial'
@@ -462,6 +480,18 @@ ${Object.keys(process.env).filter(k => k.includes('HUB') || k.includes('REDIS'))
     const jobLogger = this.connectorLogger.withJobContext(jobData.id || 'unknown');
 
     try {
+      // Send telemetry event for connector job received
+      await this.telemetry.event('connector.job_received', {
+        connectorId: this.connector_id,
+        serviceType: this.service_type,
+        jobId: jobData.id || 'unknown',
+        workerId: this.workerId,
+        machineId: this.machineId,
+        inputSize: JSON.stringify(jobData).length,
+        model: (jobData.payload?.model as string) || 'unknown',
+        timestamp: Date.now()
+      });
+
       // Log job received
       jobLogger.jobReceived({
         jobId: jobData.id || 'unknown',
@@ -471,7 +501,17 @@ ${Object.keys(process.env).filter(k => k.includes('HUB') || k.includes('REDIS'))
 
       // Report that we're starting to process a job
       await this.reportJobStatusChange(true);
-      
+
+      // Send telemetry event for connector job started
+      await this.telemetry.event('connector.job_started', {
+        connectorId: this.connector_id,
+        serviceType: this.service_type,
+        jobId: jobData.id || 'unknown',
+        workerId: this.workerId,
+        machineId: this.machineId,
+        timestamp: Date.now()
+      });
+
       jobLogger.jobStarted({ jobId: jobData.id || 'unknown' });
 
       // Call subclass job processing
@@ -482,6 +522,19 @@ ${Object.keys(process.env).filter(k => k.includes('HUB') || k.includes('REDIS'))
 
       // Calculate processing time
       const duration = Date.now() - startTime;
+
+      // Send telemetry event for connector job completed
+      await this.telemetry.event('connector.job_completed', {
+        connectorId: this.connector_id,
+        serviceType: this.service_type,
+        jobId: jobData.id || 'unknown',
+        workerId: this.workerId,
+        machineId: this.machineId,
+        duration: duration,
+        outputSize: JSON.stringify(result).length,
+        success: result.success,
+        timestamp: Date.now()
+      });
 
       // Log successful completion
       jobLogger.jobCompleted({
@@ -497,6 +550,19 @@ ${Object.keys(process.env).filter(k => k.includes('HUB') || k.includes('REDIS'))
     } catch (error) {
       const duration = Date.now() - startTime;
       const errorMessage = error instanceof Error ? error.message : 'Job processing failed';
+
+      // Send telemetry event for connector job failed
+      await this.telemetry.event('connector.job_failed', {
+        connectorId: this.connector_id,
+        serviceType: this.service_type,
+        jobId: jobData.id || 'unknown',
+        workerId: this.workerId,
+        machineId: this.machineId,
+        duration: duration,
+        error: errorMessage,
+        success: false,
+        timestamp: Date.now()
+      });
 
       // Log job failure
       jobLogger.jobFailed({

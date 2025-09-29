@@ -33,3 +33,4 @@ export * from './log-interpretation/index.js';
 // Telemetry and Observability (old OTEL client removed - using WorkflowTelemetryClient instead)
 export * from './telemetry/message-bus.js';
 export * from './telemetry/connector-log-schemas.js';
+export * from './telemetry/event-client.js';

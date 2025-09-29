@@ -14,6 +14,9 @@ import http from 'http';
 import { URL } from 'url';
 import { MachineStatusAggregator } from './services/machine-status-aggregator.js';
 
+// Import Redis Stream telemetry client
+import { getMachineTelemetry } from '@emp/core';
+
 const logger = createLogger('main-pm2');
 
 // PM2 manager instance
@@ -21,6 +24,9 @@ const pm2Manager = new PM2ServiceManager();
 let statusAggregator = null; // Will be created after telemetry initialization
 let startTime = null;
 let telemetryClient = null;
+
+// Redis Stream telemetry client for immediate events
+let streamTelemetry = null;
 
 /**
  * Initialize unified telemetry client for machine
@@ -70,6 +76,23 @@ async function initializeTelemetry() {
     }
 
     console.log('🔧 initializeTelemetry: Creating telemetry client');
+
+    // Initialize Redis Stream telemetry for immediate events
+    streamTelemetry = getMachineTelemetry();
+
+    // Send machine startup event immediately
+    await streamTelemetry.machineEvent(process.env.MACHINE_ID, 'machine.registered', {
+      machineId: process.env.MACHINE_ID,
+      workerId: process.env.WORKER_ID,
+      nodeVersion: process.version,
+      platform: process.platform,
+      arch: process.arch,
+      cpuCount: require('os').cpus().length,
+      totalMemory: require('os').totalmem(),
+      hostname: require('os').hostname(),
+      startupTime: Date.now()
+    });
+
     // Create and initialize telemetry client
     const client = createTelemetryClient('machine');
     
@@ -425,9 +448,28 @@ async function main() {
 
     // Step 11-13: Service Startup
     logger.info('STEP 11-13: Service Startup - Starting PM2 services from ecosystem config...');
+
+    // Send telemetry event for service startup initiation
+    if (streamTelemetry) {
+      await streamTelemetry.machineEvent(process.env.MACHINE_ID, 'service.startup_initiated', {
+        machineId: process.env.MACHINE_ID,
+        timestamp: Date.now(),
+        phase: 'pm2_service_startup'
+      });
+    }
+
     await startPM2Services();
-    
-    // Verify services are running and healthy  
+
+    // Send telemetry event for service startup completion
+    if (streamTelemetry) {
+      await streamTelemetry.machineEvent(process.env.MACHINE_ID, 'service.startup_completed', {
+        machineId: process.env.MACHINE_ID,
+        timestamp: Date.now(),
+        phase: 'pm2_services_started'
+      });
+    }
+
+    // Verify services are running and healthy
     await verifyPM2Services();
     
     // Add discovered PM2 service logs to telemetry monitoring
@@ -460,6 +502,20 @@ async function main() {
     // Step 21: Machine Ready
     const totalStartupTime = Date.now() - startupTime;
     logger.info(`STEP 21: Machine Ready - Basic Machine ready in PM2 mode (${totalStartupTime}ms)`);
+
+    // Send telemetry event for machine ready
+    if (streamTelemetry) {
+      await streamTelemetry.machineEvent(process.env.MACHINE_ID, 'machine.ready', {
+        machineId: process.env.MACHINE_ID,
+        totalStartupTime: totalStartupTime,
+        servicesCount: (await pm2Manager.getAllServicesStatus()).length,
+        timestamp: Date.now(),
+        status: 'ready'
+      });
+    }
+
+    // Start machine health monitoring
+    startMachineHealthMonitoring();
 
     // Log machine ready through telemetry
     if (telemetryClient) {
@@ -1143,6 +1199,48 @@ async function checkSystemHealth() {
 }
 
 /**
+ * Start machine health monitoring with periodic telemetry events
+ */
+function startMachineHealthMonitoring() {
+  // Send health check every 60 seconds
+  setInterval(async () => {
+    if (streamTelemetry) {
+      try {
+        const services = await pm2Manager.getAllServicesStatus();
+        const onlineServices = services.filter(s => s.status === 'online');
+        const offlineServices = services.filter(s => s.status !== 'online');
+
+        await streamTelemetry.machineEvent(process.env.MACHINE_ID, 'health.check', {
+          machineId: process.env.MACHINE_ID,
+          status: offlineServices.length === 0 ? 'healthy' : 'degraded',
+          totalServices: services.length,
+          onlineServices: onlineServices.length,
+          offlineServices: offlineServices.length,
+          uptime: process.uptime(),
+          memoryUsage: process.memoryUsage(),
+          loadAverage: require('os').loadavg(),
+          timestamp: Date.now()
+        });
+
+        // Send service status events for any offline services
+        for (const service of offlineServices) {
+          await streamTelemetry.event(`service.${service.status}`, {
+            machineId: process.env.MACHINE_ID,
+            serviceName: service.name,
+            status: service.status,
+            pid: service.pid,
+            restarts: service.restarts,
+            timestamp: Date.now()
+          });
+        }
+      } catch (error) {
+        // Silent failure - health monitoring doesn't break machine operation
+      }
+    }
+  }, 60000); // 60 seconds
+}
+
+/**
  * Get system status
  */
 async function getSystemStatus() {
@@ -1180,6 +1278,17 @@ async function handleShutdown(signal) {
   process.env.SHUTDOWN_REASON = shutdownReason;
 
   try {
+    // Send Redis Stream telemetry shutdown event
+    if (streamTelemetry) {
+      await streamTelemetry.machineEvent(process.env.MACHINE_ID, 'machine.shutdown', {
+        machineId: process.env.MACHINE_ID,
+        signal: signal,
+        reason: shutdownReason,
+        uptime: process.uptime(),
+        timestamp: Date.now()
+      });
+    }
+
     // CRITICAL: Send shutdown event to Redis FIRST, before anything else
     logger.info(`🚨 PRIORITY: Sending shutdown event to Redis before any other shutdown actions`);
     await statusAggregator.shutdown();
