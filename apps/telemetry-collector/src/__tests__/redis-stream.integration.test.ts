@@ -53,14 +53,10 @@ describe('Redis Stream Integration', () => {
     }
 
     // Setup event client pointing to test stream
-    eventClient = new EventClient({
-      serviceName: 'test-service',
-      redisUrl: process.env.REDIS_URL || 'redis://localhost:6379',
-      streamKey: testStreamKey,
-      maxBufferSize: 100,
-      batchSize: 1, // Immediate flushing for tests
-      flushInterval: 100, // Fast flush for tests
-    });
+    eventClient = new EventClient(
+      'test-service',
+      process.env.REDIS_URL || 'redis://localhost:6379'
+    );
 
     // Setup consumer
     const consumerConfig: ConsumerConfig = {
@@ -180,9 +176,9 @@ describe('Redis Stream Integration', () => {
     const traceId = 'trace_abc_456';
 
     // Emit correlated job events
-    await eventClient.event('job.created', { priority: 'high' }, { jobId, traceId });
-    await eventClient.event('job.queued', { queue: 'default' }, { jobId, traceId });
-    await eventClient.event('job.claimed', { workerId: 'worker-1' }, { jobId, traceId });
+    await eventClient.event('job.created', { priority: 'high', jobId, traceId });
+    await eventClient.event('job.queued', { queue: 'default', jobId, traceId });
+    await eventClient.event('job.claimed', { workerId: 'worker-1', jobId, traceId });
 
     // Flush events immediately
     await eventClient.flush();

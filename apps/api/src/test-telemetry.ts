@@ -22,7 +22,7 @@ async function testTelemetry() {
     });
 
     // Test error event
-    await telemetry.errorEvent(new Error('Test error'), {
+    await telemetry.errorEvent('test_error', new Error('Test error'), {
       context: 'telemetry-test'
     });
 

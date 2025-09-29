@@ -63,14 +63,10 @@ describe('End-to-End Event Flow', () => {
     }
 
     // Setup event client
-    eventClient = new EventClient({
-      serviceName: 'e2e-test-service',
-      redisUrl: process.env.REDIS_URL || 'redis://localhost:6379',
-      streamKey: testStreamKey,
-      maxBufferSize: 1000,
-      batchSize: 10,
-      flushInterval: 1000,
-    });
+    eventClient = new EventClient(
+      'e2e-test-service',
+      process.env.REDIS_URL || 'redis://localhost:6379'
+    );
 
     // Setup processor
     const processorConfig: ProcessorConfig = {
@@ -119,7 +115,7 @@ describe('End-to-End Event Flow', () => {
       await consumer.stop();
     }
     if (eventClient) {
-      await eventClient.disconnect();
+      await eventClient.close();
     }
     if (redis) {
       await redis.del(testStreamKey);
@@ -144,34 +140,40 @@ describe('End-to-End Event Flow', () => {
     await eventClient.jobEvent(jobId, 'job.created', {
       userId: 'user_123',
       jobType: 'image_generation',
-      priority: 'normal'
-    }, { traceId });
+      priority: 'normal',
+      traceId
+    });
 
     await eventClient.jobEvent(jobId, 'job.queued', {
       queueName: 'default',
-      position: 1
-    }, { traceId });
+      position: 1,
+      traceId
+    });
 
     await eventClient.workerEvent(workerId, 'worker.claimed_job', {
       jobId,
-      capabilities: ['comfyui', 'gpu']
-    }, { traceId });
+      capabilities: ['comfyui', 'gpu'],
+      traceId
+    });
 
     await eventClient.jobEvent(jobId, 'job.processing_started', {
       workerId,
-      startTime: Date.now()
-    }, { traceId });
+      startTime: Date.now(),
+      traceId
+    });
 
     await eventClient.jobEvent(jobId, 'job.progress_updated', {
       progress: 50,
-      details: 'Generating image...'
-    }, { traceId });
+      details: 'Generating image...',
+      traceId
+    });
 
     await eventClient.jobEvent(jobId, 'job.completed', {
       workerId,
       duration: 5000,
-      resultSize: 1024 * 512 // 512KB
-    }, { traceId });
+      resultSize: 1024 * 512, // 512KB
+      traceId
+    });
 
     // Wait for processing
     await new Promise(resolve => setTimeout(resolve, 2000));
@@ -224,8 +226,10 @@ describe('End-to-End Event Flow', () => {
     await eventClient.jobEvent(jobId, 'job.failed', {
       error: 'Out of memory',
       errorCode: 'OOM',
-      retryable: false
-    }, { traceId, level: 'error' });
+      retryable: false,
+      traceId,
+      level: 'error'
+    });
 
     await new Promise(resolve => setTimeout(resolve, 1500));
 
