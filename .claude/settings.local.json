@@ -69,7 +69,8 @@
       "Bash(echo \"Exit code: $?\")",
       "Bash(pnpm --filter=@emp/core build)",
       "Bash(python3 scripts/semantic-cleanup/phase3-update-implementations.py:*)",
-      "Bash(python3:*)"
+      "Bash(python3:*)",
+      "Bash(mv:*)"
     ],
     "deny": [],
     "ask": []
