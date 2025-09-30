@@ -1,19 +1,3 @@
-// Phase 2 Migration: New semantic model types
-// Note: step.ts contains the old "Job" types (what workers process)
-// Note: job-new.ts contains the new "Job" types (what users submit)
-// During migration, we maintain backwards compatibility
-
-// Export new Step types (selective to avoid conflicts)
-export type { Job as Step } from './step.js';
-export type { JobProgress as StepProgress } from './step.js';
-export type { JobResult as StepResult } from './step.js';
-export type { JobStatus as StepStatus } from './step.js';
-export type { JobRequirements as StepRequirements } from './step.js';
-
-// Export compatibility layer
-export * from './compatibility.js';
-
-// Original exports (to be migrated)
 // Core type definitions for emp-redis JavaScript rebuild
 // Direct port from Python core/core_types and interfaces
 
