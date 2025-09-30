@@ -2,15 +2,6 @@
 
 This document explains the complete lifecycle of a job in the EmProps Job Queue system, from initial submission through final completion or failure. Understanding this flow is crucial for integrating with the system and debugging issues.
 
-
-:::tip SEMANTIC CLARIFICATION
-This document uses "Job" terminology for historical consistency. In the evolving semantic model:
-- **"Job" in this doc** = **"Step"** in the new model (individual worker processing unit)
-- What workers process is a **Step** (e.g., generate one image, run one prompt)
-- Future: **"Job"** will refer to user requests that may contain multiple **Steps**
-
-The lifecycle described here is for **Steps** - the atomic processing units handled by workers.
-:::
 ## Job States
 
 Jobs progress through several well-defined states during their lifecycle:

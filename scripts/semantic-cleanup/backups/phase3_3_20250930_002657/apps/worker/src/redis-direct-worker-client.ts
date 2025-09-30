@@ -1,15 +1,6 @@
 // Redis-Direct Worker Client - Phase 1B Implementation
 // Workers poll Redis directly, no WebSocket to hub required
 
-// SEMANTIC NOTE: This worker client uses "Job" terminology for backwards compatibility
-// In the new semantic model:
-// - "Job" in this file = "Step" (individual worker processing unit)
-// - Workers request, claim, and process Steps (not full user Jobs)
-// - requestJob() requests a Step from the queue
-// - claimJob() claims a Step for processing
-//
-// This naming is preserved for API backwards compatibility during migration.
-// Workers operate on Steps - individual processing units from the work queue.
 import Redis from 'ioredis';
 import {
   WorkerCapabilities,
@@ -442,8 +433,7 @@ export class RedisDirectWorkerClient {
   }
 
   /**
-   * Convert Redis step data (strings) to typed Job object
-   * Note: Returns 'Job' type for backwards compatibility, but represents a Step
+   * Convert Redis job data (strings) to typed Job object
    */
   private convertRedisJobData(jobId: string, redisData: RedisJobData): Job {
     const job: Job = {
@@ -549,10 +539,6 @@ export class RedisDirectWorkerClient {
 
   /**
    * Request a job using Redis Function for capability-based matching
-   */
-  /**
-   * Request a Step from the queue
-   * Note: Called 'requestJob' for backwards compatibility, but requests a Step
    */
   async requestJob(capabilities: WorkerCapabilities): Promise<Job | null> {
     try {

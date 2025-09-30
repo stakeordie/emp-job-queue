@@ -2,14 +2,6 @@
 // Replaces hub orchestration with simple HTTP + WebSocket API
 // WebSocket-only communication for real-time updates
 
-// SEMANTIC NOTE: This API server uses "Job" terminology for backwards compatibility
-// In the new semantic model:
-// - "Job" in this file = "Step" (individual worker processing unit)
-// - API endpoints like /submit-job actually handle Steps (worker processing units)
-// - For the new "Job" concept (user requests containing multiple steps), see future Workflow API
-//
-// This naming is preserved for client backwards compatibility during migration.
-// Example: submitJob() submits a Step to be processed by a worker
 import express, { Request, Response } from 'express';
 import { createServer, Server as HTTPServer } from 'http';
 import { WebSocketServer, WebSocket } from 'ws';
@@ -892,8 +884,7 @@ export class LightweightAPIServer {
       }
     });
 
-    // Step submission (modern HTTP endpoint)
-    // Note: Called 'job' for backwards compatibility, but submits a Step
+    // Job submission (modern HTTP endpoint)
     this.app.post('/api/jobs', async (req: Request, res: Response) => {
       const startTime = Date.now();
       try {
@@ -940,8 +931,7 @@ export class LightweightAPIServer {
       }
     });
 
-    // Step status query
-    // Note: Called 'job' for backwards compatibility, but queries a Step
+    // Job status query
     this.app.get('/api/jobs/:jobId', async (req: Request, res: Response) => {
       try {
         const { jobId } = req.params;
@@ -972,8 +962,7 @@ export class LightweightAPIServer {
     });
 
 
-    // Step list endpoint
-    // Note: Called 'jobs' for backwards compatibility, but lists Steps
+    // Job list endpoint
     this.app.get('/api/jobs', async (req: Request, res: Response) => {
       try {
         const { status, limit = '50', offset = '0' } = req.query;

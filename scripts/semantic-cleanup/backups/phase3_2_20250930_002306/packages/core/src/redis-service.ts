@@ -1,14 +1,6 @@
 // Redis Service Implementation - direct port from Python core/redis_service.py
 // Maintains exact same Redis data structures and operations
 
-// SEMANTIC NOTE: This file uses "Job" terminology for backwards compatibility
-// In the new semantic model:
-// - "Job" in this file = "Step" (what workers process)
-// - Functions like submitJob(), getJob() handle Steps (worker processing units)
-// - For the new "Job" concept (user requests), see types/job-new.ts
-//
-// This naming is preserved for API backwards compatibility during migration.
-// New code should use the Step type from '@emp/core'
 import Redis from 'ioredis';
 import { v4 as uuidv4 } from 'uuid';
 import { RedisServiceInterface } from './interfaces/redis-service.js';
