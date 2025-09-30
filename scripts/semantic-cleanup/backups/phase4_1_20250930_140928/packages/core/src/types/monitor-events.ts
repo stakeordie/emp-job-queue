@@ -18,10 +18,6 @@ export type SubscriptionTopic =
   | 'workers' // All worker events
   | 'machines' // All machine events
   | 'jobs' // All job events
-  | 'steps' // All step events (new semantic model)
-  | 'steps:progress' // Only step progress updates
-  | 'steps:status' // Only step status changes
-  
   | 'jobs:progress' // Only progress updates
   | 'jobs:status' // Only status changes
   | 'system_stats' // System statistics
@@ -140,84 +136,7 @@ export interface ConnectorStatusChangedEvent extends BaseMonitorEvent {
   service_info?: Record<string, unknown>;
 }
 
-// Step Events (New Semantic Model)
-// These represent individual worker processing units
-
-export interface StepSubmittedEvent extends BaseMonitorEvent {
-  type: 'step_submitted';
-  step_id: string;
-  step_data: {
-    id: string;
-    step_type: string;
-    status: 'pending';
-    priority: number;
-    payload?: Record<string, unknown>;
-    job_id?: string; // Parent Job ID (formerly workflow_id)
-    job_priority?: number;
-    job_datetime?: number;
-    current_step_index?: number;
-    total_steps?: number;
-    customer_id?: string;
-    requirements?: JobRequirements;
-    created_at: number;
-  };
-}
-
-export interface StepAcceptedEvent extends BaseMonitorEvent {
-  type: 'step_accepted';
-  step_id: string;
-  worker_id: string;
-  status: string;
-  assigned_at: number;
-}
-
-export interface StepAssignedEvent extends BaseMonitorEvent {
-  type: 'step_assigned';
-  step_id: string;
-  worker_id: string;
-  old_status: 'pending';
-  new_status: 'assigned';
-  assigned_at: number;
-}
-
-export interface StepStatusChangedEvent extends BaseMonitorEvent {
-  type: 'step_status_changed';
-  step_id: string;
-  old_status: JobStatus; // Note: JobStatus renamed to StepStatus in future phase
-  new_status: JobStatus;
-  worker_id?: string;
-}
-
-export interface StepProgressEvent extends BaseMonitorEvent {
-  type: 'update_step_progress';
-  step_id: string;
-  worker_id: string;
-  progress: number;
-  status?: string;
-  message?: string;
-}
-
-export interface StepCompletedEvent extends BaseMonitorEvent {
-  type: 'complete_step';
-  step_id: string;
-  worker_id: string;
-  result?: unknown;
-  completed_at: number;
-}
-
-export interface StepFailedEvent extends BaseMonitorEvent {
-  type: 'step_failed';
-  step_id: string;
-  worker_id?: string;
-  error: string;
-  failed_at: number;
-}
-
-// Backwards Compatibility Aliases
-// These maintain compatibility with existing code using "Job" terminology
-// All Job events are now aliases for Step events
-
-/** @deprecated Use StepSubmittedEvent instead. Job events represent Steps (worker processing units). */
+// Job Events
 export interface JobSubmittedEvent extends BaseMonitorEvent {
   type: 'job_submitted';
   job_id: string;
@@ -238,7 +157,6 @@ export interface JobSubmittedEvent extends BaseMonitorEvent {
   };
 }
 
-/** @deprecated Use StepAcceptedEvent instead */
 export interface JobAcceptedEvent extends BaseMonitorEvent {
   type: 'job_accepted';
   job_id: string;
@@ -247,7 +165,6 @@ export interface JobAcceptedEvent extends BaseMonitorEvent {
   assigned_at: number;
 }
 
-/** @deprecated Use StepAssignedEvent instead */
 export interface JobAssignedEvent extends BaseMonitorEvent {
   type: 'job_assigned';
   job_id: string;
@@ -257,7 +174,6 @@ export interface JobAssignedEvent extends BaseMonitorEvent {
   assigned_at: number;
 }
 
-/** @deprecated Use StepStatusChangedEvent instead */
 export interface JobStatusChangedEvent extends BaseMonitorEvent {
   type: 'job_status_changed';
   job_id: string;
@@ -266,7 +182,6 @@ export interface JobStatusChangedEvent extends BaseMonitorEvent {
   worker_id?: string;
 }
 
-/** @deprecated Use StepProgressEvent instead */
 export interface JobProgressEvent extends BaseMonitorEvent {
   type: 'update_job_progress';
   job_id: string;
@@ -276,7 +191,6 @@ export interface JobProgressEvent extends BaseMonitorEvent {
   message?: string;
 }
 
-/** @deprecated Use StepCompletedEvent instead */
 export interface JobCompletedEvent extends BaseMonitorEvent {
   type: 'complete_job';
   job_id: string;
@@ -285,7 +199,6 @@ export interface JobCompletedEvent extends BaseMonitorEvent {
   completed_at: number;
 }
 
-/** @deprecated Use StepFailedEvent instead */
 export interface JobFailedEvent extends BaseMonitorEvent {
   type: 'job_failed';
   job_id: string;
@@ -377,13 +290,6 @@ export type MonitorEvent =
   | WorkerDisconnectedEvent
   | WorkerStatusChangedEvent
   | ConnectorStatusChangedEvent
-    | StepSubmittedEvent
-  | StepAcceptedEvent
-  | StepAssignedEvent
-  | StepStatusChangedEvent
-  | StepProgressEvent
-  | StepCompletedEvent
-  | StepFailedEvent
   | JobSubmittedEvent
   | JobAcceptedEvent
   | JobAssignedEvent

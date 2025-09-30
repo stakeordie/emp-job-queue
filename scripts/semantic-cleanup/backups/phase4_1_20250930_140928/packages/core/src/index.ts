@@ -40,14 +40,3 @@ export * from './telemetry/event-client.js';
 
 // Workflow Telemetry (New service-aware system)
 export * from './workflow-telemetry.js';
-
-// Step Events (Phase 4.1)
-export type {
-  StepSubmittedEvent,
-  StepAcceptedEvent,
-  StepAssignedEvent,
-  StepStatusChangedEvent,
-  StepProgressEvent,
-  StepCompletedEvent,
-  StepFailedEvent,
-} from './types/monitor-events.js';
