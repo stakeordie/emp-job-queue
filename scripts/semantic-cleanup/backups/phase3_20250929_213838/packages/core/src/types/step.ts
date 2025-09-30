@@ -1,14 +1,9 @@
-// ⚠️  DEPRECATED - This file is being phased out
-//
-// The types in this file represent "Steps" (worker processing units)
-// but are named "Job" which causes confusion.
-//
-// NEW CODE SHOULD USE:
-// - import { Step } from '@emp/core' (for worker processing units)
-// - import { Job } from '@emp/core/types/job-new.js' (for user requests)
-//
-// This file is preserved for backwards compatibility during migration.
-// See: packages/core/src/types/MIGRATION_STATUS.md
+// Step types - what workers process (formerly Job types)
+// A Step represents an individual processing unit claimed and executed by workers
+
+// This file contains types migrated from job.ts as part of the semantic cleanup initiative
+// Old terminology: "Job" meant worker processing unit
+// New terminology: "Step" means worker processing unit, "Job" means user request
 
 // TODO-SEMANTIC: This file contains "Job" types that should be "Step" - worker processing unit
 // Job types - core job definitions and lifecycle management
@@ -373,3 +368,6 @@ export interface RecoverySuggestion {
   automated_action_available: boolean;
   estimated_success_rate?: number;
 }
+
+
+// Note: These types are aliased in compatibility.ts for backwards compatibility during migration
