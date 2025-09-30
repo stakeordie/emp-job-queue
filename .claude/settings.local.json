@@ -63,7 +63,13 @@
       "Bash(REDIS_URL=redis://localhost:6379 pnpm test src/__tests__/end-to-end-pipeline.test.ts -t \"should process event through complete pipeline\")",
       "Bash(REDIS_URL=redis://localhost:6379 ./node_modules/.bin/tsx --env-file=.env.local-dev --env-file=.env.secret.local-dev watch src/index.ts)",
       "Bash(REDIS_URL=redis://localhost:6379 pnpm exec tsx --env-file=.env.local-dev --env-file=.env.secret.local-dev watch src/index.ts)",
-      "Bash(REDIS_URL=redis://localhost:6379 pnpm exec tsx --env-file=.env.local-dev --env-file=.env.secret.local-dev --watch src/index.ts)"
+      "Bash(REDIS_URL=redis://localhost:6379 pnpm exec tsx --env-file=.env.local-dev --env-file=.env.secret.local-dev --watch src/index.ts)",
+      "Bash(pnpm --filter=@emp/core typecheck)",
+      "Bash(timeout 120 pnpm typecheck)",
+      "Bash(echo \"Exit code: $?\")",
+      "Bash(pnpm --filter=@emp/core build)",
+      "Bash(python3 scripts/semantic-cleanup/phase3-update-implementations.py:*)",
+      "Bash(python3:*)"
     ],
     "deny": [],
     "ask": []

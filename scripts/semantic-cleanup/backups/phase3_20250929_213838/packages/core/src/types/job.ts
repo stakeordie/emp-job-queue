@@ -1,15 +1,3 @@
-// ⚠️  DEPRECATED - This file is being phased out
-//
-// The types in this file represent "Steps" (worker processing units)
-// but are named "Job" which causes confusion.
-//
-// NEW CODE SHOULD USE:
-// - import { Step } from '@emp/core' (for worker processing units)
-// - import { Job } from '@emp/core/types/job-new.js' (for user requests)
-//
-// This file is preserved for backwards compatibility during migration.
-// See: packages/core/src/types/MIGRATION_STATUS.md
-
 // TODO-SEMANTIC: This file contains "Job" types that should be "Step" - worker processing unit
 // Job types - core job definitions and lifecycle management
 
