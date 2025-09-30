@@ -82,22 +82,6 @@ export class RedisService implements RedisServiceInterface {
     });
   }
 
-  // ==========================================
-  // PHASE 4.3.1: Dual-Write Feature (Redis Keys Migration)
-  // ==========================================
-  // Feature Flag: REDIS_DUAL_WRITE_STEPS=true
-  //
-  // When enabled, writes to BOTH patterns:
-  // - job:${id} → step:${id} (hash data)
-  // - jobs:pending → steps:pending (sorted sets)
-  // - jobs:active → steps:active (sets)
-  //
-  // Reads still come from job:* keys (unchanged behavior)
-  // Safe rollout: Enable flag, monitor, validate, switch reads later
-  //
-  // Rollback: Set REDIS_DUAL_WRITE_STEPS=false and restart
-  // ==========================================
-
   async connect(): Promise<void> {
     await Promise.all([this.redis.ping(), this.subscriber.ping()]);
 
@@ -229,18 +213,6 @@ export class RedisService implements RedisServiceInterface {
     }
 
     await this.redis.hmset(`job:${jobId}`, jobData);
-
-    // PHASE 4.3.1: Dual-write to step:* keys
-    // Feature flag controlled for safe rollout
-    if (process.env.REDIS_DUAL_WRITE_STEPS === 'true') {
-      try {
-        await this.redis.hmset(`step:${jobId}`, jobData);
-        logger.debug(`Dual-write: copied job:${jobId} → step:${jobId}`);
-      } catch (error) {
-        logger.error(`Dual-write failed for step:${jobId}:`, error);
-        // Don't fail the operation, just log the error
-      }
-    }
 
     // Add to priority queue with workflow-aware scoring
     const effectivePriority = job.workflow_priority || job.priority;
