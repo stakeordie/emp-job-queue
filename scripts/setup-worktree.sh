@@ -74,13 +74,26 @@ else
     echo -e "${GREEN}✓${NC} Dependencies already installed"
 fi
 
-# Step 3: Build the environment files
-echo -e "\n${YELLOW}Step 3: Building environment files for local-dev profile...${NC}"
+# Step 3: Build packages first (required for env:build)
+echo -e "\n${YELLOW}Step 3: Building packages...${NC}"
 cd "$WORKTREE_PATH"
+pnpm build
+
+# Step 4: Build the environment files
+echo -e "\n${YELLOW}Step 4: Building environment files for local-dev profile...${NC}"
 pnpm env:build local-dev
 
-# Step 4: Verify critical environment files were created
-echo -e "\n${YELLOW}Step 4: Verifying environment setup...${NC}"
+# Step 5: Copy Claude context from parent worktree (optional)
+echo -e "\n${YELLOW}Step 5: Copying Claude context...${NC}"
+if [ -d "$PARENT_PATH/.claude" ]; then
+    cp -r "$PARENT_PATH/.claude" "$WORKTREE_PATH/.claude"
+    echo -e "${GREEN}✓${NC} Copied Claude context from parent worktree"
+else
+    echo -e "${YELLOW}⚠${NC} No Claude context found in parent worktree (this is optional)"
+fi
+
+# Step 6: Verify critical environment files were created
+echo -e "\n${YELLOW}Step 6: Verifying environment setup...${NC}"
 
 # Check for commonly needed env files
 ENV_FILES=(
@@ -98,11 +111,6 @@ for file in "${ENV_FILES[@]}"; do
         ALL_GOOD=false
     fi
 done
-
-# Step 5: Build the project
-echo -e "\n${YELLOW}Step 5: Building the project...${NC}"
-cd "$WORKTREE_PATH"
-pnpm build
 
 if [ "$ALL_GOOD" = true ]; then
     echo -e "\n${GREEN}✅ Worktree environment setup complete!${NC}"
