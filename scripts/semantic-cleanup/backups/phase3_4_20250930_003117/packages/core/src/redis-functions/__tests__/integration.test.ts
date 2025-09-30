@@ -8,13 +8,6 @@ import { RedisFunctionInstaller } from '../installer.js';
 import { WorkerCapabilities } from '../../core/types/worker.js';
 import { Job, JobRequirements } from '../../core/types/job.js';
 
-// SEMANTIC NOTE: These tests use "Job" terminology for backwards compatibility
-// In the new semantic model:
-// - "Job" in these tests = "Step" (worker processing unit)
-// - Tests validate Step matching, claiming, and processing
-// - For the new "Job" concept (user requests), see future Workflow tests
-//
-// Test terminology preserved for clarity and consistency with existing code.
 describe('Redis Function Integration Tests', () => {
   let redis: Redis;
   let installer: RedisFunctionInstaller;
@@ -54,9 +47,8 @@ describe('Redis Function Integration Tests', () => {
   });
 
   describe('Basic Job Matching', () => {
-    // Note: 'Job' here refers to Steps (worker processing units)
     it('should match worker with compatible service', async () => {
-      // Setup job (Step in new model)
+      // Setup job
       const jobId = 'test-job-1';
       const job = {
         id: jobId,

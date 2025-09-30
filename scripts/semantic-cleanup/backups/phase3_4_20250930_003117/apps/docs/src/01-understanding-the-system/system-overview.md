@@ -2,14 +2,6 @@
 
 The EmProps Job Queue is built on a pull-based architecture that ensures optimal resource utilization and provides sophisticated job-worker matching capabilities. This document explains the system's architecture, components, and their interactions.
 
-
-:::tip SEMANTIC CLARIFICATION
-This documentation uses "Job" terminology for historical consistency. The system is evolving to use clearer semantics:
-- **Current "Job"** → **"Step"** in new model (worker processing unit)
-- **Future "Job"** → User request that may contain multiple Steps
-
-When you see "Job" in this documentation, think **"Step"** - a single unit of work processed by one worker.
-:::
 ## Architecture Overview
 
 <FullscreenDiagram>
