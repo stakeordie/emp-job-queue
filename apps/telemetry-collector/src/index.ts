@@ -1,17 +1,22 @@
 /**
  * Telemetry Collector - Main Entry Point
  *
- * Redis Stream consumer that processes telemetry events and forwards to OpenTelemetry
+ * Transparent OTLP HTTP endpoint that receives traces and forwards to Dash0
+ * Acts as a simple proxy without creating its own spans
  */
 
 import 'dotenv/config';
 import { RedisConsumer, ConsumerConfig } from './redis-consumer.js';
 import { EventProcessor, ProcessorConfig } from './event-processor.js';
 import { StreamConfig } from '@emp/core';
+import http from 'http';
+import { OfficialOtlpForwarder } from './official-otlp-forwarder.js';
 
 class TelemetryCollector {
   private consumer: RedisConsumer;
   private processor: EventProcessor;
+  private otlpServer?: http.Server;
+  private dash0Forwarder?: OfficialOtlpForwarder;
 
   constructor() {
     // Consumer configuration
@@ -52,6 +57,17 @@ class TelemetryCollector {
       }
     );
 
+    // Initialize Dash0 forwarder
+    if (processorConfig.dash0?.enabled) {
+      this.dash0Forwarder = new OfficialOtlpForwarder({
+        endpoint: processorConfig.dash0.endpoint,
+        authToken: processorConfig.dash0.authToken,
+        dataset: processorConfig.dash0.dataset,
+        batchSize: processorConfig.dash0.batchSize,
+        flushInterval: processorConfig.dash0.flushInterval
+      });
+    }
+
     console.log('🚀 Telemetry Collector initialized');
     console.log(`📡 Redis: ${consumerConfig.redisUrl}`);
     console.log(`📊 Stream: ${consumerConfig.streamKey}`);
@@ -65,6 +81,9 @@ class TelemetryCollector {
     // Graceful shutdown handling
     process.on('SIGTERM', () => this.stop());
     process.on('SIGINT', () => this.stop());
+
+    // Start OTLP HTTP endpoint (acts as transparent proxy to Dash0)
+    await this.startOtlpEndpoint();
 
     // Start consumer (now resilient to Redis connection failures)
     await this.consumer.start();
@@ -84,14 +103,64 @@ class TelemetryCollector {
     console.log('🛑 Shutting down Telemetry Collector...');
 
     try {
+      if (this.otlpServer) {
+        this.otlpServer.close();
+      }
       await this.processor.stop();
       await this.consumer.stop();
+      if (this.dash0Forwarder) {
+        await this.dash0Forwarder.stop();
+      }
       console.log('✅ Telemetry Collector stopped gracefully');
       process.exit(0);
     } catch (error) {
       console.error('❌ Error during shutdown:', error);
       process.exit(1);
     }
+  }
+
+  private async startOtlpEndpoint(): Promise<void> {
+    const port = process.env.OTLP_PORT || 4318;
+
+    this.otlpServer = http.createServer(async (req, res) => {
+      // Only handle OTLP trace endpoint
+      if (req.url === '/v1/traces' && req.method === 'POST') {
+        let body = '';
+
+        req.on('data', chunk => {
+          body += chunk.toString();
+        });
+
+        req.on('end', async () => {
+          try {
+            // Parse the OTLP payload
+            const payload = JSON.parse(body);
+
+            // Forward directly to Dash0 without modification
+            if (this.dash0Forwarder) {
+              await this.dash0Forwarder.forwardRaw(payload);
+            }
+
+            res.writeHead(200, { 'Content-Type': 'application/json' });
+            res.end(JSON.stringify({ status: 'ok' }));
+          } catch (error) {
+            console.error('❌ Error processing OTLP request:', error);
+            res.writeHead(500, { 'Content-Type': 'application/json' });
+            res.end(JSON.stringify({ error: 'Internal server error' }));
+          }
+        });
+      } else {
+        res.writeHead(404);
+        res.end('Not Found');
+      }
+    });
+
+    await new Promise<void>((resolve) => {
+      this.otlpServer!.listen(port, () => {
+        console.log(`🌐 OTLP HTTP endpoint: http://localhost:${port}/v1/traces`);
+        resolve();
+      });
+    });
   }
 
   private async startHealthCheck(): Promise<void> {

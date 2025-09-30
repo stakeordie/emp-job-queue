@@ -3,7 +3,7 @@
  * Shared across all services (API, Worker, Machines)
  */
 import { NodeSDK } from '@opentelemetry/sdk-node';
-import { Resource } from '@opentelemetry/resources';
+import { resourceFromAttributes } from '@opentelemetry/resources';
 import { ATTR_SERVICE_NAME, ATTR_SERVICE_VERSION } from '@opentelemetry/semantic-conventions';
 import { OTLPTraceExporter } from '@opentelemetry/exporter-trace-otlp-http';
 import { BatchSpanProcessor } from '@opentelemetry/sdk-trace-base';
@@ -28,21 +28,17 @@ export function initTracer(config: TracerConfig): void {
     return;
   }
 
-  const resource = Resource.default().merge(
-    new Resource({
-      [ATTR_SERVICE_NAME]: config.serviceName,
-      [ATTR_SERVICE_VERSION]: config.serviceVersion || '1.0.0',
-      'deployment.environment': config.environment || process.env.NODE_ENV || 'development'
-    })
-  );
-
   const exporter = new OTLPTraceExporter({
     url: `${config.collectorEndpoint}/v1/traces`,
     headers: {},
   });
 
   sdk = new NodeSDK({
-    resource,
+    resource: resourceFromAttributes({
+      [ATTR_SERVICE_NAME]: config.serviceName,
+      [ATTR_SERVICE_VERSION]: config.serviceVersion || '1.0.0',
+      'deployment.environment': config.environment || process.env.NODE_ENV || 'development'
+    }),
     spanProcessor: new BatchSpanProcessor(exporter, {
       maxQueueSize: 2048,
       maxExportBatchSize: 512,

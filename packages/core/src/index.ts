@@ -12,6 +12,9 @@ export * from './connection-manager.js';
 // Telemetry System
 export * from './telemetry/index.js';
 
+// OpenTelemetry Infrastructure
+// Note: Exported separately via "./otel" export path to avoid conflicts
+
 // Utilities
 export * from './utils/index.js';
 

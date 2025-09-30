@@ -108,6 +108,37 @@ export class OfficialOtlpForwarder {
     }
   }
 
+  /**
+   * Forward raw OTLP payload directly to Dash0
+   * Used by the transparent OTLP HTTP endpoint
+   */
+  async forwardRaw(payload: any): Promise<void> {
+    try {
+      console.log(`📤 Forwarding raw OTLP payload to Dash0`);
+
+      // Use the exporter's internal HTTP client to forward directly
+      const response = await fetch(this.config.endpoint, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${this.config.authToken}`,
+          'Dash0-Dataset': this.config.dataset,
+          'User-Agent': 'emp-telemetry-collector/1.0.0'
+        },
+        body: JSON.stringify(payload)
+      });
+
+      if (!response.ok) {
+        throw new Error(`Dash0 forwarding failed: ${response.status} ${response.statusText}`);
+      }
+
+      console.log(`✅ Raw OTLP payload forwarded successfully`);
+    } catch (error) {
+      console.error('❌ Failed to forward raw OTLP payload:', error);
+      throw error;
+    }
+  }
+
   private isWorkflowSpan(event: TelemetryEvent | OtelSpan | WorkflowSpan): event is WorkflowSpan {
     return event && typeof event === 'object' &&
            'spanId' in event && 'traceId' in event && 'operationName' in event && 'events' in event;
