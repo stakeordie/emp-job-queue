@@ -57,7 +57,13 @@
       "Bash(REDIS_URL=redis://localhost:6379 pnpm test src/__tests__/event-client-redis.integration.test.ts --reporter=verbose --no-coverage)",
       "Bash(REDIS_URL=redis://localhost:6379 pnpm test src/__tests__/event-client-redis.integration.test.ts -t \"should handle job events with correlation IDs\")",
       "Bash(REDIS_URL=redis://localhost:6379 pnpm test src/__tests__/redis-to-otlp-bridge.test.ts src/__tests__/event-client-redis.integration.test.ts)",
-      "Bash(REDIS_URL=redis://localhost:6379 pnpm test src/__tests__/)"
+      "Bash(REDIS_URL=redis://localhost:6379 pnpm test src/__tests__/)",
+      "Bash(REDIS_URL=redis://localhost:6379 pnpm test src/__tests__/dash0-integration.test.ts)",
+      "Bash(REDIS_URL=redis://localhost:6379 pnpm dev)",
+      "Bash(REDIS_URL=redis://localhost:6379 pnpm test src/__tests__/end-to-end-pipeline.test.ts -t \"should process event through complete pipeline\")",
+      "Bash(REDIS_URL=redis://localhost:6379 ./node_modules/.bin/tsx --env-file=.env.local-dev --env-file=.env.secret.local-dev watch src/index.ts)",
+      "Bash(REDIS_URL=redis://localhost:6379 pnpm exec tsx --env-file=.env.local-dev --env-file=.env.secret.local-dev watch src/index.ts)",
+      "Bash(REDIS_URL=redis://localhost:6379 pnpm exec tsx --env-file=.env.local-dev --env-file=.env.secret.local-dev --watch src/index.ts)"
     ],
     "deny": [],
     "ask": []

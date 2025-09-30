@@ -224,15 +224,21 @@ export class Dash0Forwarder {
   }
 
   private formatTraceId(traceId: string): string {
-    // Ensure trace ID is 32 hex characters
+    // Ensure trace ID is 32 hex characters, then convert to base64
     const cleaned = traceId.replace(/[^a-f0-9]/gi, '');
-    return cleaned.padStart(32, '0').slice(0, 32);
+    const hex = cleaned.padStart(32, '0').slice(0, 32);
+    // Convert hex string to bytes then to base64 (OTLP/HTTP+JSON requirement)
+    const bytes = Buffer.from(hex, 'hex');
+    return bytes.toString('base64');
   }
 
   private formatSpanId(spanId: string): string {
-    // Ensure span ID is 16 hex characters
+    // Ensure span ID is 16 hex characters, then convert to base64
     const cleaned = spanId.replace(/[^a-f0-9]/gi, '');
-    return cleaned.padStart(16, '0').slice(0, 16);
+    const hex = cleaned.padStart(16, '0').slice(0, 16);
+    // Convert hex string to bytes then to base64 (OTLP/HTTP+JSON requirement)
+    const bytes = Buffer.from(hex, 'hex');
+    return bytes.toString('base64');
   }
 
   private generateSpanId(): string {
