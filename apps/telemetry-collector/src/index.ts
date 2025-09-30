@@ -69,8 +69,10 @@ class TelemetryCollector {
     // Start consumer (now resilient to Redis connection failures)
     await this.consumer.start();
 
-    // Start health check endpoint (simple HTTP server)
-    await this.startHealthCheck();
+    // Start health check endpoint only if enabled (disabled in dev to avoid port conflicts)
+    if (process.env.ENABLE_HEALTH_CHECK === 'true') {
+      await this.startHealthCheck();
+    }
 
     // Log stats periodically
     this.startStatsLogging();

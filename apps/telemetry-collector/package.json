@@ -6,21 +6,26 @@
   "main": "dist/index.js",
   "scripts": {
     "build": "tsc",
-    "dev": "tsx watch src/index.ts",
+    "dev": "./dev.sh",
     "start": "node dist/index.js",
     "lint": "eslint src/**/*.ts",
     "typecheck": "tsc --noEmit",
-    "test": "vitest run",
-    "test:watch": "vitest",
-    "test:ui": "vitest --ui",
-    "test:coverage": "vitest run --coverage",
-    "test:integration": "vitest run --config vitest.config.ts src/__tests__/telemetry-pipeline-integration.test.ts",
-    "test:e2e": "vitest run --config vitest.config.ts src/__tests__/*.e2e.test.ts"
+    "test": "tsx --env-file=.env.testrunner --env-file=.env.secret.testrunner node_modules/vitest/vitest.mjs run",
+    "test:watch": "tsx --env-file=.env.testrunner --env-file=.env.secret.testrunner node_modules/vitest/vitest.mjs",
+    "test:ui": "tsx --env-file=.env.testrunner --env-file=.env.secret.testrunner node_modules/vitest/vitest.mjs --ui",
+    "test:coverage": "tsx --env-file=.env.testrunner --env-file=.env.secret.testrunner node_modules/vitest/vitest.mjs run --coverage",
+    "test:integration": "tsx --env-file=.env.testrunner --env-file=.env.secret.testrunner node_modules/vitest/vitest.mjs run --config vitest.config.ts src/__tests__/telemetry-pipeline-integration.test.ts",
+    "test:e2e": "tsx --env-file=.env.testrunner --env-file=.env.secret.testrunner node_modules/vitest/vitest.mjs run --config vitest.config.ts src/__tests__/*.e2e.test.ts"
   },
   "dependencies": {
     "@emp/core": "workspace:*",
-    "ioredis": "^5.3.2",
-    "dotenv": "^16.3.1"
+    "@opentelemetry/api": "^1.9.0",
+    "@opentelemetry/exporter-trace-otlp-http": "^0.205.0",
+    "@opentelemetry/resources": "^2.1.0",
+    "@opentelemetry/sdk-trace-base": "^2.1.0",
+    "@opentelemetry/semantic-conventions": "^1.36.0",
+    "dotenv": "^16.3.1",
+    "ioredis": "^5.3.2"
   },
   "devDependencies": {
     "@types/node": "^20.8.0",

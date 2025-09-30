@@ -2,9 +2,9 @@
 
 # Run Telemetry Collector Docker container with environment-specific env files
 # Usage: ./scripts/run-telcollect-docker.sh [environment]
-# Default: local-dev
+# Default: testrunner
 
-ENV_NAME="${1:-local-dev}"
+ENV_NAME="${1:-testrunner}"
 cd apps/telemetry-collector
 
 echo "🚀 Starting Telemetry Collector container with environment: $ENV_NAME"

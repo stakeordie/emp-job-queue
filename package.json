@@ -125,6 +125,7 @@
     "d:telcollect:run": "./scripts/run-telcollect-docker.sh",
     "d:telcollect:pull:run": "pnpm d:telcollect:pull && pnpm d:telcollect:run",
     "d:telcollect:status": "curl -s http://localhost:9090/health | jq || echo '❌ Telemetry Collector health check failed'",
+    "dev:telcollect": "cd apps/telemetry-collector && REDIS_URL=redis://localhost:6379 pnpm dev",
     "dev:jeval": "cd services/job-evaluator && tsx --env-file=.env.secret.local-dev --env-file=.env.local-dev src/index.ts",
     "dev:jresolve": "cd services/job-evaluator && tsx --env-file=.env.secret.local-dev --env-file=.env.local-dev src/resolver.ts",
     "test:infrastructure": "./scripts/test-infrastructure.sh",

@@ -5,7 +5,7 @@
  */
 
 import { TelemetryEvent, OtelSpan } from '@emp/core';
-import { Dash0Forwarder, Dash0Config } from './dash0-forwarder.js';
+import { OfficialOtlpForwarder, Dash0Config } from './official-otlp-forwarder.js';
 
 export interface ProcessorConfig {
   outputFormat: 'console' | 'otel' | 'both';
@@ -26,14 +26,14 @@ export interface ProcessorConfig {
 export class EventProcessor {
   private eventBatch: (TelemetryEvent | OtelSpan)[] = [];
   private flushTimer: NodeJS.Timeout | null = null;
-  private dash0Forwarder?: Dash0Forwarder;
+  private dash0Forwarder?: OfficialOtlpForwarder;
 
   constructor(private config: ProcessorConfig) {
     this.startFlushTimer();
 
     // Initialize Dash0 forwarder if enabled
     if (config.dash0?.enabled) {
-      this.dash0Forwarder = new Dash0Forwarder({
+      this.dash0Forwarder = new OfficialOtlpForwarder({
         endpoint: config.dash0.endpoint,
         authToken: config.dash0.authToken,
         dataset: config.dash0.dataset,
@@ -41,7 +41,7 @@ export class EventProcessor {
         flushInterval: config.dash0.flushInterval
       });
 
-      console.log(`📊 Dash0 forwarder initialized (dataset: ${config.dash0.dataset})`);
+      console.log(`📊 Official OTLP forwarder initialized (dataset: ${config.dash0.dataset})`);
     }
   }
 
