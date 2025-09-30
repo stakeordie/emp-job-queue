@@ -2,14 +2,14 @@
 // Defines contract for Redis operations
 
 import {
-// SEMANTIC NOTE: This interface supports both Step and Job terminology
-// Step methods (submitStep, getStep, etc.) - New semantic model for worker processing units
-// Job methods (submitJob, getJob, etc.) - Backwards compatible, operate on Steps
+// SEMANTIC NOTE: This interface uses "Job" for backwards compatibility
+// In the new semantic model, these methods operate on "Steps" (worker processing units)
+// Method names preserved for API compatibility during migration
 //
-// Migration path:
-// - New code: Use Step methods (submitStep, getStep, completeStep)
-// - Old code: Job methods continue working (marked @deprecated)
-// - Both reference the same underlying Step concept
+// Examples:
+// - submitJob() → submits a Step (worker processing unit)
+// - getJob() → retrieves a Step
+// - completeJob() → marks a Step as complete
   Job,
   JobStatus,
   JobProgress,
@@ -26,40 +26,15 @@ export interface RedisServiceInterface {
   isConnected(): boolean;
   ping(): Promise<boolean>;
 
-  
-  // Step management (New Semantic Model)
-  // Steps represent individual worker processing units
-  submitStep(step: Omit<Job, 'id' | 'created_at' | 'status' | 'retry_count'>): Promise<string>;
-  getStep(stepId: string): Promise<Job | null>;
-  updateStepStatus(stepId: string, status: JobStatus): Promise<void>;
-  updateStepProgress(stepId: string, progress: JobProgress): Promise<void>;
-  completeStep(stepId: string, result: JobResult): Promise<void>;
-  failStep(stepId: string, error: string, canRetry?: boolean): Promise<void>;
-  cancelStep(stepId: string, reason: string): Promise<void>;
-  claimStep(stepId: string, workerId: string): Promise<boolean>;
-  releaseStep(stepId: string): Promise<void>;
-
-  // Job management (Backwards Compatibility)
-  // Note: "Job" methods operate on Steps (worker processing units)
-  // These are maintained for backwards compatibility during migration
-  /** @deprecated Use submitStep() instead */
-// Job management
-  /** @deprecated Use submitStep() instead */
+  // Job management
   submitJob(job: Omit<Job, 'id' | 'created_at' | 'status' | 'retry_count'>): Promise<string>;
-  /** @deprecated Use getStep() instead */
   getJob(jobId: string): Promise<Job | null>;
   updateJobStatus(jobId: string, status: JobStatus): Promise<void>;
-  /** @deprecated Use updateStepProgress() instead */
   updateJobProgress(jobId: string, progress: JobProgress): Promise<void>;
-  /** @deprecated Use completeStep() instead */
   completeJob(jobId: string, result: JobResult): Promise<void>;
-  /** @deprecated Use failStep() instead */
   failJob(jobId: string, error: string, canRetry?: boolean): Promise<void>;
-  /** @deprecated Use cancelStep() instead */
   cancelJob(jobId: string, reason: string): Promise<void>;
-  /** @deprecated Use claimStep() instead */
   claimJob(jobId: string, workerId: string): Promise<boolean>;
-  /** @deprecated Use releaseStep() instead */
   releaseJob(jobId: string): Promise<void>;
 
   // Job queue operations

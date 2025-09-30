@@ -110,58 +110,7 @@ export class RedisService implements RedisServiceInterface {
   }
 
   // Job Management - matches Python implementation exactly
-
-  // ==========================================
-  // Step Management (New Semantic Model)
-  // ==========================================
-  // These methods represent the new semantic model where Steps are worker processing units
-
-  async submitStep(step: Omit<Job, 'id' | 'created_at' | 'status' | 'retry_count'>): Promise<string> {
-    // Step methods are the canonical implementation
-    // Job methods below wrap these for backwards compatibility
-    return this.submitJob(step);
-  }
-
-  async getStep(stepId: string): Promise<Job | null> {
-    return this.getJob(stepId);
-  }
-
-  async updateStepStatus(stepId: string, status: JobStatus): Promise<void> {
-    return this.updateJobStatus(stepId, status);
-  }
-
-  async updateStepProgress(stepId: string, progress: JobProgress): Promise<void> {
-    return this.updateJobProgress(stepId, progress);
-  }
-
-  async completeStep(stepId: string, result: JobResult): Promise<void> {
-    return this.completeJob(stepId, result);
-  }
-
-  async failStep(stepId: string, error: string, canRetry?: boolean): Promise<void> {
-    return this.failJob(stepId, error, canRetry);
-  }
-
-  async cancelStep(stepId: string, reason: string): Promise<void> {
-    return this.cancelJob(stepId, reason);
-  }
-
-  async claimStep(stepId: string, workerId: string): Promise<boolean> {
-    return this.claimJob(stepId, workerId);
-  }
-
-  async releaseStep(stepId: string): Promise<void> {
-    return this.releaseJob(stepId);
-  }
-
-  // ==========================================
-  // Job Management (Backwards Compatibility)
-  // ==========================================
-  // Note: These methods operate on Steps (worker processing units)
-  // Maintained for backwards compatibility during migration
-
-  /** @deprecated Use submitStep() instead. Job methods operate on Steps (worker processing units). */
-    async submitJob(
+  async submitJob(
     jobSubmissionData: Omit<Job, 'id' | 'created_at' | 'status' | 'retry_count'>
   ): Promise<string> {
     const jobId = uuidv4();

@@ -32,6 +32,13 @@
     "clean": "rm -rf dist"
   },
   "dependencies": {
+    "@opentelemetry/api": "^1.9.0",
+    "@opentelemetry/core": "^2.1.0",
+    "@opentelemetry/exporter-trace-otlp-http": "^0.205.0",
+    "@opentelemetry/resources": "^2.1.0",
+    "@opentelemetry/sdk-node": "^0.205.0",
+    "@opentelemetry/sdk-trace-base": "^2.1.0",
+    "@opentelemetry/semantic-conventions": "^1.36.0",
     "@types/eventsource": "^3.0.0",
     "@types/node-fetch": "^2.6.12",
     "axios": "^1.6.2",
