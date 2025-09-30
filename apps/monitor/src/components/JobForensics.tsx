@@ -46,10 +46,32 @@ function AttestationRecords({ attestations }: { attestations: any[] }) {
       return { hasAttestations: false, groupedAttestations: [] };
     }
 
-    // Group attestations by retry count and step
-    const groupedByRetry: { [key: string]: any[] } = {};
+    // Deduplicate attestations by job_id (step), keeping the most relevant one
+    const dedupedByStep: { [key: string]: any } = {};
 
     attestations.forEach(att => {
+      const stepKey = `${att.retry_count || 0}-${att.job_id}`;
+      const existing = dedupedByStep[stepKey];
+
+      if (!existing) {
+        dedupedByStep[stepKey] = att;
+      } else {
+        // Priority: permanent failure > failure > completion
+        const attPriority = att.attestation_type?.includes('failure_permanent') ? 3 :
+                           att.attestation_type?.includes('failure') || att.status?.includes('failed') ? 2 : 1;
+        const existingPriority = existing.attestation_type?.includes('failure_permanent') ? 3 :
+                                existing.attestation_type?.includes('failure') || existing.status?.includes('failed') ? 2 : 1;
+
+        if (attPriority > existingPriority) {
+          dedupedByStep[stepKey] = att;
+        }
+      }
+    });
+
+    // Group deduplicated attestations by retry count
+    const groupedByRetry: { [key: string]: any[] } = {};
+
+    Object.values(dedupedByStep).forEach(att => {
       const retryCount = att.retry_count || 0;
       const key = `retry-${retryCount}`;
       if (!groupedByRetry[key]) groupedByRetry[key] = [];
