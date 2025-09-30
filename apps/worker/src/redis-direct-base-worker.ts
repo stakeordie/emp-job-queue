@@ -998,12 +998,18 @@ export class RedisDirectBaseWorker {
       logger.error(`Job ${job.id} failed: ${errorMessage} (retryable: ${canRetry})`);
 
       // Extract context from result if available (for AsyncRESTConnector errors)
-      const context: { httpStatus?: number; timeout?: boolean } = {};
+      const context: { httpStatus?: number; timeout?: boolean; rawServiceOutput?: unknown; rawServiceRequest?: unknown } = {};
       if ((result as any).httpStatus) {
         context.httpStatus = (result as any).httpStatus;
       }
       if ((result as any).timeout) {
         context.timeout = (result as any).timeout;
+      }
+      if ((result as any).rawServiceOutput) {
+        context.rawServiceOutput = (result as any).rawServiceOutput;
+      }
+      if ((result as any).rawServiceRequest) {
+        context.rawServiceRequest = (result as any).rawServiceRequest;
       }
 
       await this.failJob(job.id, errorMessage, canRetry, context);
@@ -1061,7 +1067,7 @@ export class RedisDirectBaseWorker {
     }
   }
 
-  private async failJob(jobId: string, error: string, canRetry = true, context?: { httpStatus?: number; timeout?: boolean }): Promise<void> {
+  private async failJob(jobId: string, error: string, canRetry = true, context?: { httpStatus?: number; timeout?: boolean; rawServiceOutput?: unknown; rawServiceRequest?: unknown }): Promise<void> {
     try {
       logger.info(`🔥 [DEBUG] Base worker failJob called: jobId=${jobId}, canRetry=${canRetry}, error="${error}"`);
 

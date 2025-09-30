@@ -61,7 +61,7 @@ export class JobForensicsService {
       const forensics = await this.buildForensicsData(job, {
         includeHistory,
         includeCrossSystemRefs,
-      });
+      }, empropsJob);
 
       // 4. Find similar failures
       const similarFailures = await this.findSimilarFailures(job, maxSimilarFailures);
@@ -539,7 +539,8 @@ export class JobForensicsService {
    */
   private async buildForensicsData(
     job: Job,
-    options: { includeHistory: boolean; includeCrossSystemRefs: boolean }
+    options: { includeHistory: boolean; includeCrossSystemRefs: boolean },
+    empropsJob?: Job | null
   ): Promise<JobForensics> {
     const forensics: JobForensics = {};
 
@@ -1155,7 +1156,7 @@ export class JobForensicsService {
             const forensics = await this.buildForensicsData(job, {
               includeHistory: false,
               includeCrossSystemRefs: true,
-            });
+            }, null);
             failedJobs.push({ job, forensics });
           }
 

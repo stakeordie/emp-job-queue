@@ -153,6 +153,8 @@ export class OpenAIResponsesConnector extends AsyncRESTConnector {
     result?: JobResult;
     error?: string;
     progress?: number;
+    rawServiceOutput?: unknown;
+    rawServiceRequest?: unknown;
   }> {
     const responseData = response.data;
     
@@ -210,7 +212,9 @@ export class OpenAIResponsesConnector extends AsyncRESTConnector {
           logger.error(`🚫 Semantic failure detected: ${errorMessage}`);
           return {
             completed: true,
-            error: errorMessage
+            error: errorMessage,
+            rawServiceOutput: responseData, // Include full response for forensics
+            rawServiceRequest: jobData // Include original request
           };
         }
 
@@ -233,7 +237,9 @@ export class OpenAIResponsesConnector extends AsyncRESTConnector {
           logger.error(`🚫 Semantic failure detected: OpenAI generated image but included refusal text: ${textContent.trim()}`);
           return {
             completed: true,
-            error: `Content generation refused: ${textContent.trim()}`
+            error: `Content generation refused: ${textContent.trim()}`,
+            rawServiceOutput: responseData, // Include full response for forensics
+            rawServiceRequest: jobData // Include original request
           };
         }
 
@@ -314,13 +320,17 @@ export class OpenAIResponsesConnector extends AsyncRESTConnector {
     else if (responseData.status === 'failed') {
       return {
         completed: true,
-        error: responseData.error || 'OpenAI Responses job failed'
+        error: responseData.error || 'OpenAI Responses job failed',
+        rawServiceOutput: responseData, // Include full response for forensics
+        rawServiceRequest: jobData // Include original request
       };
     } 
     else if (responseData.status === 'cancelled') {
       return {
         completed: true,
-        error: 'OpenAI Responses job was cancelled'
+        error: 'OpenAI Responses job was cancelled',
+        rawServiceOutput: responseData, // Include full response for forensics
+        rawServiceRequest: jobData // Include original request
       };
     }
     

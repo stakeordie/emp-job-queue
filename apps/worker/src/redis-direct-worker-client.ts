@@ -1048,7 +1048,7 @@ export class RedisDirectWorkerClient {
   /**
    * Fail a job via Redis
    */
-  async failJob(jobId: string, error: string, canRetry = true, context?: { httpStatus?: number; serviceType?: string; timeout?: boolean }): Promise<void> {
+  async failJob(jobId: string, error: string, canRetry = true, context?: { httpStatus?: number; serviceType?: string; timeout?: boolean; rawServiceOutput?: unknown; rawServiceRequest?: unknown }): Promise<void> {
     try {
       logger.info(`🔥 [DEBUG] Redis client failJob called: jobId=${jobId}, canRetry=${canRetry}, error="${error}"`);
 
@@ -1096,8 +1096,8 @@ export class RedisDirectWorkerClient {
         failure_type: failureClassification.failure_type,
         failure_reason: failureClassification.failure_reason,
         failure_description: failureClassification.failure_description,
-        raw_service_output: null, // TODO: Capture failed service responses when available
-        raw_service_request: null, // TODO: Capture request payload when available for failure cases
+        raw_service_output: context?.rawServiceOutput ? JSON.stringify(context.rawServiceOutput) : null,
+        raw_service_request: context?.rawServiceRequest ? JSON.stringify(context.rawServiceRequest) : null,
         retry_count: newRetryCount,
         will_retry: shouldRetry,
         max_retries: job.max_retries,
