@@ -70,7 +70,10 @@
       "Bash(pnpm --filter=@emp/core build)",
       "Bash(python3 scripts/semantic-cleanup/phase3-update-implementations.py:*)",
       "Bash(python3:*)",
-      "Bash(mv:*)"
+      "Bash(mv:*)",
+      "Bash(REDIS_URL=redis://localhost:6379 pnpm test src/__tests__/live-attestation-compatibility.test.ts)",
+      "Bash(REDIS_URL=redis://localhost:6379 pnpm test apps/worker/src/__tests__/live-attestation-compatibility.test.ts)",
+      "Bash(pnpm --filter=@emp/worker build)"
     ],
     "deny": [],
     "ask": []
