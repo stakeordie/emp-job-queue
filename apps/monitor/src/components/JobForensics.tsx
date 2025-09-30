@@ -153,7 +153,7 @@ function AttestationRecords({ attestations }: { attestations: any[] }) {
 
                     {/* Job Details */}
                     <div className="text-xs text-muted-foreground space-y-1">
-                      <div>Job ID: <code className="bg-gray-100 px-1 rounded">{attestation.job_id}</code></div>
+                      <div>Step ID: <code className="bg-gray-100 px-1 rounded">{attestation.job_id}</code></div>
                       <div>Worker ID: <code className="bg-gray-100 px-1 rounded">{attestation.worker_id}</code></div>
                       {(attestation.completed_at || attestation.failed_at) && (
                         <div>
@@ -184,15 +184,17 @@ function AttestationRecords({ attestations }: { attestations: any[] }) {
                     )}
 
                     {/* Raw Service Output (Debugging) */}
-                    {attestation.raw_service_output && (
+                    {(attestation.raw_service_output || (isFailure && attestation.error_message)) && (
                       <details className="mt-3">
                         <summary className="text-xs font-medium text-muted-foreground cursor-pointer hover:text-foreground">
-                          ▶ Click to view raw service response for step {attestation.current_step}
+                          ▶ Click to view {attestation.raw_service_output ? 'raw service response' : 'error details'} for step {attestation.current_step}
                         </summary>
                         <div className="mt-2 p-2 bg-gray-100 border rounded text-xs font-mono whitespace-pre-wrap max-h-40 overflow-y-auto">
-                          {typeof attestation.raw_service_output === 'string'
-                            ? attestation.raw_service_output
-                            : JSON.stringify(attestation.raw_service_output, null, 2)}
+                          {attestation.raw_service_output
+                            ? (typeof attestation.raw_service_output === 'string'
+                                ? attestation.raw_service_output
+                                : JSON.stringify(attestation.raw_service_output, null, 2))
+                            : attestation.error_message}
                         </div>
                       </details>
                     )}
