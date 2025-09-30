@@ -1,2 +1,2 @@
 # Generated KDL files from templates
-scripts/terminal/*.kdl
+*.kdl
