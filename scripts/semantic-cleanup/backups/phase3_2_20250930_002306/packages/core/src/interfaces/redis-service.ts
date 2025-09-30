@@ -2,14 +2,6 @@
 // Defines contract for Redis operations
 
 import {
-// SEMANTIC NOTE: This interface uses "Job" for backwards compatibility
-// In the new semantic model, these methods operate on "Steps" (worker processing units)
-// Method names preserved for API compatibility during migration
-//
-// Examples:
-// - submitJob() → submits a Step (worker processing unit)
-// - getJob() → retrieves a Step
-// - completeJob() → marks a Step as complete
   Job,
   JobStatus,
   JobProgress,
