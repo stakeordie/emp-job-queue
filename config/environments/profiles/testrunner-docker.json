@@ -1,0 +1,70 @@
+{
+  "name": "Test Runner",
+  "description": "Used for Testing",
+  "components": {
+    "api": [
+      "default",
+      "production"
+    ],
+    "ngrok": [
+      "default"
+    ],
+    "database": [
+      "default",
+      "production"
+    ],
+    "emprops": [
+      "default",
+      "production"
+    ],
+    "webhook-service": [
+      "default",
+      "production"
+    ],
+    "machine": [
+      "default",
+      "production"
+    ],
+    "worker": [
+      "default",
+      "production"
+    ],
+    "monitor": [
+      "default",
+      "production"
+    ],
+    "redis": [
+      "default",
+      "production"
+    ],
+    "storage-provider": [
+      "default",
+      "production"
+    ],
+    "comfyui": [
+      "default"
+    ],
+    "api-tokens": [
+      "default"
+    ],
+    "ollama": [
+      "default",
+      "production"
+    ],
+    "simulation": [
+      "local"
+    ],
+    "openai": [
+      "default",
+      "production"
+    ],
+    "gemini": [
+      "default"
+    ],
+    "telemetry": [
+      "default",
+      "localdocker"
+    ]
+  },
+  "services": {}
+}
