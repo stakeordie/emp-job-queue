@@ -24,15 +24,12 @@ config({ path: '.env.secret.testrunner' });
 
 describe('Webhook Service Telemetry Pipeline Meta Tests', () => {
   if (!process.env.WEBHOOK_SERVICE_PORT) throw new Error('WEBHOOK_SERVICE_PORT required');
-  if (!process.env.API_PORT) throw new Error('API_PORT required');
   if (!process.env.OTEL_COLLECTOR_ENDPOINT) throw new Error('OTEL_COLLECTOR_ENDPOINT required');
   if (!process.env.DASH0_AUTH_TOKEN) throw new Error('DASH0_AUTH_TOKEN required');
   if (!process.env.DASH0_DATASET) throw new Error('DASH0_DATASET required');
 
   const WEBHOOK_PORT = process.env.WEBHOOK_SERVICE_PORT;
   const WEBHOOK_URL = `http://localhost:${WEBHOOK_PORT}`;
-  const API_PORT = process.env.API_PORT;
-  const API_URL = `http://localhost:${API_PORT}`;
   const COLLECTOR_URL = process.env.OTEL_COLLECTOR_ENDPOINT;
   const DASH0_AUTH_TOKEN = process.env.DASH0_AUTH_TOKEN;
   const DASH0_DATASET = process.env.DASH0_DATASET;
@@ -52,15 +49,6 @@ describe('Webhook Service Telemetry Pipeline Meta Tests', () => {
     expect(response.ok).toBe(true);
 
     console.log('✅ Webhook service is accessible');
-  });
-
-  it('should have API service running and accessible', async () => {
-    console.log('\n📊 TEST: API service accessibility\n');
-
-    const response = await fetch(API_URL);
-    expect(response.ok || response.status === 404).toBe(true);
-
-    console.log('✅ API service is accessible');
   });
 
   it('should have OTLP Collector running and accepting traces', async () => {

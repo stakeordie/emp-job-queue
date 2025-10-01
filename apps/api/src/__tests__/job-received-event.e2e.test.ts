@@ -34,7 +34,7 @@ describe('API job.received Event E2E Tests', () => {
 
   beforeAll(async () => {
     await ensureServicesRunning(['api', 'telcollect']);
-  }, 30000);
+  }, 120000); // 120 seconds to allow for 3 checks (15s + 30s + 60s + buffer)
 
   afterAll(async () => {
     cleanupStartedServices();
