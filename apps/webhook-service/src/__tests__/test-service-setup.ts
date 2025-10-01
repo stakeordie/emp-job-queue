@@ -160,10 +160,38 @@ async function startService(serviceName: string, profile: string = 'testrunner')
   return process;
 }
 
+// Check if Docker containers are already running
+async function getRunningContainers(imagePattern: string): Promise<number> {
+  try {
+    const { execSync } = await import('child_process');
+    const output = execSync(`docker ps --filter "ancestor=${imagePattern}" --format "{{.Names}}"`, {
+      encoding: 'utf-8'
+    });
+    return output.trim().split('\n').filter(name => name).length;
+  } catch {
+    return 0;
+  }
+}
+
 async function startMachine(machineType: string, count: number, profile: string): Promise<ChildProcess[]> {
+  const isDocker = profile.includes('docker');
+
+  // Check if containers are already running (Docker mode only)
+  if (isDocker) {
+    const imagePattern = `emprops/machine:${machineType}`;
+    const runningCount = await getRunningContainers(imagePattern);
+
+    if (runningCount >= count) {
+      console.log(`✅ ${runningCount} ${machineType} machine(s) already running (needed: ${count})`);
+      return [];
+    } else if (runningCount > 0) {
+      console.log(`⚠️  Found ${runningCount} ${machineType} machine(s) running, starting ${count - runningCount} more...`);
+      count = count - runningCount;
+    }
+  }
+
   console.log(`🚀 Starting ${count} ${machineType} machine(s) with profile: ${profile}...`);
 
-  const isDocker = profile.includes('docker');
   const processes: ChildProcess[] = [];
 
   for (let i = 0; i < count; i++) {
