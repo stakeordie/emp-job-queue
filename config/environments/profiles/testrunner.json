@@ -4,26 +4,25 @@
   "components": {
     "api": [
       "default",
-      "production"
+      "localtest"
     ],
     "ngrok": [
       "default"
     ],
     "database": [
       "default",
-      "production"
+      "development"
     ],
     "emprops": [
-      "default",
-      "production"
+      "default"
     ],
     "webhook-service": [
       "default",
-      "production"
+      "local"
     ],
     "machine": [
       "default",
-      "production"
+      "localtest"
     ],
     "worker": [
       "default",
@@ -31,32 +30,33 @@
     ],
     "monitor": [
       "default",
-      "production"
+      "local"
     ],
     "redis": [
       "default",
-      "production"
+      "localtest"
     ],
     "storage-provider": [
       "default",
-      "production"
+      "dev"
     ],
     "comfyui": [
-      "default"
+      "default",
+      "localtest"
     ],
     "api-tokens": [
       "default"
     ],
     "ollama": [
       "default",
-      "production"
+      "localtest"
     ],
     "simulation": [
       "local"
     ],
     "openai": [
       "default",
-      "production"
+      "local"
     ],
     "gemini": [
       "default"

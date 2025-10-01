@@ -97,6 +97,7 @@
     "d:machine:push": "node scripts/env/machine-compose.js push",
     "d:machine:logs": "node scripts/env/machine-compose.js logs",
     "d:machine:run": "node scripts/env/machine-compose.js run",
+    "d:machine:stop": "node scripts/env/machine-compose.js stop",
     "d:machine:env_gen": "node scripts/env/machine-compose.js generate_args",
     "d:machine:status": "curl -s http://localhost:9092/health | jq || echo '❌ Health check failed'",
     "dev:machine": "cd apps/machine && DEV_ENV=local-dev docker-compose -f docker-compose.dev.yml up comfyui-dev",

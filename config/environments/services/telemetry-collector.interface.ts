@@ -35,7 +35,7 @@ export const TelemetryCollectorEnvInterface = {
   optional: {
   },
   secret: {
-    "REDIS_URL": "TELEMETRY_REDIS_URL",
+    "REDIS_URL": "REDIS_URL",
     "DASH0_AUTH_TOKEN": "TELEMETRY_DASH0_AUTH_TOKEN"
   }, 
   defaults: {

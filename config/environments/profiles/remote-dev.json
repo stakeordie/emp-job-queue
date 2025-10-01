@@ -15,7 +15,7 @@
     ],
     "emprops": [
       "default",
-      "remote-dev"
+      "remotedev"
     ],
     "webhook-service": [
       "default",

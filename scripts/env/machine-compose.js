@@ -199,9 +199,11 @@ class MachineCompose {
     let profile = null;
     const flags = [];
     const portMappings = [];
+    let numInstances = 1; // Default to 1 instance
 
-    // Parse: command profile [--open port:port] [other flags]
+    // Parse: command profile [containerName] [--open port:port] [--num N] [other flags]
     // Environment is automatically determined from the profile's env_file configuration
+    let containerName = null;
     for (let i = 1; i < args.length; i++) {
       const arg = args[i];
       if (arg === '--open' && i + 1 < args.length) {
@@ -213,16 +215,29 @@ class MachineCompose {
         } else {
           throw new Error(`Invalid port mapping format: ${portMapping}. Use --open host:container format.`);
         }
+      } else if (arg === '--num' && i + 1 < args.length) {
+        // Parse --num N
+        const num = parseInt(args[i + 1], 10);
+        if (isNaN(num) || num < 1) {
+          throw new Error(`Invalid --num value: ${args[i + 1]}. Must be a positive integer.`);
+        }
+        numInstances = num;
+        i++; // Skip the number argument
+      } else if (arg === '--reset') {
+        // Parse --reset flag (stop existing containers before starting new ones)
+        flags.push('--reset');
       } else if (arg.startsWith('--')) {
         flags.push(arg);
       } else if (!profile) {
         profile = arg; // First non-flag arg is the profile
+      } else if (!containerName) {
+        containerName = arg; // Second non-flag arg is the container name (for stop command)
       } else {
         flags.push(arg); // Additional non-flag args are treated as flags
       }
     }
 
-    return { command, profile, portMappings, flags };
+    return { command, profile, containerName, portMappings, flags, numInstances };
   }
 
   /**
@@ -267,17 +282,28 @@ class MachineCompose {
     console.log('  pull:run   Pull latest images and run (hosted env simulation)');
     console.log('  logs       View service logs');
     console.log('  run        Run single container with docker run (production-style)');
+    console.log('  stop       Stop running containers by profile name');
     console.log('  generate_args  Generate deployment files for hosting platforms');
     console.log('\nPort Control:');
     console.log('  --open host:container   Expose container port to host port');
     console.log('  Multiple --open flags can be used');
+    console.log('\nMultiple Instances:');
+    console.log('  --num N                 Start N containers with unique names');
+    console.log('  --reset                 Stop existing containers before starting new ones');
+    console.log('\nLogging:');
+    console.log('  All containers log to: logs/machines/<container-name>.log');
+    console.log('  View logs: docker logs <container-name>');
+    console.log('  Or use: tail -f logs/machines/<container-name>.log');
     console.log('\nExamples:');
     console.log('  pnpm machine:up comfyui-remote-local');
     console.log('  pnpm machine:up sim-prod --open 9090:9090');
     console.log('  pnpm machine:build comfyui-remote-production');
     console.log('  pnpm machine:down comfyui-remote-local');
-    console.log('  pnpm machine:pull:run comfyui-remote-production --open 9090:9090');
-    console.log('  pnpm machine:run comfyui-remote-production --open 9090:9090');
+    console.log('  pnpm d:machine:pull:run ollama-mock --num 3');
+    console.log('  pnpm d:machine:run ollama-mock --num 5 --reset');
+    console.log('  pnpm d:machine:stop ollama-mock           # Stop all ollama-mock containers');
+    console.log('  pnpm d:machine:stop ollama-mock ollama-mock-1  # Stop specific container');
+    console.log('  pnpm d:machine:stop all                   # Stop all containers');
     console.log('  pnpm machine:generate_args comfyui-remote-production');
     console.log('\nNote: Environment is automatically determined from profile configuration');
     console.log('\nProduction Emulation:');
@@ -286,19 +312,43 @@ class MachineCompose {
 
   /**
    * Build Docker Run command (production-style with -e flags)
+   * @param {string} containerName - Optional unique container name (for multiple instances)
+   * @param {boolean} detached - Run in detached mode (for multiple containers)
    */
-  buildDockerRunCommand(profile, flags, envName, portMappings) {
+  buildDockerRunCommand(profile, flags, envName, portMappings, containerName = null, detached = false) {
     if (!profile) {
       throw new Error('Profile is required for docker run command');
     }
 
+    const finalContainerName = containerName || profile;
     const cmd = ['docker', 'run'];
-    
+
     // Add common docker run flags
     cmd.push('--platform', 'linux/amd64'); // Force x86_64 architecture
+
+    // Only run detached if explicitly requested (for multiple containers)
+    if (detached) {
+      cmd.push('-d'); // Run in detached mode (background)
+    }
+
     cmd.push('--rm'); // Remove container when it exits
-    cmd.push('--name', profile); // Container name
-    cmd.push('--hostname', profile); // Hostname
+    cmd.push('--name', finalContainerName); // Container name
+    cmd.push('--hostname', finalContainerName); // Hostname
+
+    // Store log file path for later use in executeCommand
+    const logsDir = process.env.MACHINE_LOGS_DIR || path.join(PROJECT_ROOT, 'logs', 'machines');
+    const logFile = path.join(logsDir, `${finalContainerName}.log`);
+
+    // Ensure logs directory exists
+    if (!fs.existsSync(logsDir)) {
+      fs.mkdirSync(logsDir, { recursive: true });
+      console.log(chalk.dim(`📁 Created logs directory: ${logsDir}`));
+    }
+
+    console.log(chalk.dim(`📋 Container logs: ${logFile}`));
+
+    // Store logFile in command metadata for executeCommand to use
+    this._currentLogFile = logFile;
     
     // Add port mappings
     portMappings.forEach(mapping => {
@@ -433,6 +483,9 @@ class MachineCompose {
       case 'run':
         // Special case: handled by buildDockerRunCommand instead
         break;
+      case 'stop':
+        // Special case: handled by stopContainersByProfile instead
+        break;
       case 'generate_args':
         // Special case: handled by generateDeploymentArgs instead
         break;
@@ -456,6 +509,10 @@ class MachineCompose {
   async executeCommand(cmd, includeEnvVars = false, portMappings = [], envName = null) {
     console.log(chalk.blue(`🐳 Running: ${cmd.join(' ')}`));
     console.log(chalk.gray(`📁 Working directory: ${MACHINE_DIR}\n`));
+
+    // Check if we need to redirect logs to file (for docker run commands)
+    const isDockerRun = cmd[0] === 'docker' && cmd[1] === 'run';
+    const logFile = this._currentLogFile;
 
     // Use current environment - Docker Compose will handle env_file loading
     let env = process.env;
@@ -617,6 +674,131 @@ class MachineCompose {
   }
 
   /**
+   * Get existing container indices for a profile
+   */
+  async getExistingContainerIndices(profile) {
+    try {
+      const { execSync } = await import('child_process');
+      const output = execSync(`docker ps --filter "name=${profile}" --format "{{.Names}}"`, {
+        encoding: 'utf-8'
+      }).trim();
+
+      if (!output) {
+        return [];
+      }
+
+      const containerNames = output.split('\n').filter(name => name);
+      const indices = [];
+
+      for (const name of containerNames) {
+        // Match patterns like: ollama-mock-0, ollama-mock-1, ollama-mock
+        if (name === profile) {
+          indices.push(0); // Single container without index
+        } else {
+          const match = name.match(new RegExp(`^${profile}-(\\d+)$`));
+          if (match) {
+            indices.push(parseInt(match[1], 10));
+          }
+        }
+      }
+
+      return indices.sort((a, b) => a - b);
+    } catch {
+      return [];
+    }
+  }
+
+  /**
+   * Stop running containers by profile name, specific container, or all containers
+   * @param {string} profile - Machine type (e.g., 'ollama-mock') or 'all'
+   * @param {string} specificContainer - Optional specific container name (e.g., 'ollama-mock-1')
+   */
+  async stopContainersByProfile(profile, specificContainer = null) {
+    const { execSync } = await import('child_process');
+
+    try {
+      // Case 1: Stop specific container by name
+      if (specificContainer) {
+        console.log(chalk.blue(`🛑 Stopping specific container: ${specificContainer}`));
+
+        // Check if container exists and is running
+        try {
+          const output = execSync(`docker ps --filter "name=^${specificContainer}$" --format "{{.Names}}"`, {
+            encoding: 'utf-8'
+          }).trim();
+
+          if (!output) {
+            console.log(chalk.yellow(`⚠️  Container not found or not running: ${specificContainer}`));
+            return 0;
+          }
+
+          console.log(chalk.dim(`   Stopping ${specificContainer}...`));
+          execSync(`docker stop ${specificContainer}`, { encoding: 'utf-8' });
+          console.log(chalk.green(`   ✓ Stopped ${specificContainer}`));
+          console.log(chalk.green(`\n✅ Stopped 1 container`));
+          return 1;
+        } catch (error) {
+          throw new Error(`Failed to stop container ${specificContainer}: ${error.message}`);
+        }
+      }
+
+      // Case 2: Stop all containers
+      if (profile === 'all' || !profile) {
+        console.log(chalk.blue(`🛑 Stopping ALL running containers`));
+
+        const output = execSync(`docker ps --format "{{.Names}}"`, {
+          encoding: 'utf-8'
+        }).trim();
+
+        if (!output) {
+          console.log(chalk.yellow(`⚠️  No running containers found`));
+          return 0;
+        }
+
+        const containerNames = output.split('\n').filter(name => name);
+        console.log(chalk.blue(`📋 Found ${containerNames.length} container(s) to stop:`));
+        containerNames.forEach(name => console.log(chalk.dim(`   - ${name}`)));
+
+        for (const containerName of containerNames) {
+          console.log(chalk.dim(`   Stopping ${containerName}...`));
+          execSync(`docker stop ${containerName}`, { encoding: 'utf-8' });
+          console.log(chalk.green(`   ✓ Stopped ${containerName}`));
+        }
+
+        console.log(chalk.green(`\n✅ Stopped ${containerNames.length} container(s)`));
+        return containerNames.length;
+      }
+
+      // Case 3: Stop all containers for a specific machine type
+      console.log(chalk.blue(`🛑 Stopping containers matching machine type: ${profile}`));
+
+      const output = execSync(`docker ps --filter "name=${profile}" --format "{{.Names}}"`, {
+        encoding: 'utf-8'
+      }).trim();
+
+      if (!output) {
+        console.log(chalk.yellow(`⚠️  No running containers found for machine type: ${profile}`));
+        return 0;
+      }
+
+      const containerNames = output.split('\n').filter(name => name);
+      console.log(chalk.blue(`📋 Found ${containerNames.length} container(s) to stop:`));
+      containerNames.forEach(name => console.log(chalk.dim(`   - ${name}`)));
+
+      for (const containerName of containerNames) {
+        console.log(chalk.dim(`   Stopping ${containerName}...`));
+        execSync(`docker stop ${containerName}`, { encoding: 'utf-8' });
+        console.log(chalk.green(`   ✓ Stopped ${containerName}`));
+      }
+
+      console.log(chalk.green(`\n✅ Stopped ${containerNames.length} container(s)`));
+      return containerNames.length;
+    } catch (error) {
+      throw new Error(`Failed to stop containers: ${error.message}`);
+    }
+  }
+
+  /**
    * Generate deployment arguments for hosting platforms
    */
   generateDeploymentArgs(profile, envName, outputDir = 'deployment-files') {
@@ -762,7 +944,7 @@ class MachineCompose {
   async run() {
     let symlinkCreated = false;
     try {
-      const { command, profile, portMappings: cmdLinePortMappings, flags } = this.parseArgs();
+      const { command, profile, containerName, portMappings: cmdLinePortMappings, flags, numInstances } = this.parseArgs();
       
       // Get environment from profile configuration
       let envName = null;
@@ -846,19 +1028,19 @@ class MachineCompose {
         if (!profile) {
           throw new Error('Profile is required for pull:run command');
         }
-        
+
         // Get the image name for this profile
         const composeConfig = yaml.load(fs.readFileSync(path.join(MACHINE_DIR, 'docker-compose.yml'), 'utf8'));
         const profileService = Object.entries(composeConfig.services || {})
-          .find(([name, service]) => !service.profiles || service.profiles.includes(profile));
-        
+          .find(([, service]) => !service.profiles || service.profiles.includes(profile));
+
         if (!profileService || !profileService[1].image) {
           throw new Error(`No image found for profile ${profile}`);
         }
-        
+
         const imageName = profileService[1].image;
         console.log(chalk.cyan(`📦 Image: ${imageName}`));
-        
+
         // Step 1: Remove local image to force fresh pull (mimics fresh machine)
         console.log(chalk.yellow('🗑️  Step 1: Removing local image (simulating fresh machine)...'));
         try {
@@ -867,33 +1049,96 @@ class MachineCompose {
         } catch (err) {
           console.log(chalk.gray('   Image not found locally (already clean)'));
         }
-        
+
         // Step 2: Pull image directly (like VAST.ai/Railway would)
         console.log(chalk.blue('📥 Step 2: Pulling image from registry (like hosted platforms)...'));
         await this.executeCommand(['docker', 'pull', imageName], false, [], null);
-        
+
         // Step 3: Docker run with environment injection (exactly like hosted platforms)
-        console.log(chalk.blue('🏗️  Step 3: Running container (hosted platform simulation)...'));
-        cmd = this.buildDockerRunCommand(profile, flags, envName, portMappings);
-        // Environment variables are already injected as -e flags in buildDockerRunCommand
-        injectEnvVars = false;
+        const isReset = flags.includes('--reset');
+
+        if (isReset) {
+          console.log(chalk.yellow('🔄 Reset mode: Stopping existing containers first...'));
+          await this.stopContainersByProfile(profile, null);
+        }
+
+        if (numInstances > 1) {
+          console.log(chalk.blue(`🏗️  Step 3: Running ${numInstances} containers (hosted platform simulation)...`));
+
+          // Get existing container indices to continue numbering
+          const startIndex = isReset ? 0 : (await this.getExistingContainerIndices(profile)).length;
+
+          for (let i = 0; i < numInstances; i++) {
+            const containerIndex = startIndex + i;
+            const containerName = `${profile}-${containerIndex}`;
+            console.log(chalk.dim(`   Starting container ${i + 1}/${numInstances}: ${containerName}`));
+            cmd = this.buildDockerRunCommand(profile, flags, envName, portMappings, containerName, true); // detached mode
+            await this.executeCommand(cmd, false, portMappings, envName);
+          }
+          // Clean up symlink after all containers started
+          if (symlinkCreated) {
+            this.cleanupEnvironmentSymlink();
+          }
+          return; // Done
+        } else {
+          console.log(chalk.blue('🏗️  Step 3: Running container (hosted platform simulation)...'));
+          cmd = this.buildDockerRunCommand(profile, flags, envName, portMappings);
+          // Environment variables are already injected as -e flags in buildDockerRunCommand
+          injectEnvVars = false;
+        }
       } else if (command === 'run') {
         // Use docker run command (production hosting style)
         if (!profile) {
           throw new Error('Profile is required for docker run command');
         }
-        
-        console.log(chalk.blue('🏗️  Using docker run (production hosting emulation)'));
-        cmd = this.buildDockerRunCommand(profile, flags, envName, portMappings);
-        // Environment variables are already injected as -e flags in buildDockerRunCommand
-        injectEnvVars = false;
+
+        const isReset = flags.includes('--reset');
+
+        if (isReset) {
+          console.log(chalk.yellow('🔄 Reset mode: Stopping existing containers first...'));
+          await this.stopContainersByProfile(profile, null);
+        }
+
+        if (numInstances > 1) {
+          console.log(chalk.blue(`🏗️  Starting ${numInstances} containers (production hosting emulation)`));
+
+          // Get existing container indices to continue numbering
+          const startIndex = isReset ? 0 : (await this.getExistingContainerIndices(profile)).length;
+
+          for (let i = 0; i < numInstances; i++) {
+            const containerIndex = startIndex + i;
+            const containerName = `${profile}-${containerIndex}`;
+            console.log(chalk.dim(`   Starting container ${i + 1}/${numInstances}: ${containerName}`));
+            cmd = this.buildDockerRunCommand(profile, flags, envName, portMappings, containerName, true); // detached mode
+            await this.executeCommand(cmd, false, portMappings, envName);
+          }
+          // Clean up symlink after all containers started
+          if (symlinkCreated) {
+            this.cleanupEnvironmentSymlink();
+          }
+          return; // Done
+        } else {
+          console.log(chalk.blue('🏗️  Using docker run (production hosting emulation)'));
+          cmd = this.buildDockerRunCommand(profile, flags, envName, portMappings);
+          // Environment variables are already injected as -e flags in buildDockerRunCommand
+          injectEnvVars = false;
+        }
+      } else if (command === 'stop') {
+        // Stop running containers by profile name, specific container, or all
+        await this.stopContainersByProfile(profile || 'all', containerName);
+
+        // Clean up symlink after stopping
+        if (symlinkCreated) {
+          this.cleanupEnvironmentSymlink();
+        }
+        return; // Done
       } else {
         // Use docker compose command
         cmd = this.buildDockerComposeCommand(command, profile, flags, envName);
         // Enable runtime env injection for 'up' commands to emulate production
         injectEnvVars = (command === 'up');
       }
-      
+
       await this.executeCommand(cmd, injectEnvVars, portMappings, envName);
       
       // Clean up symlink after successful execution
@@ -911,6 +1156,9 @@ class MachineCompose {
     }
   }
 }
+
+// Export for testing
+export default MachineCompose;
 
 // Execute if run directly
 if (import.meta.url === `file://${process.argv[1]}`) {

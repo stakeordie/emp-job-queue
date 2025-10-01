@@ -8,9 +8,8 @@ export const WebhookServiceEnvInterface = {
   location: "apps/webhook-service",
   
   required: {
+    "API_PORT": "API_PORT",
     // Web server configuration
-    "HUB_REDIS_URL": "REDIS_URL",
-    "REDIS_URL": "REDIS_URL",
     "WEBHOOK_BASE_ID": "WEBHOOK_SERVICE_BASE_ID",
     "WEBHOOK_SERVICE_PORT": "WEBHOOK_SERVICE_PORT",
     "CORS_ORIGINS": "WEBHOOK_SERVICE_CORS_ORIGINS",
@@ -43,6 +42,8 @@ export const WebhookServiceEnvInterface = {
   optional: {
   },
   secret: {
+    "HUB_REDIS_URL": "REDIS_URL",
+    "REDIS_URL": "REDIS_URL",
     "AUTH_TOKEN": "API_AUTH_TOKEN",
     "DASH0_AUTH_TOKEN": "TELEMETRY_DASH0_AUTH_TOKEN",
     "EMPROPS_API_AUTH": "EMPROPS_API_AUTH",
