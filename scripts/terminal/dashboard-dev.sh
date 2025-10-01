@@ -13,6 +13,9 @@ pnpm -w shutdown
 
 # Start docs in background
 nohup pnpm -w dev:docs &
+
+# Start ngrok in background
+nohup pnpm -w ngrok &
 ENV_FILE="$PROJECT_ROOT/.env.$PROFILE"
 KDL_TEMPLATE="$PROJECT_ROOT/scripts/terminal/dashboard-$PROFILE.kdl.template"
 KDL_FILE="$PROJECT_ROOT/scripts/terminal/dashboard-$PROFILE.kdl"

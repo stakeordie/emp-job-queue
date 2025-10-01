@@ -25,22 +25,27 @@ interface ServiceConfig {
 function getServiceStartArgs(serviceName: string, profile: string): string[] {
   const isDocker = profile.includes('docker');
 
+  // Special case: 'dashboard' starts entire dev environment including monitor
+  if (serviceName === 'dashboard') {
+    return ['dash:dev', profile];
+  }
+
   const commands: Record<string, { local: string[], docker: string[] }> = {
     api: {
       local: ['dev:api', '--env', profile],
-      docker: ['d:api:run', profile]
+      docker: ['d:api:pull:run', profile]
     },
     telcollect: {
       local: ['dev:telcollect', '--env', profile],
-      docker: ['d:telcollect:run', profile]
+      docker: ['d:telcollect:pull:run', profile]
     },
     webhook: {
       local: ['dev:webhook', '--env', profile],
-      docker: ['d:webhook:run', profile]
+      docker: ['d:webhook:pull:run', profile]
     },
     monitor: {
       local: ['dev:monitor', '--env', profile],
-      docker: ['d:monitor:run', profile]
+      docker: ['dev:monitor', '--env', profile] // Monitor always runs locally
     }
   };
 
@@ -117,9 +122,9 @@ const SERVICES: Record<string, ServiceConfig> = {
 
 const startedProcesses: Map<string, ChildProcess> = new Map();
 
-// Parse machine specification like "machine:ollama:3"
+// Parse machine specification like "machine:ollama:3" or "machine:ollama-mock:3"
 function parseMachineSpec(spec: string): { type: string; count: number } | null {
-  const match = spec.match(/^machine:(\w+):(\d+)$/);
+  const match = spec.match(/^machine:([\w-]+):(\d+)$/);
   if (!match) return null;
   return {
     type: match[1],
@@ -135,8 +140,13 @@ async function startService(serviceName: string, profile: string = 'testrunner')
 
   console.log(`🚀 Starting ${config.name} with profile: ${profile}...`);
 
+  const isDocker = profile.includes('docker');
   const startArgs = getServiceStartArgs(serviceName, profile);
-  const process = spawn(config.startCommand, startArgs, {
+
+  // For Docker, call pnpm with the docker command, passing profile as arg
+  const command = isDocker ? 'pnpm' : config.startCommand;
+
+  const process = spawn(command, startArgs, {
     stdio: ['ignore', 'pipe', 'pipe'],
     cwd: '/Users/the_dusky/code/emprops/ai_infra/emp-job-queue',
   });
@@ -154,17 +164,17 @@ async function startMachine(machineType: string, count: number, profile: string)
   console.log(`🚀 Starting ${count} ${machineType} machine(s) with profile: ${profile}...`);
 
   const isDocker = profile.includes('docker');
-  const command = isDocker ? 'd:machine:run' : 'dev:machine';
-
   const processes: ChildProcess[] = [];
 
   for (let i = 0; i < count; i++) {
     const args = isDocker
-      ? [command, machineType, profile]
-      : [command, '--type', machineType, '--env', profile];
+      ? ['d:machine:pull:run', machineType]  // Machine name only (profile baked into image)
+      : ['dev:machine', '--type', machineType, '--env', profile];
+
+    console.log(`   Starting container ${i + 1}/${count}: pnpm ${args.join(' ')}`);
 
     const process = spawn('pnpm', args, {
-      stdio: ['ignore', 'pipe', 'pipe'],
+      stdio: 'inherit',  // Show output for debugging
       cwd: '/Users/the_dusky/code/emprops/ai_infra/emp-job-queue',
     });
 
@@ -173,39 +183,77 @@ async function startMachine(machineType: string, count: number, profile: string)
     processes.push(process);
   }
 
-  // Wait for startup
-  await new Promise((resolve) => setTimeout(resolve, 10000)); // Machines take longer
+  // Wait for startup (Docker containers take longer)
+  const delay = isDocker ? 15000 : 10000;
+  await new Promise((resolve) => setTimeout(resolve, delay));
 
   console.log(`✅ ${count} ${machineType} machine(s) started`);
   return processes;
 }
 
 export async function ensureServicesRunning(
-  serviceSpecs: string[],
-  profile: string = 'testrunner'
+  serviceSpecs: string[]
 ): Promise<void> {
-  console.log(`\n🔧 Checking required services (profile: ${profile})...\n`);
+  // Determine mode: if 'docker' is in specs, use docker mode
+  const isDockerMode = serviceSpecs.includes('docker');
+  const profile = isDockerMode ? 'testrunner-docker' : 'testrunner';
 
-  for (const spec of serviceSpecs) {
-    // Check if it's a machine specification
-    const machineSpec = parseMachineSpec(spec);
+  // Filter out 'docker' keyword from specs
+  const filteredSpecs = serviceSpecs.filter(spec => spec !== 'docker');
 
-    if (machineSpec) {
-      // Start machine(s)
-      await startMachine(machineSpec.type, machineSpec.count, profile);
+  console.log(`\n🔧 Checking required services (mode: ${isDockerMode ? 'docker' : 'local'}, profile: ${profile})...\n`);
+  console.log(`🔍 Service specs: ${JSON.stringify(filteredSpecs)}\n`);
+
+  if (isDockerMode) {
+    // Docker mode: Use dash:dev to start all services
+    console.log('🐳 Docker mode detected');
+
+    // Check if dashboard is already running (check API as proxy)
+    const apiRunning = await SERVICES.api.healthCheck();
+
+    if (!apiRunning) {
+      console.log('🚀 Starting dashboard with Docker services...');
+      const dashProcess = spawn('pnpm', ['dash:dev', profile], {
+        stdio: ['ignore', 'pipe', 'pipe'],
+        cwd: '/Users/the_dusky/code/emprops/ai_infra/emp-job-queue',
+      });
+
+      startedProcesses.set('dashboard', dashProcess);
+
+      // Wait for services to start (Docker containers take longer)
+      await new Promise((resolve) => setTimeout(resolve, 15000));
+      console.log('✅ Dashboard started with Docker services\n');
     } else {
-      // Regular service
-      const config = SERVICES[spec];
-      if (!config) {
-        throw new Error(`Unknown service: ${spec}`);
+      console.log('✅ Dashboard already running\n');
+    }
+
+    // Now start machines in docker mode
+    for (const spec of filteredSpecs) {
+      const machineSpec = parseMachineSpec(spec);
+      if (machineSpec) {
+        await startMachine(machineSpec.type, machineSpec.count, profile);
       }
+    }
+  } else {
+    // Local mode: Individual service management (existing behavior)
+    for (const spec of filteredSpecs) {
+      const machineSpec = parseMachineSpec(spec);
 
-      const isRunning = await config.healthCheck();
-
-      if (isRunning) {
-        console.log(`✅ ${config.name} already running`);
+      if (machineSpec) {
+        await startMachine(machineSpec.type, machineSpec.count, profile);
       } else {
-        await startService(spec, profile);
+        const config = SERVICES[spec];
+        if (!config) {
+          throw new Error(`Unknown service: ${spec}`);
+        }
+
+        const isRunning = await config.healthCheck();
+
+        if (isRunning) {
+          console.log(`✅ ${config.name} already running`);
+        } else {
+          await startService(spec, profile);
+        }
       }
     }
   }

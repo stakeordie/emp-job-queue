@@ -39,14 +39,13 @@ describe('Phase 2: Load Test with Real Workers', () => {
     console.log('Setting up test environment...');
     console.log('');
 
-    // Setup Phase 2 environment with monitor
+    // Setup Phase 2 environment with Docker
     await setupPhase2Environment({
-      profile: 'testrunner',
+      profile: 'testrunner-docker',
       workers: {
-        ollama: 3,  // 3 Ollama workers
-        openai: 2,  // 2 OpenAI workers
+        'ollama-mock': 3,  // 3 mock Ollama workers
+        'openai-response-mock': 2,  // 2 mock OpenAI workers
       },
-      services: ['telcollect', 'api', 'webhook', 'monitor'],
     });
 
     console.log('\n✅ Environment ready!');

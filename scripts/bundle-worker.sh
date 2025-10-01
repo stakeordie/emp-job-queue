@@ -29,15 +29,15 @@ npx esbuild apps/worker/src/redis-direct-worker.ts \
   --bundle \
   --platform=node \
   --target=node18 \
-  --format=cjs \
+  --format=esm \
   --external:sharp \
   --external:canvas \
   --external:@tensorflow/tfjs-node \
   --external:sqlite3 \
-  --outfile=$WORKER_BUNDLE_DIR/redis-direct-worker.cjs
+  --outfile=$WORKER_BUNDLE_DIR/redis-direct-worker.mjs
 
-# Rename .cjs to .js (no shebang needed since we call with 'node')
-mv $WORKER_BUNDLE_DIR/redis-direct-worker.cjs $WORKER_BUNDLE_DIR/redis-direct-worker.js
+# Rename .mjs to .js (no shebang needed since we call with 'node')
+mv $WORKER_BUNDLE_DIR/redis-direct-worker.mjs $WORKER_BUNDLE_DIR/redis-direct-worker.js
 
 # Get version info - use timestamp for local dev, git tags for releases
 BUILD_DATE=$(date -u +"%Y-%m-%dT%H:%M:%SZ")

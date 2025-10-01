@@ -30,56 +30,61 @@ import {
 export interface Phase2Config {
   profile?: string;
   workers?: {
-    ollama?: number;
-    openai?: number;
-    comfyui?: number;
+    [machineType: string]: number;  // e.g., { 'ollama-mock': 3, 'openai-response-mock': 2 }
   };
   services?: string[];
 }
 
 const DEFAULT_CONFIG: Phase2Config = {
-  profile: 'testrunner',
+  profile: 'testrunner-docker',
   workers: {
-    ollama: 2,
-    openai: 2,
+    'ollama-mock': 2,
+    'openai-response-mock': 2,
   },
   services: ['telcollect', 'api', 'monitor'],
 };
 
 export async function setupPhase2Environment(config: Phase2Config = {}): Promise<void> {
   const finalConfig = { ...DEFAULT_CONFIG, ...config };
-  const profile = finalConfig.profile || 'testrunner';
+  const isDocker = finalConfig.profile?.includes('docker');
 
   console.log('\n═══════════════════════════════════════════════════════════');
   console.log('🎭 Phase 2: Real Workers with Mocked Services');
   console.log('═══════════════════════════════════════════════════════════');
-  console.log(`Profile: ${profile}`);
+  console.log(`Mode: ${isDocker ? 'Docker' : 'Local'}`);
   console.log(`Workers: ${JSON.stringify(finalConfig.workers, null, 2)}`);
   console.log('═══════════════════════════════════════════════════════════\n');
 
   // Build service specification list
-  const serviceSpecs: string[] = [...(finalConfig.services || [])];
+  const serviceSpecs: string[] = [];
+
+  // Add 'docker' keyword if in docker mode
+  if (isDocker) {
+    serviceSpecs.push('docker');
+  } else {
+    // In local mode, add individual services
+    serviceSpecs.push(...(finalConfig.services || []));
+  }
 
   // Add worker machines
-  if (finalConfig.workers?.ollama) {
-    serviceSpecs.push(`machine:ollama:${finalConfig.workers.ollama}`);
-  }
-  if (finalConfig.workers?.openai) {
-    serviceSpecs.push(`machine:openai:${finalConfig.workers.openai}`);
-  }
-  if (finalConfig.workers?.comfyui) {
-    serviceSpecs.push(`machine:comfyui:${finalConfig.workers.comfyui}`);
+  if (finalConfig.workers) {
+    for (const [machineType, count] of Object.entries(finalConfig.workers)) {
+      if (count) {
+        serviceSpecs.push(`machine:${machineType}:${count}`);
+      }
+    }
   }
 
   // Start all services
-  await ensureServicesRunning(serviceSpecs, profile);
+  await ensureServicesRunning(serviceSpecs);
 
   console.log('\n✅ Phase 2 environment ready');
   console.log('   - Real worker connectors loaded');
   console.log('   - HTTP mocking active (NODE_ENV=test or MOCK_MODE=true)');
   console.log('   - External service calls intercepted by MockManager');
 
-  if (finalConfig.services?.includes('monitor')) {
+  // Monitor is always available in docker mode (started by dash:dev)
+  if (isDocker || finalConfig.services?.includes('monitor')) {
     console.log('\n📊 Monitor UI: http://localhost:3333');
     console.log('   Open in browser to watch real-time job processing!');
   }

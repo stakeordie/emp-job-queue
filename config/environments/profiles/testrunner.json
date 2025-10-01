@@ -27,7 +27,7 @@
     ],
     "worker": [
       "default",
-      "production"
+      "localtest"
     ],
     "monitor": [
       "default",
