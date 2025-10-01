@@ -8,12 +8,14 @@ export const JobEvaluatorEnvInterface = {
   location: "services/job-evaluator",
   
   required: {
+    "OTEL_COLLECTOR_ENDPOINT": "TELEMETRY_OTEL_COLLECTOR_URL",
   },
   optional: {
   },
   secret: {
     "DATABASE_URL": "DATABASE_URL",
-    "REDIS_URL": "REDIS_URL"
+    "REDIS_URL": "REDIS_URL",
+    "DASH0_AUTH_TOKEN": "TELEMETRY_DASH0_AUTH_TOKEN"
   }, 
   defaults: {
     "PROFILE":"local-dev",

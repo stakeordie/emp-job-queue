@@ -19,30 +19,50 @@ class TelemetryCollector {
   private dash0Forwarder?: OfficialOtlpForwarder;
 
   constructor() {
-    // Consumer configuration
+    // Consumer configuration - NO FALLBACKS
+    if (!process.env.REDIS_URL) throw new Error('REDIS_URL environment variable is required');
+    if (!process.env.TELEMETRY_STREAM_KEY) throw new Error('TELEMETRY_STREAM_KEY environment variable is required');
+    if (!process.env.CONSUMER_GROUP) throw new Error('CONSUMER_GROUP environment variable is required');
+    if (!process.env.CONSUMER_NAME) throw new Error('CONSUMER_NAME environment variable is required');
+    if (!process.env.BATCH_SIZE) throw new Error('BATCH_SIZE environment variable is required');
+    if (!process.env.BLOCK_TIME) throw new Error('BLOCK_TIME environment variable is required');
+
     const consumerConfig: ConsumerConfig = {
-      redisUrl: process.env.REDIS_URL || 'redis://localhost:6379',
-      streamKey: process.env.TELEMETRY_STREAM_KEY || StreamConfig.DEFAULT_STREAM_KEY,
-      consumerGroup: process.env.CONSUMER_GROUP || StreamConfig.CONSUMER_GROUP,
-      consumerName: process.env.CONSUMER_NAME || `collector-${Math.random().toString(36).substr(2, 9)}`,
-      batchSize: parseInt(process.env.BATCH_SIZE || '10'),
-      blockTime: parseInt(process.env.BLOCK_TIME || '5000'),
+      redisUrl: process.env.REDIS_URL,
+      streamKey: process.env.TELEMETRY_STREAM_KEY,
+      consumerGroup: process.env.CONSUMER_GROUP,
+      consumerName: process.env.CONSUMER_NAME,
+      batchSize: parseInt(process.env.BATCH_SIZE),
+      blockTime: parseInt(process.env.BLOCK_TIME),
     };
 
-    // Processor configuration with Dash0 integration
-    const processorConfig: ProcessorConfig = {
-      outputFormat: (process.env.OUTPUT_FORMAT as any) || 'console',
-      batchSize: parseInt(process.env.PROCESSOR_BATCH_SIZE || '50'),
-      flushInterval: parseInt(process.env.FLUSH_INTERVAL || '10000'),
+    // Processor configuration - NO FALLBACKS
+    if (!process.env.OUTPUT_FORMAT) throw new Error('OUTPUT_FORMAT environment variable is required');
+    if (!process.env.PROCESSOR_BATCH_SIZE) throw new Error('PROCESSOR_BATCH_SIZE environment variable is required');
+    if (!process.env.FLUSH_INTERVAL) throw new Error('FLUSH_INTERVAL environment variable is required');
 
-      // Dash0 configuration
+    const processorConfig: ProcessorConfig = {
+      outputFormat: process.env.OUTPUT_FORMAT as any,
+      batchSize: parseInt(process.env.PROCESSOR_BATCH_SIZE),
+      flushInterval: parseInt(process.env.FLUSH_INTERVAL),
+
+      // Dash0 configuration - NO FALLBACKS
       dash0: {
         enabled: process.env.DASH0_ENABLED === 'true',
-        endpoint: process.env.DASH0_TRACES_ENDPOINT || process.env.DASH0_ENDPOINT + '/v1/traces',
+        endpoint: (() => {
+          if (process.env.DASH0_ENABLED === 'true') {
+            if (!process.env.DASH0_TRACES_ENDPOINT) throw new Error('DASH0_TRACES_ENDPOINT environment variable is required when DASH0_ENABLED=true');
+            if (!process.env.DASH0_AUTH_TOKEN) throw new Error('DASH0_AUTH_TOKEN environment variable is required when DASH0_ENABLED=true');
+            if (!process.env.DASH0_DATASET) throw new Error('DASH0_DATASET environment variable is required when DASH0_ENABLED=true');
+            if (!process.env.DASH0_BATCH_SIZE) throw new Error('DASH0_BATCH_SIZE environment variable is required when DASH0_ENABLED=true');
+            if (!process.env.DASH0_FLUSH_INTERVAL) throw new Error('DASH0_FLUSH_INTERVAL environment variable is required when DASH0_ENABLED=true');
+          }
+          return process.env.DASH0_TRACES_ENDPOINT || '';
+        })(),
         authToken: process.env.DASH0_AUTH_TOKEN || '',
-        dataset: process.env.DASH0_DATASET || 'development',
-        batchSize: parseInt(process.env.DASH0_BATCH_SIZE || '20'),
-        flushInterval: parseInt(process.env.DASH0_FLUSH_INTERVAL || '5000'),
+        dataset: process.env.DASH0_DATASET || '',
+        batchSize: parseInt(process.env.DASH0_BATCH_SIZE || '0'),
+        flushInterval: parseInt(process.env.DASH0_FLUSH_INTERVAL || '0'),
       }
     };
 
@@ -77,13 +97,16 @@ class TelemetryCollector {
 
   async start(): Promise<void> {
     console.log('🔄 Starting Telemetry Collector...');
+    console.log('🔍 DEBUG: About to call startOtlpEndpoint() - CODE VERSION 2');
 
     // Graceful shutdown handling
     process.on('SIGTERM', () => this.stop());
     process.on('SIGINT', () => this.stop());
 
     // Start OTLP HTTP endpoint (acts as transparent proxy to Dash0)
+    console.log('🔍 DEBUG: Calling startOtlpEndpoint() NOW...');
     await this.startOtlpEndpoint();
+    console.log('🔍 DEBUG: startOtlpEndpoint() returned successfully');
 
     // Start consumer (now resilient to Redis connection failures)
     await this.consumer.start();
@@ -120,7 +143,10 @@ class TelemetryCollector {
   }
 
   private async startOtlpEndpoint(): Promise<void> {
-    const port = process.env.OTLP_PORT || 4318;
+    if (!process.env.OTLP_PORT) throw new Error('OTLP_PORT environment variable is required');
+    const port = parseInt(process.env.OTLP_PORT);
+
+    console.log(`🔧 Starting OTLP HTTP endpoint on port ${port}...`);
 
     this.otlpServer = http.createServer(async (req, res) => {
       // Only handle OTLP trace endpoint
@@ -133,12 +159,18 @@ class TelemetryCollector {
 
         req.on('end', async () => {
           try {
+            console.log(`📥 Received OTLP HTTP request (${body.length} bytes)`);
+
             // Parse the OTLP payload
             const payload = JSON.parse(body);
 
             // Forward directly to Dash0 without modification
             if (this.dash0Forwarder) {
+              console.log(`📤 Forwarding OTLP payload to Dash0...`);
               await this.dash0Forwarder.forwardRaw(payload);
+              console.log(`✅ OTLP payload forwarded successfully`);
+            } else {
+              console.warn(`⚠️  No Dash0 forwarder configured - OTLP payload dropped`);
             }
 
             res.writeHead(200, { 'Content-Type': 'application/json' });
@@ -155,15 +187,24 @@ class TelemetryCollector {
       }
     });
 
-    await new Promise<void>((resolve) => {
+    await new Promise<void>((resolve, reject) => {
+      this.otlpServer!.on('error', (error) => {
+        console.error(`❌ OTLP server error:`, error);
+        reject(error);
+      });
+
       this.otlpServer!.listen(port, () => {
         console.log(`🌐 OTLP HTTP endpoint: http://localhost:${port}/v1/traces`);
+        console.log(`✅ OTLP server listening and ready to accept traces`);
         resolve();
       });
     });
   }
 
   private async startHealthCheck(): Promise<void> {
+    if (!process.env.HEALTH_PORT) throw new Error('HEALTH_PORT environment variable is required');
+    const port = parseInt(process.env.HEALTH_PORT);
+
     const http = await import('http');
 
     const server = http.createServer((req: any, res: any) => {
@@ -184,14 +225,14 @@ class TelemetryCollector {
       }
     });
 
-    const port = process.env.HEALTH_PORT || 9090;
     server.listen(port, () => {
       console.log(`🏥 Health check endpoint: http://localhost:${port}/health`);
     });
   }
 
   private startStatsLogging(): void {
-    const interval = parseInt(process.env.STATS_INTERVAL || '60000'); // 1 minute
+    if (!process.env.STATS_INTERVAL) throw new Error('STATS_INTERVAL environment variable is required');
+    const interval = parseInt(process.env.STATS_INTERVAL);
 
     setInterval(() => {
       const consumerStats = this.consumer.getStats();

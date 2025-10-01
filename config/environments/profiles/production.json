@@ -63,7 +63,7 @@
     ],
     "telemetry": [
       "default",
-      "production"
+      "remoteprod"
     ]
   },
   "services": {}

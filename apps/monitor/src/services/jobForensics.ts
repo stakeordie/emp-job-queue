@@ -57,16 +57,25 @@ export class JobForensicsService {
         return null;
       }
 
-      // 3. Get forensics data
+      // 3. Determine actual job status from attestations if job data is missing/incorrect
+      if (job) {
+        const actualStatus = await this.determineStatusFromAttestations(job.id, job.workflow_id);
+        if (actualStatus && actualStatus !== job.status) {
+          console.log(`📊 [FORENSICS] Status corrected from attestations: ${job.status} -> ${actualStatus}`);
+          job.status = actualStatus;
+        }
+      }
+
+      // 4. Get forensics data
       const forensics = await this.buildForensicsData(job, {
         includeHistory,
         includeCrossSystemRefs,
       }, empropsJob);
 
-      // 4. Find similar failures
+      // 5. Find similar failures
       const similarFailures = await this.findSimilarFailures(job, maxSimilarFailures);
 
-      // 5. Generate recovery suggestions
+      // 6. Generate recovery suggestions
       const recoverySuggestions = includeRecoverySuggestions
         ? await this.generateRecoverySuggestions(job, forensics)
         : [];
@@ -1229,6 +1238,63 @@ export class JobForensicsService {
       state_changes: stateChanges,
       success_probability: successProbability,
     };
+  }
+
+  /**
+   * Determine actual job status from attestations
+   * Priority: permanent failure > retrying failure > completion
+   */
+  private async determineStatusFromAttestations(jobId: string, workflowId?: string): Promise<JobStatus | null> {
+    try {
+      const attestations = await this.getJobAttestations(jobId, workflowId);
+
+      if (attestations.length === 0) {
+        return null; // No attestations found
+      }
+
+      // Check for permanent failures first - these override everything
+      const permanentFailures = attestations.filter(a =>
+        a.attestation_type === 'failure_permanent' ||
+        a.status === 'failed_permanent' ||
+        (a.will_retry === false && a.attestation_type?.includes('failure'))
+      );
+
+      if (permanentFailures.length > 0) {
+        console.log(`📊 [FORENSICS] Found ${permanentFailures.length} permanent failure(s) - workflow should be failed`);
+        return JobStatus.FAILED;
+      }
+
+      // Check for retrying failures
+      const retryingFailures = attestations.filter(a =>
+        a.attestation_type === 'failure_retry' ||
+        a.status === 'failed_retrying' ||
+        (a.will_retry === true && a.attestation_type?.includes('failure'))
+      );
+
+      if (retryingFailures.length > 0) {
+        console.log(`📊 [FORENSICS] Found ${retryingFailures.length} retrying failure(s) - job is retrying`);
+        return JobStatus.FAILED; // Still failed, just retrying
+      }
+
+      // Check for completions
+      const completions = attestations.filter(a =>
+        a.status === 'completed' ||
+        a.attestation_type?.includes('completion')
+      );
+
+      if (completions.length > 0) {
+        // For multi-step workflows, we need all steps to be complete
+        // But if there are any failures (checked above), the workflow is failed
+        console.log(`📊 [FORENSICS] Found ${completions.length} completion(s) with no failures - workflow completed`);
+        return JobStatus.COMPLETED;
+      }
+
+      // Default - no clear status from attestations
+      return null;
+    } catch (error) {
+      console.error('Error determining status from attestations:', error);
+      return null;
+    }
   }
 
   async disconnect() {

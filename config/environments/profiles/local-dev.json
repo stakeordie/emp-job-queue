@@ -55,7 +55,7 @@
     ],
     "telemetry": [
       "default",
-      "development"
+      "localdocker"
     ],
     "webhook-service": [
       "default",

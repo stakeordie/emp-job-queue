@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -18,140 +18,102 @@ import type {
 } from './JobForensics.types';
 import { get as _get, renderValue as _renderValue } from './JobForensics.types';
 
+// Utility to get auth bypass parameter from URL and append to API calls
+function getAuthBypassParam(): string {
+  if (typeof window !== 'undefined') {
+    const urlParams = new URLSearchParams(window.location.search);
+    const authBypass = urlParams.get('auth');
+    return authBypass ? `?auth=${authBypass}` : '';
+  }
+  return '';
+}
+
+// Helper to append auth bypass to existing query parameters
+function appendAuthBypass(url: string): string {
+  const authBypass = getAuthBypassParam();
+  if (!authBypass) return url;
+
+  const separator = url.includes('?') ? '&' : '?';
+  return url + separator + authBypass.substring(1); // Remove leading ?
+}
+
 // Component to display worker and API attestation records for debugging
-function AttestationRecords({ jobId, workflowId }: { jobId: string; workflowId?: string }) {
-  const [workerAttestation, setWorkerAttestation] = useState<any>(null);
-  const [apiAttestation, setApiAttestation] = useState<any>(null);
-  const [notificationAttestations, setNotificationAttestations] = useState<any[]>([]);
-  const [loading, setLoading] = useState(false);
-  const [hasChecked, setHasChecked] = useState(false);
-  const [webhookTriggerLoading, setWebhookTriggerLoading] = useState(false);
-  const [webhookTriggerResult, setWebhookTriggerResult] = useState<any>(null);
-  const [retryJobLoading, setRetryJobLoading] = useState(false);
-  const [retryJobResult, setRetryJobResult] = useState<any>(null);
+function AttestationRecords({ attestations }: { attestations: any[] }) {
 
-  const loadAttestations = async () => {
-    setLoading(true);
-    setHasChecked(true);
-    try {
-      const targetId = workflowId || jobId;
-      if (targetId) {
-        // Use unified attestations endpoint from API server
-        const apiBaseUrl = process.env.NEXT_PUBLIC_API_URL;
-        const response = await fetch(`${apiBaseUrl}/api/attestations?workflow_id=${targetId}`);
-        if (response.ok) {
-          const data = await response.json();
-          if (data.success) {
-            // Set API attestation
-            setApiAttestation(data.api_attestation);
+  // Process attestations from forensics data
+  const processedAttestations = React.useMemo(() => {
+    if (!attestations || attestations.length === 0) {
+      return { hasAttestations: false, groupedAttestations: [] };
+    }
 
-            // Set notification attestations
-            setNotificationAttestations(data.notification_attestations || []);
+    // Deduplicate attestations by job_id (step), keeping the most relevant one
+    const dedupedByStep: { [key: string]: any } = {};
 
-            // Handle worker attestations (group by retry number)
-            if (data.worker_attestations && data.worker_attestations.length > 0) {
-              // Group attestations by retry_count
-              const groupedByRetry = data.worker_attestations.reduce((acc: any, att: any) => {
-                const retryCount = att.retry_count || 0;
-                if (!acc[retryCount]) acc[retryCount] = [];
-                acc[retryCount].push(att);
-                return acc;
-              }, {});
+    attestations.forEach(att => {
+      const stepKey = `${att.retry_count || 0}-${att.job_id}`;
+      const existing = dedupedByStep[stepKey];
 
-              // Sort by retry count and sort attestations within each group by step number
-              const sortedRetryGroups = Object.keys(groupedByRetry)
-                .sort((a, b) => parseInt(a) - parseInt(b))
-                .map(retryCount => ({
-                  retry_count: parseInt(retryCount),
-                  attestations: groupedByRetry[retryCount].sort((a: any, b: any) => {
-                    // Sort by current_step if available, otherwise by completed_at timestamp
-                    const stepA = parseInt(a.current_step || '0');
-                    const stepB = parseInt(b.current_step || '0');
-                    if (stepA !== stepB) return stepA - stepB;
-                    // Fallback to timestamp if steps are equal
-                    return new Date(a.completed_at || 0).getTime() - new Date(b.completed_at || 0).getTime();
-                  })
-                }));
+      if (!existing) {
+        dedupedByStep[stepKey] = att;
+      } else {
+        // Priority: permanent failure > failure > completion
+        const attPriority = att.attestation_type?.includes('failure_permanent') ? 3 :
+                           att.attestation_type?.includes('failure') || att.status?.includes('failed') ? 2 : 1;
+        const existingPriority = existing.attestation_type?.includes('failure_permanent') ? 3 :
+                                existing.attestation_type?.includes('failure') || existing.status?.includes('failed') ? 2 : 1;
 
-              if (sortedRetryGroups.length === 1 && sortedRetryGroups[0].attestations.length === 1) {
-                // Single attestation, single retry
-                setWorkerAttestation(sortedRetryGroups[0].attestations[0]);
-              } else {
-                // Multiple retries or multiple steps - create grouped view
-                setWorkerAttestation({
-                  ...data.worker_attestations[0],
-                  _grouped_by_retry: true,
-                  _retry_groups: sortedRetryGroups,
-                  _all_attestations: data.worker_attestations
-                });
-              }
-            } else {
-              setWorkerAttestation(null);
-            }
-          }
+        if (attPriority > existingPriority) {
+          dedupedByStep[stepKey] = att;
         }
       }
-    } catch (error) {
-      console.error('Failed to load attestations:', error);
-    } finally {
-      setLoading(false);
-    }
-  };
+    });
 
-  const hasAttestations = workerAttestation || apiAttestation || notificationAttestations.length > 0;
+    // Group deduplicated attestations by retry count
+    const groupedByRetry: { [key: string]: any[] } = {};
 
-  // Trigger workflow completion webhook manually
-  const triggerWorkflowWebhook = async () => {
-    if (!workflowId) return;
+    Object.values(dedupedByStep).forEach(att => {
+      const retryCount = att.retry_count || 0;
+      const key = `retry-${retryCount}`;
+      if (!groupedByRetry[key]) groupedByRetry[key] = [];
+      groupedByRetry[key].push(att);
+    });
 
-    setWebhookTriggerLoading(true);
-    setWebhookTriggerResult(null);
+    // Sort by retry count and sort attestations within each group
+    const sortedRetryGroups = Object.keys(groupedByRetry)
+      .sort((a, b) => {
+        const retryA = parseInt(a.replace('retry-', ''));
+        const retryB = parseInt(b.replace('retry-', ''));
+        return retryA - retryB;
+      })
+      .map(key => {
+        const retryCount = parseInt(key.replace('retry-', ''));
+        const retryAttestations = groupedByRetry[key].sort((a: any, b: any) => {
+          // Sort by current_step if available, otherwise by timestamp
+          const stepA = parseInt(a.current_step || '0');
+          const stepB = parseInt(b.current_step || '0');
+          if (stepA !== stepB) return stepA - stepB;
 
-    try {
-      const response = await fetch(`/api/workflows/${workflowId}/trigger-webhook`, {
-        method: 'POST'
+          // Use appropriate timestamp for sorting
+          const timestampA = new Date(a.completed_at || a.failed_at || a.attestation_created_at || 0).getTime();
+          const timestampB = new Date(b.completed_at || b.failed_at || b.attestation_created_at || 0).getTime();
+          return timestampA - timestampB;
+        });
+
+        return {
+          retry_count: retryCount,
+          attestations: retryAttestations
+        };
       });
-      const result = await response.json();
-      setWebhookTriggerResult(result);
-    } catch (error) {
-      setWebhookTriggerResult({
-        success: false,
-        error: 'Failed to trigger webhook'
-      });
-    } finally {
-      setWebhookTriggerLoading(false);
-    }
-  };
 
-  // Retry job manually
-  const retryJob = async () => {
-    const targetId = workflowId || jobId;
-    if (!targetId) return;
+    return {
+      hasAttestations: true,
+      groupedAttestations: sortedRetryGroups
+    };
+  }, [attestations]);
 
-    setRetryJobLoading(true);
-    setRetryJobResult(null);
+  const { hasAttestations, groupedAttestations } = processedAttestations;
 
-    try {
-      const apiBaseUrl = process.env.NEXT_PUBLIC_API_URL;
-      const response = await fetch(`${apiBaseUrl}/api/jobs/${targetId}/retry`, {
-        method: 'POST'
-      });
-      const result = await response.json();
-      setRetryJobResult(result);
-    } catch (error) {
-      setRetryJobResult({
-        success: false,
-        error: 'Failed to retry job'
-      });
-    } finally {
-      setRetryJobLoading(false);
-    }
-  };
 
-  // Auto-load attestations when component mounts
-  useEffect(() => {
-    loadAttestations();
-  }, [jobId, workflowId]);
 
   // Always show the component - don't hide it
   // if (!hasAttestations && !loading) {
@@ -160,502 +122,121 @@ function AttestationRecords({ jobId, workflowId }: { jobId: string; workflowId?:
 
   return (
     <div>
-      <div className="text-sm font-medium text-muted-foreground mb-2 flex items-center gap-2">
-        <FileText className="h-4 w-4" />
-        Completion Attestations
-        <div className="ml-auto flex gap-2">
-          {workflowId && (
-            <Button
-              size="sm"
-              variant="outline"
-              onClick={triggerWorkflowWebhook}
-              disabled={webhookTriggerLoading}
-              className="text-orange-600 border-orange-200 hover:bg-orange-50"
-            >
-              {webhookTriggerLoading ? <RefreshCw className="h-3 w-3 animate-spin mr-1" /> : <Webhook className="h-3 w-3 mr-1" />}
-              Trigger Webhook
-            </Button>
-          )}
-          <Button
-            size="sm"
-            variant="outline"
-            onClick={retryJob}
-            disabled={retryJobLoading}
-            className="text-blue-600 border-blue-200 hover:bg-blue-50"
-          >
-            {retryJobLoading ? <RefreshCw className="h-3 w-3 animate-spin mr-1" /> : <RotateCcw className="h-3 w-3 mr-1" />}
-            Retry Job
-          </Button>
-          <Button
-            size="sm"
-            variant="outline"
-            onClick={loadAttestations}
-            disabled={loading}
-          >
-            {loading ? <RefreshCw className="h-3 w-3 animate-spin mr-1" /> : <Search className="h-3 w-3 mr-1" />}
-            {hasAttestations ? 'Reload' : 'Load'} Attestations
-          </Button>
+      {!hasAttestations ? (
+        <div className="text-sm text-muted-foreground italic">
+          No attestations found for this workflow
         </div>
-      </div>
-
-      {/* Show webhook trigger result */}
-      {webhookTriggerResult && (
-        <div className={`text-sm p-3 border rounded mb-3 ${
-          webhookTriggerResult.success
-            ? 'bg-green-50 border-green-200 text-green-800'
-            : 'bg-red-50 border-red-200 text-red-800'
-        }`}>
-          <div className="flex items-center gap-2">
-            {webhookTriggerResult.success ? (
-              <CheckCircle className="h-4 w-4" />
-            ) : (
-              <XCircle className="h-4 w-4" />
-            )}
-            {webhookTriggerResult.success ? 'Webhook Triggered Successfully' : 'Webhook Trigger Failed'}
-          </div>
-          <div className="text-xs mt-1">
-            {webhookTriggerResult.message || webhookTriggerResult.error}
-          </div>
-          {webhookTriggerResult.success && webhookTriggerResult.outputs_count > 0 && (
-            <div className="text-xs mt-1">
-              Workflow has {webhookTriggerResult.outputs_count} outputs available
-            </div>
-          )}
-        </div>
-      )}
-
-      {/* Show retry job result */}
-      {retryJobResult && (
-        <div className={`text-sm p-3 border rounded mb-3 ${
-          retryJobResult.success
-            ? 'bg-green-50 border-green-200 text-green-800'
-            : 'bg-red-50 border-red-200 text-red-800'
-        }`}>
-          <div className="flex items-center gap-2">
-            {retryJobResult.success ? (
-              <CheckCircle className="h-4 w-4" />
-            ) : (
-              <XCircle className="h-4 w-4" />
-            )}
-            {retryJobResult.success ? 'Job Retry Initiated Successfully' : 'Job Retry Failed'}
-          </div>
-          <div className="text-xs mt-1">
-            {retryJobResult.message || retryJobResult.error}
-          </div>
-          {retryJobResult.success && retryJobResult.new_job_id && (
-            <div className="text-xs mt-1">
-              New job ID: {retryJobResult.new_job_id}
-            </div>
-          )}
-        </div>
-      )}
-
-      {/* Show status when checked but no attestations found */}
-      {hasChecked && !loading && !hasAttestations && (
-        <div className="text-sm text-muted-foreground p-3 bg-gray-50 border border-gray-200 rounded">
-          <div className="flex items-center gap-2">
-            <AlertTriangle className="h-4 w-4 text-yellow-600" />
-            No attestations found for this {workflowId ? 'workflow' : 'job'}
-          </div>
-          <div className="text-xs mt-1 text-gray-500">
-            This may be an older job that predates the attestation system.
-          </div>
-        </div>
-      )}
-
-      {hasAttestations && (
-        <div className="space-y-3 p-3 bg-yellow-50 border border-yellow-200 rounded">
-          {/* Worker Attestations - Grouped by retry number */}
-          {workerAttestation && workerAttestation._grouped_by_retry && workerAttestation._retry_groups ? (
-            // Multiple retries or steps - show grouped by retry
-            <div className="space-y-6">
-              {workerAttestation._retry_groups.map((retryGroup: any, groupIdx: number) => (
-                <div key={groupIdx} className="border border-gray-200 rounded p-3">
-                  <div className="text-sm font-medium text-gray-700 mb-3 flex items-center gap-2">
-                    <Badge variant={retryGroup.retry_count === 0 ? 'default' : 'secondary'}>
-                      {retryGroup.retry_count === 0 ? 'Initial Attempt' : `Retry ${retryGroup.retry_count}`}
-                    </Badge>
-                    <span className="text-xs text-gray-500">
-                      ({retryGroup.attestations.length} attestation{retryGroup.attestations.length > 1 ? 's' : ''})
-                    </span>
-                  </div>
-                  <div className="space-y-4">
-                    {retryGroup.attestations.map((step: any, idx: number) => (
-                <div key={idx}>
-                  <div className="text-sm font-medium text-green-800 mb-2 flex items-center gap-1">
-                    <CheckCircle className="h-4 w-4" />
-                    Worker Completion Proof{step.current_step ? ` - Step ${step.current_step}` : ''}{step.total_steps ? ` of ${step.total_steps}` : ''}
-                  </div>
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-3 text-xs">
-                    <div>
-                      <div className="font-medium text-muted-foreground">Job ID</div>
-                      <code className="bg-white px-2 py-1 rounded border text-[10px]">{step.job_id}</code>
-                    </div>
-                    <div>
-                      <div className="font-medium text-muted-foreground">Worker ID</div>
-                      <code className="bg-white px-2 py-1 rounded border text-[10px]">{step.worker_id}</code>
-                    </div>
-                    <div>
-                      <div className="font-medium text-muted-foreground">Completed At</div>
-                      <div>{new Date(step.completed_at).toLocaleString()}</div>
-                    </div>
-                    <div>
-                      <div className="font-medium text-muted-foreground">Status</div>
-                      <Badge variant={step.status === 'completed' ? 'default' : 'destructive'}>
-                        {step.status}
-                      </Badge>
-                    </div>
-                    <div>
-                      <div className="font-medium text-muted-foreground">Retry Count</div>
-                      <Badge variant={step.retry_count > 0 ? 'secondary' : 'outline'}>
-                        {step.retry_count || 0}
-                      </Badge>
-                    </div>
-                    <div>
-                      <div className="font-medium text-muted-foreground">Machine ID</div>
-                      <code className="bg-white px-2 py-1 rounded border text-[10px]">{step.machine_id || 'unknown'}</code>
-                    </div>
-                  </div>
-                  {/* Asset locations for this step */}
-                  {step.result && (
-                    <div className="mt-2">
-                      <div className="text-xs font-medium text-muted-foreground">Asset Locations</div>
-                      {(() => {
-                        try {
-                          const result = typeof step.result === 'string'
-                            ? JSON.parse(step.result)
-                            : step.result;
-
-                          const urls: string[] = [];
-
-                          // Extract URLs from the result - remove duplicates
-                          if (result?.data?.image_url) urls.push(result.data.image_url);
-                          if (result?.data?.file_url && !urls.includes(result.data.file_url)) urls.push(result.data.file_url);
-                          if (result?.data?.cdnUrl && !urls.includes(result.data.cdnUrl)) urls.push(result.data.cdnUrl);
-                          if (result?.data?.saved_asset?.fileUrl && !urls.includes(result.data.saved_asset.fileUrl)) urls.push(result.data.saved_asset.fileUrl);
-                          if (result?.data?.saved_asset?.cdnUrl && !urls.includes(result.data.saved_asset.cdnUrl)) urls.push(result.data.saved_asset.cdnUrl);
-
-                          if (urls.length > 0) {
-                            return (
-                              <div className="space-y-1 mt-1">
-                                {urls.map((url, urlIdx) => (
-                                  <div key={urlIdx} className="flex items-center gap-2">
-                                    <ExternalLink className="h-3 w-3 text-blue-600" />
-                                    <a
-                                      href={url}
-                                      target="_blank"
-                                      rel="noopener noreferrer"
-                                      className="text-xs text-blue-600 hover:underline break-all"
-                                    >
-                                      {url}
-                                    </a>
-                                  </div>
-                                ))}
-                              </div>
-                            );
-                          } else {
-                            return (
-                              <div className="text-xs text-gray-500 mt-1">
-                                No asset URLs found in this step
-                              </div>
-                            );
-                          }
-                        } catch (e) {
-                          return (
-                            <div className="text-xs text-red-500 mt-1">
-                              Error parsing asset locations
-                            </div>
-                          );
-                        }
-                      })()}
-                    </div>
-                  )}
-                  {step.raw_service_request && (
-                    <div className="mt-2">
-                      <div className="text-xs font-medium text-muted-foreground mb-1">Raw Service Request (Debugging)</div>
-                      <details className="border rounded bg-blue-50">
-                        <summary className="px-2 py-1 text-xs cursor-pointer hover:bg-blue-100">
-                          Click to view raw request sent to service for step {step.current_step || idx + 1}
-                        </summary>
-                        <pre className="p-2 text-xs overflow-auto max-h-40 text-blue-700">
-                          {typeof step.raw_service_request === 'string'
-                            ? step.raw_service_request
-                            : JSON.stringify(step.raw_service_request, null, 2)}
-                        </pre>
-                      </details>
-                    </div>
-                  )}
-                  {step.raw_service_output && (
-                    <div className="mt-2">
-                      <div className="text-xs font-medium text-muted-foreground mb-1">Raw Service Output (Debugging)</div>
-                      <details className="border rounded bg-gray-50">
-                        <summary className="px-2 py-1 text-xs cursor-pointer hover:bg-gray-100">
-                          Click to view raw service response for step {step.current_step || idx + 1}
-                        </summary>
-                        <pre className="p-2 text-xs overflow-auto max-h-40 text-gray-700">
-                          {typeof step.raw_service_output === 'string'
-                            ? step.raw_service_output
-                            : JSON.stringify(step.raw_service_output, null, 2)}
-                        </pre>
-                      </details>
-                    </div>
-                  )}
-                </div>
-                    ))}
-                  </div>
-                </div>
-              ))}
-            </div>
-          ) : workerAttestation ? (
-            // Single-step job - show single attestation
-            <div>
-              <div className="text-sm font-medium text-green-800 mb-2 flex items-center gap-1">
-                <CheckCircle className="h-4 w-4" />
-                Worker Completion Proof
-              </div>
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-3 text-xs">
-                <div>
-                  <div className="font-medium text-muted-foreground">Worker ID</div>
-                  <code className="bg-white px-2 py-1 rounded border">{workerAttestation.worker_id}</code>
-                </div>
-                <div>
-                  <div className="font-medium text-muted-foreground">Completed At</div>
-                  <div>{new Date(workerAttestation.completed_at).toLocaleString()}</div>
-                </div>
-                <div>
-                  <div className="font-medium text-muted-foreground">Status</div>
-                  <Badge variant={workerAttestation.status === 'completed' ? 'default' : 'destructive'}>
-                    {workerAttestation.status}
-                  </Badge>
-                </div>
-                <div>
-                  <div className="font-medium text-muted-foreground">Machine ID</div>
-                  <code className="bg-white px-2 py-1 rounded border text-xs">{workerAttestation.machine_id}</code>
-                </div>
-                <div>
-                  <div className="font-medium text-muted-foreground">Retry Count</div>
-                  <Badge variant={workerAttestation.retry_count > 0 ? 'secondary' : 'outline'}>
-                    {workerAttestation.retry_count || 0}
-                  </Badge>
-                </div>
-                <div>
-                  <div className="font-medium text-muted-foreground">Worker Version</div>
-                  <code className="bg-white px-2 py-1 rounded border text-xs">{workerAttestation.worker_version || 'unknown'}</code>
-                </div>
-              </div>
-              {workerAttestation.result && (
-                <div className="mt-2">
-                  <div className="text-xs font-medium text-muted-foreground">Asset Locations</div>
-                  {(() => {
-                    try {
-                      const result = typeof workerAttestation.result === 'string'
-                        ? JSON.parse(workerAttestation.result)
-                        : workerAttestation.result;
-
-                      const urls: string[] = [];
-
-                      // Extract URLs from the result - remove duplicates
-                      if (result?.data?.image_url) urls.push(result.data.image_url);
-                      if (result?.data?.file_url && !urls.includes(result.data.file_url)) urls.push(result.data.file_url);
-                      if (result?.data?.cdnUrl && !urls.includes(result.data.cdnUrl)) urls.push(result.data.cdnUrl);
-                      if (result?.data?.saved_asset?.fileUrl && !urls.includes(result.data.saved_asset.fileUrl)) urls.push(result.data.saved_asset.fileUrl);
-                      if (result?.data?.saved_asset?.cdnUrl && !urls.includes(result.data.saved_asset.cdnUrl)) urls.push(result.data.saved_asset.cdnUrl);
-
-                      if (urls.length > 0) {
-                        return (
-                          <div className="space-y-1 mt-1">
-                            {urls.map((url, idx) => (
-                              <div key={idx} className="flex items-center gap-2">
-                                <ExternalLink className="h-3 w-3 text-blue-600" />
-                                <a
-                                  href={url}
-                                  target="_blank"
-                                  rel="noopener noreferrer"
-                                  className="text-xs text-blue-600 hover:underline break-all"
-                                >
-                                  {url}
-                                </a>
-                              </div>
-                            ))}
-                          </div>
-                        );
-                      } else {
-                        return (
-                          <div className="text-xs text-gray-500 mt-1">
-                            No asset URLs found in attestation
-                          </div>
-                        );
-                      }
-                    } catch (e) {
-                      return (
-                        <div className="text-xs text-red-500 mt-1">
-                          Error parsing asset locations
-                        </div>
-                      );
-                    }
-                  })()}
-                </div>
+      ) : (
+        <div className="space-y-4">
+          {groupedAttestations.map((retryGroup) => (
+            <div key={`retry-${retryGroup.retry_count}`} className="space-y-3">
+              {retryGroup.retry_count > 0 && (
+                <Badge variant="outline" className="text-xs">
+                  Retry {retryGroup.retry_count}
+                </Badge>
               )}
-              {workerAttestation.raw_service_request && (
-                <div className="mt-2">
-                  <div className="text-xs font-medium text-muted-foreground mb-1">Raw Service Request (Debugging)</div>
-                  <details className="border rounded bg-blue-50">
-                    <summary className="px-2 py-1 text-xs cursor-pointer hover:bg-blue-100">
-                      Click to view raw request sent to service
-                    </summary>
-                    <pre className="p-2 text-xs overflow-auto max-h-40 text-blue-700">
-                      {typeof workerAttestation.raw_service_request === 'string'
-                        ? workerAttestation.raw_service_request
-                        : JSON.stringify(workerAttestation.raw_service_request, null, 2)}
-                    </pre>
-                  </details>
-                </div>
-              )}
-              {workerAttestation.raw_service_output && (
-                <div className="mt-2">
-                  <div className="text-xs font-medium text-muted-foreground mb-1">Raw Service Output (Debugging)</div>
-                  <details className="border rounded bg-gray-50">
-                    <summary className="px-2 py-1 text-xs cursor-pointer hover:bg-gray-100">
-                      Click to view raw service response
-                    </summary>
-                    <pre className="p-2 text-xs overflow-auto max-h-40 text-gray-700">
-                      {typeof workerAttestation.raw_service_output === 'string'
-                        ? workerAttestation.raw_service_output
-                        : JSON.stringify(workerAttestation.raw_service_output, null, 2)}
-                    </pre>
-                  </details>
-                </div>
-              )}
-            </div>
-          ) : null}
 
-          {/* API Workflow Attestation */}
-          {apiAttestation && (
-            <div>
-              <div className="text-sm font-medium text-blue-800 mb-2 flex items-center gap-1">
-                <Zap className="h-4 w-4" />
-                API Workflow Completion Proof
-              </div>
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-3 text-xs">
-                <div>
-                  <div className="font-medium text-muted-foreground">Workflow ID</div>
-                  <code className="bg-white px-2 py-1 rounded border">{apiAttestation.workflow_id}</code>
-                </div>
-                <div>
-                  <div className="font-medium text-muted-foreground">API Determined Complete</div>
-                  <div>{new Date(apiAttestation.api_determined_complete_at).toLocaleString()}</div>
-                </div>
-                <div>
-                  <div className="font-medium text-muted-foreground">API Instance</div>
-                  <code className="bg-white px-2 py-1 rounded border text-xs">{apiAttestation.api_instance}</code>
-                </div>
-                <div>
-                  <div className="font-medium text-muted-foreground">Asset Count</div>
-                  <Badge variant="outline">{apiAttestation.asset_locations?.length || 0} assets</Badge>
-                </div>
-                <div>
-                  <div className="font-medium text-muted-foreground">Retry Count</div>
-                  <Badge variant={apiAttestation.retry_count > 0 ? 'secondary' : 'outline'}>
-                    {apiAttestation.retry_count || 0}
-                  </Badge>
-                </div>
-                <div>
-                  <div className="font-medium text-muted-foreground">API Version</div>
-                  <code className="bg-white px-2 py-1 rounded border text-xs">{apiAttestation.api_version || 'unknown'}</code>
-                </div>
-              </div>
-              {apiAttestation.asset_locations && apiAttestation.asset_locations.length > 0 && (
-                <div className="mt-2">
-                  <div className="text-xs font-medium text-muted-foreground mb-1">Saved Assets</div>
-                  <div className="space-y-1">
-                    {apiAttestation.asset_locations.map((url: string, idx: number) => (
-                      <div key={idx} className="flex items-center gap-2">
-                        <ExternalLink className="h-3 w-3 text-blue-600" />
-                        <a
-                          href={url}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="text-xs text-blue-600 hover:underline break-all"
-                        >
-                          {url}
-                        </a>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              )}
-            </div>
-          )}
+              {retryGroup.attestations.map((attestation, idx) => {
+                const isFailure = attestation.attestation_type?.includes('failure') ||
+                                 attestation.status?.includes('failed') ||
+                                 attestation.failure_type;
+                const isCompletion = attestation.status === 'completed' ||
+                                   attestation.attestation_type?.includes('completion');
 
-          {/* Notification Attestations */}
-          {notificationAttestations.length > 0 && (
-            <div>
-              <div className="text-sm font-medium text-purple-800 mb-2 flex items-center gap-1">
-                <MessageCircle className="h-4 w-4" />
-                User Notification Proof ({notificationAttestations.length})
-              </div>
-              <div className="space-y-3">
-                {notificationAttestations.map((attestation: any, idx: number) => (
-                  <div key={idx} className="bg-purple-50 border border-purple-200 rounded p-3">
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-3 text-xs">
-                      <div>
-                        <div className="font-medium text-muted-foreground">User ID</div>
-                        <code className="bg-white px-2 py-1 rounded border text-[10px]">{attestation.miniapp_user_id}</code>
-                      </div>
-                      <div>
-                        <div className="font-medium text-muted-foreground">Notification Method</div>
-                        <Badge variant="outline" className="text-xs">{attestation.notification_method || 'unknown'}</Badge>
-                      </div>
-                      <div>
-                        <div className="font-medium text-muted-foreground">Sent At</div>
-                        <div>{new Date(attestation.attested_at).toLocaleString()}</div>
-                      </div>
-                      <div>
-                        <div className="font-medium text-muted-foreground">Success</div>
-                        <Badge variant={attestation.success ? 'default' : 'destructive'} className="text-xs">
-                          {attestation.success ? 'Sent' : 'Failed'}
+                return (
+                  <div key={idx} className={`p-4 border rounded-lg ${
+                    isFailure ? 'border-red-200 bg-red-50' :
+                    isCompletion ? 'border-green-200 bg-green-50' :
+                    'border-gray-200 bg-gray-50'
+                  }`}>
+                    <div className="flex items-center justify-between mb-2">
+                      <div className="flex items-center gap-2">
+                        {isFailure ? (
+                          <XCircle className="h-4 w-4 text-red-600" />
+                        ) : isCompletion ? (
+                          <CheckCircle className="h-4 w-4 text-green-600" />
+                        ) : (
+                          <Clock className="h-4 w-4 text-gray-600" />
+                        )}
+                        <span className="font-medium text-sm">
+                          {isFailure ? 'Failure Attestation' :
+                           isCompletion ? 'Completion Attestation' :
+                           'Worker Attestation'} - Step {attestation.current_step || '?'} of {attestation.total_steps || '?'}
+                        </span>
+                        <Badge className={`text-xs ${
+                          isFailure ? 'bg-red-100 text-red-800' :
+                          isCompletion ? 'bg-green-100 text-green-800' :
+                          'bg-gray-100 text-gray-800'
+                        }`}>
+                          {attestation.status || 'unknown'}
                         </Badge>
                       </div>
-                      {attestation.notification_type && (
-                        <div>
-                          <div className="font-medium text-muted-foreground">Type</div>
-                          <Badge variant="secondary" className="text-xs">{attestation.notification_type}</Badge>
-                        </div>
-                      )}
-                      {attestation.attestation_id && (
-                        <div>
-                          <div className="font-medium text-muted-foreground">Attestation ID</div>
-                          <code className="bg-white px-2 py-1 rounded border text-[10px]">{attestation.attestation_id}</code>
-                        </div>
-                      )}
                     </div>
-                    {attestation.notification_content && (
-                      <div className="mt-2">
-                        <div className="text-xs font-medium text-muted-foreground">Content</div>
-                        <div className="text-xs bg-white p-2 rounded border mt-1">{attestation.notification_content}</div>
-                      </div>
-                    )}
-                    {attestation.error_message && (
-                      <div className="mt-2">
-                        <div className="text-xs font-medium text-red-600">Error</div>
-                        <div className="text-xs text-red-600 bg-red-50 p-2 rounded border mt-1">{attestation.error_message}</div>
-                      </div>
-                    )}
-                    <div className="mt-2 text-xs text-purple-700 italic">
-                      {attestation.attestation || 'Miniapp attests that it sent a notification to the user'}
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </div>
-          )}
 
-          <div className="text-xs text-yellow-700 bg-yellow-100 p-2 rounded border">
-            <strong>💡 Attestations:</strong> These records prove the worker completed the job, API determined workflow completion,
+                    {/* Job Details */}
+                    <div className="text-xs text-muted-foreground space-y-1">
+                      <div>Step ID: <code className="bg-gray-100 px-1 rounded">{attestation.job_id}</code></div>
+                      <div>Worker ID: <code className="bg-gray-100 px-1 rounded">{attestation.worker_id}</code></div>
+                      {(attestation.completed_at || attestation.failed_at) && (
+                        <div>
+                          {isFailure ? 'Failed' : 'Completed'} at: {new Date(attestation.completed_at || attestation.failed_at).toLocaleString()}
+                        </div>
+                      )}
+                      {attestation.retry_count !== undefined && (
+                        <div>Retry Count: {attestation.retry_count}</div>
+                      )}
+                    </div>
+
+                    {/* Failure Details */}
+                    {isFailure && (attestation.failure_type || attestation.failure_reason) && (
+                      <div className="mt-3 p-2 bg-red-100 border border-red-200 rounded text-xs">
+                        <div className="font-medium text-red-800">Failure Classification:</div>
+                        <div className="text-red-700">
+                          {attestation.failure_type && (
+                            <div>Type: <span className="font-mono">{attestation.failure_type}</span></div>
+                          )}
+                          {attestation.failure_reason && (
+                            <div>Reason: <span className="font-mono">{attestation.failure_reason}</span></div>
+                          )}
+                          {attestation.failure_description && (
+                            <div>Description: {attestation.failure_description}</div>
+                          )}
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Raw Service Output (Debugging) */}
+                    {(attestation.raw_service_output || (isFailure && attestation.error_message)) && (
+                      <details className="mt-3">
+                        <summary className="text-xs font-medium text-muted-foreground cursor-pointer hover:text-foreground">
+                          ▶ Click to view {attestation.raw_service_output ? 'raw service response' : 'error details'} for step {attestation.current_step}
+                        </summary>
+                        <div className="mt-2 p-2 bg-gray-100 border rounded text-xs font-mono whitespace-pre-wrap max-h-40 overflow-y-auto">
+                          {attestation.raw_service_output
+                            ? (typeof attestation.raw_service_output === 'string'
+                                ? attestation.raw_service_output
+                                : JSON.stringify(attestation.raw_service_output, null, 2))
+                            : attestation.error_message}
+                        </div>
+                      </details>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          ))}
+        </div>
+      )}
+
+      <div className="mt-4 text-xs text-muted-foreground bg-amber-50 border border-amber-200 rounded p-3">
+        <div className="flex items-start gap-2">
+          <Info className="h-3 w-3 mt-0.5 text-amber-600" />
+          <div>
+            <strong>Attestations:</strong> These records prove the worker completed the job, API determined workflow completion,
             and notifications were sent to users, even if EmProps verification failed. Used for recovery of orphaned workflows.
           </div>
         </div>
-      )}
+      </div>
     </div>
   );
 }
@@ -681,7 +262,7 @@ export default function JobForensics() {
   const loadFailedAnalysis = async () => {
     setLoading(true);
     try {
-      const response = await fetch('/api/jobs/failed-analysis?limit=100');
+      const response = await fetch(appendAuthBypass('/api/jobs/failed-analysis?limit=100'));
       const data = await response.json();
       if (data.success) {
         setFailedAnalysis(data.analysis);
@@ -700,7 +281,7 @@ export default function JobForensics() {
       // Ensure searchTerm is always a string to prevent [object Object] issues
       const safSearchTerm = String(searchTerm || '').trim();
       const searchParam = safSearchTerm ? `&search=${encodeURIComponent(safSearchTerm)}` : '';
-      const response = await fetch(`/api/jobs/all?limit=${jobsPerPage}&offset=${offset}${searchParam}`);
+      const response = await fetch(appendAuthBypass(`/api/jobs/all?limit=${jobsPerPage}&offset=${offset}${searchParam}`));
       const data = await response.json();
       if (data.success) {
         if (append) {
@@ -740,7 +321,7 @@ export default function JobForensics() {
       }
 
       // Call our server-side API route which will securely call EmProps API
-      const response = await fetch(`/api/jobs/${jobId}/retry`, {
+      const response = await fetch(appendAuthBypass(`/api/jobs/${jobId}/retry`), {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -787,7 +368,7 @@ export default function JobForensics() {
       }
 
       // Call our reset API route which will reset job to pending state
-      const response = await fetch(`/api/jobs/${jobId}/reset`, {
+      const response = await fetch(appendAuthBypass(`/api/jobs/${jobId}/reset`), {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -1005,35 +586,13 @@ export default function JobForensics() {
   const generation = miniappData?.generation;
   const payment = miniappData?.payment;
 
-  // State for notification attestations from Redis
-  const [notificationAttestations, setNotificationAttestations] = useState<any[]>([]);
-  const [attestationsLoaded, setAttestationsLoaded] = useState(false);
+  // Check if notification was successfully sent (from forensics attestations)
+  const notificationSent = forensicsData?.forensics?.attestations?.some(att =>
+    att.attestation_type?.includes('notification') && att.success === true
+  ) || false;
 
-  // Load notification attestations when forensics data is available
-  useEffect(() => {
-    const loadNotificationAttestations = async () => {
-      if (forensicsData?.job?.workflow_id && !attestationsLoaded) {
-        try {
-          const apiBaseUrl = process.env.NEXT_PUBLIC_API_URL;
-          const response = await fetch(`${apiBaseUrl}/api/attestations?workflow_id=${forensicsData.job.workflow_id}`);
-          if (response.ok) {
-            const data = await response.json();
-            if (data.success) {
-              setNotificationAttestations(data.notification_attestations || []);
-            }
-          }
-        } catch (error) {
-          console.error('Failed to load notification attestations:', error);
-        }
-        setAttestationsLoaded(true);
-      }
-    };
-
-    loadNotificationAttestations();
-  }, [forensicsData?.job?.workflow_id, attestationsLoaded]);
-
-  // Check if notification was successfully sent
-  const notificationSent = notificationAttestations.some(att => att.success === true);
+  // Get notification attestations from forensics data
+  const notificationAttestations = forensicsData?.forensics?.notification_attestations || [];
 
   // Check if miniapp is actually complete (status = "complete" AND has image)
   const isMiniappComplete = generation && generation.status === 'complete' && generation.generated_image;
@@ -1285,7 +844,7 @@ export default function JobForensics() {
                                     variant="outline"
                                     onClick={async () => {
                                       try {
-                                        const response = await fetch(`/api/workflows/${job.workflow_id || job.id}/trigger-webhook`, {
+                                        const response = await fetch(appendAuthBypass(`/api/workflows/${job.workflow_id || job.id}/trigger-webhook`), {
                                           method: 'POST'
                                         });
                                         const result = await response.json();
@@ -1539,7 +1098,7 @@ export default function JobForensics() {
                                       setError(null);
 
                                       try {
-                                        const response = await fetch(`/api/jobs/${id}/forensics`);
+                                        const response = await fetch(appendAuthBypass(`/api/jobs/${id}/forensics`));
                                         const data = await response.json();
 
                                         if (data.success) {
@@ -2420,8 +1979,7 @@ export default function JobForensics() {
                   </CardHeader>
                   <CardContent>
                     <AttestationRecords
-                      jobId={String(forensicsData.job.id)}
-                      workflowId={forensicsData.job.workflow_id ? String(forensicsData.job.workflow_id) : undefined}
+                      attestations={forensicsData.forensics.attestations || []}
                     />
                   </CardContent>
                 </Card>

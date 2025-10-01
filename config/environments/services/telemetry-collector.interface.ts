@@ -34,9 +34,10 @@ export const TelemetryCollectorEnvInterface = {
   },
   secret: {
     "REDIS_URL": "TELEMETRY_REDIS_URL",
-    "DASH0_AUTH_TOKEN": "TELEMETRY_DASH0_AUTH_TOKEN",
+    "DASH0_AUTH_TOKEN": "TELEMETRY_DASH0_AUTH_TOKEN"
   }, 
   defaults: {
-    "HEALTH_PORT": "3334"
+    "HEALTH_PORT": "3334",
+    "OTLP_PORT": "4318" 
   }
 };
