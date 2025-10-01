@@ -1,90 +1,36 @@
 // API Server Entry Point
 import { config } from 'dotenv';
 
-// Initialize unified telemetry client
-import { createTelemetryClient } from '@emp/telemetry';
+// Initialize new OTLP-native telemetry
+import { createTelemetryClient, EmpTelemetryClient } from '@emp/telemetry';
 
-async function initializeTelemetry() {
-  console.log('🚀 initializeTelemetry: Starting telemetry initialization for API service');
-  
-  try {
-    // Generate API server IDs using API_BASE_ID + TELEMETRY_ENV pattern
-    console.log(`🔍 initializeTelemetry: Checking MACHINE_ID environment variable`);
-    if (!process.env.MACHINE_ID) {
-      console.log(`🔍 initializeTelemetry: MACHINE_ID not set, generating from API_BASE_ID + TELEMETRY_ENV`);
-      const apiBaseId = process.env.API_BASE_ID;
-      const telemetryEnv = process.env.TELEMETRY_ENV;
-      
-      console.log(`🔍 initializeTelemetry: API_BASE_ID: ${apiBaseId}, TELEMETRY_ENV: ${telemetryEnv}`);
-      
-      if (!apiBaseId) {
-        console.error('❌ initializeTelemetry: API_BASE_ID environment variable missing');
-        throw new Error('FATAL: API_BASE_ID environment variable is required for API server identification.');
-      }
-      if (!telemetryEnv) {
-        console.error('❌ initializeTelemetry: TELEMETRY_ENV environment variable missing');
-        throw new Error('FATAL: TELEMETRY_ENV environment variable is required for API server identification.');
-      }
-      
-      const machineId = `${apiBaseId}-${telemetryEnv}`;
-      process.env.MACHINE_ID = machineId;
-      console.log(`✅ initializeTelemetry: Generated MACHINE_ID: ${machineId}`);
-    } else {
-      console.log(`✅ initializeTelemetry: Using existing MACHINE_ID: ${process.env.MACHINE_ID}`);
-    }
-    
-    if (!process.env.WORKER_ID) {
-      console.log(`🔍 initializeTelemetry: WORKER_ID not set, using MACHINE_ID value`);
-      // API doesn't have separate workers, use same as MACHINE_ID
-      process.env.WORKER_ID = process.env.MACHINE_ID;
-      console.log(`✅ initializeTelemetry: Set WORKER_ID: ${process.env.WORKER_ID}`);
-    } else {
-      console.log(`✅ initializeTelemetry: Using existing WORKER_ID: ${process.env.WORKER_ID}`);
-    }
-
-    console.log('🔧 initializeTelemetry: Creating telemetry client');
-    // Create and initialize telemetry client
-    const telemetryClient = createTelemetryClient('api');
-    
-    console.log('📁 initializeTelemetry: Adding log files before telemetry startup...');
-    // Monitor actual Winston log files (core logger writes to LOG_DIR or /tmp)
-    const logDir = process.env.LOG_DIR || '/tmp';
-    await telemetryClient.log.addFile(`${logDir}/error.log`, 'api-error');
-    await telemetryClient.log.addFile(`${logDir}/combined.log`, 'api-combined');
-    console.log(`✅ initializeTelemetry: Log files added to monitoring (${logDir})`);
-    
-    console.log('🔧 initializeTelemetry: Starting telemetry client startup');
-    // Initialize without connection testing to avoid startup failures
-    const pipelineHealth = await telemetryClient.startup({
-      testConnections: false,
-      logConfiguration: true,
-      sendStartupPing: true,
-    });
-    
-    if (pipelineHealth?.overall === 'failed') {
-      console.warn('⚠️ initializeTelemetry: Telemetry pipeline has failures but continuing API startup...');
-    } else {
-      console.log('✅ initializeTelemetry: Telemetry client startup completed successfully');
-    }
-    
-    return telemetryClient;
-  } catch (error) {
-    console.error('❌ initializeTelemetry: Telemetry initialization failed:', error.message);
-    console.warn('⚠️ initializeTelemetry: Continuing API startup without telemetry...');
-    return null;
-  }
-}
-
-// Store telemetry client globally for use in main()
-let telemetryClient: any = null;
+// Store telemetry client globally and export for use in other modules
+export let telemetryClient: EmpTelemetryClient | null = null;
 
 import { LightweightAPIServer } from './lightweight-api-server.js';
 import { logger } from '@emp/core';
 
 // Load environment variables from profile-specific env file
 import { existsSync } from 'fs';
-const envFile = existsSync('.env.local-dev') ? '.env.local-dev' : '.env.local';
-config({ path: envFile });
+
+// Allow profile selection via EMP_PROFILE environment variable
+// Default to local-dev for backwards compatibility
+const profile = process.env.EMP_PROFILE || 'local-dev';
+const envFile = `.env.${profile}`;
+
+if (existsSync(envFile)) {
+  config({ path: envFile });
+  console.log(`📋 Loaded environment from: ${envFile}`);
+} else {
+  // Fallback to .env.local if profile-specific file doesn't exist
+  const fallback = '.env.local';
+  if (existsSync(fallback)) {
+    config({ path: fallback });
+    console.log(`⚠️ Profile ${profile} not found, using: ${fallback}`);
+  } else {
+    console.warn(`⚠️ No environment file found for profile: ${profile}`);
+  }
+}
 
 // Also export components for library use
 export * from './lightweight-api-server.js';
@@ -93,29 +39,16 @@ export * from './hybrid-client.js';
 // Main execution when run directly
 async function main() {
   const startupTime = Date.now();
-  
-  // Initialize telemetry first
-  telemetryClient = await initializeTelemetry();
-  
-  // Demonstrate clean telemetry API
-  if (telemetryClient) {
-    // Write some test logs to demonstrate the pipeline
-    await telemetryClient.log.info('🔍 VALIDATION: API server startup initiated', {
-      startup_time_ms: Date.now() - startupTime,
-      environment: process.env.TELEMETRY_ENV,
-      validation_type: 'api_startup',
-      expected_pipeline: 'application.log → fluent-bit → fluentd → dash0'
-    });
 
-    // Send a test metric (non-fatal if it fails)
-    try {
-      await telemetryClient.otel.gauge('api.startup.phase.telemetry_complete', Date.now() - startupTime, {
-        environment: process.env.TELEMETRY_ENV || 'unknown'
-      }, 'ms');
-    } catch (error) {
-      console.warn('⚠️ Failed to send startup metric (non-fatal):', error.message);
-    }
-  }
+  // Initialize new OTLP-native telemetry client
+  const collectorEndpoint = process.env.OTEL_COLLECTOR_ENDPOINT || 'http://localhost:4318';
+
+  telemetryClient = createTelemetryClient({
+    serviceName: 'emp-api',
+    serviceVersion: '1.0.0',
+    collectorEndpoint,
+    environment: process.env.NODE_ENV || 'development'
+  });
   
   // CRITICAL: API_PORT must be explicitly set - NO FALLBACKS
   if (!process.env.API_PORT) {
@@ -183,39 +116,8 @@ ${Object.keys(process.env).filter(k => k.includes('REDIS')).map(k => `  - ${k}=$
   try {
     await server.start();
     logger.info('API server started successfully');
-    
-    // Log startup completion through telemetry
-    if (telemetryClient) {
-      const totalStartupTime = Date.now() - startupTime;
-      await telemetryClient.log.info('✅ VALIDATION: API server startup completed successfully', {
-        total_startup_time_ms: totalStartupTime,
-        port: config.port,
-        environment: process.env.TELEMETRY_ENV,
-        server_ready: true,
-        validation_type: 'api_ready',
-        expected_result: 'API is now accepting requests and logs are flowing to Dash0'
-      });
-      
-      try {
-        await telemetryClient.otel.gauge('api.startup.total_duration', totalStartupTime, {
-          environment: process.env.TELEMETRY_ENV || 'unknown',
-          status: 'success'
-        }, 'ms');
-      } catch (error) {
-        console.warn('⚠️ Failed to send total startup metric (non-fatal):', error.message);
-      }
-    }
   } catch (error) {
     logger.error('Failed to start API server:', error);
-    
-    // Log startup failure through telemetry
-    if (telemetryClient) {
-      await telemetryClient.log.error('API server startup failed', {
-        error: error.message,
-        environment: process.env.TELEMETRY_ENV
-      });
-    }
-    
     process.exit(1);
   }
 }

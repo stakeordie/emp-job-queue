@@ -1,4 +1,13 @@
 import { vi, beforeEach, afterEach } from 'vitest';
+import { config } from 'dotenv';
+import { resolve } from 'path';
+
+// Set testrunner profile for all tests
+process.env.EMP_PROFILE = 'testrunner';
+
+// Load testrunner environment variables for tests
+config({ path: resolve(__dirname, '../../.env.testrunner') });
+config({ path: resolve(__dirname, '../../.env.secret.testrunner') });
 
 // Mock console methods for cleaner test output
 vi.mock('console', () => ({
