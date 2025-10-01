@@ -11,7 +11,12 @@ export const MonitorEnvInterface = {
     // Web server configuration
     "PORT": "MONITOR_PORT",
     "HOST": "MONITOR_HOST",
+
+    //Telemetry
+    "OTEL_COLLECTOR_ENDPOINT": "TELEMETRY_OTEL_COLLECTOR_LOCAL_URL",
     "TELEMETRY_ENV":"TELEMETRY_DASH0_DATASET",
+
+
     // Connection presets for UI (JSON string)
     "NEXT_PUBLIC_CONNECTIONS": "MONITOR_CONNECTION",
     "WEBHOOK_SERVICE_URL": "WEBHOOK_SERVICE_URL",
@@ -39,7 +44,8 @@ export const MonitorEnvInterface = {
     "HUB_REDIS_URL": "MONITOR_REDIS_URL",
     "EMPROPS_API_KEY": "EMPROPS_API_KEY",
     "AUTH_TOKEN": "API_AUTH_TOKEN",
-    "AUTH_BYPASS": "MONITOR_AUTH_BYPASS"
+    "AUTH_BYPASS": "MONITOR_AUTH_BYPASS",
+    "DASH0_AUTH_TOKEN": "TELEMETRY_DASH0_AUTH_TOKEN"
   },
   defaults: {
     "SERVICE_TYPE": "monitor",

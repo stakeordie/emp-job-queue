@@ -61,6 +61,9 @@ FROM ubuntu:22.04
     # Expose health check port (default 3334, configurable via HEALTH_PORT)
     EXPOSE 3334
 
+    # Expose OTLP HTTP endpoint port (default 4318, configurable via OTLP_PORT)
+    EXPOSE 4318
+
     # Health check (uses HEALTH_PORT env var if set, defaults to 3334)
     HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
         CMD curl -f http://localhost:${HEALTH_PORT:-3334}/health || exit 1

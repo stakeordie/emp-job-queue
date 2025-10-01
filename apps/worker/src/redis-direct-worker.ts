@@ -2,6 +2,9 @@
 // Redis-Direct Worker Entry Point - Phase 1B Implementation
 // Standalone worker that connects directly to Redis without WebSocket hub dependency
 
+// Initialize OpenTelemetry first (before any other imports that might create spans)
+import { initTracer } from '@emp/core/otel';
+
 import { RedisDirectBaseWorker } from './redis-direct-base-worker.js';
 import { ConnectorManager } from './connector-manager.js';
 import { logger } from '@emp/core';
@@ -220,6 +223,15 @@ function logEnvironmentVariables() {
 }
 
 async function main() {
+  // Initialize OpenTelemetry SDK first
+  const collectorEndpoint = process.env.OTEL_COLLECTOR_ENDPOINT || 'http://localhost:4318';
+  initTracer({
+    serviceName: 'emp-worker',
+    serviceVersion: '1.0.0',
+    collectorEndpoint,
+    environment: process.env.NODE_ENV || 'development'
+  });
+
   logger.info(`Starting Redis-direct worker ${WORKER_ID} on machine ${MACHINE_ID}`);
 
   // ALWAYS log environment variables at startup for debugging production issues

@@ -63,7 +63,7 @@
     ],
     "telemetry": [
       "default",
-      "development"
+      "localdocker"
     ]
   },
   "services": {}

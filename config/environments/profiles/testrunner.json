@@ -63,7 +63,7 @@
     ],
     "telemetry": [
       "default",
-      "test"
+      "local"
     ]
   },
   "services": {}

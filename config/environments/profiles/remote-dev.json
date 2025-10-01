@@ -64,7 +64,7 @@
     ],
     "telemetry": [
       "default",
-      "development"
+      "remotedev"
     ]
   },
   "services": {}

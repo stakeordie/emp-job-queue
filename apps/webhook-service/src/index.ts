@@ -5,6 +5,9 @@
  * Listens to Redis events and delivers HTTP webhooks to registered endpoints.
  */
 
+// Initialize OpenTelemetry first (before any other imports that might create spans)
+import { initTracer } from '@emp/core/otel';
+
 // Initialize unified telemetry client
 import { createTelemetryClient } from '@emp/telemetry';
 
@@ -168,8 +171,17 @@ async function gracefulShutdown(server: WebhookServer): Promise<void> {
 // Main function
 async function main(): Promise<void> {
   const startupTime = Date.now();
-  
-  // Initialize telemetry first
+
+  // Initialize OpenTelemetry SDK first
+  const collectorEndpoint = process.env.OTEL_COLLECTOR_ENDPOINT || 'http://localhost:4318';
+  initTracer({
+    serviceName: 'emp-webhook',
+    serviceVersion: '1.0.0',
+    collectorEndpoint,
+    environment: process.env.NODE_ENV || 'development'
+  });
+
+  // Initialize telemetry client
   telemetryClient = await initializeTelemetry();
   
   // Demonstrate clean telemetry API
