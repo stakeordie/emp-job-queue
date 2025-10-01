@@ -137,7 +137,7 @@ describe('Webhook Service webhook.delivered Event E2E Tests', () => {
     });
 
     expect(dash0Response.ok).toBe(true);
-    const dash0Events = await dash0Response.json();
+    const dash0Events = await dash0Response.json() as any;
 
     const allSpans = dash0Events.resourceSpans?.flatMap((rs: any) =>
       rs.scopeSpans?.flatMap((ss: any) => ss.spans || []) || []
@@ -188,7 +188,7 @@ describe('Webhook Service webhook.delivered Event E2E Tests', () => {
     });
 
     expect(dash0Response.ok).toBe(true);
-    const data = await dash0Response.json();
+    const data = await dash0Response.json() as any;
 
     const totalSpans = data.resourceSpans?.flatMap((rs: any) =>
       rs.scopeSpans?.flatMap((ss: any) => ss.spans || []) || []
