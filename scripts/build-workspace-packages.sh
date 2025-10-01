@@ -24,7 +24,7 @@ echo -e "${YELLOW}Building required workspace packages...${NC}"
 cd "$ROOT_DIR"
 pnpm --filter @emp/core build
 pnpm --filter @emp/service-config build
-pnpm --filter @emp/custom-nodes build
+# Note: @emp/custom-nodes package has been removed
 pnpm --filter @emp/telemetry build
 
 # Change to machine directory for workspace packages
@@ -38,8 +38,7 @@ mkdir -p .workspace-packages
 # Copy ONLY the package files (not entire repo) to Docker context
 # Only copy package.json, dist/, src/, and essential files - NOT apps/ or logs/
 mkdir -p .workspace-packages/core
-mkdir -p .workspace-packages/service-config  
-mkdir -p .workspace-packages/custom-nodes
+mkdir -p .workspace-packages/service-config
 mkdir -p .workspace-packages/telemetry
 
 # Copy core package files only (exclude apps/, logs/, etc.)
@@ -54,11 +53,9 @@ cp -r "$ROOT_DIR/packages/service-config/dist" .workspace-packages/service-confi
 cp -r "$ROOT_DIR/packages/service-config/src" .workspace-packages/service-config/ 2>/dev/null || true
 cp -r "$ROOT_DIR/packages/service-config/comfy-nodes" .workspace-packages/service-config/ 2>/dev/null || true
 
-# Custom-nodes and telemetry: copy normally but exclude node_modules
-cp "$ROOT_DIR/packages/custom-nodes/package.json" .workspace-packages/custom-nodes/
-cp -r "$ROOT_DIR/packages/custom-nodes/dist" .workspace-packages/custom-nodes/ 2>/dev/null || true  
-cp -r "$ROOT_DIR/packages/custom-nodes/src" .workspace-packages/custom-nodes/ 2>/dev/null || true
+# Note: custom-nodes package has been removed - nodes are now installed from GitHub repo
 
+# Telemetry: copy normally but exclude node_modules
 cp "$ROOT_DIR/packages/telemetry/package.json" .workspace-packages/telemetry/
 cp -r "$ROOT_DIR/packages/telemetry/dist" .workspace-packages/telemetry/ 2>/dev/null || true
 cp -r "$ROOT_DIR/packages/telemetry/src" .workspace-packages/telemetry/ 2>/dev/null || true

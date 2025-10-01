@@ -40,7 +40,7 @@ graph TB
 | External Repository | New Location | Purpose | Contents |
 |-------------------|--------------|---------|----------|
 | `emprops_shared` | `packages/service-config/` | ComfyUI configuration management | • 64 custom nodes config<br/>• Workflow templates<br/>• Model configurations<br/>• Installation scripts |
-| `emprops_comfy_nodes` | `packages/custom-nodes/` | Custom ComfyUI nodes for EmProps | • 18+ Python nodes<br/>• Cloud storage integration<br/>• Asset downloaders<br/>• Helper utilities |
+| `emprops_comfy_nodes` | *(Removed from monorepo)* | Custom ComfyUI nodes for EmProps | • Now installed from GitHub repo<br/>• 18+ Python nodes including animated WebP saver<br/>• Cloud storage integration<br/>• Asset downloaders |
 | `emprops_component_library` | `packages/component-library/` | Shared UI components | • React components<br/>• Design system<br/>• Storybook integration<br/>• CLI tools |
 
 ## Environment Management Revolution

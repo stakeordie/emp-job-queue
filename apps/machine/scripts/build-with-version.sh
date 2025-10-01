@@ -79,7 +79,7 @@ mkdir -p .workspace-packages
 
 # Copy built workspace packages to Docker context
 cp -r "$ROOT_DIR/packages/service-config" .workspace-packages/
-cp -r "$ROOT_DIR/packages/custom-nodes" .workspace-packages/
+# Note: custom-nodes package has been removed - nodes are now installed from GitHub repo
 
 # Copy required entrypoint scripts to local scripts directory
 echo -e "${YELLOW}Copying required entrypoint scripts...${NC}"

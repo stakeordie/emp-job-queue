@@ -108,12 +108,8 @@ export class ComfyUIManagementClient {
         );
       }
 
-      // Step 3: EmProps Custom Nodes (from monorepo)
-      if (!this.options.skipCustomNodes) {
-        result.steps.empropsNodes = await this.executeStep(
-          'empropsNodes', () => this.installEmpropsCustomNodes()
-        );
-      }
+      // Step 3: EmProps Custom Nodes are now installed via config_nodes.json from GitHub repo
+      // No need to copy from monorepo packages/custom-nodes anymore
 
       // Step 4: Component-based Installation (most complex - uses existing ComponentManager)
       if (!this.options.skipComponents) {
@@ -179,9 +175,7 @@ export class ComfyUIManagementClient {
         'dependencies', () => this.dependencyManager.install()
       );
 
-      result.steps.empropsNodes = await this.executeStep(
-        'empropsNodes', () => this.installEmpropsCustomNodes()
-      );
+      // EmProps nodes are installed via config_nodes.json from GitHub repo
 
       // Use ComponentManager for API-based custom nodes + models
       result.steps.components = await this.executeStep(
@@ -207,65 +201,11 @@ export class ComfyUIManagementClient {
     }
   }
 
-  /**
-   * Install EmProps custom nodes from monorepo
-   * Extracted from existing ComfyUIInstallerService logic
-   */
-  async installEmpropsCustomNodes() {
-    this.logger.info('🏢 ComfyUIManagementClient: Installing EmProps custom nodes from monorepo...');
-    
-    const customNodesPath = path.join(this.comfyuiPath, 'custom_nodes');
-    const empropsSource = path.resolve(__dirname, '../../../packages/custom-nodes/src');
-    const empropsTarget = path.join(customNodesPath, 'emprops_comfy_nodes');
-    
-    // Ensure target directory exists
-    await fs.ensureDir(path.dirname(empropsTarget));
-    
-    // Copy our custom nodes
-    await fs.copy(empropsSource, empropsTarget, { 
-      overwrite: true,
-      filter: (src) => !src.includes('__pycache__') && !src.includes('.pyc')
-    });
-    
-    // Install requirements if they exist
-    const requirementsPath = path.join(empropsTarget, 'requirements.txt');
-    if (await fs.pathExists(requirementsPath)) {
-      await execa('pip', ['install', '-r', requirementsPath], {
-        cwd: empropsTarget,
-        stdio: 'inherit'
-      });
-    }
-    
-    // Create .env file with environment variables
-    await this.createEmpropsEnvFile(empropsTarget);
-  }
+  // Note: EmProps custom nodes installation has been removed.
+  // Nodes are now installed directly from GitHub repo via config_nodes.json
 
-  /**
-   * Create .env file for EmProps custom nodes
-   */
-  async createEmpropsEnvFile(empropsTarget) {
-    const envConfig = {
-      "AWS_ACCESS_KEY_ID": "${AWS_ACCESS_KEY_ID}",
-      "AWS_SECRET_ACCESS_KEY_ENCODED": "${AWS_SECRET_ACCESS_KEY_ENCODED}",
-      "AWS_DEFAULT_REGION": "${AWS_DEFAULT_REGION}",
-      "GOOGLE_APPLICATION_CREDENTIALS": "${GOOGLE_APPLICATION_CREDENTIALS}",
-      "AZURE_STORAGE_ACCOUNT": "${AZURE_STORAGE_ACCOUNT}",
-      "AZURE_STORAGE_KEY": "${AZURE_STORAGE_KEY}",
-      "CLOUD_STORAGE_CONTAINER": "${CLOUD_STORAGE_CONTAINER}",
-      "CLOUD_MODELS_CONTAINER": "${CLOUD_MODELS_CONTAINER}",
-      "CLOUD_STORAGE_TEST_CONTAINER": "${CLOUD_STORAGE_TEST_CONTAINER}",
-      "CLOUD_PROVIDER": "${CLOUD_PROVIDER}",
-      "STATIC_MODELS": "${STATIC_MODELS}",
-      "EMPROPS_DEBUG_LOGGING": "${EMPROPS_DEBUG_LOGGING}",
-      "HF_TOKEN": "${HF_TOKEN}",
-      "CIVITAI_TOKEN": "${CIVITAI_TOKEN}",
-      "OLLAMA_HOST": "${OLLAMA_HOST}",
-      "OLLAMA_PORT": "${OLLAMA_PORT}",
-      "OLLAMA_DEFAULT_MODEL": "${OLLAMA_DEFAULT_MODEL}"
-    };
-    
-    await this.createEnvFile('emprops_comfy_nodes', envConfig, empropsTarget);
-  }
+  // Note: .env file creation for EmProps nodes has been removed.
+  // This is now handled by the GitHub repo installation
 
   /**
    * Setup model symlinks - extracted from existing logic

@@ -187,11 +187,11 @@
   - Model configurations and installation scripts
   - Organized into: `comfy-nodes/`, `shared-configs/`, `scripts/`, `src/`
 
-- ✅ **emprops_comfy_nodes** → `packages/custom-nodes/`
-  - 18+ Python custom nodes for EmProps features
+- ❌ **emprops_comfy_nodes** → *(Removed from monorepo)*
+  - Now maintained as separate GitHub repository
+  - 18+ Python custom nodes including new animated WebP saver
   - Cloud storage integration and asset downloaders
-  - Database utilities and comprehensive test suite
-  - Organized into: `src/nodes/`, `src/db/`, `src/tests/`
+  - Installed directly by worker machines via git clone
 
 - ✅ **emprops_component_library** → `packages/component-library/`
   - React UI components and design system

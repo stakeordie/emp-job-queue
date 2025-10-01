@@ -202,8 +202,7 @@ __pycache__/
 *.so
 
 # Example and sandbox files
-packages/custom-nodes/examples/
-packages/custom-nodes/models/
+# Note: packages/custom-nodes has been removed
 packages/service-config/workflows/sandbox/
 
 # Temporary directories and test files
