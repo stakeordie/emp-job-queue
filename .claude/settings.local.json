@@ -77,7 +77,8 @@
       "Bash(pnpm --filter=@emp/api typecheck)",
       "Bash(pnpm --filter=@emp/worker typecheck)",
       "Bash(pnpm dev:monitor:*)",
-      "Bash(REDIS_URL=redis://localhost:6379 RAILWAY_ENVIRONMENT=local-dev pnpm exec tsx --env-file=.env.local-dev --env-file=.env.secret.local-dev src/index.ts)"
+      "Bash(REDIS_URL=redis://localhost:6379 RAILWAY_ENVIRONMENT=local-dev pnpm exec tsx --env-file=.env.local-dev --env-file=.env.secret.local-dev src/index.ts)",
+      "Read(//private/tmp/emprops_comfy_nodes/**)"
     ],
     "deny": [],
     "ask": []
