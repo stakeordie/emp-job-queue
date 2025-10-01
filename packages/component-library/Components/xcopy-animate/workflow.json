@@ -1,0 +1,1064 @@
+{
+  "287": {
+    "inputs": {
+      "clip_name1": "t5xxl_fp16.safetensors",
+      "clip_name2": "clip_l.safetensors",
+      "type": "flux",
+      "device": "default"
+    },
+    "class_type": "DualCLIPLoader",
+    "_meta": {
+      "title": "DualCLIPLoader"
+    }
+  },
+  "288": {
+    "inputs": {
+      "guidance": 2.5,
+      "conditioning": [
+        "318",
+        0
+      ]
+    },
+    "class_type": "FluxGuidance",
+    "_meta": {
+      "title": "FluxGuidance"
+    }
+  },
+  "289": {
+    "inputs": {
+      "width": 1024,
+      "height": 1024,
+      "batch_size": 1
+    },
+    "class_type": "EmptySD3LatentImage",
+    "_meta": {
+      "title": "EmptySD3LatentImage"
+    }
+  },
+  "290": {
+    "inputs": {
+      "lora_name": [
+        "311",
+        1
+      ],
+      "strength_model": 1.75,
+      "strength_clip": 1,
+      "model": [
+        "360",
+        0
+      ],
+      "clip": [
+        "287",
+        0
+      ]
+    },
+    "class_type": "EmProps_Lora_Loader",
+    "_meta": {
+      "title": "EmProps LoRA Loader"
+    }
+  },
+  "291": {
+    "inputs": {
+      "guidance": 2.3,
+      "conditioning": [
+        "319",
+        0
+      ]
+    },
+    "class_type": "FluxGuidance",
+    "_meta": {
+      "title": "FluxGuidance"
+    }
+  },
+  "292": {
+    "inputs": {
+      "range_mode": "num_steps",
+      "start": [
+        "294",
+        0
+      ],
+      "stop": [
+        "293",
+        0
+      ],
+      "step": 0,
+      "num_steps": 6,
+      "end_mode": "Inclusive"
+    },
+    "class_type": "easy rangeInt",
+    "_meta": {
+      "title": "Range(Int)"
+    }
+  },
+  "293": {
+    "inputs": {
+      "min_val": 2060,
+      "max_val": 4096
+    },
+    "class_type": "SystemRandomInt",
+    "_meta": {
+      "title": "System Random Int"
+    }
+  },
+  "294": {
+    "inputs": {
+      "min_val": 1,
+      "max_val": 2048
+    },
+    "class_type": "SystemRandomInt",
+    "_meta": {
+      "title": "System Random Int"
+    }
+  },
+  "295": {
+    "inputs": {
+      "String": [
+        "350",
+        0
+      ]
+    },
+    "class_type": "String",
+    "_meta": {
+      "title": "String"
+    }
+  },
+  "296": {
+    "inputs": {
+      "select": 2,
+      "random": false,
+      "text": [
+        "304",
+        0
+      ]
+    },
+    "class_type": "TextLineSelect",
+    "_meta": {
+      "title": "Text Line Select"
+    }
+  },
+  "297": {
+    "inputs": {
+      "select": 3,
+      "random": false,
+      "text": [
+        "304",
+        0
+      ]
+    },
+    "class_type": "TextLineSelect",
+    "_meta": {
+      "title": "Text Line Select"
+    }
+  },
+  "298": {
+    "inputs": {
+      "select": 6,
+      "random": false,
+      "text": [
+        "304",
+        0
+      ]
+    },
+    "class_type": "TextLineSelect",
+    "_meta": {
+      "title": "Text Line Select"
+    }
+  },
+  "299": {
+    "inputs": {
+      "select": 7,
+      "random": false,
+      "text": [
+        "304",
+        0
+      ]
+    },
+    "class_type": "TextLineSelect",
+    "_meta": {
+      "title": "Text Line Select"
+    }
+  },
+  "300": {
+    "inputs": {
+      "color": [
+        "297",
+        3
+      ],
+      "palette": "xkcd"
+    },
+    "class_type": "LayerUtility: ColorName",
+    "_meta": {
+      "title": "LayerUtility: Color Name"
+    }
+  },
+  "301": {
+    "inputs": {
+      "color": [
+        "334",
+        3
+      ],
+      "palette": "xkcd"
+    },
+    "class_type": "LayerUtility: ColorName",
+    "_meta": {
+      "title": "LayerUtility: Color Name"
+    }
+  },
+  "302": {
+    "inputs": {
+      "color": [
+        "298",
+        3
+      ],
+      "palette": "xkcd"
+    },
+    "class_type": "LayerUtility: ColorName",
+    "_meta": {
+      "title": "LayerUtility: Color Name"
+    }
+  },
+  "303": {
+    "inputs": {
+      "color": [
+        "299",
+        3
+      ],
+      "palette": "xkcd"
+    },
+    "class_type": "LayerUtility: ColorName",
+    "_meta": {
+      "title": "LayerUtility: Color Name"
+    }
+  },
+  "304": {
+    "inputs": {
+      "delimiter": ",",
+      "text_list": [
+        "335",
+        1
+      ]
+    },
+    "class_type": "Text List to Text",
+    "_meta": {
+      "title": "Text List to Text"
+    }
+  },
+  "305": {
+    "inputs": {
+      "color": [
+        "296",
+        3
+      ],
+      "palette": "xkcd"
+    },
+    "class_type": "LayerUtility: ColorName",
+    "_meta": {
+      "title": "LayerUtility: Color Name"
+    }
+  },
+  "306": {
+    "inputs": {
+      "color": [
+        "307",
+        3
+      ],
+      "palette": "xkcd"
+    },
+    "class_type": "LayerUtility: ColorName",
+    "_meta": {
+      "title": "LayerUtility: Color Name"
+    }
+  },
+  "307": {
+    "inputs": {
+      "select": 1,
+      "random": false,
+      "text": [
+        "304",
+        0
+      ]
+    },
+    "class_type": "TextLineSelect",
+    "_meta": {
+      "title": "Text Line Select"
+    }
+  },
+  "308": {
+    "inputs": {
+      "url": "https://huggingface.co/glif-loradex-trainer/quitters_COPYXCOPY/resolve/main/COPYXCOPY.safetensors",
+      "save_to": "loras",
+      "filename": "COPYXCOPY.safetensors",
+      "token_provider": "Hugging Face",
+      "token": "",
+      "test_with_copy": false,
+      "source_filename": ""
+    },
+    "class_type": "EmProps_Asset_Downloader",
+    "_meta": {
+      "title": "EmProps Asset Downloader"
+    }
+  },
+  "309": {
+    "inputs": {
+      "lora_name": [
+        "308",
+        1
+      ],
+      "strength_model": 1.15,
+      "strength_clip": 1,
+      "model": [
+        "290",
+        0
+      ],
+      "clip": [
+        "290",
+        1
+      ]
+    },
+    "class_type": "EmProps_Lora_Loader",
+    "_meta": {
+      "title": "EmProps LoRA Loader"
+    }
+  },
+  "310": {
+    "inputs": {
+      "pixels": [
+        "336",
+        0
+      ],
+      "vae": [
+        "312",
+        0
+      ]
+    },
+    "class_type": "VAEEncode",
+    "_meta": {
+      "title": "VAE Encode"
+    }
+  },
+  "311": {
+    "inputs": {
+      "url": "https://huggingface.co/glif-loradex-trainer/quitters_COPYXCOPY2/resolve/main/COPYXCOPY2.safetensors",
+      "save_to": "loras",
+      "filename": "COPYXCOPY2.safetensors",
+      "token_provider": "Hugging Face",
+      "token": "",
+      "test_with_copy": false,
+      "source_filename": ""
+    },
+    "class_type": "EmProps_Asset_Downloader",
+    "_meta": {
+      "title": "EmProps Asset Downloader"
+    }
+  },
+  "312": {
+    "inputs": {
+      "vae_name": "ae.safetensors"
+    },
+    "class_type": "VAELoader",
+    "_meta": {
+      "title": "Load VAE"
+    }
+  },
+  "313": {
+    "inputs": {
+      "select": 5,
+      "random": false,
+      "text": [
+        "304",
+        0
+      ]
+    },
+    "class_type": "TextLineSelect",
+    "_meta": {
+      "title": "Text Line Select"
+    }
+  },
+  "314": {
+    "inputs": {
+      "color": [
+        "313",
+        3
+      ],
+      "palette": "xkcd"
+    },
+    "class_type": "LayerUtility: ColorName",
+    "_meta": {
+      "title": "LayerUtility: Color Name"
+    }
+  },
+  "315": {
+    "inputs": {
+      "max_shift": 1.15,
+      "base_shift": 0.5,
+      "width": 1024,
+      "height": 1024,
+      "model": [
+        "340",
+        0
+      ]
+    },
+    "class_type": "ModelSamplingFlux",
+    "_meta": {
+      "title": "ModelSamplingFlux"
+    }
+  },
+  "316": {
+    "inputs": {
+      "boolean": [
+        "346",
+        0
+      ],
+      "on_true": [
+        "363",
+        0
+      ],
+      "on_false": [
+        "295",
+        0
+      ]
+    },
+    "class_type": "easy ifElse",
+    "_meta": {
+      "title": "PROMPT = PFP OR CAT"
+    }
+  },
+  "317": {
+    "inputs": {
+      "model": [
+        "315",
+        0
+      ],
+      "conditioning": [
+        "291",
+        0
+      ]
+    },
+    "class_type": "BasicGuider",
+    "_meta": {
+      "title": "BasicGuider"
+    }
+  },
+  "318": {
+    "inputs": {
+      "text": [
+        "316",
+        0
+      ],
+      "clip": [
+        "309",
+        1
+      ]
+    },
+    "class_type": "CLIPTextEncode",
+    "_meta": {
+      "title": "CLIP Text Encode (Positive Prompt)"
+    }
+  },
+  "319": {
+    "inputs": {
+      "text": [
+        "316",
+        0
+      ],
+      "clip": [
+        "340",
+        1
+      ]
+    },
+    "class_type": "CLIPTextEncode",
+    "_meta": {
+      "title": "CLIP Text Encode (Positive Prompt)"
+    }
+  },
+  "320": {
+    "inputs": {
+      "model": [
+        "333",
+        0
+      ],
+      "conditioning": [
+        "288",
+        0
+      ]
+    },
+    "class_type": "BasicGuider",
+    "_meta": {
+      "title": "BasicGuider"
+    }
+  },
+  "321": {
+    "inputs": {
+      "noise_seed": [
+        "292",
+        0
+      ]
+    },
+    "class_type": "RandomNoise",
+    "_meta": {
+      "title": "RandomNoise"
+    }
+  },
+  "322": {
+    "inputs": {
+      "images": [
+        "323",
+        0
+      ]
+    },
+    "class_type": "ImageListToImageBatch",
+    "_meta": {
+      "title": "Image List to Image Batch"
+    }
+  },
+  "323": {
+    "inputs": {
+      "samples": [
+        "324",
+        0
+      ],
+      "vae": [
+        "312",
+        0
+      ]
+    },
+    "class_type": "VAEDecode",
+    "_meta": {
+      "title": "VAE Decode"
+    }
+  },
+  "324": {
+    "inputs": {
+      "noise": [
+        "321",
+        0
+      ],
+      "guider": [
+        "317",
+        0
+      ],
+      "sampler": [
+        "343",
+        0
+      ],
+      "sigmas": [
+        "339",
+        0
+      ],
+      "latent_image": [
+        "325",
+        0
+      ]
+    },
+    "class_type": "SamplerCustomAdvanced",
+    "_meta": {
+      "title": "SamplerCustomAdvanced"
+    }
+  },
+  "325": {
+    "inputs": {
+      "pixels": [
+        "326",
+        0
+      ],
+      "vae": [
+        "312",
+        0
+      ]
+    },
+    "class_type": "VAEEncode",
+    "_meta": {
+      "title": "VAE Encode"
+    }
+  },
+  "326": {
+    "inputs": {
+      "boolean": [
+        "344",
+        0
+      ],
+      "on_true": [
+        "327",
+        0
+      ],
+      "on_false": [
+        "328",
+        0
+      ]
+    },
+    "class_type": "easy ifElse",
+    "_meta": {
+      "title": "If else"
+    }
+  },
+  "327": {
+    "inputs": {
+      "pixelation_size": 48,
+      "num_colors": 96,
+      "init_mode": "k-means++",
+      "max_iterations": 64,
+      "dither": "True",
+      "dither_mode": "FloydSteinberg",
+      "color_palette_mode": "Tonal",
+      "reverse_palette": "False",
+      "images": [
+        "328",
+        0
+      ],
+      "color_palettes": [
+        "335",
+        1
+      ]
+    },
+    "class_type": "Image Pixelate",
+    "_meta": {
+      "title": "Image Pixelate"
+    }
+  },
+  "328": {
+    "inputs": {
+      "samples": [
+        "331",
+        0
+      ],
+      "vae": [
+        "312",
+        0
+      ]
+    },
+    "class_type": "VAEDecode",
+    "_meta": {
+      "title": "VAE Decode"
+    }
+  },
+  "329": {
+    "inputs": {
+      "boolean": [
+        "346",
+        0
+      ],
+      "on_true": [
+        "310",
+        0
+      ],
+      "on_false": [
+        "289",
+        0
+      ]
+    },
+    "class_type": "easy ifElse",
+    "_meta": {
+      "title": "IMAGE INPUT/EMPTY LATENT"
+    }
+  },
+  "330": {
+    "inputs": {
+      "boolean": [
+        "346",
+        0
+      ],
+      "on_true": [
+        "355",
+        0
+      ],
+      "on_false": [
+        "338",
+        0
+      ]
+    },
+    "class_type": "easy ifElse",
+    "_meta": {
+      "title": "DENOISE"
+    }
+  },
+  "331": {
+    "inputs": {
+      "noise": [
+        "341",
+        0
+      ],
+      "guider": [
+        "320",
+        0
+      ],
+      "sampler": [
+        "342",
+        0
+      ],
+      "sigmas": [
+        "332",
+        0
+      ],
+      "latent_image": [
+        "329",
+        0
+      ]
+    },
+    "class_type": "SamplerCustomAdvanced",
+    "_meta": {
+      "title": "SamplerCustomAdvanced"
+    }
+  },
+  "332": {
+    "inputs": {
+      "scheduler": "beta",
+      "steps": 24,
+      "denoise": [
+        "330",
+        0
+      ],
+      "model": [
+        "333",
+        0
+      ]
+    },
+    "class_type": "BasicScheduler",
+    "_meta": {
+      "title": "BasicScheduler"
+    }
+  },
+  "333": {
+    "inputs": {
+      "max_shift": 1.15,
+      "base_shift": 0.5,
+      "width": 1024,
+      "height": 1024,
+      "model": [
+        "309",
+        0
+      ]
+    },
+    "class_type": "ModelSamplingFlux",
+    "_meta": {
+      "title": "ModelSamplingFlux"
+    }
+  },
+  "334": {
+    "inputs": {
+      "select": 4,
+      "random": false,
+      "text": [
+        "304",
+        0
+      ]
+    },
+    "class_type": "TextLineSelect",
+    "_meta": {
+      "title": "Text Line Select"
+    }
+  },
+  "335": {
+    "inputs": {
+      "colors": 8,
+      "mode": "back_to_back",
+      "image": [
+        "336",
+        0
+      ]
+    },
+    "class_type": "Image Color Palette",
+    "_meta": {
+      "title": "Image Color Palette"
+    }
+  },
+  "336": {
+    "inputs": {
+      "size": 1024,
+      "method": "NEAREST",
+      "image": [
+        "354",
+        0
+      ]
+    },
+    "class_type": "ResizeLongestToNode",
+    "_meta": {
+      "title": "Resize Longest To"
+    }
+  },
+  "337": {
+    "inputs": {
+      "fps": 16,
+      "images": [
+        "322",
+        0
+      ]
+    },
+    "class_type": "PreviewAnimation",
+    "_meta": {
+      "title": "Preview Animation 6x1016x1024"
+    }
+  },
+  "338": {
+    "inputs": {
+      "Number": "1"
+    },
+    "class_type": "Float",
+    "_meta": {
+      "title": "EmptyLatent_Denoise(locked)"
+    }
+  },
+  "339": {
+    "inputs": {
+      "scheduler": "beta",
+      "steps": 16,
+      "denoise": [
+        "345",
+        0
+      ],
+      "model": [
+        "315",
+        0
+      ]
+    },
+    "class_type": "BasicScheduler",
+    "_meta": {
+      "title": "BasicScheduler"
+    }
+  },
+  "340": {
+    "inputs": {
+      "lora_name": [
+        "311",
+        1
+      ],
+      "strength_model": 2.25,
+      "strength_clip": 1,
+      "model": [
+        "361",
+        0
+      ],
+      "clip": [
+        "287",
+        0
+      ]
+    },
+    "class_type": "EmProps_Lora_Loader",
+    "_meta": {
+      "title": "EmProps LoRA Loader"
+    }
+  },
+  "341": {
+    "inputs": {
+      "noise_seed": 12345
+    },
+    "class_type": "RandomNoise",
+    "_meta": {
+      "title": "RandomNoise"
+    }
+  },
+  "342": {
+    "inputs": {
+      "sampler_name": "dpmpp_3m_sde"
+    },
+    "class_type": "KSamplerSelect",
+    "_meta": {
+      "title": "KSamplerSelect"
+    }
+  },
+  "343": {
+    "inputs": {
+      "sampler_name": "dpmpp_2m_sde"
+    },
+    "class_type": "KSamplerSelect",
+    "_meta": {
+      "title": "KSamplerSelect"
+    }
+  },
+  "344": {
+    "inputs": {
+      "value": false
+    },
+    "class_type": "easy boolean",
+    "_meta": {
+      "title": "8BitGlitch_ON/OFF"
+    }
+  },
+  "345": {
+    "inputs": {
+      "Number": "0.515"
+    },
+    "class_type": "Float",
+    "_meta": {
+      "title": "AnimationDenoise_Float"
+    }
+  },
+  "346": {
+    "inputs": {
+      "value": true
+    },
+    "class_type": "easy boolean",
+    "_meta": {
+      "title": "IMG2IMG(pfp) OR TXT2IMG(prompt)"
+    }
+  },
+  "348": {
+    "inputs": {
+      "unet_name": "flux1-dev.safetensors",
+      "weight_dtype": "default"
+    },
+    "class_type": "UNETLoader",
+    "_meta": {
+      "title": "Load Diffusion Model"
+    }
+  },
+  "349": {
+    "inputs": {
+      "text_a": [
+        "306",
+        0
+      ],
+      "text_b": [
+        "305",
+        0
+      ],
+      "text_c": [
+        "300",
+        0
+      ],
+      "text_d": [
+        "301",
+        0
+      ],
+      "text_e": [
+        "314",
+        0
+      ],
+      "text_f": [
+        "302",
+        0
+      ],
+      "text_g": [
+        "303",
+        0
+      ]
+    },
+    "class_type": "Text List",
+    "_meta": {
+      "title": "Text List"
+    }
+  },
+  "350": {
+    "inputs": {
+      "string_a": [
+        "356",
+        0
+      ],
+      "string_b": [
+        "351",
+        0
+      ]
+    },
+    "class_type": "ConcatStringSingle",
+    "_meta": {
+      "title": "Concat String (Single) 📅🅕🅝"
+    }
+  },
+  "351": {
+    "inputs": {
+      "delimiter": ", ",
+      "text_list": [
+        "349",
+        0
+      ]
+    },
+    "class_type": "Text List to Text",
+    "_meta": {
+      "title": "Text List to Text"
+    }
+  },
+  "354": {
+    "inputs": {
+      "image": "bUntitled.png"
+    },
+    "class_type": "LoadImage",
+    "_meta": {
+      "title": "Load Image"
+    }
+  },
+  "355": {
+    "inputs": {
+      "Number": "0.9"
+    },
+    "class_type": "Float",
+    "_meta": {
+      "title": "PFP_Denoise"
+    }
+  },
+  "356": {
+    "inputs": {
+      "String": "a kitten portrait in the style of XCOPY, featuring a color palette consisting of "
+    },
+    "class_type": "String",
+    "_meta": {
+      "title": "String_CatPrompt_Part1"
+    }
+  },
+  "358": {
+    "inputs": {
+      "value": false
+    },
+    "class_type": "easy boolean",
+    "_meta": {
+      "title": "XCOPY_Style_High_Low"
+    }
+  },
+  "359": {
+    "inputs": {
+      "unet_name": "flux1-dev-fp8.safetensors",
+      "weight_dtype": "default"
+    },
+    "class_type": "UNETLoader",
+    "_meta": {
+      "title": "Load Diffusion Model"
+    }
+  },
+  "360": {
+    "inputs": {
+      "boolean": [
+        "358",
+        0
+      ],
+      "on_true": [
+        "359",
+        0
+      ],
+      "on_false": [
+        "348",
+        0
+      ]
+    },
+    "class_type": "easy ifElse",
+    "_meta": {
+      "title": "XCOPY_Style_High_Low (First Pass)"
+    }
+  },
+  "361": {
+    "inputs": {
+      "boolean": [
+        "358",
+        0
+      ],
+      "on_true": [
+        "359",
+        0
+      ],
+      "on_false": [
+        "348",
+        0
+      ]
+    },
+    "class_type": "easy ifElse",
+    "_meta": {
+      "title": "XCOPY_Style_High_Low (Second Pass)"
+    }
+  },
+  "363": {
+    "inputs": {
+      "value": ""
+    },
+    "class_type": "Text Input [Dream]",
+    "_meta": {
+      "title": "✍ Text Input"
+    }
+  }
+}
