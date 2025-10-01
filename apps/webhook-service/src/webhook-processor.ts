@@ -173,6 +173,21 @@ export class WebhookProcessor extends EventEmitter {
         webhook_id: data.webhook.id,
         event_id: data.payload.event_id,
       });
+
+      // 📊 TELEMETRY: Emit webhook.delivered event to OTLP collector
+      if (this.telemetryClient) {
+        this.telemetryClient.addEvent('webhook.delivered', {
+          'event_type': data.payload.event_type,
+          'job_id': data.payload.data.workflow_id || 'unknown',
+          'step_id': data.payload.data.job_id || 'unknown',
+          'service': 'Job_Q_Webhook',
+          'deployment.platform': 'railway',
+          'webhook_id': data.webhook.id,
+          'customer_id': data.payload.data.customer_id || 'unknown',
+          'http_status': data.attempt.response_status?.toString() || 'unknown',
+        });
+      }
+
       this.emit('webhook.delivered', data);
     });
 
@@ -285,6 +300,8 @@ export class WebhookProcessor extends EventEmitter {
         // Process through webhook service
         await this.webhookService.processEvent(monitorEvent as MonitorEvent);
         this.eventStats.processedEvents++;
+
+        // Note: Telemetry events are emitted by the webhook.delivered event handler (see setupEventHandlers)
 
         // Reduced logging
       } else {

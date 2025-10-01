@@ -29,6 +29,8 @@ export const TelemetryCollectorEnvInterface = {
     "DASH0_METRICS_ENDPOINT": "TELEMETRY_DASH0_METRICS_ENDPOINT",
     "DASH0_LOGS_ENDPOINT": "TELEMETRY_DASH0_LOGS_ENDPOINT",
     "ENABLE_HEALTH_CHECK": "TELEMETRY_COLLECTOR_HEALTH_CHECK",
+    "OTLP_PORT": "TELEMETRY_OTLP_PORT",
+    "HEALTH_PORT": "TELEMETRY_HEALTH_PORT"
   },
   optional: {
   },
@@ -37,7 +39,5 @@ export const TelemetryCollectorEnvInterface = {
     "DASH0_AUTH_TOKEN": "TELEMETRY_DASH0_AUTH_TOKEN"
   }, 
   defaults: {
-    "HEALTH_PORT": "3334",
-    "OTLP_PORT": "4318" 
   }
 };

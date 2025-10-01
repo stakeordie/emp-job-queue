@@ -89,7 +89,7 @@
       "group": "advanced"
     },
     {
-      "id": "8bitify",
+      "id": "eightbitify",
       "name": "8Bit Mode",
       "type": "select",
       "default": false,

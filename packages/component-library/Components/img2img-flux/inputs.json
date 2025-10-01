@@ -48,7 +48,7 @@
       "default": 1
     }
   },
-  "31": {
+  "365": {
     "prefix": {
       "value": "prefix",
       "is_required": true
@@ -62,7 +62,7 @@
       "is_required": true
     }
   },
-  "32": {
+  "366": {
     "url": {
       "value": "image",
       "is_required": true

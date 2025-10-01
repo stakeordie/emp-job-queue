@@ -194,14 +194,6 @@ export class WebhookNotificationService extends EventEmitter {
         url: webhook.url,
         previous_failures: webhook.consecutive_failures || 0,
       });
-
-      // Send OTEL event for webhook reconnection
-      if (this.telemetryClient) {
-        await this.telemetryClient.otel.counter('webhook.status.reconnected', 1, {
-          webhook_id: webhookId,
-          previous_failures: (webhook.consecutive_failures || 0).toString(),
-        });
-      }
     }
 
     await this.updateWebhook(webhookId, updates);
@@ -231,16 +223,6 @@ export class WebhookNotificationService extends EventEmitter {
           static: true,
         });
 
-        // Send OTEL telemetry event for static webhook high failure warning
-        if (this.telemetryClient) {
-          await this.telemetryClient.otel.counter('webhook.status.static_high_failures', 1, {
-            webhook_id: webhookId,
-            consecutive_failures: consecutiveFailures.toString(),
-            threshold: WebhookNotificationService.MAX_CONSECUTIVE_FAILURES.toString(),
-            webhook_url: webhook.url,
-          });
-        }
-
         // Emit event for external monitoring
         this.emit('webhook.static_high_failures', {
           webhook,
@@ -256,15 +238,6 @@ export class WebhookNotificationService extends EventEmitter {
         });
 
       // Note: OTEL tracing removed - using WorkflowTelemetryClient instead
-
-      // Send OTEL counter for webhook auto-disconnect
-      if (this.telemetryClient) {
-        await this.telemetryClient.otel.counter('webhook.status.disconnected', 1, {
-          webhook_id: webhookId,
-          consecutive_failures: consecutiveFailures.toString(),
-          threshold: WebhookNotificationService.MAX_CONSECUTIVE_FAILURES.toString(),
-        });
-      }
 
       // Emit event for external monitoring
       this.emit('webhook.disconnected', {
@@ -326,14 +299,6 @@ export class WebhookNotificationService extends EventEmitter {
       url: webhook.url,
       previous_failures: webhook.consecutive_failures || 0,
     });
-
-    // Send OTEL event for manual reconnection
-    if (this.telemetryClient) {
-      await this.telemetryClient.otel.counter('webhook.status.manual_reconnect', 1, {
-        webhook_id: webhookId,
-        previous_failures: (webhook.consecutive_failures || 0).toString(),
-      });
-    }
 
     return true;
   }
@@ -762,47 +727,13 @@ export class WebhookNotificationService extends EventEmitter {
         logger.error(`❌ [WEBHOOK] EMPROPS API Error Response:`);
         logger.error(`   Status: ${response.status}`);
         logger.error(`   Body: ${errorBody}`);
-        
-        // Send OTEL event for HTTP error from EMPROPS API
-        if (this.telemetryClient) {
-          await this.telemetryClient.otel.counter('webhook.emprops_api.failure', 1, {
-            workflow_id: workflowId,
-            http_status: response.status.toString(),
-            response_time_ms: responseTime.toString(),
-            endpoint: 'get_workflow_details',
-            error_type: 'HttpError',
-            error_message: `HTTP ${response.status}: ${response.statusText}`,
-          });
-          
-          await this.telemetryClient.otel.histogram('webhook.emprops_api.response_time', responseTime, {
-            workflow_id: workflowId,
-            status: 'error',
-            endpoint: 'get_workflow_details',
-          }, 'ms');
-        }
-        
+
         throw new Error(`EMPROPS API returned ${response.status}: ${response.statusText}`);
       }
 
       const data = await response.json();
       logger.info(`✅ [WEBHOOK] Successfully fetched workflow details for ${workflowId}`);
-      
-      // Send OTEL event for successful EMPROPS API call
-      if (this.telemetryClient) {
-        await this.telemetryClient.otel.counter('webhook.emprops_api.success', 1, {
-          workflow_id: workflowId,
-          http_status: response.status.toString(),
-          response_time_ms: responseTime.toString(),
-          endpoint: 'get_workflow_details',
-        });
-        
-        await this.telemetryClient.otel.histogram('webhook.emprops_api.response_time', responseTime, {
-          workflow_id: workflowId,
-          status: 'success',
-          endpoint: 'get_workflow_details',
-        }, 'ms');
-      }
-      
+
       // Log response summary (avoid verbose chunked logging that creates 50+ log entries)
       const responseSize = JSON.stringify(data).length;
       logger.info(`📋 [WEBHOOK] API Response received:`, {
@@ -842,17 +773,7 @@ export class WebhookNotificationService extends EventEmitter {
       if (error.cause) {
         logger.error(`   Error Cause: ${error.cause}`);
       }
-      
-      // Send OTEL event for failed EMPROPS API call
-      if (this.telemetryClient) {
-        await this.telemetryClient.otel.counter('webhook.emprops_api.failure', 1, {
-          workflow_id: workflowId,
-          endpoint: 'get_workflow_details',
-          error_type: error instanceof Error ? error.constructor.name : 'UnknownError',
-          error_message: error instanceof Error ? error.message : String(error),
-        });
-      }
-      
+
       return null;
     }
   }
@@ -1544,19 +1465,7 @@ export class WebhookNotificationService extends EventEmitter {
           job_id: payload.data.job_id,
           status: response.status,
         });
-        
-        // Send OTEL event for successful webhook delivery
-        if (this.telemetryClient) {
-          await this.telemetryClient.otel.counter('webhook.delivery.success', 1, {
-            webhook_id: webhook.id,
-            event_type: payload.event_type,
-            http_status: response.status.toString(),
-            attempt_number: attemptNumber.toString(),
-            job_id: payload.data.job_id || 'unknown',
-            workflow_id: payload.data.workflow_id || 'none',
-          });
-        }
-        
+
         // Track successful delivery and reset failure count
         await this.recordWebhookSuccess(webhook.id);
         
@@ -1586,19 +1495,6 @@ export class WebhookNotificationService extends EventEmitter {
         event_type: payload.event_type,
         job_id: payload.data.job_id,
       });
-      
-      // Send OTEL event for failed webhook delivery
-      if (this.telemetryClient) {
-        await this.telemetryClient.otel.counter('webhook.delivery.failure', 1, {
-          webhook_id: webhook.id,
-          event_type: payload.event_type,
-          http_status: attempt.response_status?.toString() || 'error',
-          attempt_number: attemptNumber.toString(),
-          job_id: payload.data.job_id || 'unknown',
-          workflow_id: payload.data.workflow_id || 'none',
-          error_type: error instanceof Error ? error.constructor.name : 'UnknownError',
-        });
-      }
 
       // Retry logic
       const retryConfig = webhook.retry_config || {
