@@ -13,24 +13,20 @@ import { logger } from '@emp/core';
 // Load environment variables from profile-specific env file
 import { existsSync } from 'fs';
 
-// Allow profile selection via EMP_PROFILE environment variable
-// Default to local-dev for backwards compatibility
-const profile = process.env.EMP_PROFILE || 'local-dev';
+// Require EMP_PROFILE to be explicitly set - no fallbacks
+if (!process.env.EMP_PROFILE) {
+  throw new Error('FATAL: EMP_PROFILE environment variable is required. No defaults allowed.');
+}
+
+const profile = process.env.EMP_PROFILE;
 const envFile = `.env.${profile}`;
 
-if (existsSync(envFile)) {
-  config({ path: envFile });
-  console.log(`📋 Loaded environment from: ${envFile}`);
-} else {
-  // Fallback to .env.local if profile-specific file doesn't exist
-  const fallback = '.env.local';
-  if (existsSync(fallback)) {
-    config({ path: fallback });
-    console.log(`⚠️ Profile ${profile} not found, using: ${fallback}`);
-  } else {
-    console.warn(`⚠️ No environment file found for profile: ${profile}`);
-  }
+if (!existsSync(envFile)) {
+  throw new Error(`FATAL: Environment file not found: ${envFile}. EMP_PROFILE=${profile} but file does not exist.`);
 }
+
+config({ path: envFile });
+console.log(`📋 Loaded environment from: ${envFile}`);
 
 // Also export components for library use
 export * from './lightweight-api-server.js';
@@ -41,13 +37,20 @@ async function main() {
   const startupTime = Date.now();
 
   // Initialize new OTLP-native telemetry client
-  const collectorEndpoint = process.env.OTEL_COLLECTOR_ENDPOINT || 'http://localhost:4318';
+  if (!process.env.OTEL_COLLECTOR_ENDPOINT) {
+    throw new Error('FATAL: OTEL_COLLECTOR_ENDPOINT environment variable is required. No defaults allowed.');
+  }
+  const collectorEndpoint = process.env.OTEL_COLLECTOR_ENDPOINT;
+
+  if (!process.env.NODE_ENV) {
+    throw new Error('FATAL: NODE_ENV environment variable is required. No defaults allowed.');
+  }
 
   telemetryClient = createTelemetryClient({
     serviceName: 'emp-api',
     serviceVersion: '1.0.0',
     collectorEndpoint,
-    environment: process.env.NODE_ENV || 'development'
+    environment: process.env.NODE_ENV
   });
   
   // CRITICAL: API_PORT must be explicitly set - NO FALLBACKS
@@ -85,14 +88,12 @@ ${Object.keys(process.env).filter(k => k.includes('REDIS')).map(k => `  - ${k}=$
       return redisUrl;
     })(),
     corsOrigins: (() => {
-      const corsEnv = process.env.CORS_ORIGINS;
-      if (corsEnv) {
-        const origins = corsEnv.split(',').map(origin => origin.trim());
-        logger.debug('API CORS Origins configured:', origins);
-        return origins;
+      if (!process.env.CORS_ORIGINS) {
+        throw new Error('FATAL: CORS_ORIGINS environment variable is required. No defaults allowed.');
       }
-      logger.debug('API CORS Origins defaulting to wildcard');
-      return ['*'];
+      const origins = process.env.CORS_ORIGINS.split(',').map(origin => origin.trim());
+      logger.debug('API CORS Origins configured:', origins);
+      return origins;
     })(),
   };
 

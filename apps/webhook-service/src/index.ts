@@ -5,85 +5,11 @@
  * Listens to Redis events and delivers HTTP webhooks to registered endpoints.
  */
 
-// Initialize OpenTelemetry first (before any other imports that might create spans)
-import { initTracer } from '@emp/core/otel';
-
-// Initialize unified telemetry client
 import { createTelemetryClient } from '@emp/telemetry';
+import type { EmpTelemetryClient } from '@emp/telemetry';
 
-async function initializeTelemetry() {
-  console.log('🚀 initializeTelemetry: Starting telemetry initialization for webhook service');
-  
-  try {
-    // Generate webhook server IDs using WEBHOOK_BASE_ID + TELEMETRY_ENV pattern
-    console.log(`🔍 initializeTelemetry: Checking MACHINE_ID environment variable`);
-    if (!process.env.MACHINE_ID) {
-      console.log(`🔍 initializeTelemetry: MACHINE_ID not set, generating from WEBHOOK_BASE_ID + TELEMETRY_ENV`);
-      const webhookBaseId = process.env.WEBHOOK_BASE_ID;
-      const telemetryEnv = process.env.TELEMETRY_ENV;
-      
-      console.log(`🔍 initializeTelemetry: WEBHOOK_BASE_ID: ${webhookBaseId}, TELEMETRY_ENV: ${telemetryEnv}`);
-      
-      if (!webhookBaseId) {
-        console.error('❌ initializeTelemetry: WEBHOOK_BASE_ID environment variable missing');
-        throw new Error('FATAL: WEBHOOK_BASE_ID environment variable is required for webhook service identification.');
-      }
-      if (!telemetryEnv) {
-        console.error('❌ initializeTelemetry: TELEMETRY_ENV environment variable missing');
-        throw new Error('FATAL: TELEMETRY_ENV environment variable is required for webhook service identification.');
-      }
-      
-      const machineId = `${webhookBaseId}-${telemetryEnv}`;
-      process.env.MACHINE_ID = machineId;
-      console.log(`✅ initializeTelemetry: Generated MACHINE_ID: ${machineId}`);
-    } else {
-      console.log(`✅ initializeTelemetry: Using existing MACHINE_ID: ${process.env.MACHINE_ID}`);
-    }
-    
-    if (!process.env.WORKER_ID) {
-      console.log(`🔍 initializeTelemetry: WORKER_ID not set, using MACHINE_ID value`);
-      // Webhook service doesn't have separate workers, use same as MACHINE_ID
-      process.env.WORKER_ID = process.env.MACHINE_ID;
-      console.log(`✅ initializeTelemetry: Set WORKER_ID: ${process.env.WORKER_ID}`);
-    } else {
-      console.log(`✅ initializeTelemetry: Using existing WORKER_ID: ${process.env.WORKER_ID}`);
-    }
-
-    console.log('🔧 initializeTelemetry: Creating telemetry client');
-    // Create and initialize telemetry client
-    const telemetryClient = createTelemetryClient('webhook');
-    
-    console.log('📁 initializeTelemetry: Adding log files before telemetry startup...');
-    // Monitor actual Winston log files (core logger writes to LOG_DIR or /tmp)
-    const logDir = process.env.LOG_DIR || '/tmp';
-    await telemetryClient.log.addFile(`${logDir}/error.log`, 'webhook-error');
-    await telemetryClient.log.addFile(`${logDir}/combined.log`, 'webhook-combined');
-    console.log(`✅ initializeTelemetry: Log files added to monitoring (${logDir})`);
-    
-    console.log('🔧 initializeTelemetry: Starting telemetry client startup');
-    // Initialize without connection testing to avoid startup failures
-    const pipelineHealth = await telemetryClient.startup({
-      testConnections: false,
-      logConfiguration: true,
-      sendStartupPing: true,
-    });
-    
-    if (pipelineHealth?.overall === 'failed') {
-      console.warn('⚠️ initializeTelemetry: Telemetry pipeline has failures but continuing webhook startup...');
-    } else {
-      console.log('✅ initializeTelemetry: Telemetry client startup completed successfully');
-    }
-    
-    return telemetryClient;
-  } catch (error) {
-    console.error('❌ initializeTelemetry: Telemetry initialization failed:', error.message);
-    console.warn('⚠️ initializeTelemetry: Continuing webhook startup without telemetry...');
-    return null;
-  }
-}
-
-// Store telemetry client globally for use in main()
-let telemetryClient: any = null;
+// Store telemetry client globally
+export let telemetryClient: EmpTelemetryClient | null = null;
 
 import { WebhookServer } from './webhook-server.js';
 import { logger } from '@emp/core';
@@ -172,37 +98,23 @@ async function gracefulShutdown(server: WebhookServer): Promise<void> {
 async function main(): Promise<void> {
   const startupTime = Date.now();
 
-  // Initialize OpenTelemetry SDK first
-  const collectorEndpoint = process.env.OTEL_COLLECTOR_ENDPOINT || 'http://localhost:4318';
-  initTracer({
+  // Initialize new OTLP-native telemetry client
+  if (!process.env.OTEL_COLLECTOR_ENDPOINT) {
+    throw new Error('FATAL: OTEL_COLLECTOR_ENDPOINT environment variable is required. No defaults allowed.');
+  }
+  if (!process.env.NODE_ENV) {
+    throw new Error('FATAL: NODE_ENV environment variable is required. No defaults allowed.');
+  }
+
+  const collectorEndpoint = process.env.OTEL_COLLECTOR_ENDPOINT;
+
+  telemetryClient = createTelemetryClient({
     serviceName: 'emp-webhook',
     serviceVersion: '1.0.0',
     collectorEndpoint,
-    environment: process.env.NODE_ENV || 'development'
+    environment: process.env.NODE_ENV
   });
-
-  // Initialize telemetry client
-  telemetryClient = await initializeTelemetry();
-  
-  // Demonstrate clean telemetry API
-  if (telemetryClient) {
-    // Write some test logs to demonstrate the pipeline
-    await telemetryClient.log.info('🔍 VALIDATION: Webhook service startup initiated', {
-      startup_time_ms: Date.now() - startupTime,
-      environment: process.env.TELEMETRY_ENV,
-      validation_type: 'webhook_startup',
-      expected_pipeline: 'local file logging only (Fluent Bit removed)'
-    });
-
-    // Send a test metric (non-fatal if it fails)
-    try {
-      await telemetryClient.otel.gauge('webhook.startup.phase.telemetry_complete', Date.now() - startupTime, {
-        environment: process.env.TELEMETRY_ENV || 'unknown'
-      }, 'ms');
-    } catch (error) {
-      console.warn('⚠️ Failed to send startup metric (non-fatal):', error.message);
-    }
-  }
+  console.log(`✅ Telemetry initialized (endpoint: ${collectorEndpoint})`);
 
   try {
     logger.info('🚀 Starting Webhook Service', {
@@ -211,7 +123,7 @@ async function main(): Promise<void> {
         redisUrl: config.redisUrl,
         corsOrigins: config.corsOrigins,
       },
-      environment: process.env.NODE_ENV || 'development',
+      environment: process.env.NODE_ENV,
       version: '1.0.0',
       rawCorsEnv: process.env.CORS_ORIGINS,
     });
@@ -229,43 +141,6 @@ async function main(): Promise<void> {
     // Start the server
     await server.start();
     logger.info('Webhook server started successfully');
-    
-    // Log startup completion through telemetry
-    if (telemetryClient) {
-      const totalStartupTime = Date.now() - startupTime;
-      await telemetryClient.log.info('✅ VALIDATION: Webhook service startup completed successfully', {
-        total_startup_time_ms: totalStartupTime,
-        port: config.port,
-        environment: process.env.TELEMETRY_ENV,
-        server_ready: true,
-        validation_type: 'webhook_ready',
-        expected_result: 'Webhook service is now accepting connections with local file logging'
-      });
-      
-      try {
-        await telemetryClient.otel.gauge('webhook.startup.total_duration', totalStartupTime, {
-          environment: process.env.TELEMETRY_ENV || 'unknown',
-          status: 'success'
-        }, 'ms');
-        
-        // Send webhook service ready metric
-        await telemetryClient.otel.gauge('webhook.service.ready', 1, {
-          port: config.port.toString(),
-          environment: process.env.NODE_ENV || 'development',
-        });
-      } catch (error) {
-        console.warn('⚠️ Failed to send startup metrics (non-fatal):', error.message);
-      }
-
-      // Log webhook service ready
-      await telemetryClient.log.info('✅ Webhook Service ready and accepting connections', {
-        port: config.port,
-        healthCheck: `http://localhost:${config.port}/health`,
-        redis_url: config.redisUrl,
-        cors_origins: config.corsOrigins.join(','),
-        service_startup_complete: true,
-      });
-    }
 
     logger.info('✅ Webhook Service ready', {
       port: config.port,
@@ -273,15 +148,6 @@ async function main(): Promise<void> {
     });
   } catch (error) {
     logger.error('Failed to start webhook service:', error);
-    
-    // Log startup failure through telemetry
-    if (telemetryClient) {
-      await telemetryClient.log.error('Webhook service startup failed', {
-        error: error.message,
-        environment: process.env.TELEMETRY_ENV
-      });
-    }
-    
     process.exit(1);
   }
 }

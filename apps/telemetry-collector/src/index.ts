@@ -56,13 +56,14 @@ class TelemetryCollector {
             if (!process.env.DASH0_DATASET) throw new Error('DASH0_DATASET environment variable is required when DASH0_ENABLED=true');
             if (!process.env.DASH0_BATCH_SIZE) throw new Error('DASH0_BATCH_SIZE environment variable is required when DASH0_ENABLED=true');
             if (!process.env.DASH0_FLUSH_INTERVAL) throw new Error('DASH0_FLUSH_INTERVAL environment variable is required when DASH0_ENABLED=true');
+            return process.env.DASH0_TRACES_ENDPOINT;
           }
-          return process.env.DASH0_TRACES_ENDPOINT || '';
+          return '';
         })(),
-        authToken: process.env.DASH0_AUTH_TOKEN || '',
-        dataset: process.env.DASH0_DATASET || '',
-        batchSize: parseInt(process.env.DASH0_BATCH_SIZE || '0'),
-        flushInterval: parseInt(process.env.DASH0_FLUSH_INTERVAL || '0'),
+        authToken: process.env.DASH0_AUTH_TOKEN!,
+        dataset: process.env.DASH0_DATASET!,
+        batchSize: parseInt(process.env.DASH0_BATCH_SIZE!),
+        flushInterval: parseInt(process.env.DASH0_FLUSH_INTERVAL!),
       }
     };
 
