@@ -28,8 +28,7 @@ import {
   smartTruncateObject,
 } from '@emp/core';
 
-// Import telemetry for Redis Stream events
-import { getWorkerTelemetry } from '@emp/core';
+// TODO: TELEMETRY REMOVED - Will import from @emp/telemetry package later
 
 // Note: JobInstrumentation removed - replace with WorkflowTelemetryClient if needed
 import { readFileSync } from 'fs';
@@ -99,8 +98,7 @@ export class RedisDirectBaseWorker {
   private maxConcurrentJobs: number;
   private jobTimeoutMinutes: number;
 
-  // Telemetry client for Redis Stream events
-  private telemetry = getWorkerTelemetry();
+  // TODO: TELEMETRY REMOVED - Will add @emp/telemetry client here
   private heartbeatInterval?: NodeJS.Timeout;
 
   constructor(
@@ -534,17 +532,8 @@ export class RedisDirectBaseWorker {
       this.status = WorkerStatus.IDLE;
       this.running = true;
 
-      // Send telemetry events for worker startup
-      await this.telemetry.workerEvent(this.workerId, 'worker.registered', {
-        machineId: this.machineId,
-        version: getWorkerVersion(),
-        capabilities: this.capabilities.services || [],
-        hardwareSpecs: this.capabilities.hardware,
-        connectorTypes: Object.keys(models),
-        maxConcurrentJobs: this.maxConcurrentJobs,
-        pollIntervalMs: this.pollIntervalMs,
-        status: 'idle'
-      });
+      // TODO: TELEMETRY REMOVED - Rebuild with @emp/telemetry
+      // Was: worker.registered event with machineId, version, capabilities, hardware specs, etc.
 
       // Send worker connected event with version info and capabilities
       await this.sendMachineEvent('worker_status_changed', {
@@ -765,15 +754,8 @@ export class RedisDirectBaseWorker {
     this.jobStartTimes.set(job.id, Date.now());
     this.status = WorkerStatus.BUSY;
 
-    // Send telemetry event for job claimed
-    await this.telemetry.jobEvent(job.id, 'job.claimed', {
-      workerId: this.workerId,
-      machineId: this.machineId,
-      serviceRequired: job.service_required,
-      jobType: job.service_required,
-      priority: job.priority || 'normal',
-      claimTime: Date.now()
-    });
+    // TODO: TELEMETRY REMOVED - Rebuild with @emp/telemetry
+    // Was: job.claimed event with workerId, machineId, serviceRequired, jobType, priority, claimTime
 
     // 🚨 BIG TRACE LOGGING: CREATING JOB CLAIM SPAN
     console.log(`\n🚨🚨🚨 WORKER: CREATING CLAIM SPAN FOR JOB ${job.id}`);
@@ -901,15 +883,8 @@ export class RedisDirectBaseWorker {
     // Update job status to IN_PROGRESS when processing begins
     await this.redisClient.startJobProcessing(job.id);
 
-    // Send telemetry event for job started
-    await this.telemetry.jobEvent(job.id, 'job.started', {
-      workerId: this.workerId,
-      machineId: this.machineId,
-      serviceRequired: job.service_required,
-      connectorType: connector.service_type,
-      startTime: Date.now(),
-      payloadSize: JSON.stringify(transformedPayload).length
-    });
+    // TODO: TELEMETRY REMOVED - Rebuild with @emp/telemetry
+    // Was: job.started event with workerId, machineId, serviceRequired, connectorType, startTime, payloadSize
 
     // Send job started event to machine aggregator
     if (process.env.UNIFIED_MACHINE_STATUS === 'true') {
@@ -929,24 +904,13 @@ export class RedisDirectBaseWorker {
         status: progress.status || JobStatus.IN_PROGRESS, // Ensure status is always present
       };
 
-      // Dual-mode progress tracking: WebSocket (existing) + Redis Stream (new)
+      // Dual-mode progress tracking: WebSocket (existing) + Telemetry (new)
 
       // 1. Send to existing WebSocket system via Redis pubsub
       await this.redisClient.sendJobProgress(job.id, progressWithStatus);
 
-      // 2. Send to Redis Stream telemetry system
-      await this.telemetry.jobEvent(job.id, 'job.progress', {
-        workerId: this.workerId,
-        machineId: this.machineId,
-        serviceType: job.service_required,
-        progress: progressWithStatus.progress || 0,
-        message: progressWithStatus.message || '',
-        status: progressWithStatus.status,
-        currentStep: progressWithStatus.current_step,
-        totalSteps: progressWithStatus.total_steps,
-        estimatedCompletion: progressWithStatus.estimated_completion,
-        timestamp: Date.now()
-      });
+      // TODO: TELEMETRY REMOVED - Rebuild with @emp/telemetry
+      // Was: job.progress event with workerId, machineId, serviceType, progress, message, status, currentStep, totalSteps, estimatedCompletion, timestamp
     };
 
     // transformedPayload already declared and processed above
@@ -1031,15 +995,8 @@ export class RedisDirectBaseWorker {
       // Note: JobInstrumentation telemetry temporarily disabled - replace with WorkflowTelemetryClient if needed
       // await JobInstrumentation.complete({ ... }, processSpanContext);
 
-      // Send telemetry event for job completed
-      await this.telemetry.jobEvent(jobId, 'job.completed', {
-        workerId: this.workerId,
-        machineId: this.machineId,
-        serviceType: job?.service_required,
-        duration: duration,
-        completionTime: Date.now(),
-        success: true
-      });
+      // TODO: TELEMETRY REMOVED - Rebuild with @emp/telemetry
+      // Was: job.completed event with workerId, machineId, serviceType, duration, completionTime, success
 
       await this.redisClient.completeJob(jobId, result);
       await this.finishJob(jobId);
@@ -1084,17 +1041,8 @@ export class RedisDirectBaseWorker {
       // Note: JobInstrumentation telemetry temporarily disabled - replace with WorkflowTelemetryClient if needed
       // await JobInstrumentation.complete({ ... }, processSpanContext);
 
-      // Send telemetry event for job failed
-      await this.telemetry.jobEvent(jobId, 'job.failed', {
-        workerId: this.workerId,
-        machineId: this.machineId,
-        serviceType: job?.service_required,
-        duration: duration,
-        failureTime: Date.now(),
-        error: error,
-        canRetry: canRetry,
-        success: false
-      });
+      // TODO: TELEMETRY REMOVED - Rebuild with @emp/telemetry
+      // Was: job.failed event with workerId, machineId, serviceType, duration, failureTime, error, canRetry, success
 
       logger.info(`🔥 [DEBUG] About to call redisClient.failJob with canRetry=${canRetry}`);
       // Pass context with service type information for failure classification
@@ -1177,15 +1125,8 @@ export class RedisDirectBaseWorker {
     this.status = newStatus;
 
     // Send telemetry event for status change
-    if (statusChanged) {
-      await this.telemetry.workerEvent(this.workerId, 'worker.status_changed', {
-        machineId: this.machineId,
-        oldStatus: statusChanged ? (newStatus === WorkerStatus.IDLE ? 'busy' : 'idle') : this.status,
-        newStatus: this.status,
-        currentJobs: this.currentJobs.size,
-        timestamp: Date.now()
-      });
-    }
+    // TODO: TELEMETRY REMOVED - Rebuild with @emp/telemetry
+    // Was: worker.status_changed event with machineId, oldStatus, newStatus, currentJobs, timestamp
 
     // Send status change event if status changed
     if (statusChanged) {
@@ -1583,17 +1524,11 @@ export class RedisDirectBaseWorker {
    * Start worker heartbeat telemetry
    */
   private startWorkerHeartbeat(): void {
-    // Send heartbeat every 30 seconds
+    // TODO: TELEMETRY REMOVED - Rebuild with @emp/telemetry
+    // Was: worker.heartbeat event every 30s with machineId, status, currentJobs, maxConcurrentJobs, uptime, memoryUsage, timestamp
+    // Keeping interval structure for future telemetry implementation
     this.heartbeatInterval = setInterval(async () => {
-      await this.telemetry.workerEvent(this.workerId, 'worker.heartbeat', {
-        machineId: this.machineId,
-        status: this.status,
-        currentJobs: this.currentJobs.size,
-        maxConcurrentJobs: this.maxConcurrentJobs,
-        uptime: process.uptime(),
-        memoryUsage: process.memoryUsage(),
-        timestamp: Date.now()
-      });
+      // Heartbeat telemetry will be re-added here with @emp/telemetry
     }, 30000); // 30 seconds
   }
 

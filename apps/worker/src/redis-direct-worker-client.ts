@@ -20,9 +20,10 @@ import {
   RedisJobData,
   logger,
   sanitizeBase64Data,
-  createEventClient,
   EventTypes,
 } from '@emp/core';
+
+// TODO: TELEMETRY REMOVED - Will add @emp/telemetry for worker client events
 import { FailureClassifier, FailureClassification } from './types/failure-classification.js';
 
 export class RedisDirectWorkerClient {
@@ -35,7 +36,7 @@ export class RedisDirectWorkerClient {
   private pollTimeout?: NodeJS.Timeout;
   private heartbeatTimeout?: NodeJS.Timeout;
   private currentStatus: 'idle' | 'busy' = 'idle';
-  private telemetry: any;
+  // TODO: TELEMETRY REMOVED - Will add @emp/telemetry client here
 
   constructor(hubRedisUrl: string, workerId: string) {
     logger.info(
@@ -46,8 +47,7 @@ export class RedisDirectWorkerClient {
     this.workerId = workerId;
     logger.info(`🔍 [WORKER-ID-DEBUG] this.workerId set to: ${this.workerId}`);
 
-    // Initialize telemetry
-    this.telemetry = createEventClient('worker', hubRedisUrl);
+    // TODO: TELEMETRY REMOVED - Will initialize @emp/telemetry client here
 
     // Configuration from environment
     this.pollIntervalMs = parseInt(process.env.WORKER_POLL_INTERVAL_MS || '1000');
@@ -101,13 +101,8 @@ export class RedisDirectWorkerClient {
       logger.info(`📝 Worker ${this.workerId} - registering worker capabilities`);
       await this.registerWorker(capabilities);
 
-      // Emit worker registration telemetry
-      await this.telemetry.event(EventTypes.WORKER_REGISTERED, {
-        worker_id: this.workerId,
-        machine_id: capabilities.machine_id,
-        service_types: capabilities.service_types,
-        max_concurrent_jobs: capabilities.max_concurrent_jobs
-      });
+      // TODO: TELEMETRY REMOVED - Rebuild with @emp/telemetry
+      // Was: WORKER_REGISTERED event with worker_id, machine_id, service_types, max_concurrent_jobs
 
       // Start heartbeat
       logger.info(`💓 Worker ${this.workerId} - starting heartbeat`);
@@ -649,11 +644,8 @@ export class RedisDirectWorkerClient {
         return null;
       }
 
-      // Emit job claimed telemetry
-      await this.telemetry.jobEvent(jobId, EventTypes.JOB_CLAIMED, {
-        worker_id: this.workerId,
-        service_required: job.service_required
-      });
+      // TODO: TELEMETRY REMOVED - Rebuild with @emp/telemetry
+      // Was: JOB_CLAIMED event with worker_id, service_required
 
       if (process.env.LOG_LEVEL === 'debug') {
         logger.debug(`Worker ${this.workerId} claimed job ${jobId} via Redis-direct polling`);

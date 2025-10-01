@@ -3,7 +3,8 @@
 
 import * as crypto from 'crypto';
 import { logger } from '@emp/core';
-import { trace } from '@opentelemetry/api';
+
+// TODO: TELEMETRY REMOVED - Will add @emp/telemetry for asset saving spans
 
 /**
  * Utility class for saving assets to cloud storage
@@ -21,16 +22,9 @@ export class AssetSaver {
     mimeType: string = 'image/png',
     format?: string
   ): Promise<{ filePath: string; fileName: string; fileUrl: string; cdnUrl?: string }> {
-    const tracer = trace.getTracer('asset-saver');
-    
-    return await tracer.startActiveSpan('saveAssetToCloud', {
-      attributes: {
-        'asset.jobId': jobId,
-        'asset.mimeType': mimeType,
-        'asset.base64Length': base64Data.length,
-        'asset.format': format || 'auto'
-      }
-    }, async (span) => {
+    // TODO: TELEMETRY REMOVED - Will add telemetry span for saveAssetToCloud operation
+    // Was: startActiveSpan with asset.jobId, asset.mimeType, asset.base64Length, asset.format
+
     try {
       // Validate and normalize MIME type first
       const { contentType, fileExtension, assetCategory } = AssetSaver.validateMimeType(mimeType);
@@ -175,14 +169,8 @@ export class AssetSaver {
 
       logger.info(`Saved ${assetCategory} asset (${contentType}): ${fileName} | URL: ${fileUrl}`);
 
-      // Add trace attributes for successful completion
-      span.setAttributes({
-        'asset.provider': provider,
-        'asset.bucket': bucket,
-        'asset.fileName': fileName,
-        'asset.contentType': contentType,
-        'asset.success': true
-      });
+      // TODO: TELEMETRY REMOVED - Will add span attributes for successful completion
+      // Was: asset.provider, asset.bucket, asset.fileName, asset.contentType, asset.success
 
       return {
         filePath: storageKey,
@@ -191,18 +179,13 @@ export class AssetSaver {
         cdnUrl: fileUrl, // CDN URL is now the primary fileUrl
       };
     } catch (error) {
-      // Add trace attributes for error
-      span.recordException(error);
-      span.setAttributes({
-        'asset.success': false,
-        'asset.error': error.message
-      });
-      
+      // TODO: TELEMETRY REMOVED - Will add error recording and span attributes
+      // Was: span.recordException(error) and asset.success, asset.error attributes
+
       const assetCategory = AssetSaver.getMimeTypeCategory(mimeType);
       logger.error(`Failed to save ${assetCategory} asset for job ${jobId}: ${error.message}`);
       throw new Error(`Asset saving failed: ${error.message}`);
     }
-    });
   }
 
   /**

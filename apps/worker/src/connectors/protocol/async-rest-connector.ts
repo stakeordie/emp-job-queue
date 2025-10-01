@@ -16,7 +16,8 @@
 import axios, { AxiosInstance, AxiosRequestConfig, AxiosResponse, AxiosError } from 'axios';
 import { BaseConnector, ConnectorConfig } from '../base-connector.js';
 import { JobData, JobResult, ProgressCallback, ServiceInfo, logger, smartTruncateObject } from '@emp/core';
-import { trace } from '@opentelemetry/api';
+
+// TODO: TELEMETRY REMOVED - Will add @emp/telemetry for async REST operations
 
 // AsyncREST-specific configuration
 export interface AsyncRESTConnectorConfig {

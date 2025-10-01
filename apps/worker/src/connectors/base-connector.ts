@@ -15,8 +15,9 @@ import {
   HealthCheckRequirements,
   logger,
   ConnectorLogger,
-  getWorkerTelemetry,
 } from '@emp/core';
+
+// TODO: TELEMETRY REMOVED - Will add @emp/telemetry for connector lifecycle events
 import Redis from 'ioredis';
 
 // Re-export types for convenience
@@ -85,8 +86,7 @@ export abstract class BaseConnector implements ConnectorInterface {
   // Configuration
   protected config: ConnectorConfig;
 
-  // Telemetry client for Redis Stream events
-  protected telemetry = getWorkerTelemetry();
+  // TODO: TELEMETRY REMOVED - Will add @emp/telemetry client here
 
   constructor(connectorId: string, config?: Partial<ConnectorConfig>) {
     this.connector_id = connectorId;
@@ -300,19 +300,8 @@ ${Object.keys(process.env).filter(k => k.includes('HUB') || k.includes('REDIS'))
       this.lastReportedStatus = newStatus;
       this.currentStatus = newStatus;
 
-      // Send telemetry event for connector status change
-      await this.telemetry.event('connector.status_changed', {
-        connectorId: this.connector_id,
-        serviceType: this.service_type,
-        workerId: this.workerId,
-        machineId: this.machineId,
-        previousStatus: previousStatus,
-        newStatus: newStatus,
-        errorMessage: errorMessage,
-        jobsProcessed: this.jobsProcessed,
-        uptime: Math.floor((Date.now() - this.startTime) / 1000),
-        timestamp: Date.now()
-      });
+      // TODO: TELEMETRY REMOVED - Rebuild with @emp/telemetry
+      // Was: connector.status_changed event with connectorId, serviceType, workerId, machineId, previousStatus, newStatus, errorMessage, jobsProcessed, uptime, timestamp
 
       logger.info(
         `${this.service_type} connector ${this.connector_id} reported ${
@@ -480,17 +469,8 @@ ${Object.keys(process.env).filter(k => k.includes('HUB') || k.includes('REDIS'))
     const jobLogger = this.connectorLogger.withJobContext(jobData.id || 'unknown');
 
     try {
-      // Send telemetry event for connector job received
-      await this.telemetry.event('connector.job_received', {
-        connectorId: this.connector_id,
-        serviceType: this.service_type,
-        jobId: jobData.id || 'unknown',
-        workerId: this.workerId,
-        machineId: this.machineId,
-        inputSize: JSON.stringify(jobData).length,
-        model: (jobData.payload?.model as string) || 'unknown',
-        timestamp: Date.now()
-      });
+      // TODO: TELEMETRY REMOVED - Rebuild with @emp/telemetry
+      // Was: connector.job_received event with connectorId, serviceType, jobId, workerId, machineId, inputSize, model, timestamp
 
       // Log job received
       jobLogger.jobReceived({
@@ -502,15 +482,8 @@ ${Object.keys(process.env).filter(k => k.includes('HUB') || k.includes('REDIS'))
       // Report that we're starting to process a job
       await this.reportJobStatusChange(true);
 
-      // Send telemetry event for connector job started
-      await this.telemetry.event('connector.job_started', {
-        connectorId: this.connector_id,
-        serviceType: this.service_type,
-        jobId: jobData.id || 'unknown',
-        workerId: this.workerId,
-        machineId: this.machineId,
-        timestamp: Date.now()
-      });
+      // TODO: TELEMETRY REMOVED - Rebuild with @emp/telemetry
+      // Was: connector.job_started event with connectorId, serviceType, jobId, workerId, machineId, timestamp
 
       jobLogger.jobStarted({ jobId: jobData.id || 'unknown' });
 
@@ -523,18 +496,8 @@ ${Object.keys(process.env).filter(k => k.includes('HUB') || k.includes('REDIS'))
       // Calculate processing time
       const duration = Date.now() - startTime;
 
-      // Send telemetry event for connector job completed
-      await this.telemetry.event('connector.job_completed', {
-        connectorId: this.connector_id,
-        serviceType: this.service_type,
-        jobId: jobData.id || 'unknown',
-        workerId: this.workerId,
-        machineId: this.machineId,
-        duration: duration,
-        outputSize: JSON.stringify(result).length,
-        success: result.success,
-        timestamp: Date.now()
-      });
+      // TODO: TELEMETRY REMOVED - Rebuild with @emp/telemetry
+      // Was: connector.job_completed event with connectorId, serviceType, jobId, workerId, machineId, duration, outputSize, success, timestamp
 
       // Log successful completion
       jobLogger.jobCompleted({
@@ -551,18 +514,8 @@ ${Object.keys(process.env).filter(k => k.includes('HUB') || k.includes('REDIS'))
       const duration = Date.now() - startTime;
       const errorMessage = error instanceof Error ? error.message : 'Job processing failed';
 
-      // Send telemetry event for connector job failed
-      await this.telemetry.event('connector.job_failed', {
-        connectorId: this.connector_id,
-        serviceType: this.service_type,
-        jobId: jobData.id || 'unknown',
-        workerId: this.workerId,
-        machineId: this.machineId,
-        duration: duration,
-        error: errorMessage,
-        success: false,
-        timestamp: Date.now()
-      });
+      // TODO: TELEMETRY REMOVED - Rebuild with @emp/telemetry
+      // Was: connector.job_failed event with connectorId, serviceType, jobId, workerId, machineId, duration, error, success, timestamp
 
       // Log job failure
       jobLogger.jobFailed({
