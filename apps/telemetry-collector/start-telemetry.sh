@@ -1,40 +1,52 @@
 #!/bin/bash
 set -e
 
-echo "🚀 Starting EMP Telemetry Collector..."
+echo "🚀 Starting EMP Telemetry System..."
+
+# Start OpenTelemetry Collector in background
+echo "📡 Starting OpenTelemetry Collector..."
+/usr/local/bin/otelcol-contrib --config=/telemetry-collector/otel-config.yaml &
+OTEL_PID=$!
+
+# Wait a moment for OTEL Collector to start
+sleep 2
+
+# Check if OTEL Collector is running
+if ! kill -0 $OTEL_PID 2>/dev/null; then
+    echo "❌ OpenTelemetry Collector failed to start"
+    exit 1
+fi
+
+echo "✅ OpenTelemetry Collector running (PID: $OTEL_PID)"
+
+# Start the Redis-to-OTLP Bridge
+echo "🌉 Starting Redis-to-OTLP Bridge..."
+node dist/main-otel.js &
+BRIDGE_PID=$!
 
 # Function to handle shutdown
 shutdown() {
-    echo "🛑 Shutting down telemetry collector..."
-    if kill -0 $COLLECTOR_PID 2>/dev/null; then
-        echo "Stopping collector..."
-        kill $COLLECTOR_PID
+    echo "🛑 Shutting down telemetry system..."
+    if kill -0 $BRIDGE_PID 2>/dev/null; then
+        echo "Stopping bridge..."
+        kill $BRIDGE_PID
+    fi
+    if kill -0 $OTEL_PID 2>/dev/null; then
+        echo "Stopping OTEL collector..."
+        kill $OTEL_PID
     fi
     wait
-    echo "✅ Telemetry collector stopped"
+    echo "✅ Telemetry system stopped"
     exit 0
 }
 
 # Handle signals
 trap shutdown SIGTERM SIGINT
 
-# Start the telemetry collector
-echo "📡 Starting collector (Redis → OpenTelemetry SDK → Dash0)..."
-node dist/index.js &
-COLLECTOR_PID=$!
+echo "✅ EMP Telemetry System running!"
+echo "📊 Architecture: EventClient → Redis Stream → Bridge → OTEL Collector → Dash0"
+echo "🔗 OTEL Collector: http://localhost:4318 (HTTP) | localhost:4317 (gRPC)"
+echo "🏥 Health check: http://localhost:9090/health"
 
-# Wait a moment for collector to start
-sleep 2
-
-# Check if collector is running
-if ! kill -0 $COLLECTOR_PID 2>/dev/null; then
-    echo "❌ Telemetry collector failed to start"
-    exit 1
-fi
-
-echo "✅ Telemetry Collector running (PID: $COLLECTOR_PID)"
-echo "📊 Architecture: Redis Stream → Collector (OTLP SDK) → Dash0"
-echo "🏥 Health check: http://localhost:${HEALTH_PORT:-3334}/health"
-
-# Wait for process
-wait $COLLECTOR_PID
+# Wait for processes
+wait $BRIDGE_PID $OTEL_PID

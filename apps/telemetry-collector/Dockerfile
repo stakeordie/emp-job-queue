@@ -16,7 +16,11 @@ FROM ubuntu:22.04
         apt-get clean && \
         rm -rf /var/lib/apt/lists/*
 
-    # No external OTEL Collector needed - using official OpenTelemetry SDK directly
+    # Install OpenTelemetry Collector binary
+    RUN wget https://github.com/open-telemetry/opentelemetry-collector-releases/releases/download/v0.91.0/otelcol-contrib_0.91.0_linux_amd64.tar.gz && \
+        tar -xzf otelcol-contrib_0.91.0_linux_amd64.tar.gz && \
+        mv otelcol-contrib /usr/local/bin/ && \
+        rm otelcol-contrib_0.91.0_linux_amd64.tar.gz
 
     # Set up workspace structure
     WORKDIR /telemetry-collector
@@ -49,6 +53,7 @@ FROM ubuntu:22.04
     # Copy application source
     COPY dist/ /telemetry-collector/dist/
     COPY src/ /telemetry-collector/src/
+    COPY otel-config.yaml /telemetry-collector/otel-config.yaml
     COPY start-telemetry.sh /telemetry-collector/start-telemetry.sh
     RUN chmod +x /telemetry-collector/start-telemetry.sh
 
@@ -58,15 +63,12 @@ FROM ubuntu:22.04
         LOG_DIR=/telemetry-collector/logs \
         PATH="/telemetry-collector/node_modules/.bin:${PATH}"
 
-    # Expose health check port (default 3334, configurable via HEALTH_PORT)
-    EXPOSE 3334
+    # Expose health check port
+    EXPOSE 9090
 
-    # Expose OTLP HTTP endpoint port (default 4318, configurable via OTLP_PORT)
-    EXPOSE 4318
-
-    # Health check (uses HEALTH_PORT env var if set, defaults to 3334)
+    # Health check
     HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
-        CMD curl -f http://localhost:${HEALTH_PORT:-3334}/health || exit 1
+        CMD curl -f http://localhost:9090/health || exit 1
 
-    # Start telemetry collector
+    # Start both OTEL Collector and Bridge
     CMD ["./start-telemetry.sh"]
