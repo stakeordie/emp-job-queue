@@ -23,6 +23,7 @@ export async function GET(
     const apiAttestationPattern = `api:workflow:completion:${workflowId}*`;
     const apiAttestationKeys = await redis.keys(apiAttestationPattern);
 
+    let apiAttestations = [];
     let workerAttestations = [];
 
     // Parse all API attestations (base + retry attempts)
@@ -105,8 +106,8 @@ export async function GET(
     const workflowCompletionKeys = await redis.keys(`worker:completion:workflow-${workflowId}:*`);
     const workflowFailureKeys = await redis.keys(`worker:failure:workflow-${workflowId}:*`);
 
-    // 🚨 Also search for workflow-level failure attestations
-    const workflowLevelFailureKeys = await redis.keys(`workflow:failure:${workflowId}:*`);
+    // 🚨 Also search for workflow-level failure attestations (created by API server)
+    const workflowLevelFailureKeys = await redis.keys(`workflow:attestation:failure:${workflowId}*`);
 
     // Combine all workflow-specific keys - NO MORE FILTERING NEEDED!
     const allWorkflowKeys = [...workflowCompletionKeys, ...workflowFailureKeys];
