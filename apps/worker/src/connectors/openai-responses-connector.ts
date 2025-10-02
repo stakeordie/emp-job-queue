@@ -300,13 +300,14 @@ export class OpenAIResponsesConnector extends AsyncRESTConnector {
         const trimmedText = textContent.trim();
 
         // Detect OpenAI content policy refusals
+        // Note: Handle both straight apostrophes (') and curly quotes (')
         const refusalPatterns = [
-          /I'm sorry,?\s+but I can'?t assist with that/i,
+          /I[''']m sorry,?\s+but I can[''']t assist with that/i,
           /I cannot (help with|assist with|provide|generate|create)/i,
-          /I'm unable to (help with|assist with|provide|generate|create)/i,
-          /I can't (help with|assist with|provide|generate|create)/i,
-          /against (OpenAI'?s? )?content policy/i,
-          /violates (OpenAI'?s? )?(content )?policy/i,
+          /I[''']m unable to (help with|assist with|provide|generate|create)/i,
+          /I can[''']t (help with|assist with|provide|generate|create)/i,
+          /against (OpenAI[''']s? )?content policy/i,
+          /violates (OpenAI[''']s? )?(content )?policy/i,
           /not allowed to (generate|create|provide)/i,
           /cannot fulfill this request/i,
           /declined to (generate|create|provide)/i,
