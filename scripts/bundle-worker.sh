@@ -29,15 +29,15 @@ npx esbuild apps/worker/src/redis-direct-worker.ts \
   --bundle \
   --platform=node \
   --target=node18 \
-  --format=esm \
+  --format=cjs \
   --external:sharp \
   --external:canvas \
   --external:@tensorflow/tfjs-node \
   --external:sqlite3 \
-  --outfile=$WORKER_BUNDLE_DIR/redis-direct-worker.mjs
+  --outfile=$WORKER_BUNDLE_DIR/redis-direct-worker.cjs
 
-# Rename .mjs to .js (no shebang needed since we call with 'node')
-mv $WORKER_BUNDLE_DIR/redis-direct-worker.mjs $WORKER_BUNDLE_DIR/redis-direct-worker.js
+# Rename .cjs to .js (no shebang needed since we call with 'node')
+mv $WORKER_BUNDLE_DIR/redis-direct-worker.cjs $WORKER_BUNDLE_DIR/redis-direct-worker.js
 
 # Get version info - use timestamp for local dev, git tags for releases
 BUILD_DATE=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
@@ -55,7 +55,7 @@ cat > $WORKER_BUNDLE_DIR/package.json << EOF
 {
   "name": "emp-worker-bundled",
   "version": "${WORKER_VERSION}",
-  "description": "Bundled EMP Worker - Local Development",
+  "description": "Bundled EMP Worker - Local Development (CommonJS)",
   "buildDate": "${BUILD_DATE}"
 }
 EOF

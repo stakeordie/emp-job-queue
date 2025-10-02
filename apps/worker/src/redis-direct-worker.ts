@@ -2,11 +2,6 @@
 // Redis-Direct Worker Entry Point - Phase 1B Implementation
 // Standalone worker that connects directly to Redis without WebSocket hub dependency
 
-// Enable HTTP mocking for test/staging environments (must be first)
-if (process.env.NODE_ENV === 'test' || process.env.MOCK_MODE === 'true') {
-  await import('./staging-init.js');
-}
-
 // Initialize OpenTelemetry first (before any other imports that might create spans)
 import { initTracer } from '@emp/core/otel';
 
@@ -228,6 +223,11 @@ function logEnvironmentVariables() {
 }
 
 async function main() {
+  // Enable HTTP mocking for test/staging environments (load asynchronously)
+  if (process.env.NODE_ENV === 'test' || process.env.MOCK_MODE === 'true') {
+    await import('./staging-init.js');
+  }
+
   // Initialize OpenTelemetry SDK first
   const collectorEndpoint = process.env.OTEL_COLLECTOR_ENDPOINT || 'http://localhost:4318';
   initTracer({
