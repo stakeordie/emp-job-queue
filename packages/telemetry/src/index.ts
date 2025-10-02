@@ -7,8 +7,8 @@
 
 import { trace, metrics, Span, SpanStatusCode, SpanKind, context } from '@opentelemetry/api';
 import { NodeSDK } from '@opentelemetry/sdk-node';
-import { OTLPTraceExporter } from '@opentelemetry/exporter-trace-otlp-http';
-import { OTLPMetricExporter } from '@opentelemetry/exporter-metrics-otlp-http';
+import { OTLPTraceExporter } from '@opentelemetry/exporter-trace-otlp-grpc';
+import { OTLPMetricExporter } from '@opentelemetry/exporter-metrics-otlp-grpc';
 import { PeriodicExportingMetricReader } from '@opentelemetry/sdk-metrics';
 import { Resource } from '@opentelemetry/resources';
 import {
@@ -38,7 +38,7 @@ export class EmpTelemetryClient {
   constructor(config: TelemetryConfig) {
     this.serviceName = config.serviceName;
 
-    const collectorEndpoint = config.collectorEndpoint || process.env.OTEL_COLLECTOR_ENDPOINT || 'http://localhost:4318';
+    const collectorEndpoint = config.collectorEndpoint || process.env.OTEL_COLLECTOR_ENDPOINT || 'localhost:4317';
 
     // Create resource with service information
     const resource = new Resource({
@@ -47,13 +47,13 @@ export class EmpTelemetryClient {
       [SEMRESATTRS_DEPLOYMENT_ENVIRONMENT]: config.environment || process.env.NODE_ENV || 'development',
     });
 
-    // Create OTLP exporters
+    // Create OTLP exporters (gRPC uses base URL without path)
     const traceExporter = new OTLPTraceExporter({
-      url: `${collectorEndpoint}/v1/traces`,
+      url: collectorEndpoint,
     });
 
     const metricExporter = new OTLPMetricExporter({
-      url: `${collectorEndpoint}/v1/metrics`,
+      url: collectorEndpoint,
     });
 
     // Initialize SDK

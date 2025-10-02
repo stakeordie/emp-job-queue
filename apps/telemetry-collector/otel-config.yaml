@@ -2,13 +2,13 @@
 # Using real OTEL Collector instead of custom implementation
 
 receivers:
-  # Receive OTLP data via HTTP (we'll send from EventClient)
+  # Receive OTLP data via HTTP and gRPC
   otlp:
     protocols:
       http:
-        endpoint: 0.0.0.0:4318
+        endpoint: 0.0.0.0:${env:OTLP_HTTP_PORT}
       grpc:
-        endpoint: 0.0.0.0:4317
+        endpoint: 0.0.0.0:${env:OTLP_GRPC_PORT}
 
 processors:
   # Batch spans for efficiency
@@ -17,40 +17,34 @@ processors:
     send_batch_size: 100
     send_batch_max_size: 500
 
-  # Add resource attributes
+  # Add resource attributes (only if not already set)
   resource:
     attributes:
-      - key: service.name
-        value: emp-job-queue
-        action: upsert
       - key: deployment.environment
-        value: development
-        action: upsert
+        value: ${env:CURRENT_ENV}
+        action: insert
 
   # Transform attribute names for consistency
-  attributes:
-    actions:
-      # Rename correlation IDs to semantic conventions
-      - key: jobId
-        new_key: emp.job.id
-        action: update
-      - key: workerId
-        new_key: emp.worker.id
-        action: update
-      - key: machineId
-        new_key: emp.machine.id
-        action: update
-      - key: userId
-        new_key: emp.user.id
-        action: update
+  transform:
+    trace_statements:
+      - context: span
+        statements:
+          - set(attributes["emp.job.id"], attributes["jobId"]) where attributes["jobId"] != nil
+          - delete_key(attributes, "jobId") where attributes["jobId"] != nil
+          - set(attributes["emp.worker.id"], attributes["workerId"]) where attributes["workerId"] != nil
+          - delete_key(attributes, "workerId") where attributes["workerId"] != nil
+          - set(attributes["emp.machine.id"], attributes["machineId"]) where attributes["machineId"] != nil
+          - delete_key(attributes, "machineId") where attributes["machineId"] != nil
+          - set(attributes["emp.user.id"], attributes["userId"]) where attributes["userId"] != nil
+          - delete_key(attributes, "userId") where attributes["userId"] != nil
 
 exporters:
   # Export to Dash0 via OTLP gRPC
   otlp/dash0:
-    endpoint: https://ingress.eu-west-1.dash0.com:4317
+    endpoint: ${env:DASH0_ENDPOINT}
     headers:
-      authorization: Bearer ${DASH0_AUTH_TOKEN}
-      dash0-dataset: ${DASH0_DATASET:-emp-job-queue-dev}
+      authorization: Bearer ${env:DASH0_AUTH_TOKEN}
+      dash0-dataset: ${env:DASH0_DATASET}
     compression: gzip
     tls:
       insecure: false
@@ -63,7 +57,7 @@ service:
   pipelines:
     traces:
       receivers: [otlp]
-      processors: [resource, attributes, batch]
+      processors: [resource, transform, batch]
       exporters: [otlp/dash0, debug]
 
     metrics:
