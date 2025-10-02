@@ -296,7 +296,36 @@ export class OpenAIResponsesConnector extends AsyncRESTConnector {
           progress: 100
         };
       } else {
-        // Text-only response
+        // Text-only response - check for content policy refusals
+        const trimmedText = textContent.trim();
+
+        // Detect OpenAI content policy refusals
+        const refusalPatterns = [
+          /I'm sorry,?\s+but I can'?t assist with that/i,
+          /I cannot (help with|assist with|provide|generate|create)/i,
+          /I'm unable to (help with|assist with|provide|generate|create)/i,
+          /I can't (help with|assist with|provide|generate|create)/i,
+          /against (OpenAI'?s? )?content policy/i,
+          /violates (OpenAI'?s? )?(content )?policy/i,
+          /not allowed to (generate|create|provide)/i,
+          /cannot fulfill this request/i,
+          /declined to (generate|create|provide)/i,
+          /refuse to (generate|create|provide)/i,
+        ];
+
+        const isRefusal = refusalPatterns.some(pattern => pattern.test(trimmedText));
+
+        if (isRefusal) {
+          logger.error(`🚫 Content policy refusal detected in text response: "${trimmedText.substring(0, 100)}..."`);
+          return {
+            completed: true,
+            error: `OpenAI content policy refusal: ${trimmedText}`,
+            rawServiceOutput: responseData, // Include full response for forensics
+            rawServiceRequest: jobData // Include original request
+          };
+        }
+
+        // Valid text response
         const jobResult: JobResult = {
           success: true,
           data: {
@@ -304,7 +333,7 @@ export class OpenAIResponsesConnector extends AsyncRESTConnector {
             model_used: responseData.model,
             usage: responseData.usage,
             content_type: 'text',
-            text_content: textContent.trim(), // The actual generated content
+            text_content: trimmedText, // The actual generated content
             raw_output: responseData.output, // Full OpenAI response for debugging
           },
           processing_time_ms: 0, // Will be calculated by base class
