@@ -121,7 +121,6 @@ export class WebhookNotificationService extends EventEmitter {
   private webhooksCache: Map<string, WebhookEndpoint> = new Map();
   private deliveryQueue: WebhookPayload[] = [];
   private retryQueue: Map<string, WebhookDeliveryAttempt> = new Map();
-  private isProcessing = false;
   private processingInterval?: NodeJS.Timeout;
   private cacheRefreshInterval?: NodeJS.Timeout;
   private throttleCleanupInterval?: NodeJS.Timeout;
@@ -1373,22 +1372,35 @@ export class WebhookNotificationService extends EventEmitter {
 
   /**
    * Process webhook delivery queue
+   *
+   * FIRE-AND-FORGET: Sends all queued webhooks in parallel without blocking
+   *
+   * TODO: Future improvement - Add RxJS-style observable pattern for delivery tracking:
+   * - Track each webhook delivery as a Promise with {webhookId, status, timestamp}
+   * - Non-blocking status updates (received/failed) via event emitters
+   * - Automatic retry logic for failed deliveries (exponential backoff)
+   * - Real-time delivery metrics and monitoring
+   * - This would allow parallel delivery with proper retry handling without blocking the queue
    */
   private async processDeliveryQueue(): Promise<void> {
-    if (this.isProcessing || this.deliveryQueue.length === 0) {
+    if (this.deliveryQueue.length === 0) {
       return;
     }
 
-    this.isProcessing = true;
+    // Process all queued webhooks in parallel (fire-and-forget)
+    const payloadsToProcess = [...this.deliveryQueue];
+    this.deliveryQueue.length = 0; // Clear queue immediately
 
-    try {
-      const payload = this.deliveryQueue.shift();
-      if (!payload) return;
-      await this.deliverWebhook(payload);
-    } catch (error) {
-      logger.error('Error processing webhook delivery queue', error);
-    } finally {
-      this.isProcessing = false;
+    // Fire all webhooks without waiting for completion
+    for (const payload of payloadsToProcess) {
+      // Don't await - let it run in background
+      this.deliverWebhook(payload).catch(error => {
+        logger.error('Webhook delivery failed (fire-and-forget)', {
+          webhook_id: payload.webhook_id,
+          event_type: payload.event_type,
+          error: error instanceof Error ? error.message : String(error)
+        });
+      });
     }
   }
 

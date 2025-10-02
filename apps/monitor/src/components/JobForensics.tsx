@@ -68,10 +68,25 @@ function AttestationRecords({ attestations }: { attestations: any[] }) {
       }
     });
 
-    // Group deduplicated attestations by retry count
-    const groupedByRetry: { [key: string]: any[] } = {};
+    // Separate workflow terminators from worker attestations
+    const workflowFailures: any[] = [];
+    const workflowCompletions: any[] = [];
+    const workerAttestations: any[] = [];
 
     Object.values(dedupedByStep).forEach(att => {
+      if (att.attestation_type === 'api_workflow_failure') {
+        workflowFailures.push(att);
+      } else if (att.attestation_type === 'api_workflow_completion') {
+        workflowCompletions.push(att);
+      } else {
+        workerAttestations.push(att);
+      }
+    });
+
+    // Group worker attestations by retry count
+    const groupedByRetry: { [key: string]: any[] } = {};
+
+    workerAttestations.forEach(att => {
       const retryCount = att.retry_count || 0;
       const key = `retry-${retryCount}`;
       if (!groupedByRetry[key]) groupedByRetry[key] = [];
@@ -107,11 +122,13 @@ function AttestationRecords({ attestations }: { attestations: any[] }) {
 
     return {
       hasAttestations: true,
-      groupedAttestations: sortedRetryGroups
+      groupedAttestations: sortedRetryGroups,
+      workflowFailures,
+      workflowCompletions
     };
   }, [attestations]);
 
-  const { hasAttestations, groupedAttestations } = processedAttestations;
+  const { hasAttestations, groupedAttestations, workflowFailures, workflowCompletions } = processedAttestations;
 
 
 
@@ -137,6 +154,7 @@ function AttestationRecords({ attestations }: { attestations: any[] }) {
               )}
 
               {retryGroup.attestations.map((attestation, idx) => {
+                const isWorkflowFailure = attestation.attestation_type === 'api_workflow_failure';
                 const isFailure = attestation.attestation_type?.includes('failure') ||
                                  attestation.status?.includes('failed') ||
                                  attestation.failure_type;
@@ -145,13 +163,16 @@ function AttestationRecords({ attestations }: { attestations: any[] }) {
 
                 return (
                   <div key={idx} className={`p-4 border rounded-lg ${
+                    isWorkflowFailure ? 'border-red-600 bg-red-100' :
                     isFailure ? 'border-red-200 bg-red-50' :
                     isCompletion ? 'border-green-200 bg-green-50' :
                     'border-gray-200 bg-gray-50'
                   }`}>
                     <div className="flex items-center justify-between mb-2">
                       <div className="flex items-center gap-2">
-                        {isFailure ? (
+                        {isWorkflowFailure ? (
+                          <XCircle className="h-5 w-5 text-red-700" />
+                        ) : isFailure ? (
                           <XCircle className="h-4 w-4 text-red-600" />
                         ) : isCompletion ? (
                           <CheckCircle className="h-4 w-4 text-green-600" />
@@ -159,11 +180,13 @@ function AttestationRecords({ attestations }: { attestations: any[] }) {
                           <Clock className="h-4 w-4 text-gray-600" />
                         )}
                         <span className="font-medium text-sm">
-                          {isFailure ? 'Failure Attestation' :
+                          {isWorkflowFailure ? 'Workflow Failure' :
+                           isFailure ? 'Failure Attestation' :
                            isCompletion ? 'Completion Attestation' :
                            'Worker Attestation'} - Step {attestation.current_step || '?'} of {attestation.total_steps || '?'}
                         </span>
                         <Badge className={`text-xs ${
+                          isWorkflowFailure ? 'bg-red-600 text-white' :
                           isFailure ? 'bg-red-100 text-red-800' :
                           isCompletion ? 'bg-green-100 text-green-800' :
                           'bg-gray-100 text-gray-800'
@@ -225,6 +248,68 @@ function AttestationRecords({ attestations }: { attestations: any[] }) {
               })}
             </div>
           ))}
+
+          {/* Workflow Terminator Section */}
+          {((workflowFailures && workflowFailures.length > 0) || (workflowCompletions && workflowCompletions.length > 0)) && (
+            <div className="mt-6 space-y-3">
+              <h4 className="text-sm font-semibold">Workflow Terminator</h4>
+
+              {/* Workflow Success */}
+              {workflowCompletions && workflowCompletions.map((completion, idx) => (
+                <div key={idx} className="p-4 border-2 border-green-600 bg-green-100 rounded-lg">
+                  <div className="flex items-center justify-between mb-2">
+                    <div className="flex items-center gap-2">
+                      <CheckCircle className="h-5 w-5 text-green-700" />
+                      <span className="font-medium text-sm">
+                        Workflow Completed Successfully
+                      </span>
+                      <Badge className="text-xs bg-green-600 text-white">
+                        Success
+                      </Badge>
+                    </div>
+                  </div>
+
+                  {/* Completion Details */}
+                  <div className="text-xs text-green-900 space-y-1">
+                    <div>Workflow ID: <code className="bg-green-200 px-1 rounded">{completion.workflow_id}</code></div>
+                    <div>Completed at: {new Date(completion.completed_at || completion.attestation_created_at).toLocaleString()}</div>
+                    <div>Total Steps: {completion.total_steps || 'N/A'}</div>
+                  </div>
+                </div>
+              ))}
+
+              {/* Workflow Failure */}
+              {workflowFailures && workflowFailures.map((failure, idx) => (
+                <div key={idx} className="p-4 border-2 border-red-600 bg-red-100 rounded-lg">
+                  <div className="flex items-center justify-between mb-2">
+                    <div className="flex items-center gap-2">
+                      <XCircle className="h-5 w-5 text-red-700" />
+                      <span className="font-medium text-sm">
+                        Workflow Failure - Step {failure.failed_at_step || '?'} of {failure.total_steps || '?'}
+                      </span>
+                      <Badge className="text-xs bg-red-600 text-white">
+                        Permanent Failure
+                      </Badge>
+                    </div>
+                  </div>
+
+                  {/* Failure Details */}
+                  <div className="text-xs text-red-900 space-y-1">
+                    <div>Failed Job ID: <code className="bg-red-200 px-1 rounded">{failure.failed_job_id}</code></div>
+                    <div>Worker ID: <code className="bg-red-200 px-1 rounded">{failure.worker_id}</code></div>
+                    <div>Failed at: {new Date(failure.failed_at).toLocaleString()}</div>
+                    <div>Completed Steps: {failure.completed_steps} of {failure.total_steps}</div>
+                    {failure.error && (
+                      <div className="mt-2 p-2 bg-red-200 border border-red-300 rounded">
+                        <div className="font-medium">Error:</div>
+                        <div className="whitespace-pre-wrap">{failure.error}</div>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
         </div>
       )}
 

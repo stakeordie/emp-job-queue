@@ -983,8 +983,8 @@ export class LightweightAPIServer {
         const attestationId = uuidv4();
         const primaryKey = `user_notification_attestation:${attestationId}`;
 
-        // Store primary record with 7-day TTL
-        await this.redis.setex(primaryKey, 86400 * 7, JSON.stringify(attestationRecord));
+        // Store primary record
+        await this.redis.set(primaryKey, JSON.stringify(attestationRecord));
 
         // Store by workflow for quick lookup
         const workflowAttestationKey = `workflow_notifications:${workflowId}`;
@@ -3360,9 +3360,8 @@ export class LightweightAPIServer {
               reason: 'permanent_job_failure',
             };
 
-            await this.redis.setex(
-              `workflow:attestation:failure:${workflowId}`,
-              7 * 24 * 60 * 60, // 7 days
+            await this.redis.set(
+              `api:workflow:failure:${workflowId}`,
               JSON.stringify(workflowFailureAttestation)
             );
 
@@ -3417,9 +3416,8 @@ export class LightweightAPIServer {
           reason: 'permanent_job_failure',
         };
 
-        await this.redis.setex(
-          `workflow:attestation:failure:${workflowId}`,
-          7 * 24 * 60 * 60, // 7 days
+        await this.redis.set(
+          `api:workflow:failure:${workflowId}`,
           JSON.stringify(workflowFailureAttestation)
         );
 
@@ -4785,9 +4783,8 @@ export class LightweightAPIServer {
         ? `api:workflow:completion:${workflowId}:attempt-${retryAttempt}`
         : `api:workflow:completion:${workflowId}`;
 
-      await this.redis.setex(
+      await this.redis.set(
         attestationKey,
-        30 * 24 * 60 * 60, // 30 days
         JSON.stringify(sanitizedAttestationData)
       );
 

@@ -940,9 +940,8 @@ export class RedisDirectWorkerClient {
       const jobPrefix = jobData.workflow_id ? `job-id:${jobData.workflow_id}:` : '';
       const completionKey = `worker:completion:${jobPrefix}step-id:${stepId}:attempt:${retryCount + 1}`;
 
-      await this.redis.setex(
+      await this.redis.set(
         completionKey,
-        7 * 24 * 60 * 60, // 7 days
         JSON.stringify(workerCompletionRecord)
       );
 
@@ -1111,9 +1110,8 @@ export class RedisDirectWorkerClient {
         ? `worker:failure:${jobPrefix}step-id:${stepId}:attempt:${newRetryCount}`
         : `worker:failure:${jobPrefix}step-id:${stepId}:permanent`;
 
-      await this.redis.setex(
+      await this.redis.set(
         attestationKey,
-        7 * 24 * 60 * 60, // 7 days
         JSON.stringify(workerFailureRecord)
       );
 
@@ -1126,9 +1124,8 @@ export class RedisDirectWorkerClient {
           ? `worker:completion:job-id:${freshJobData.workflow_id}:step-id:${stepId}`
           : `worker:completion:step-id:${stepId}`;
 
-        await this.redis.setex(
+        await this.redis.set(
           backwardsCompatKey,
-          7 * 24 * 60 * 60, // 7 days
           JSON.stringify(workerFailureRecord)
         );
       }
@@ -1147,9 +1144,8 @@ export class RedisDirectWorkerClient {
           ? `workflow:failure:${freshJobData.workflow_id}:attempt:${newRetryCount}`
           : `workflow:failure:${freshJobData.workflow_id}:permanent`;
 
-        await this.redis.setex(
+        await this.redis.set(
           workflowAttestationKey,
-          7 * 24 * 60 * 60, // 7 days
           JSON.stringify(workflowFailureAttestation)
         );
 

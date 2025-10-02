@@ -489,6 +489,8 @@ export class JobForensicsService {
     if (workflowId) {
       patterns.push(
         `workflow:failure:${workflowId}*`, // Legacy workflow failure pattern
+        `api:workflow:failure:${workflowId}*`, // API-level workflow failure attestation
+        `api:workflow:completion:${workflowId}*`, // API-level workflow completion attestation
         // Current job patterns (semantic: workflow->job)
         `worker:failure:job-id:${workflowId}*`,
         `worker:completion:job-id:${workflowId}*`,
@@ -520,11 +522,19 @@ export class JobForensicsService {
       }
     }
 
-    // Sort attestations by timestamp for chronological order
-    return attestations.sort((a, b) =>
-      (a.timestamp || a.failed_at || a.completed_at || 0) -
-      (b.timestamp || b.failed_at || b.completed_at || 0)
-    );
+    // Sort attestations: chronological order, but API workflow failures always at the end
+    return attestations.sort((a, b) => {
+      const isAWorkflowFailure = a.attestation_type === 'api_workflow_failure';
+      const isBWorkflowFailure = b.attestation_type === 'api_workflow_failure';
+
+      // Workflow failures always go to the end
+      if (isAWorkflowFailure && !isBWorkflowFailure) return 1;
+      if (!isAWorkflowFailure && isBWorkflowFailure) return -1;
+
+      // Otherwise sort by timestamp
+      return (a.timestamp || a.failed_at || a.completed_at || 0) -
+             (b.timestamp || b.failed_at || b.completed_at || 0);
+    });
   }
 
   /**
@@ -532,11 +542,13 @@ export class JobForensicsService {
    */
   private extractAttestationType(key: string): string {
     if (key.includes('failure')) {
+      if (key.includes('api:workflow:failure')) return 'api_workflow_failure';
       if (key.includes('workflow:failure')) return 'workflow_failure';
       if (key.includes(':attempt:')) return 'failure_retry';
       if (key.includes(':permanent')) return 'failure_permanent';
       return 'worker_failure';
     } else if (key.includes('completion')) {
+      if (key.includes('api:workflow:completion')) return 'api_workflow_completion';
       if (key.includes('workflow:completion')) return 'workflow_completion';
       return 'worker_completion';
     }
