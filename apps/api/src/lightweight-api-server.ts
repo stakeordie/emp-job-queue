@@ -3343,6 +3343,34 @@ export class LightweightAPIServer {
           this.workflowTraceContexts.delete(workflowId);
           logger.info(`💥 WORKFLOW FAILED (PERMANENT): ${workflowId} at step ${stepNumber}/${totalSteps} - ${failureData.error}`);
 
+          // 🔐 CREATE WORKFLOW FAILURE ATTESTATION
+          try {
+            const workflowFailureAttestation = {
+              attestation_type: 'workflow_failure',
+              workflow_id: workflowId,
+              failed_job_id: jobId,
+              failed_at_step: stepNumber,
+              total_steps: totalSteps,
+              completed_steps: stepNumber - 1,
+              worker_id: failureData.worker_id,
+              error: failureData.error,
+              failed_at: failureData.timestamp || Date.now(),
+              attestation_created_at: Date.now(),
+              workflow_type: jobData.service_required || 'unknown',
+              reason: 'permanent_job_failure',
+            };
+
+            await this.redis.setex(
+              `workflow:attestation:failure:${workflowId}`,
+              7 * 24 * 60 * 60, // 7 days
+              JSON.stringify(workflowFailureAttestation)
+            );
+
+            logger.info(`🔐 Created workflow failure attestation for workflow ${workflowId}`);
+          } catch (error) {
+            logger.error(`❌ Failed to create workflow failure attestation for ${workflowId}:`, error);
+          }
+
           // 🚨 PUBLISH WORKFLOW FAILED WEBHOOK EVENT (only for permanent failures)
           try {
             await this.redis.publish('workflow_failed', JSON.stringify({
@@ -3371,6 +3399,34 @@ export class LightweightAPIServer {
       const workflowId = jobData.workflow_id;
 
       logger.info(`💥 SINGLE-JOB WORKFLOW FAILED (PERMANENT): ${workflowId} - ${failureData.error}`);
+
+      // 🔐 CREATE WORKFLOW FAILURE ATTESTATION FOR SINGLE-JOB WORKFLOWS
+      try {
+        const workflowFailureAttestation = {
+          attestation_type: 'workflow_failure',
+          workflow_id: workflowId,
+          failed_job_id: jobId,
+          failed_at_step: 1,
+          total_steps: 1,
+          completed_steps: 0,
+          worker_id: failureData.worker_id,
+          error: failureData.error,
+          failed_at: failureData.timestamp || Date.now(),
+          attestation_created_at: Date.now(),
+          workflow_type: jobData.service_required || 'unknown',
+          reason: 'permanent_job_failure',
+        };
+
+        await this.redis.setex(
+          `workflow:attestation:failure:${workflowId}`,
+          7 * 24 * 60 * 60, // 7 days
+          JSON.stringify(workflowFailureAttestation)
+        );
+
+        logger.info(`🔐 Created workflow failure attestation for single-job workflow ${workflowId}`);
+      } catch (error) {
+        logger.error(`❌ Failed to create workflow failure attestation for ${workflowId}:`, error);
+      }
 
       // 🚨 PUBLISH WORKFLOW FAILED WEBHOOK EVENT FOR SINGLE-JOB WORKFLOWS (only for permanent failures)
       try {
