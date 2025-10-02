@@ -468,6 +468,41 @@ export class WebhookProcessor extends EventEmitter {
           outputs: redisEvent.outputs || [],
         };
 
+      case 'workflow_failed':
+        logger.info(`💥 WEBHOOK-PROCESSOR: Received workflow_failed Redis event:`, {
+          workflow_id: redisEvent.workflow_id,
+          failed_job_id: redisEvent.failed_job_id,
+          failed_at_step: redisEvent.failed_at_step,
+          total_steps: redisEvent.total_steps,
+          error: redisEvent.error,
+          worker_id: redisEvent.worker_id,
+          workflow_type: redisEvent.workflow_type,
+        });
+        return {
+          type: 'system_stats',
+          timestamp: redisEvent.timestamp || Date.now(),
+          stats: {
+            total_workers: 0,
+            active_workers: 0,
+            total_jobs: 0,
+            pending_jobs: 0,
+            active_jobs: 0,
+            completed_jobs: 0,
+            failed_jobs: 0,
+          },
+          // Add workflow failure data
+          workflow_failed: true,
+          workflow_id: redisEvent.workflow_id,
+          failed_job_id: redisEvent.failed_job_id,
+          failed_at_step: redisEvent.failed_at_step,
+          total_steps: redisEvent.total_steps,
+          error: redisEvent.error,
+          failed_at: redisEvent.failed_at,
+          worker_id: redisEvent.worker_id,
+          workflow_type: redisEvent.workflow_type,
+          message: redisEvent.message,
+        };
+
       // Handle machine status pattern matches (machine:status:*)
       default:
         if (redisEvent.type && redisEvent.type.startsWith('machine:status:')) {

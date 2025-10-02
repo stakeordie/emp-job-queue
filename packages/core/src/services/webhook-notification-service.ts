@@ -1267,7 +1267,7 @@ export class WebhookNotificationService extends EventEmitter {
       data.completed_at = jobEvent.completed_at as string;
       data.verified = jobEvent.verified as boolean;
       data.message = jobEvent.message as string;
-      
+
       // Include workflow details from EMPROPS
       if (jobEvent.workflow_details) {
         const workflowDetails = jobEvent.workflow_details as any;
@@ -1289,7 +1289,7 @@ export class WebhookNotificationService extends EventEmitter {
           if (workflowOutputs) {
             data.outputs = workflowOutputs;
             logger.info(`✅ [WEBHOOK] Fetched ${workflowOutputs.length} outputs from EmProps API for workflow ${jobEvent.workflow_id}`);
-            
+
             // Log output details for debugging
             workflowOutputs.forEach((output: any, index: number) => {
               if (output.steps) {
@@ -1315,6 +1315,36 @@ export class WebhookNotificationService extends EventEmitter {
         verified: data.verified,
         outputs_count: data.outputs ? (data.outputs as any[]).length : 0,
         has_workflow_details: !!data.workflow_details,
+      });
+    }
+
+    // Workflow failure events (system_stats with workflow_failed: true)
+    if (event.type === 'system_stats' && jobEvent.workflow_failed) {
+      logger.info(`💥 [WEBHOOK] Extracting workflow failure data from Redis event:`, {
+        workflow_id: jobEvent.workflow_id,
+        failed_job_id: jobEvent.failed_job_id,
+        failed_at_step: jobEvent.failed_at_step,
+        total_steps: jobEvent.total_steps,
+        error: jobEvent.error,
+      });
+
+      // Include workflow failure data
+      data.timestamp = jobEvent.timestamp as number;
+      data.failed_job_id = jobEvent.failed_job_id as string;
+      data.failed_at_step = jobEvent.failed_at_step as number;
+      data.total_steps = jobEvent.total_steps as number;
+      data.error = jobEvent.error as string;
+      data.failed_at = jobEvent.failed_at as string;
+      data.worker_id = jobEvent.worker_id as string;
+      data.workflow_type = jobEvent.workflow_type as string;
+      data.message = jobEvent.message as string;
+
+      logger.info(`🚀 [WEBHOOK] Final workflow failure webhook data:`, {
+        workflow_id: data.workflow_id,
+        failed_job_id: data.failed_job_id,
+        failed_at_step: data.failed_at_step,
+        total_steps: data.total_steps,
+        error: data.error,
       });
     }
 
