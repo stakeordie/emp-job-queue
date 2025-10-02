@@ -3295,13 +3295,21 @@ export class LightweightAPIServer {
   ): Promise<void> {
     // Get job details to check for workflow information
     const jobData = await this.redis.hgetall(`job:${jobId}`);
-    
+
+    // Check if this is a PERMANENT failure (can_retry === false) or a retryable failure
+    const isPermanentFailure = failureData.can_retry === false;
+
+    // Only publish workflow_failed for PERMANENT failures, not retryable failures
+    if (!isPermanentFailure) {
+      logger.info(`⚠️ Job ${jobId} failed but will retry (can_retry=${failureData.can_retry}) - not publishing workflow_failed event yet`);
+    }
+
     // Handle workflow step failure tracing
     if (jobData.workflow_id && jobData.current_step && jobData.total_steps) {
       const workflowId = jobData.workflow_id;
       const stepNumber = parseInt(jobData.current_step);
       const totalSteps = parseInt(jobData.total_steps);
-      
+
       // Get workflow context
       const workflowContext = this.workflowTraceContexts.get(workflowId);
       if (workflowContext) {
@@ -3316,50 +3324,55 @@ export class LightweightAPIServer {
           traceId: workflowContext.traceId,
           spanId: workflowContext.spanId,
         });
-        
-        // Mark the entire workflow as failed
-        await WorkflowInstrumentation.complete({
-          workflowId,
-          totalSteps,
-          completedSteps: stepNumber - 1, // Steps completed before this failure
-          duration: Date.now() - workflowContext.startedAt,
-          status: 'failed',
-        }, {
-          traceId: workflowContext.traceId,
-          spanId: workflowContext.spanId,
-        });
-        
-        // Clean up workflow context
-        this.workflowTraceContexts.delete(workflowId);
-        logger.info(`💥 WORKFLOW FAILED: ${workflowId} at step ${stepNumber}/${totalSteps} - ${failureData.error}`);
 
-        // 🚨 PUBLISH WORKFLOW FAILED WEBHOOK EVENT
-        try {
-          await this.redis.publish('workflow_failed', JSON.stringify({
-            workflow_id: workflowId,
-            failed_job_id: jobId,
-            failed_at_step: stepNumber,
-            total_steps: totalSteps,
-            worker_id: failureData.worker_id,
-            error: failureData.error,
-            failed_at: failureData.timestamp || Date.now(),
-            timestamp: Date.now(),
-            workflow_type: jobData.service_required || 'unknown',
-            message: `Workflow failed at step ${stepNumber}/${totalSteps}: ${failureData.error}`
-          }));
+        // Only mark workflow as failed and publish webhook for PERMANENT failures
+        if (isPermanentFailure) {
+          // Mark the entire workflow as failed
+          await WorkflowInstrumentation.complete({
+            workflowId,
+            totalSteps,
+            completedSteps: stepNumber - 1, // Steps completed before this failure
+            duration: Date.now() - workflowContext.startedAt,
+            status: 'failed',
+          }, {
+            traceId: workflowContext.traceId,
+            spanId: workflowContext.spanId,
+          });
 
-          logger.info(`📤 Published workflow_failed event for workflow ${workflowId}`);
-        } catch (error) {
-          logger.error(`❌ Failed to publish workflow_failed event for ${workflowId}:`, error);
+          // Clean up workflow context
+          this.workflowTraceContexts.delete(workflowId);
+          logger.info(`💥 WORKFLOW FAILED (PERMANENT): ${workflowId} at step ${stepNumber}/${totalSteps} - ${failureData.error}`);
+
+          // 🚨 PUBLISH WORKFLOW FAILED WEBHOOK EVENT (only for permanent failures)
+          try {
+            await this.redis.publish('workflow_failed', JSON.stringify({
+              workflow_id: workflowId,
+              failed_job_id: jobId,
+              failed_at_step: stepNumber,
+              total_steps: totalSteps,
+              worker_id: failureData.worker_id,
+              error: failureData.error,
+              failed_at: failureData.timestamp || Date.now(),
+              timestamp: Date.now(),
+              workflow_type: jobData.service_required || 'unknown',
+              message: `Workflow failed at step ${stepNumber}/${totalSteps}: ${failureData.error}`
+            }));
+
+            logger.info(`📤 Published workflow_failed event for workflow ${workflowId}`);
+          } catch (error) {
+            logger.error(`❌ Failed to publish workflow_failed event for ${workflowId}:`, error);
+          }
+        } else {
+          logger.info(`⏳ Workflow ${workflowId} step ${stepNumber}/${totalSteps} will retry - not marking workflow as failed yet`);
         }
       }
-    } else if (jobData.workflow_id) {
-      // Handle single-job workflows (workflows with only one step)
+    } else if (jobData.workflow_id && isPermanentFailure) {
+      // Handle single-job workflows (workflows with only one step) - only for permanent failures
       const workflowId = jobData.workflow_id;
 
-      logger.info(`💥 SINGLE-JOB WORKFLOW FAILED: ${workflowId} - ${failureData.error}`);
+      logger.info(`💥 SINGLE-JOB WORKFLOW FAILED (PERMANENT): ${workflowId} - ${failureData.error}`);
 
-      // 🚨 PUBLISH WORKFLOW FAILED WEBHOOK EVENT FOR SINGLE-JOB WORKFLOWS
+      // 🚨 PUBLISH WORKFLOW FAILED WEBHOOK EVENT FOR SINGLE-JOB WORKFLOWS (only for permanent failures)
       try {
         await this.redis.publish('workflow_failed', JSON.stringify({
           workflow_id: workflowId,
