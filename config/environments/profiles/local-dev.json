@@ -4,14 +4,14 @@
   "components": {
     "api": [
       "default",
-      "local"
+      "localdev"
     ],
     "api-tokens": [
       "default"
     ],
     "comfyui": [
       "default",
-      "local"
+      "localdev"
     ],
     "database": [
       "default",
@@ -36,7 +36,7 @@
     ],
     "ollama": [
       "default",
-      "local"
+      "localdev"
     ],
     "openai": [
       "default",

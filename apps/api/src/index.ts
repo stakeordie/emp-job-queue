@@ -13,20 +13,26 @@ import { logger } from '@emp/core';
 // Load environment variables from profile-specific env file
 import { existsSync } from 'fs';
 
-// Require EMP_PROFILE to be explicitly set - no fallbacks
-if (!process.env.EMP_PROFILE) {
-  throw new Error('FATAL: EMP_PROFILE environment variable is required. No defaults allowed.');
+// Use CURRENT_ENV (set by env-management system)
+// When running via Docker script (d:api:run), the env file is loaded first and contains CURRENT_ENV
+// This allows the Docker script to control which env file is loaded
+const profile = process.env.CURRENT_ENV;
+
+if (profile) {
+  // If profile is set, try to load the corresponding env file (may already be loaded by Docker)
+  const envFile = `.env.${profile}`;
+
+  if (existsSync(envFile)) {
+    config({ path: envFile });
+    console.log(`📋 Loaded environment from: ${envFile} (profile: ${profile})`);
+  } else {
+    // Env file doesn't exist - assume it's already loaded by Docker script
+    console.log(`📋 Using pre-loaded environment (profile: ${profile})`);
+  }
+} else {
+  // No profile specified - assume env file is already loaded by Docker script
+  console.log(`📋 Using pre-loaded environment (no CURRENT_ENV set)`);
 }
-
-const profile = process.env.EMP_PROFILE;
-const envFile = `.env.${profile}`;
-
-if (!existsSync(envFile)) {
-  throw new Error(`FATAL: Environment file not found: ${envFile}. EMP_PROFILE=${profile} but file does not exist.`);
-}
-
-config({ path: envFile });
-console.log(`📋 Loaded environment from: ${envFile}`);
 
 // Also export components for library use
 export * from './lightweight-api-server.js';

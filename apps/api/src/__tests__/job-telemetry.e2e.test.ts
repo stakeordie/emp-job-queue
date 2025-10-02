@@ -14,6 +14,12 @@ import { spawn, ChildProcess } from 'child_process';
 describe('API Job Telemetry E2E Tests', () => {
   const API_PORT = process.env.API_PORT || '3331';
   const API_URL = `http://localhost:${API_PORT}`;
+
+  if (!process.env.OTEL_SERVICE_NAME) {
+    throw new Error('OTEL_SERVICE_NAME environment variable is required');
+  }
+  const EXPECTED_SERVICE_NAME = process.env.OTEL_SERVICE_NAME;
+
   const testRunId = Date.now();
 
   let apiProcess: ChildProcess | null = null;
@@ -62,8 +68,11 @@ describe('API Job Telemetry E2E Tests', () => {
       console.log('✅ API already running');
     }
 
-    // Check if OTLP collector is running (test OTLP endpoint)
-    const collectorRunning = await checkServiceRunning('http://localhost:4318', '/v1/traces');
+    // Check if OTLP collector is running (use env var for correct port)
+    if (!process.env.OTEL_COLLECTOR_ENDPOINT) {
+      throw new Error('OTEL_COLLECTOR_ENDPOINT environment variable is required');
+    }
+    const collectorRunning = await checkServiceRunning(process.env.OTEL_COLLECTOR_ENDPOINT, '/v1/traces');
     if (!collectorRunning) {
       console.log('⚠️  OTLP Collector not running, starting it...');
       collectorProcess = await startService('pnpm', ['dev:telcollect', '--env', 'testrunner'], 'OTLP Collector');
@@ -101,7 +110,10 @@ describe('API Job Telemetry E2E Tests', () => {
     // ========================================================================
     console.log('🔍 STEP 0: Verifying OTLP Collector is accessible...');
 
-    const collectorUrl = process.env.OTEL_COLLECTOR_ENDPOINT || 'http://localhost:4318';
+    if (!process.env.OTEL_COLLECTOR_ENDPOINT) {
+      throw new Error('OTEL_COLLECTOR_ENDPOINT environment variable is required');
+    }
+    const collectorUrl = process.env.OTEL_COLLECTOR_ENDPOINT;
     console.log(`   Collector URL: ${collectorUrl}`);
 
     try {
@@ -327,14 +339,14 @@ describe('API Job Telemetry E2E Tests', () => {
       (attr: any) => attr.key === 'service.name'
     );
 
-    expect(serviceNameAttr?.value?.stringValue).toBe('emp-api');
+    expect(serviceNameAttr?.value?.stringValue).toBe(EXPECTED_SERVICE_NAME);
     console.log(`   ✅ service.name: ${serviceNameAttr?.value?.stringValue}`);
-    console.log(`   ✅ NOT showing as 'emp-telemetry'`);
+    console.log(`   ✅ Matches expected: ${EXPECTED_SERVICE_NAME}`);
 
     console.log(`\n${'='.repeat(80)}`);
     console.log(`✅ COMPLETE PIPELINE SUCCESS: API → OTLP Collector → Dash0`);
     console.log(`   ALL job.received ATTRIBUTES VERIFIED`);
-    console.log(`   SERVICE ATTRIBUTION PRESERVED (emp-api)`);
+    console.log(`   SERVICE ATTRIBUTION PRESERVED (${EXPECTED_SERVICE_NAME})`);
     console.log(`${'='.repeat(80)}\n`);
   }, 90000); // 90 second timeout for complete pipeline test
 

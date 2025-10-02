@@ -33,4 +33,4 @@ export const MIGRATION_NOTICE = `
   This notice will be removed once migration is complete.
 `;
 
-console.log(MIGRATION_NOTICE);
+// console.log(MIGRATION_NOTICE);

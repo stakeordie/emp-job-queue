@@ -180,20 +180,42 @@ export class RedisFunctionInstaller {
    */
   async listInstalledFunctions(): Promise<FunctionInfo[]> {
     const allLibraries = await this.listFunctions();
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const ourLibrary = allLibraries.find((lib: any) => lib.library_name === this.libraryName);
 
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    if (!ourLibrary || !(ourLibrary as any).functions) {
-      return [];
+    // Redis FUNCTION LIST returns flat array format from ioredis:
+    // [[key1, val1, key2, val2, ...], ...]
+    for (const lib of allLibraries) {
+      if (!Array.isArray(lib)) continue;
+
+      // Convert flat array to object: [k1, v1, k2, v2] -> {k1: v1, k2: v2}
+      const libObj: Record<string, unknown> = {};
+      for (let i = 0; i < lib.length; i += 2) {
+        libObj[lib[i] as string] = lib[i + 1];
+      }
+
+      // Check if this is our library
+      if (libObj['library_name'] !== this.libraryName) continue;
+
+      // Parse functions array (also in flat array format)
+      const functions = libObj['functions'];
+      if (!Array.isArray(functions)) return [];
+
+      return functions.map((func: unknown): FunctionInfo | null => {
+        if (!Array.isArray(func)) return null;
+
+        const funcObj: Record<string, unknown> = {};
+        for (let i = 0; i < func.length; i += 2) {
+          funcObj[func[i] as string] = func[i + 1];
+        }
+
+        return {
+          name: funcObj['name'] as string,
+          library: this.libraryName,
+          description: funcObj['description'] as string | undefined,
+        };
+      }).filter((f): f is FunctionInfo => f !== null);
     }
 
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    return (ourLibrary as any).functions.map((func: any) => ({
-      name: func.name,
-      library: this.libraryName,
-      description: func.description,
-    }));
+    return [];
   }
 
   /**

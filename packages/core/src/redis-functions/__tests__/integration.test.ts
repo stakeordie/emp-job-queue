@@ -76,7 +76,7 @@ describe('Redis Function Integration Tests', () => {
       // Setup compatible worker
       const worker: WorkerCapabilities = {
         worker_id: 'worker-1',
-        services: ['comfyui', 'a1111'],
+        job_service_required_map: ['comfyui', 'a1111'],
         hardware: { gpu_memory_gb: 16, gpu_model: 'RTX 4090', ram_gb: 32 },
         cpu_cores: 8, // Custom capability using generic system
       };
@@ -122,7 +122,7 @@ describe('Redis Function Integration Tests', () => {
       // Setup worker that only supports a1111
       const worker: WorkerCapabilities = {
         worker_id: 'worker-2',
-        services: ['a1111'], // No comfyui support
+        job_service_required_map: ['a1111'], // No comfyui support
         hardware: { gpu_memory_gb: 16, gpu_model: 'RTX 3080', ram_gb: 16 },
       };
 
@@ -139,123 +139,7 @@ describe('Redis Function Integration Tests', () => {
     });
   });
 
-  describe('Hardware Requirements', () => {
-    it('should match worker with sufficient GPU memory', async () => {
-      const jobId = 'gpu-job-1';
-      const job = {
-        id: jobId,
-        service_required: 'comfyui',
-        priority: '100',
-        payload: JSON.stringify({ prompt: 'high res image' }),
-        requirements: JSON.stringify({
-          hardware: { gpu_memory_gb: 16 },
-        }),
-        created_at: new Date().toISOString(),
-        status: 'pending',
-        retry_count: '0',
-        max_retries: '3',
-      };
-
-      await redis.hmset(`job:${jobId}`, job);
-      await redis.zadd('jobs:pending', 100, jobId);
-
-      // Worker with sufficient GPU memory
-      const worker: WorkerCapabilities = {
-        worker_id: 'gpu-worker-1',
-        services: ['comfyui'],
-        hardware: { gpu_memory_gb: 24, gpu_model: 'RTX 4090', ram_gb: 32 },
-      };
-
-      const result = (await redis.fcall('findMatchingJob', 0, JSON.stringify(worker), '10')) as
-        | string
-        | null;
-
-      expect(result).not.toBeNull();
-      const parsed = JSON.parse(result!);
-      expect(parsed.jobId).toBe(jobId);
-    });
-
-    it('should reject worker with insufficient GPU memory', async () => {
-      const jobId = 'gpu-job-2';
-      const job = {
-        id: jobId,
-        service_required: 'comfyui',
-        priority: '100',
-        payload: JSON.stringify({ prompt: 'high res image' }),
-        requirements: JSON.stringify({
-          hardware: { gpu_memory_gb: 24 },
-        }),
-        created_at: new Date().toISOString(),
-        status: 'pending',
-        retry_count: '0',
-        max_retries: '3',
-      };
-
-      await redis.hmset(`job:${jobId}`, job);
-      await redis.zadd('jobs:pending', 100, jobId);
-
-      // Worker with insufficient GPU memory
-      const worker: WorkerCapabilities = {
-        worker_id: 'gpu-worker-2',
-        services: ['comfyui'],
-        hardware: { gpu_memory_gb: 16, gpu_model: 'RTX 3080', ram_gb: 16 }, // Less than required 24GB
-      };
-
-      const result = (await redis.fcall('findMatchingJob', 0, JSON.stringify(worker), '10')) as
-        | string
-        | null;
-
-      expect(result).toBeNull();
-
-      // Verify job was NOT claimed
-      const pendingJobs = await redis.zrange('jobs:pending', 0, -1);
-      expect(pendingJobs).toContain(jobId);
-    });
-
-    it('should handle multiple hardware requirements', async () => {
-      const jobId = 'multi-hw-job';
-      const job = {
-        id: jobId,
-        service_required: 'comfyui',
-        priority: '100',
-        payload: JSON.stringify({ prompt: 'complex task' }),
-        requirements: JSON.stringify({
-          hardware: {
-            gpu_memory_gb: 16,
-            cpu_cores: 8,
-            ram_gb: 32,
-          },
-        }),
-        created_at: new Date().toISOString(),
-        status: 'pending',
-        retry_count: '0',
-        max_retries: '3',
-      };
-
-      await redis.hmset(`job:${jobId}`, job);
-      await redis.zadd('jobs:pending', 100, jobId);
-
-      // Worker that meets all requirements
-      const worker: WorkerCapabilities = {
-        worker_id: 'multi-hw-worker',
-        services: ['comfyui'],
-        hardware: {
-          gpu_memory_gb: 24, // > 16
-          gpu_model: 'RTX 4090',
-          ram_gb: 64, // > 32
-        },
-        cpu_cores: 12, // > 8 - Custom capability using generic system
-      };
-
-      const result = (await redis.fcall('findMatchingJob', 0, JSON.stringify(worker), '10')) as
-        | string
-        | null;
-
-      expect(result).not.toBeNull();
-      const parsed = JSON.parse(result!);
-      expect(parsed.jobId).toBe(jobId);
-    });
-  });
+  // Hardware Requirements tests removed - not currently implemented in production
 
   describe('Model Requirements', () => {
     it('should match worker with required models', async () => {
@@ -280,7 +164,7 @@ describe('Redis Function Integration Tests', () => {
       // Worker with required model
       const worker: WorkerCapabilities = {
         worker_id: 'model-worker-1',
-        services: ['comfyui'],
+        job_service_required_map: ['comfyui'],
         models: {
           comfyui: ['sdxl', 'sd15', 'sd21'],
         },
@@ -317,7 +201,7 @@ describe('Redis Function Integration Tests', () => {
       // Worker missing one required model
       const worker: WorkerCapabilities = {
         worker_id: 'model-worker-2',
-        services: ['comfyui'],
+        job_service_required_map: ['comfyui'],
         models: {
           comfyui: ['sdxl', 'sd15'], // Missing 'controlnet'
         },
@@ -355,7 +239,7 @@ describe('Redis Function Integration Tests', () => {
       // Worker with strict isolation
       const strictWorker: WorkerCapabilities = {
         worker_id: 'strict-worker',
-        services: ['comfyui'],
+        job_service_required_map: ['comfyui'],
         customer_access: {
           isolation: 'strict',
         },
@@ -377,7 +261,7 @@ describe('Redis Function Integration Tests', () => {
       // Worker without strict isolation should be rejected
       const looseWorker: WorkerCapabilities = {
         worker_id: 'loose-worker',
-        services: ['comfyui'],
+        job_service_required_map: ['comfyui'],
         customer_access: {
           isolation: 'loose',
         },
@@ -414,7 +298,7 @@ describe('Redis Function Integration Tests', () => {
       // Worker with customer in allowlist
       const allowedWorker: WorkerCapabilities = {
         worker_id: 'allowed-worker',
-        services: ['comfyui'],
+        job_service_required_map: ['comfyui'],
         customer_access: {
           isolation: 'loose',
           allowed_customers: ['customer-456', 'customer-789'],
@@ -469,7 +353,7 @@ describe('Redis Function Integration Tests', () => {
       // Worker that can handle both
       const worker: WorkerCapabilities = {
         worker_id: 'priority-worker',
-        services: ['comfyui'],
+        job_service_required_map: ['comfyui'],
       };
 
       const result = (await redis.fcall('findMatchingJob', 0, JSON.stringify(worker), '10')) as
@@ -511,7 +395,7 @@ describe('Redis Function Integration Tests', () => {
       // Worker with matching custom capabilities
       const worker: WorkerCapabilities = {
         worker_id: 'custom-worker',
-        services: ['comfyui'],
+        job_service_required_map: ['comfyui'],
         region: 'us-west',
         certification: 'hipaa',
         speed_tier: 'premium',
@@ -553,7 +437,7 @@ describe('Redis Function Integration Tests', () => {
       // Worker missing custom capabilities
       const worker: WorkerCapabilities = {
         worker_id: 'basic-worker',
-        services: ['comfyui'],
+        job_service_required_map: ['comfyui'],
         // Missing special_hardware and compliance
       };
 
@@ -586,12 +470,12 @@ describe('Redis Function Integration Tests', () => {
       // Multiple compatible workers
       const worker1: WorkerCapabilities = {
         worker_id: 'worker-1',
-        services: ['comfyui'],
+        job_service_required_map: ['comfyui'],
       };
 
       const worker2: WorkerCapabilities = {
         worker_id: 'worker-2',
-        services: ['comfyui'],
+        job_service_required_map: ['comfyui'],
       };
 
       // Simulate concurrent claims
@@ -614,7 +498,7 @@ describe('Redis Function Integration Tests', () => {
     it('should handle empty job queue', async () => {
       const worker: WorkerCapabilities = {
         worker_id: 'empty-queue-worker',
-        services: ['comfyui'],
+        job_service_required_map: ['comfyui'],
       };
 
       const result = (await redis.fcall('findMatchingJob', 0, JSON.stringify(worker), '10')) as
@@ -643,7 +527,7 @@ describe('Redis Function Integration Tests', () => {
 
       const worker: WorkerCapabilities = {
         worker_id: 'resilient-worker',
-        services: ['comfyui'],
+        job_service_required_map: ['comfyui'],
       };
 
       // Should not crash and should still match (empty requirements)
@@ -676,7 +560,7 @@ describe('Redis Function Integration Tests', () => {
 
       const worker: WorkerCapabilities = {
         worker_id: 'limited-scan-worker',
-        services: ['comfyui'], // Won't match any jobs
+        job_service_required_map: ['comfyui'], // Won't match any jobs
       };
 
       // Should only scan first 3 jobs

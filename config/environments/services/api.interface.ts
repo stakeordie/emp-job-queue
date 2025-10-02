@@ -55,7 +55,8 @@ export const ApiEnvInterface = {
   optional: {
     // CORS and security
     "CORS_ORIGINS": "API_CORS_ORIGINS",
-    
+    "CURRENT_ENV": "API_ENV_PROFILE",
+
     // Performance tuning
     "LOG_LEVEL": "API_LOG_LEVEL"
   },

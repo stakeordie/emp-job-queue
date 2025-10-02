@@ -3,7 +3,7 @@ import { config } from 'dotenv';
 import { resolve } from 'path';
 
 // Set testrunner profile for all tests
-process.env.EMP_PROFILE = 'testrunner';
+process.env.CURRENT_ENV = 'testrunner';
 
 // Load testrunner environment variables for tests
 config({ path: resolve(__dirname, '../../.env.testrunner') });

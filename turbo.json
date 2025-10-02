@@ -12,6 +12,33 @@
       "outputs": ["coverage/**"],
       "env": ["NODE_ENV"]
     },
+    "test:e2e": {
+      "dependsOn": ["build"],
+      "outputs": [],
+      "env": ["NODE_ENV"]
+    },
+    "test:e2e:ui": {
+      "cache": false,
+      "persistent": true,
+      "outputs": [],
+      "env": ["NODE_ENV"]
+    },
+    "test:e2e:telemetry": {
+      "dependsOn": ["build"],
+      "outputs": [],
+      "env": ["NODE_ENV"]
+    },
+    "test:e2e:telemetry:ui": {
+      "cache": false,
+      "persistent": true,
+      "outputs": [],
+      "env": ["NODE_ENV"]
+    },
+    "test:integration": {
+      "dependsOn": ["build"],
+      "outputs": [],
+      "env": ["NODE_ENV"]
+    },
     "lint": {
       "outputs": []
     },

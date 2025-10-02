@@ -393,7 +393,22 @@ redis.register_function('findMatchingJob', function(keys, args)
             'current_job_id', job_id,
             'last_status_change', get_iso_timestamp()
           )
-          
+
+          -- NEW: Publish job_claimed event for webhooks
+          redis.call('PUBLISH', 'job_claimed', cjson.encode({
+            job_id = job_id,
+            worker_id = worker_caps.worker_id,
+            status = 'claimed',
+            message = 'Job claimed by worker',
+            claimed_at = get_iso_timestamp(),
+            timestamp = tonumber(redis.call('TIME')[1]) * 1000,
+            service_required = job.service_required,
+            customer_id = job.customer_id,
+            workflow_id = job.workflow_id,
+            step_number = job.step_number,
+            total_steps = job.total_steps
+          }))
+
           -- FIRST: Publish progress update when job is accepted (EmProps compatible format)
           redis.call('PUBLISH', 'update_job_progress', cjson.encode({
             job_id = job_id,

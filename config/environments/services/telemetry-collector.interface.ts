@@ -1,43 +1,32 @@
 /**
- * Webhook Service Environment Interface
- * Next.js web UI for monitoring job queues and workers
+ * Telemetry Collector Environment Interface
+ * OTLP HTTP endpoint that forwards traces to Dash0
  */
 
 export const TelemetryCollectorEnvInterface = {
   name: "telemetry-collector",
   location: "apps/telemetry-collector",
-  
+
   required: {
-    "TELEMETRY_STREAM_KEY": "TELEMETRY_STREAM_KEY",
-    "CONSUMER_GROUP": "TELEMETRY_CONSUMER_GROUP",
-    "CONSUMER_NAME": "TELEMETRY_CONSUMER_NAME",
-    "BATCH_SIZE": "TELEMETRY_BATCH_SIZE",
-    "BLOCK_TIME": "TELEMETRY_BLOCK_TIME",
+    // OTLP endpoint configuration
+    "OTLP_PORT": "TELEMETRY_OTLP_PORT",
 
-    "OUTPUT_FORMAT": "TELEMETRY_OUTPUT_FORMAT",
-    "PROCESSOR_BATCH_SIZE": "TELEMETRY_PROCESSOR_BATCH_SIZE",
-    "FLUSH_INTERVAL": "TELEMETRY_FLUSH_INTERVAL",
-
-    "STATS_INTERVAL": "TELEMETRY_STATS_INTERVAL",
-
+    // Dash0 forwarding configuration
     "DASH0_ENABLED": "TELEMETRY_DASH0_ENABLED",
-    "DASH0_ENDPOINT": "TELEMETRY_DASH0_ENDPOINT",
+    "DASH0_TRACES_ENDPOINT": "TELEMETRY_DASH0_TRACES_ENDPOINT",
     "DASH0_DATASET": "TELEMETRY_DASH0_DATASET",
     "DASH0_BATCH_SIZE": "TELEMETRY_DASH0_BATCH_SIZE",
     "DASH0_FLUSH_INTERVAL": "TELEMETRY_DASH0_FLUSH_INTERVAL",
-    "DASH0_TRACES_ENDPOINT": "TELEMETRY_DASH0_TRACES_ENDPOINT",
-    "DASH0_METRICS_ENDPOINT": "TELEMETRY_DASH0_METRICS_ENDPOINT",
-    "DASH0_LOGS_ENDPOINT": "TELEMETRY_DASH0_LOGS_ENDPOINT",
+
+    // Optional health check endpoint
     "ENABLE_HEALTH_CHECK": "TELEMETRY_COLLECTOR_HEALTH_CHECK",
-    "OTLP_PORT": "TELEMETRY_OTLP_PORT",
     "HEALTH_PORT": "TELEMETRY_HEALTH_PORT"
   },
   optional: {
   },
   secret: {
-    "REDIS_URL": "REDIS_URL",
     "DASH0_AUTH_TOKEN": "TELEMETRY_DASH0_AUTH_TOKEN"
-  }, 
+  },
   defaults: {
   }
 };

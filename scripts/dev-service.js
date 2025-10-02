@@ -102,7 +102,7 @@ async function runService(serviceName, envName) {
       ...process.env,
       ...publicVars,
       ...secretVars,
-      EMP_PROFILE: envName  // Set EMP_PROFILE to match the environment name
+      CURRENT_ENV: envName  // Set CURRENT_ENV to match the environment name
     };
     
     console.log(chalk.blue(`📁 Loading environment from: .env.${envName}`));

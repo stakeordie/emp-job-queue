@@ -14,6 +14,10 @@
     "test:watch": "vitest --watch",
     "test:ui": "vitest --ui",
     "test:coverage": "vitest --coverage",
+    "test:e2e": "vitest run src/__tests__/*.e2e.test.ts",
+    "test:e2e:ui": "vitest --ui src/__tests__/*.e2e.test.ts",
+    "test:e2e:telemetry": "vitest run src/__tests__/telemetry-pipeline.e2e.test.ts src/__tests__/webhook-delivered-event.e2e.test.ts",
+    "test:e2e:telemetry:ui": "vitest --ui src/__tests__/telemetry-pipeline.e2e.test.ts src/__tests__/webhook-delivered-event.e2e.test.ts",
     "clean": "rm -rf dist",
     "deploy": "./build-standalone.sh"
   },
