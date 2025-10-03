@@ -41,7 +41,7 @@ const mockPrisma = {
 }
 
 // Mock the database import
-vi.mock('@emp/database', () => ({
+vi.mock('@emergexyz/db', () => ({
   prisma: mockPrisma
 }))
 

@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { prisma } from '@emp/database';
+import { prisma } from '@emergexyz/db';
 
 const EXPECTED_AUTH_TOKEN = '3u8sdj5389fj3kljsf90u';
 

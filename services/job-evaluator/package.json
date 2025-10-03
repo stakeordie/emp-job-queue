@@ -15,7 +15,7 @@
   },
   "dependencies": {
     "@emp/core": "workspace:*",
-    "@emp/database": "workspace:*"
+    "@emergexyz/db": "workspace:*"
   },
   "devDependencies": {
     "@types/node": "^20.0.0",

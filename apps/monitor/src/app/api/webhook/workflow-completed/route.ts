@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { prisma } from '@emp/database';
+import { prisma } from '@emergexyz/db';
 
 // Webhook endpoint to simulate workflow completion and notification flow
 export async function POST(request: NextRequest) {

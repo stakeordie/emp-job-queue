@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { prisma } from '@emp/database';
+import { prisma } from '@emergexyz/db';
 import crypto from 'crypto';
 
 const WEBHOOK_SECRET = 'mini-secret';

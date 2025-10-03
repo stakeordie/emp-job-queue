@@ -1,1 +1,1 @@
-export { prisma } from '@emp/database';
+export { prisma } from '@emergexyz/db';

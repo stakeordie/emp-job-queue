@@ -17,7 +17,7 @@
   },
   "dependencies": {
     "@emp/core": "workspace:*",
-    "@emp/database": "workspace:*",
+    "@emergexyz/db": "workspace:*",
     "@hookform/resolvers": "^5.1.1",
     "@melloware/react-logviewer": "^6.3.1",
     "@prisma/client": "^5.22.0",

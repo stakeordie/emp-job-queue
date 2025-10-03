@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { prisma } from '@emp/database';
+import { prisma } from '@emergexyz/db';
 import type { JobsAPIResponse, JobWithUserInfo } from '@/types/forensics';
 import { getMonitorRedisConnection, safeRedisOperation } from '@/lib/redis-connection';
 

@@ -1,0 +1,3 @@
+[submodule "packages/database"]
+	path = packages/database
+	url = git@github.com:TryEmerge/emerge_db.git
