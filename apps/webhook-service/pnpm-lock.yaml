@@ -270,12 +270,12 @@ importers:
 
   apps/monitor:
     dependencies:
+      '@emergexyz/db':
+        specifier: workspace:*
+        version: link:../../packages/database
       '@emp/core':
         specifier: workspace:*
         version: link:../../packages/core
-      '@emp/database':
-        specifier: workspace:*
-        version: link:../../packages/database
       '@hookform/resolvers':
         specifier: ^5.1.1
         version: 5.2.2(react-hook-form@7.63.0(react@19.2.0))
@@ -780,12 +780,12 @@ importers:
 
   services/job-evaluator:
     dependencies:
+      '@emergexyz/db':
+        specifier: workspace:*
+        version: link:../../packages/database
       '@emp/core':
         specifier: workspace:*
         version: link:../../packages/core
-      '@emp/database':
-        specifier: workspace:*
-        version: link:../../packages/database
     devDependencies:
       '@types/node':
         specifier: ^20.0.0
