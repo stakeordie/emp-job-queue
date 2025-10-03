@@ -6,7 +6,7 @@
   "scripts": {
     "dev": "mkdir -p ../../logs && (echo '   - Logs:         pnpm logs:monitor' && echo '   - All Logs:     pnpm logs:all' && echo && next dev -p 3333) 2>&1 | tee ../../logs/monitor.log",
     "prebuild": "printf 'NODE_ENV=production\\nDATABASE_URL=postgresql://build:build@localhost:5432/build\\nREDIS_URL=redis://localhost:6379\\nHUB_REDIS_URL=redis://localhost:6379\\n' > .env.local",
-    "build": "cd ../../packages/database && pnpm prisma generate && echo '🔍 Prisma client generated to default location' && cd ../../apps/monitor && echo '🔍 Building Next.js...' && next build",
+    "build": "git submodule update --init --recursive && cd ../../packages/database && pnpm install && pnpm prisma generate && cd ../../apps/monitor && next build",
     "start": "next start -p 3333",
     "lint": "next lint",
     "test": "vitest",
