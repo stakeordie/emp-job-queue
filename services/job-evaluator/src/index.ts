@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 
-import { prisma } from '@emp/database';
+import { prisma } from '@emergexyz/db';
 import { logger } from '@emp/core';
 
 interface JobEvaluationResult {
