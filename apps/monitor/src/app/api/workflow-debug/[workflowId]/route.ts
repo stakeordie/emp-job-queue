@@ -36,7 +36,67 @@ export async function GET(
     }
   });
 
-  // Step 2: Check EmProps Database (miniapp_generation table)
+  // Step 2: Check EmProps Database (step table - steps belonging to this job)
+  await executeStep(results, {
+    step: 'EmProps Database - Job Steps',
+    query: `SELECT "id", "job_id", "step_name", "step_type", "status", "started_at", "completed_at", "step_order", "retry_attempt", "error_message" FROM "step" WHERE "job_id" = '${workflowId}' ORDER BY "step_order" ASC`,
+    executor: async () => {
+      const steps = await prisma.step.findMany({
+        where: { job_id: workflowId },
+        select: {
+          id: true,
+          job_id: true,
+          step_name: true,
+          step_type: true,
+          status: true,
+          started_at: true,
+          completed_at: true,
+          input_data: true,
+          output_data: true,
+          error_message: true,
+          step_order: true,
+          retry_attempt: true
+        },
+        orderBy: { step_order: 'asc' }
+      });
+      return steps.length > 0 ? steps : null;
+    }
+  });
+
+  // Step 3: Check if workflowId is actually a step ID
+  await executeStep(results, {
+    step: 'EmProps Database - Step Record (if ID is a step)',
+    query: `SELECT "id", "job_id", "step_name", "step_type", "status", "started_at", "completed_at", "step_order", "retry_attempt", "error_message" FROM "step" WHERE "id" = '${workflowId}' LIMIT 1`,
+    executor: async () => {
+      const step = await prisma.step.findUnique({
+        where: { id: workflowId },
+        select: {
+          id: true,
+          job_id: true,
+          step_name: true,
+          step_type: true,
+          status: true,
+          started_at: true,
+          completed_at: true,
+          input_data: true,
+          output_data: true,
+          error_message: true,
+          step_order: true,
+          retry_attempt: true,
+          job: {
+            select: {
+              id: true,
+              name: true,
+              status: true
+            }
+          }
+        }
+      });
+      return step;
+    }
+  });
+
+  // Step 4: Check EmProps Database (miniapp_generation table)
   await executeStep(results, {
     step: 'EmProps Database - Miniapp Generation',
     query: `SELECT "id", "job_id", "user_id", "prompt", "image_base64", "status", "generated_image", "created_at", "updated_at" FROM "miniapp_generation" WHERE "job_id" = '${workflowId}' LIMIT 1`,
@@ -51,7 +111,7 @@ export async function GET(
     }
   });
 
-  // Step 3: Check Redis - Direct job lookup
+  // Step 5: Check Redis - Direct job lookup
   await executeStep(results, {
     step: 'Redis - Direct Job Lookup',
     query: `HGETALL job:${workflowId}`,
@@ -64,7 +124,7 @@ export async function GET(
     }
   });
 
-  // Step 4: Check Redis - Workflow job lookup
+  // Step 6: Check Redis - Workflow job lookup
   await executeStep(results, {
     step: 'Redis - Workflow Job Lookup',
     query: `HGETALL job:workflow-${workflowId}`,
@@ -103,7 +163,7 @@ export async function GET(
     }
   });
 
-  // Step 6: Check Redis - Jobs:completed
+  // Step 8: Check Redis - Jobs:completed
   await executeStep(results, {
     step: 'Redis - Completed Jobs',
     query: `HGET "jobs:completed" "${workflowId}"`,
@@ -125,7 +185,7 @@ export async function GET(
     }
   });
 
-  // Step 7: Check Redis - Jobs:active
+  // Step 9: Check Redis - Jobs:active
   await executeStep(results, {
     step: 'Redis - Active Jobs',
     query: `HGET "jobs:active" "${workflowId}"`,
@@ -147,7 +207,7 @@ export async function GET(
     }
   });
 
-  // Step 8: Check Redis - Jobs:pending
+  // Step 10: Check Redis - Jobs:pending
   await executeStep(results, {
     step: 'Redis - Pending Jobs',
     query: `LRANGE "jobs:pending" 0 -1\nCheck if "${workflowId}" is in the list`,
@@ -170,7 +230,7 @@ export async function GET(
     }
   });
 
-  // Step 9: Check EmProps API
+  // Step 11: Check EmProps API
   await executeStep(results, {
     step: 'EmProps API - Job Status',
     query: `curl -H "Authorization: Bearer ${process.env.EMPROPS_API_KEY?.substring(0, 10)}..." -H "Accept: application/json" "${process.env.EMPROPS_API_URL}/jobs/${workflowId}"`,
@@ -197,7 +257,7 @@ export async function GET(
     }
   });
 
-  // Step 10: Check Worker Attestations - Worker Failures
+  // Step 12: Check Worker Attestations - Worker Failures
   await executeStep(results, {
     step: 'Redis - Worker Failure Attestations',
     query: `KEYS worker:failure:*step-id:${workflowId}*\nKEYS worker:failure:*job-id:${workflowId}*\nThen HGETALL for each key`,
@@ -227,7 +287,7 @@ export async function GET(
     }
   });
 
-  // Step 11: Check Worker Attestations - Worker Completions
+  // Step 13: Check Worker Attestations - Worker Completions
   await executeStep(results, {
     step: 'Redis - Worker Completion Attestations',
     query: `KEYS worker:completion:*step-id:${workflowId}*\nKEYS worker:completion:*job-id:${workflowId}*\nThen HGETALL for each key`,
@@ -257,7 +317,7 @@ export async function GET(
     }
   });
 
-  // Step 12: Check API Workflow Attestations
+  // Step 14: Check API Workflow Attestations
   await executeStep(results, {
     step: 'Redis - API Workflow Attestations',
     query: `KEYS api:workflow:failure:${workflowId}*\nKEYS api:workflow:completion:${workflowId}*`,
@@ -285,7 +345,7 @@ export async function GET(
     }
   });
 
-  // Step 13: Check Flat Files (Generated Images)
+  // Step 15: Check Flat Files (Generated Images)
   await executeStep(results, {
     step: 'EmProps Database - Flat Files',
     query: `SELECT "id", "url", "name", "mime_type", "rel_type", "rel_id", "created_at" FROM "flat_file" WHERE "rel_id" = '${workflowId}' AND "rel_type" IN ('component_test', 'workflow_test', 'preview', 'collection_generation') ORDER BY "created_at" DESC`,
@@ -312,7 +372,7 @@ export async function GET(
     }
   });
 
-  // Step 14: Check Job Retry Backups
+  // Step 16: Check Job Retry Backups
   await executeStep(results, {
     step: 'EmProps Database - Job Retry Backups',
     query: `SELECT "id", "original_job_id", "retry_attempt", "original_status", "backed_up_at" FROM "job_retry_backup" WHERE "original_job_id" = '${workflowId}' ORDER BY "retry_attempt" ASC`,
@@ -334,7 +394,7 @@ export async function GET(
     }
   });
 
-  // Step 15: Check Job History
+  // Step 17: Check Job History
   await executeStep(results, {
     step: 'EmProps Database - Job History',
     query: `SELECT "id", "job_id", "status", "message", "created_at" FROM "job_history" WHERE "job_id" = '${workflowId}' ORDER BY "created_at" DESC LIMIT 20`,
@@ -355,7 +415,7 @@ export async function GET(
     }
   });
 
-  // Step 16: Check Collection Data
+  // Step 18: Check Collection Data
   await executeStep(results, {
     step: 'EmProps Database - Collection',
     query: `SELECT "id", "title", "description", "status", "data" FROM "collection" WHERE "data"->>'workflow_id' = '${workflowId}' LIMIT 1`,
