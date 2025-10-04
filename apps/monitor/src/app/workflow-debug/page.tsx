@@ -8,8 +8,9 @@ import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { CheckCircle, XCircle, Clock, Search, AlertTriangle, FileText, Database, Zap } from 'lucide-react';
+import AgentModal from '@/components/AgentModal';
 
-interface QueryResult {
+export interface QueryResult {
   step: string;
   query: string;
   result: any;
@@ -17,7 +18,7 @@ interface QueryResult {
   timing: number;
 }
 
-interface AnalysisResult {
+export interface AnalysisResult {
   mismatches: Array<{ severity: 'high' | 'medium' | 'low'; message: string; details?: string }>;
   attestationSummary: { total: number; failures: number; completions: number; retries: number };
   outputStatus: { hasFiles: boolean; hasDbColumn: boolean; fileCount: number; mismatch: boolean };
@@ -254,6 +255,13 @@ function WorkflowDebugContent() {
               )}
               Debug
             </Button>
+            {results.length > 0 && (
+              <AgentModal
+                workflowId={workflowId}
+                queryResults={results}
+                analysis={analysis || undefined}
+              />
+            )}
           </div>
         </CardContent>
       </Card>
