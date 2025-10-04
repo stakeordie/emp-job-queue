@@ -197,6 +197,188 @@ export async function GET(
     }
   });
 
+  // Step 10: Check Worker Attestations - Worker Failures
+  await executeStep(results, {
+    step: 'Redis - Worker Failure Attestations',
+    query: `KEYS worker:failure:*step-id:${workflowId}*\nKEYS worker:failure:*job-id:${workflowId}*\nThen HGETALL for each key`,
+    executor: async () => {
+      return await safeRedisOperation(async () => {
+        const { redis } = await getMonitorRedisConnection();
+        const stepId = workflowId.startsWith('step-') ? workflowId.substring(5) : workflowId;
+        const patterns = [
+          `worker:failure:*step-id:${stepId}*`,
+          `worker:failure:*job-id:${workflowId}*`,
+          `worker:failure:job-id:${workflowId}*`,
+        ];
+
+        const attestations = [];
+        for (const pattern of patterns) {
+          const keys = await redis.keys(pattern);
+          for (const key of keys) {
+            const data = await redis.get(key);
+            if (data) {
+              attestations.push({ key, data: JSON.parse(data) });
+            }
+          }
+        }
+
+        return attestations.length > 0 ? attestations : null;
+      }, 'worker failure attestations');
+    }
+  });
+
+  // Step 11: Check Worker Attestations - Worker Completions
+  await executeStep(results, {
+    step: 'Redis - Worker Completion Attestations',
+    query: `KEYS worker:completion:*step-id:${workflowId}*\nKEYS worker:completion:*job-id:${workflowId}*\nThen HGETALL for each key`,
+    executor: async () => {
+      return await safeRedisOperation(async () => {
+        const { redis } = await getMonitorRedisConnection();
+        const stepId = workflowId.startsWith('step-') ? workflowId.substring(5) : workflowId;
+        const patterns = [
+          `worker:completion:*step-id:${stepId}*`,
+          `worker:completion:*job-id:${workflowId}*`,
+          `worker:completion:job-id:${workflowId}*`,
+        ];
+
+        const attestations = [];
+        for (const pattern of patterns) {
+          const keys = await redis.keys(pattern);
+          for (const key of keys) {
+            const data = await redis.get(key);
+            if (data) {
+              attestations.push({ key, data: JSON.parse(data) });
+            }
+          }
+        }
+
+        return attestations.length > 0 ? attestations : null;
+      }, 'worker completion attestations');
+    }
+  });
+
+  // Step 12: Check API Workflow Attestations
+  await executeStep(results, {
+    step: 'Redis - API Workflow Attestations',
+    query: `KEYS api:workflow:failure:${workflowId}*\nKEYS api:workflow:completion:${workflowId}*`,
+    executor: async () => {
+      return await safeRedisOperation(async () => {
+        const { redis } = await getMonitorRedisConnection();
+        const patterns = [
+          `api:workflow:failure:${workflowId}*`,
+          `api:workflow:completion:${workflowId}*`,
+        ];
+
+        const attestations = [];
+        for (const pattern of patterns) {
+          const keys = await redis.keys(pattern);
+          for (const key of keys) {
+            const data = await redis.get(key);
+            if (data) {
+              attestations.push({ key, data: JSON.parse(data) });
+            }
+          }
+        }
+
+        return attestations.length > 0 ? attestations : null;
+      }, 'API workflow attestations');
+    }
+  });
+
+  // Step 13: Check Flat Files (Generated Images)
+  await executeStep(results, {
+    step: 'EmProps Database - Flat Files',
+    query: `SELECT "id", "url", "name", "mime_type", "rel_type", "rel_id", "created_at" FROM "flat_file" WHERE "rel_id" = '${workflowId}' AND "rel_type" IN ('component_test', 'workflow_test', 'preview', 'collection_generation') ORDER BY "created_at" DESC`,
+    executor: async () => {
+      const flatFiles = await prisma.flat_file.findMany({
+        where: {
+          rel_id: workflowId,
+          rel_type: {
+            in: ['component_test', 'workflow_test', 'preview', 'collection_generation'],
+          },
+        },
+        select: {
+          id: true,
+          url: true,
+          name: true,
+          mime_type: true,
+          rel_type: true,
+          rel_id: true,
+          created_at: true,
+        },
+        orderBy: { created_at: 'desc' },
+      });
+      return flatFiles.length > 0 ? flatFiles : null;
+    }
+  });
+
+  // Step 14: Check Job Retry Backups
+  await executeStep(results, {
+    step: 'EmProps Database - Job Retry Backups',
+    query: `SELECT "id", "original_job_id", "retry_attempt", "original_status", "backed_up_at" FROM "job_retry_backup" WHERE "original_job_id" = '${workflowId}' ORDER BY "retry_attempt" ASC`,
+    executor: async () => {
+      const retryBackups = await prisma.job_retry_backup.findMany({
+        where: { original_job_id: workflowId },
+        select: {
+          id: true,
+          original_job_id: true,
+          retry_attempt: true,
+          original_status: true,
+          original_data: true,
+          original_workflow_output: true,
+          backed_up_at: true,
+        },
+        orderBy: { retry_attempt: 'asc' },
+      });
+      return retryBackups.length > 0 ? retryBackups : null;
+    }
+  });
+
+  // Step 15: Check Job History
+  await executeStep(results, {
+    step: 'EmProps Database - Job History',
+    query: `SELECT "id", "job_id", "status", "message", "created_at" FROM "job_history" WHERE "job_id" = '${workflowId}' ORDER BY "created_at" DESC LIMIT 20`,
+    executor: async () => {
+      const history = await prisma.job_history.findMany({
+        where: { job_id: workflowId },
+        select: {
+          id: true,
+          job_id: true,
+          status: true,
+          message: true,
+          created_at: true,
+        },
+        orderBy: { created_at: 'desc' },
+        take: 20,
+      });
+      return history.length > 0 ? history : null;
+    }
+  });
+
+  // Step 16: Check Collection Data
+  await executeStep(results, {
+    step: 'EmProps Database - Collection',
+    query: `SELECT "id", "title", "description", "status", "data" FROM "collection" WHERE "data"->>'workflow_id' = '${workflowId}' LIMIT 1`,
+    executor: async () => {
+      const collection = await prisma.collection.findFirst({
+        where: {
+          data: {
+            path: ['workflow_id'],
+            equals: workflowId,
+          },
+        },
+        select: {
+          id: true,
+          title: true,
+          description: true,
+          status: true,
+          data: true,
+        },
+      });
+      return collection;
+    }
+  });
+
   return NextResponse.json({
     success: true,
     workflowId,
